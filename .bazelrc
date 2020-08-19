@@ -6,7 +6,7 @@ build --enable_platform_specific_config
 ###############################################################################
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
-build --compilation_mode=dbg
+build --compilation_mode=opt
 build --experimental_ui_deduplicate
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --force_pic
@@ -55,7 +55,7 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics"
 #build:linux --cxxopt="-D_GLIBCXX_DEBUG=1"
 #build:linux --cxxopt="-D_GLIBCXX_DEBUG_PEDANTIC=1"
 #build:linux --cxxopt="-D_LIBCPP_DEBUG=1"
-build:macos --cxxopt="-D_GLIBCXX_DEBUG=1"
+#build:macos --cxxopt="-D_GLIBCXX_DEBUG=1"
 #build:macos --cxxopt="-D_GLIBCXX_DEBUG_PEDANTIC=1"
 #build:windows --cxxopt="-D_ITERATOR_DEBUG_LEVEL=2"
 
