@@ -1063,7 +1063,7 @@ py_test(
 py_test(
     name = "policy/tests/test_trajectory_view_api",
     tags = ["policy"],
-    size = "large",
+    size = "medium",
     srcs = ["policy/tests/test_trajectory_view_api.py"]
 )
 

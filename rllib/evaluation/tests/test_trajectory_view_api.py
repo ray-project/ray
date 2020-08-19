@@ -110,7 +110,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config["num_workers"] = 3
         config["num_envs_per_worker"] = 8
-        config["num_sgd_iter"] = 10
+        config["num_sgd_iter"] = 6
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
         config["model"]["max_seq_len"] = 200
@@ -148,10 +148,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
                 for k, v in sampler_perf.items()}
-            duration_w = time.time() - start - sampler_perf["total_env_wait_s"]
-            get_ma_train_batch_w = sampler_perf["total_get_ma_train_batch_s"]
-            postproc_traj_so_far_w = \
-                sampler_perf["total_postprocess_trajectories_so_far_s"]
+            duration_w = \
+                time.time() - start - sampler_perf["total_env_wait_ms"]
             print("w/ traj-view API: Duration (no Env): {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
                 duration_w, sampler_perf, learn_time_w / num_iterations))
@@ -176,11 +174,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
                 for k, v in sampler_perf.items()}
-            duration_wo = time.time() - start - \
-                          sampler_perf["total_env_wait_s"]
-            get_ma_train_batch_wo = sampler_perf["total_get_ma_train_batch_s"]
-            postproc_traj_so_far_wo = \
-                sampler_perf["total_postprocess_trajectories_so_far_s"]
+            duration_wo = \
+                time.time() - start - sampler_perf["total_env_wait_ms"]
             print("w/o traj-view API: Duration (no Env): {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
                 duration_wo, sampler_perf, learn_time_wo / num_iterations))
@@ -188,10 +183,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Assert `_fasts_sampling` is much(!) faster across important
             # metrics.
-            self.assertLess(duration_w, duration_wo * 0.8)
+            self.assertLess(duration_w, duration_wo * 0.7)
             self.assertLess(learn_time_w, learn_time_wo * 0.6)
-            self.assertLess(
-                postproc_traj_so_far_w, postproc_traj_so_far_wo * 0.4)
 
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(2,))

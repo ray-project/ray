@@ -323,32 +323,14 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
-        if self.config["_use_trajectory_view_api"]:
-            if postprocessed_batch.time_major is not None:
-                postprocessed_batch["seq_lens"] = torch.tensor(
-                    postprocessed_batch.seq_lens)
-                t = 0 if postprocessed_batch.time_major else 1
-                for col in postprocessed_batch.data.keys():
-                    # Cut time-dim from states.
-                    if "state_" in col[:6]:
-                        postprocessed_batch[col] = postprocessed_batch[col][t]
-                    # Flatten all other data.
-                    else:
-                        # Cut time-dim at `max_seq_len`.
-                        if postprocessed_batch.time_major:
-                            postprocessed_batch[col] = \
-                                postprocessed_batch[col][
-                                :postprocessed_batch.max_seq_len]
-                        postprocessed_batch[col] = postprocessed_batch[
-                            col].reshape((-1,) +
-                                         postprocessed_batch[col].shape[2:])
-        else:
-            # Get batch ready for RNNs, if applicable.
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                max_seq_len=self.max_seq_len,
-                shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req)
+        # Get batch ready for RNNs, if applicable.
+        pad_batch_to_sequences_of_same_size(
+            postprocessed_batch,
+            max_seq_len=self.max_seq_len,
+            shuffle=False,
+            batch_divisibility_req=self.batch_divisibility_req,
+            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
+        )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         loss_out = force_list(

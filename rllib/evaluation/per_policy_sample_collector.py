@@ -262,12 +262,12 @@ class _PerPolicySampleCollector:
             batch = sample_batch_data[agent_key]
 
             for view_col, view_req in view_reqs.items():
+                data_col = view_req.data_col or view_col
                 # Skip columns that will only get added through postprocessing
                 # (these may not even exist yet).
-                if view_req.created_during_postprocessing:
+                if data_col not in self.buffers:
                     continue
 
-                data_col = view_req.data_col or view_col
                 shift = view_req.shift
                 if data_col == SampleBatch.OBS:
                     shift -= 1
