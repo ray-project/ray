@@ -2,6 +2,9 @@
 Policy Gradient (PG)
 ====================
 
+This file defines the distributed Trainer class for policy gradients.
+See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
+
 Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#pg
 """
 
@@ -25,6 +28,7 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate.
     "lr": 0.0004,
 })
+
 # __sphinx_doc_end__
 # yapf: enable
 
