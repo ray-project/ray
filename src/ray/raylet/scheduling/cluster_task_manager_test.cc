@@ -197,18 +197,18 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  void ClearAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
+  void ClearAllocatedInstances() {
+    allocated_instances_ = nullptr;
+  }
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
   void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    RAY_CHECK(false) << "Method unused";
+    borrowed_cpu_instances_ = cpu_instances;
   }
 
   std::vector<double> &GetBorrowedCPUInstances() {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new std::vector<double>();
-    return *t;
+    return borrowed_cpu_instances_;
   }
 
   void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
@@ -235,6 +235,7 @@ class MockWorker : public WorkerInterface {
   rpc::Address address_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  std::vector<double> borrowed_cpu_instances_;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
@@ -416,10 +417,8 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   /* Second task finishes, making space for the original task */
-  single_node_resource_scheduler_->FreeLocalTaskResources(
-      worker->GetAllocatedInstances());
-  // single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
   leased_workers_.clear();
+  task_manager_.HandleTaskFinished(worker);
 
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
