@@ -197,10 +197,12 @@ class AverageMeterCollection:
         >>> meter_collection = AverageMeterCollection()
         >>> meter_collection.update({"loss": 0.5, "acc": 0.5}, n=32)
         >>> meter_collection.summary()
-        {'batch_count': 1, 'num_samples': 32, 'loss': 0.5, 'last_loss': 0.5, 'acc': 0.5, 'last_acc': 0.5}
+        {'batch_count': 1, 'num_samples': 32, 'loss': 0.5,
+        'last_loss': 0.5, 'acc': 0.5, 'last_acc': 0.5}
         >>> meter_collection.update({"loss": 0.1, "acc": 0.9}, n=32)
         >>> meter_collection.summary()
-        {'batch_count': 2, 'num_samples': 64, 'loss': 0.3, 'last_loss': 0.1, 'acc': 0.7, 'last_acc': 0.9}
+        {'batch_count': 2, 'num_samples': 64, 'loss': 0.3,
+        'last_loss': 0.1, 'acc': 0.7, 'last_acc': 0.9}
     """
 
     def __init__(self):
