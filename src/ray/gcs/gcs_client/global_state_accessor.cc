@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "global_state_accessor.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #include <boost/algorithm/string.hpp>
 
@@ -230,6 +230,17 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       }));
   promise.get_future().get();
   return true;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
+    const PlacementGroupID &placement_group_id) {
+  std::unique_ptr<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGet(
+      placement_group_id, TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
+                              placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
 }
 
 }  // namespace gcs

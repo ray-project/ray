@@ -3,8 +3,8 @@ import logging
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.suggest.suggestion import Searcher, SearchGenerator
+from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
+from ray.tune.suggest.suggestion import Searcher
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -75,6 +75,7 @@ def run(run_or_experiment,
         upload_dir=None,
         trial_name_creator=None,
         loggers=None,
+        log_to_file=False,
         sync_to_cloud=None,
         sync_to_driver=None,
         checkpoint_freq=0,
@@ -143,6 +144,14 @@ def run(run_or_experiment,
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
+        log_to_file (bool|str|Sequence): Log stdout and stderr to files in
+            Tune's trial directories. If this is `False` (default), no files
+            are written. If `true`, outputs are written to `trialdir/stdout`
+            and `trialdir/stderr`, respectively. If this is a single string,
+            this is interpreted as a file relative to the trialdir, to which
+            both streams are written. If this is a Sequence (e.g. a Tuple),
+            it has to have length 2 and the elements indicate the files to
+            which stdout and stderr are written, respectively.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -181,7 +190,11 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
-        fail_fast (bool): Whether to fail upon the first error.
+        fail_fast (bool | str): Whether to fail upon the first error.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution (it
+            is best used with `ray.init(local_mode=True)`).
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (Searcher): Search algorithm for optimization.
@@ -242,6 +255,8 @@ def run(run_or_experiment,
         space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
+    config = config or {}
+
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
@@ -253,10 +268,9 @@ def run(run_or_experiment,
 
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
-            run_identifier = Experiment.register_if_needed(exp)
             experiments[i] = Experiment(
                 name=name,
-                run=run_identifier,
+                run=exp,
                 stop=stop,
                 config=config,
                 resources_per_trial=resources_per_trial,
@@ -266,6 +280,7 @@ def run(run_or_experiment,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 loggers=loggers,
+                log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
                 sync_on_checkpoint=sync_on_checkpoint,
@@ -288,8 +303,11 @@ def run(run_or_experiment,
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
 
+    if not search_alg:
+        search_alg = BasicVariantGenerator()
+
     runner = TrialRunner(
-        search_alg=search_alg or BasicVariantGenerator(),
+        search_alg=search_alg,
         scheduler=scheduler or FIFOScheduler(),
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
@@ -303,8 +321,11 @@ def run(run_or_experiment,
         fail_fast=fail_fast,
         trial_executor=trial_executor)
 
-    for exp in experiments:
-        runner.add_experiment(exp)
+    if not runner.resumed:
+        for exp in experiments:
+            search_alg.add_configurations([exp])
+    else:
+        logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
     if progress_reporter is None:
         if IS_NOTEBOOK:

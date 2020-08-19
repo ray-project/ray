@@ -87,9 +87,6 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (it == submissible_tasks_.end()) {
       return Status::Invalid("Task spec missing");
     }
-    if (it->second.spec.IsActorTask()) {
-      return Status::Invalid("Cannot reconstruct objects returned by actors");
-    }
 
     if (!it->second.pending) {
       resubmit = true;
@@ -116,6 +113,11 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
 
   if (!task_deps->empty()) {
     reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+  }
+
+  if (spec.IsActorTask()) {
+    const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
+    reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
   }
 
   if (resubmit) {
@@ -442,12 +444,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
-  }
-
-  if (spec.IsActorCreationTask()) {
-    // Publish actor death if actor creation task failed after
-    // a number of retries.
-    actor_reporter_->PublishTerminatedActor(spec);
   }
 }
 

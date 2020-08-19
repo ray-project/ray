@@ -19,10 +19,10 @@
 #include <thread>
 
 #include "ray/common/status.h"
-#include "ray/protobuf/reporter.grpc.pb.h"
-#include "ray/protobuf/reporter.pb.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/reporter.grpc.pb.h"
+#include "src/ray/protobuf/reporter.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -36,8 +36,7 @@ class MetricsAgentClient {
   /// \param[in] port Port of the metrics agent server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   MetricsAgentClient(const std::string &address, const int port,
-                     ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
+                     ClientCallManager &client_call_manager) {
     grpc_client_ = std::unique_ptr<GrpcClient<ReporterService>>(
         new GrpcClient<ReporterService>(address, port, client_call_manager));
   };
@@ -48,12 +47,15 @@ class MetricsAgentClient {
   /// \param[in] callback The callback function that handles reply.
   VOID_RPC_CLIENT_METHOD(ReporterService, ReportMetrics, grpc_client_, )
 
+  /// Report open census protobuf metrics to metrics agent.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  VOID_RPC_CLIENT_METHOD(ReporterService, ReportOCMetrics, grpc_client_, )
+
  private:
   /// The RPC client.
   std::unique_ptr<GrpcClient<ReporterService>> grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
 };
 
 }  // namespace rpc

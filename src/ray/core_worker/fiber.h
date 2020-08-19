@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include <ray/util/logging.h>
 #include <boost/fiber/all.hpp>
+
+#include "ray/util/logging.h"
 namespace ray {
 
 /// Used by async actor mode. The fiber event will be used

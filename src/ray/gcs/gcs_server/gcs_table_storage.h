@@ -18,7 +18,7 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -33,6 +33,7 @@ using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ObjectTableDataList;
+using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
 using rpc::ResourceTableData;
@@ -83,14 +84,15 @@ class GcsTable {
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, const StatusCallback &callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
   /// \param keys The batch key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status BatchDelete(const std::vector<Key> &keys, const StatusCallback &callback);
+  virtual Status BatchDelete(const std::vector<Key> &keys,
+                             const StatusCallback &callback);
 
  protected:
   std::string table_name_;
@@ -131,6 +133,21 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \return Status
   Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
 
+  /// Delete data and index from the table asynchronously.
+  ///
+  /// \param key The key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status Delete(const Key &key, const StatusCallback &callback) override;
+
+  /// Delete a batch of data and index from the table asynchronously.
+  ///
+  /// \param keys The batch key that will be deleted from the table.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  Status BatchDelete(const std::vector<Key> &keys,
+                     const StatusCallback &callback) override;
+
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
 };
@@ -152,6 +169,15 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
 
  private:
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
+};
+
+class GcsPlacementGroupTable
+    : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
+ public:
+  explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTable(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
+  }
 };
 
 class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
@@ -259,14 +285,6 @@ class GcsHeartbeatBatchTable : public GcsTable<ClientID, HeartbeatBatchTableData
   }
 };
 
-class GcsErrorInfoTable : public GcsTable<JobID, ErrorTableData> {
- public:
-  explicit GcsErrorInfoTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ERROR_INFO);
-  }
-};
-
 class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
   explicit GcsProfileTable(std::shared_ptr<StoreClient> &store_client)
@@ -305,6 +323,11 @@ class GcsTableStorage {
   GcsActorTable &ActorTable() {
     RAY_CHECK(actor_table_ != nullptr);
     return *actor_table_;
+  }
+
+  GcsPlacementGroupTable &PlacementGroupTable() {
+    RAY_CHECK(placement_group_table_ != nullptr);
+    return *placement_group_table_;
   }
 
   GcsActorCheckpointTable &ActorCheckpointTable() {
@@ -362,11 +385,6 @@ class GcsTableStorage {
     return *heartbeat_batch_table_;
   }
 
-  GcsErrorInfoTable &ErrorInfoTable() {
-    RAY_CHECK(error_info_table_ != nullptr);
-    return *error_info_table_;
-  }
-
   GcsProfileTable &ProfileTable() {
     RAY_CHECK(profile_table_ != nullptr);
     return *profile_table_;
@@ -386,6 +404,7 @@ class GcsTableStorage {
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
+  std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<GcsActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<GcsTaskTable> task_table_;
@@ -397,7 +416,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
   std::unique_ptr<GcsHeartbeatTable> heartbeat_table_;
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
-  std::unique_ptr<GcsErrorInfoTable> error_info_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
@@ -412,6 +430,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     store_client_ = std::make_shared<RedisStoreClient>(redis_client);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
+    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
     actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));
@@ -426,7 +445,6 @@ class RedisGcsTableStorage : public GcsTableStorage {
     placement_group_schedule_table_.reset(
         new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
-    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
     internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
@@ -442,6 +460,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
+    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
     actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
     actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));
@@ -454,7 +473,6 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
         new GcsPlacementGroupScheduleTable(store_client_));
     heartbeat_table_.reset(new GcsHeartbeatTable(store_client_));
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
-    error_info_table_.reset(new GcsErrorInfoTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
     internal_config_table_.reset(new GcsInternalConfigTable(store_client_));

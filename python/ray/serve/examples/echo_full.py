@@ -1,29 +1,12 @@
-"""
-Full example of ray.serve module
-"""
-
-import json
 import time
-
-from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 import ray.serve as serve
 
-
-def pformat_color_json(d):
-    """Use pygments to pretty format and colorize dictionary"""
-    formatted_json = json.dumps(d, sort_keys=True, indent=4)
-
-    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
-                              formatters.TerminalFormatter())
-
-    return colorful_json
-
-
 # initialize ray serve system.
+ray.init(num_cpus=10)
 serve.init()
 
 
@@ -68,6 +51,3 @@ for _ in range(10):
 # You can also change number of replicas for each backend independently.
 serve.update_backend_config("echo:v1", {"num_replicas": 2})
 serve.update_backend_config("echo:v2", {"num_replicas": 2})
-
-# As well as retrieving relevant system metrics
-print(pformat_color_json(serve.stat()))

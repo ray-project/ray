@@ -141,7 +141,9 @@ message GetActorCheckpointIDReply {
 
 // Service for actor info access.
 service ActorInfoGcsService {
-  // Create actor via gcs service.
+  // Register actor to gcs service.
+  rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+  // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
@@ -160,6 +162,20 @@ service ActorInfoGcsService {
   // Get actor checkpoint id data from GCS Service.
   rpc GetActorCheckpointID(GetActorCheckpointIDRequest)
       returns (GetActorCheckpointIDReply);
+}
+
+// Service for placement group info access.
+service PlacementGroupInfoGcsService {
+  // Create placement group via gcs service.
+  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
+      returns (CreatePlacementGroupReply);
+
+  // Remove placement group via gcs service.
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
+
+  // Get placement group information via gcs service.
+  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
 }
 
 message RegisterNodeRequest {
@@ -416,20 +432,6 @@ service StatsGcsService {
   rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
-message ReportJobErrorRequest {
-  ErrorTableData error_data = 1;
-}
-
-message ReportJobErrorReply {
-  GcsStatus status = 1;
-}
-
-// Service for error info access.
-service ErrorInfoGcsService {
-  // Report a job error to GCS Service.
-  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
-}
-
 message ReportWorkerFailureRequest {
   WorkerTableData worker_failure = 1;
 }
@@ -486,12 +488,37 @@ message CreateActorReply {
   GcsStatus status = 1;
 }
 
+message RegisterActorRequest {
+  TaskSpec task_spec = 1;
+}
+
+message RegisterActorReply {
+  GcsStatus status = 1;
+}
+
 message CreatePlacementGroupRequest {
   PlacementGroupSpec placement_group_spec = 1;
 }
 
 message CreatePlacementGroupReply {
   GcsStatus status = 1;
+}
+
+message RemovePlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message GetPlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message GetPlacementGroupReply {
+  GcsStatus status = 1;
+  PlacementGroupTableData placement_group_table_data = 2;
 }
 
 enum GcsServiceFailureType {

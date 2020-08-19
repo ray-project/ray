@@ -1,5 +1,6 @@
 import asyncio
-from urllib.parse import parse_qs
+import socket
+from typing import List
 
 import uvicorn
 
@@ -7,7 +8,7 @@ import ray
 from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.context import TaskContext
-from ray.serve.metric import MetricClient
+from ray.experimental import metrics
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.router import Router
@@ -26,23 +27,18 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_master(self, instance_name=None):
+    async def fetch_config_from_controller(self, name, instance_name=None):
         assert ray.is_initialized()
-        master = serve.api._get_master_actor()
+        controller = serve.api._get_controller()
 
-        self.route_table = await master.get_http_proxy_config.remote()
+        self.route_table = await controller.get_router_config.remote()
 
-        # The exporter is required to return results for /-/metrics endpoint.
-        [self.metric_exporter] = await master.get_metric_exporter.remote()
-
-        self.metric_client = MetricClient(self.metric_exporter)
-        self.request_counter = self.metric_client.new_counter(
-            "num_http_requests",
-            description="The number of requests processed",
-            label_names=("route", ))
+        self.request_counter = metrics.Count(
+            "num_http_requests", "The number of HTTP requests processed",
+            "requests", ["route"])
 
         self.router = Router()
-        await self.router.setup(instance_name)
+        await self.router.setup(name, instance_name)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -59,32 +55,6 @@ class HTTPProxy:
 
         return b"".join(body_buffer)
 
-    def _parse_latency_slo(self, scope):
-        query_string = scope["query_string"].decode("ascii")
-        query_kwargs = parse_qs(query_string)
-
-        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
-        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
-        relative_slo_ms = self._validate_slo_ms(relative_slo_ms)
-        absolute_slo_ms = self._validate_slo_ms(absolute_slo_ms)
-        if relative_slo_ms is not None and absolute_slo_ms is not None:
-            raise ValueError("Both relative and absolute slo's"
-                             "cannot be specified.")
-        return relative_slo_ms, absolute_slo_ms
-
-    def _validate_slo_ms(self, request_slo_ms):
-        if request_slo_ms is None:
-            return None
-        if len(request_slo_ms) != 1:
-            raise ValueError(
-                "Multiple SLO specified, please specific only one.")
-        request_slo_ms = request_slo_ms[0]
-        request_slo_ms = float(request_slo_ms)
-        if request_slo_ms < 0:
-            raise ValueError("Request SLO must be positive, it is {}".format(
-                request_slo_ms))
-        return request_slo_ms
-
     def _make_error_sender(self, scope, receive, send):
         async def sender(error_message, status_code):
             response = Response(error_message, status_code=status_code)
@@ -96,9 +66,6 @@ class HTTPProxy:
         current_path = scope["path"]
         if current_path == "/-/routes":
             await Response(self.route_table).send(scope, receive, send)
-        elif current_path == "/-/metrics":
-            metric_info = await self.metric_exporter.inspect_metrics.remote()
-            await Response(metric_info).send(scope, receive, send)
         else:
             await Response(
                 "System path {} not found".format(current_path),
@@ -115,7 +82,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.labels(route=current_path).add()
+        self.request_counter.record(1, {"route": current_path})
 
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)
@@ -140,19 +107,10 @@ class HTTPProxy:
 
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
-        # get slo_ms before enqueuing the query
-        try:
-            relative_slo_ms, absolute_slo_ms = self._parse_latency_slo(scope)
-        except ValueError as e:
-            await error_sender(str(e), 400)
-            return
-
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         request_metadata = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
-            relative_slo_ms=relative_slo_ms,
-            absolute_slo_ms=absolute_slo_ms,
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )
@@ -169,22 +127,47 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(self, host, port, instance_name=None):
+    async def __init__(
+            self,
+            name,
+            host,
+            port,
+            instance_name=None,
+            _http_middlewares: List["starlette.middleware.Middleware"] = []):
         serve.init(name=instance_name)
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_master(instance_name)
         self.host = host
         self.port = port
+
+        self.app = HTTPProxy()
+        await self.app.fetch_config_from_controller(name, instance_name)
+
+        self.wrapped_app = self.app
+        for middleware in _http_middlewares:
+            self.wrapped_app = middleware.cls(self.wrapped_app,
+                                              **middleware.options)
 
         # Start running the HTTP server on the event loop.
         asyncio.get_event_loop().create_task(self.run())
 
+    def ready(self):
+        return True
+
     async def run(self):
+        sock = socket.socket()
+        # These two socket options will allow multiple process to bind the the
+        # same port. Kernel will evenly load balance among the port listeners.
+        # Note: this will only work on Linux.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        sock.bind((self.host, self.port))
+
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
         config = uvicorn.Config(
-            self.app,
+            self.wrapped_app,
             host=self.host,
             port=self.port,
             lifespan="off",
@@ -194,7 +177,7 @@ class HTTPProxyActor:
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
-        await server.serve()
+        await server.serve(sockets=[sock])
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)

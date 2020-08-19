@@ -32,11 +32,10 @@ namespace ray {
 struct GcsServerMocker {
   class MockWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
-    ray::Status PushNormalTask(
+    void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
         const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
       callbacks.push_back(callback);
-      return Status::OK();
     }
 
     bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
@@ -68,20 +67,25 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    ray::Status RequestWorkerLease(
+    void RequestWorkerLease(
         const ray::TaskSpecification &resource_spec,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
-      return Status::OK();
     }
 
-    ray::Status CancelWorkerLease(
+    void ReleaseUnusedWorkers(
+        const std::vector<WorkerID> &workers_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+      num_release_unused_workers += 1;
+      release_callbacks.push_back(callback);
+    }
+
+    void CancelWorkerLease(
         const TaskID &task_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
       num_leases_canceled += 1;
       cancel_callbacks.push_back(callback);
-      return Status::OK();
     }
 
     bool GrantWorkerLease() {
@@ -127,35 +131,47 @@ struct GcsServerMocker {
       }
     }
 
+    bool ReplyReleaseUnusedWorkers() {
+      rpc::ReleaseUnusedWorkersReply reply;
+      if (release_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = release_callbacks.front();
+        callback(Status::OK(), reply);
+        release_callbacks.pop_front();
+        return true;
+      }
+    }
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
     int num_workers_returned = 0;
     int num_workers_disconnected = 0;
     int num_leases_canceled = 0;
+    int num_release_unused_workers = 0;
     ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
   };
 
   class MockRayletResourceClient : public ResourceReserveInterface {
    public:
-    ray::Status RequestResourceReserve(
+    void RequestResourceReserve(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
         override {
       num_lease_requested += 1;
       lease_callbacks.push_back(callback);
-      return Status::OK();
     }
 
-    ray::Status CancelResourceReserve(
+    void CancelResourceReserve(
         BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
         override {
       num_return_requested += 1;
       return_callbacks.push_back(callback);
-      return Status::OK();
     }
 
     // Trigger reply to RequestWorkerLease.
@@ -169,6 +185,20 @@ struct GcsServerMocker {
         auto callback = lease_callbacks.front();
         callback(status, reply);
         lease_callbacks.pop_front();
+        return true;
+      }
+    }
+
+    // Trigger reply to CancelResourceReserve.
+    bool GrantCancelResourceReserve(bool success = true) {
+      Status status = Status::OK();
+      rpc::CancelResourceReserveReply reply;
+      if (return_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = return_callbacks.front();
+        callback(status, reply);
+        return_callbacks.pop_front();
         return true;
       }
     }
@@ -189,15 +219,18 @@ struct GcsServerMocker {
       lease_client_factory_ = std::move(lease_client_factory);
     }
 
-    void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
-      client_factory_ = std::move(client_factory);
+    void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
+                                     std::shared_ptr<rpc::GcsNodeInfo> node) {
+      DoRetryLeasingWorkerFromNode(std::move(actor), std::move(node));
     }
 
    protected:
     void RetryLeasingWorkerFromNode(std::shared_ptr<gcs::GcsActor> actor,
                                     std::shared_ptr<rpc::GcsNodeInfo> node) override {
       ++num_retry_leasing_count_;
-      DoRetryLeasingWorkerFromNode(actor, node);
+      if (num_retry_leasing_count_ <= 1) {
+        DoRetryLeasingWorkerFromNode(actor, node);
+      }
     }
 
     void RetryCreatingActorOnWorker(std::shared_ptr<gcs::GcsActor> actor,
@@ -344,17 +377,6 @@ struct GcsServerMocker {
     }
 
     void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
-  };
-
-  class MockedErrorInfoAccessor : public gcs::ErrorInfoAccessor {
-   public:
-    Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
-                               const gcs::StatusCallback &callback) override {
-      if (callback) {
-        callback(Status::OK());
-      }
-      return Status::OK();
-    }
   };
 
   class MockGcsPubSub : public gcs::GcsPubSub {

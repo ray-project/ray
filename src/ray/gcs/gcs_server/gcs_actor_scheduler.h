@@ -14,20 +14,21 @@
 
 #pragma once
 
-#include <ray/common/id.h>
-#include <ray/common/task/task_execution_spec.h>
-#include <ray/common/task/task_spec.h>
-#include <ray/gcs/accessor.h>
-#include <ray/protobuf/gcs_service.pb.h>
-#include <ray/raylet_client/raylet_client.h>
-#include <ray/rpc/node_manager/node_manager_client.h>
-#include <ray/rpc/worker/core_worker_client.h>
 #include <queue>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "gcs_node_manager.h"
-#include "gcs_table_storage.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task_execution_spec.h"
+#include "ray/common/task/task_spec.h"
+#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/raylet_client/raylet_client.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -67,6 +68,12 @@ class GcsActorSchedulerInterface {
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
   virtual ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) = 0;
+
+  /// Notify raylets to release unused workers.
+  ///
+  /// \param node_to_workers Workers used by each node.
+  virtual void ReleaseUnusedWorkers(
+      const std::unordered_map<ClientID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   virtual ~GcsActorSchedulerInterface() {}
 };
@@ -131,6 +138,12 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param worker_id ID of the worker that the actor is creating on.
   /// \return ID of actor associated with the specified node id and worker id.
   ActorID CancelOnWorker(const ClientID &node_id, const WorkerID &worker_id) override;
+
+  /// Notify raylets to release unused workers.
+  ///
+  /// \param node_to_workers Workers used by each node.
+  void ReleaseUnusedWorkers(const std::unordered_map<ClientID, std::vector<WorkerID>>
+                                &node_to_workers) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -247,10 +260,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
-  /// Get or create CoreWorkerClient to communicate with the remote leased worker.
-  std::shared_ptr<rpc::CoreWorkerClientInterface> GetOrConnectCoreWorkerClient(
-      const rpc::Address &worker_address);
-
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -270,9 +279,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
       remote_lease_clients_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      core_worker_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// A publisher for publishing gcs messages.
@@ -283,8 +289,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  /// The nodes which are releasing unused workers.
+  absl::flat_hash_set<ClientID> nodes_of_releasing_unused_workers_;
+  /// The cached core worker clients which are used to communicate with leased worker.
+  rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
 }  // namespace gcs

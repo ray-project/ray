@@ -19,7 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "redismodule.h"
+#include "ray/gcs/redis_module/redismodule.h"
 
 /* Format a RedisModuleString.
  *

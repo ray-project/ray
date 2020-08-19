@@ -206,14 +206,15 @@ def test_raylet_info_endpoint(shutdown_only):
             except Exception as ex:
                 print("failed response: {}".format(response.text))
                 raise ex
-            actor_info = raylet_info["result"]["actors"]
+            actors_info = raylet_info["result"]["actors"]
             try:
-                assert len(actor_info) == 1
-                _, parent_actor_info = actor_info.popitem()
-                assert parent_actor_info["numObjectRefsInScope"] == 13
-                assert parent_actor_info["numLocalObjects"] == 10
-                children = parent_actor_info["children"]
-                assert len(children) == 2
+                assert len(actors_info) == 3
+                c_actor_info = [
+                    actor for actor in actors_info.values()
+                    if "ActorC" in actor["actorTitle"]
+                ][0]
+                assert c_actor_info["numObjectRefsInScope"] == 13
+                assert c_actor_info["numLocalObjects"] == 10
                 break
             except AssertionError:
                 if time.time() > start_time + 30:
@@ -230,15 +231,8 @@ def test_raylet_info_endpoint(shutdown_only):
             cpu_resources += slot["allocation"]
         return cpu_resources
 
-    assert cpu_resources(parent_actor_info) == 2
-    assert parent_actor_info["numExecutedTasks"] == 4
-    for _, child_actor_info in children.items():
-        if child_actor_info["state"] == -1:
-            assert child_actor_info["requiredResources"]["CustomResource"] == 1
-        else:
-            assert child_actor_info["state"] == 1
-            assert len(child_actor_info["children"]) == 0
-            assert cpu_resources(child_actor_info) == 1
+    assert cpu_resources(c_actor_info) == 2
+    assert c_actor_info["numExecutedTasks"] == 4
 
     profiling_id = requests.get(
         webui_url + "/api/launch_profiling",
@@ -328,26 +322,12 @@ def test_raylet_pending_tasks(shutdown_only):
         actor_info = raylet_info["result"]["actors"]
         assert len(actor_info) == 1
         _, infeasible_actor_info = actor_info.popitem()
-
-        # Verify there are 4 spawned actors.
-        children = infeasible_actor_info["children"]
-        assert len(children) == 4
-
-        pending_actor_detected = 0
-        for child_id, child in children.items():
-            if ("invalidStateType" in child
-                    and child["invalidStateType"] == "pendingActor"):
-                pending_actor_detected += 1
-        # 4 GPUActors are spawned although there are only 3 GPUs.
-        # One actor should be in the pending state.
-        assert pending_actor_detected == 1
-
-    assert (wait_until_succeeded_without_exception(
-        test_pending_actor,
-        (AssertionError, requests.exceptions.ConnectionError),
-        addresses,
-        timeout_ms=30000,
-        retry_interval_ms=1000) is True)
+        wait_until_succeeded_without_exception(
+            test_pending_actor,
+            (AssertionError, requests.exceptions.ConnectionError),
+            addresses,
+            timeout_ms=30000,
+            retry_interval_ms=1000)
 
 
 @pytest.mark.skipif(
@@ -384,6 +364,34 @@ def test_profiling_info_endpoint(shutdown_only):
         reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
     profiling_stats = json.loads(reply.profiling_stats)
     assert profiling_stats is not None
+
+
+def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
+    NUM_NODES = 3
+    cluster = ray_start_cluster
+    nodes = [cluster.add_node() for _ in range(NUM_NODES)]
+    nodes = {
+        node.address_info["metrics_export_port"]: node.address_info
+        for node in nodes
+    }
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    node_info_list = ray.nodes()
+
+    for node_info in node_info_list:
+        metrics_export_port = node_info["MetricsExportPort"]
+        address_info = nodes[metrics_export_port]
+        assert (address_info["raylet_socket_name"] == node_info[
+            "RayletSocketName"])
+
+        # Make sure we can ping Prometheus endpoints.
+        def test_prometheus_endpoint():
+            response = requests.get(
+                "http://localhost:{}".format(metrics_export_port))
+            return response.status_code == 200
+
+        wait_until_succeeded_without_exception(
+            test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
 
 
 # This variable is used inside test_memory_dashboard.
@@ -443,7 +451,7 @@ def test_memory_dashboard(shutdown_only):
         stop_memory_table()
         return True
 
-    def test_object_pineed_in_memory():
+    def test_object_pinned_in_memory():
 
         a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
         b = ray.get(a)  # Noqa F841
@@ -469,8 +477,8 @@ def test_memory_dashboard(shutdown_only):
         def f(arg):
             time.sleep(1)
 
-        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))  # Noqa F841
-        b = f.remote(a)  # Noqa F841
+        a = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
+        b = f.remote(a)
 
         wait_for_condition(memory_table_ready)
         memory_table = get_memory_table()
@@ -491,7 +499,7 @@ def test_memory_dashboard(shutdown_only):
         def f(arg):
             time.sleep(1)
 
-        a = ray.put(None)  # Noqa F841
+        a = ray.put(None)
         b = f.remote([a])  # Noqa F841
 
         wait_for_condition(memory_table_ready)
@@ -550,30 +558,27 @@ def test_memory_dashboard(shutdown_only):
     # These tests should be retried because it takes at least one second
     # to get the fresh new memory table. It is because memory table is updated
     # Whenever raylet and node info is renewed which takes 1 second.
-    assert (wait_for_condition(
-        test_local_reference, timeout=30000, retry_interval_ms=1000) is True)
+    wait_for_condition(
+        test_local_reference, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_object_pineed_in_memory, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_object_pinned_in_memory, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_pending_task_references, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_pending_task_references, timeout=30000, retry_interval_ms=1000)
 
-    assert (wait_for_condition(
+    wait_for_condition(
         test_serialized_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    assert (wait_for_condition(
+    wait_for_condition(
         test_captured_object_ref_reference,
         timeout=30000,
-        retry_interval_ms=1000) is True)
+        retry_interval_ms=1000)
 
-    assert (wait_for_condition(
-        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000) is
-            True)
+    wait_for_condition(
+        test_actor_handle_reference, timeout=30000, retry_interval_ms=1000)
 
 
 """Memory Table Unit Test"""

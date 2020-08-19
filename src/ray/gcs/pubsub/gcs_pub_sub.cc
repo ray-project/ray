@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 namespace ray {
 namespace gcs {

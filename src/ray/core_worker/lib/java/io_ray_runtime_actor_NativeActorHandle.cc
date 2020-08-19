@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/io_ray_runtime_actor_NativeActorHandle.h"
+#include "io_ray_runtime_actor_NativeActorHandle.h"
 
 #include <jni.h>
 
+#include "jni_utils.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/lib/java/jni_utils.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -161,3 +161,11 @@ cdef class Config:
     @staticmethod
     def put_small_object_in_memory_store():
         return RayConfig.instance().put_small_object_in_memory_store()
+
+    @staticmethod
+    def max_tasks_in_flight_per_worker():
+        return RayConfig.instance().max_tasks_in_flight_per_worker()
+
+    @staticmethod
+    def metrics_report_interval_ms():
+        return RayConfig.instance().metrics_report_interval_ms()

@@ -14,17 +14,8 @@
 
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 
-#include <boost/asio.hpp>
-#include <boost/bind.hpp>
-#include <boost/function.hpp>
-
-#include "ray/common/common_protocol.h"
-#include "ray/common/status.h"
-#include "ray/util/util.h"
-
-#ifdef _WIN32
-#include <win32fd.h>
-#endif
+#include "ray/common/client_connection.h"
+#include "ray/object_manager/plasma/plasma_generated.h"
 
 namespace ray {
 
@@ -32,76 +23,47 @@ ObjectStoreNotificationManagerIPC::ObjectStoreNotificationManagerIPC(
     boost::asio::io_service &io_service, const std::string &store_socket_name,
     bool exit_on_error)
     : ObjectStoreNotificationManager(io_service),
-      store_client_(),
       length_(0),
-      socket_(io_service),
       exit_on_error_(exit_on_error) {
-  RAY_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
-
-  int fd;
-  RAY_CHECK_OK(store_client_.Subscribe(&fd));
-  boost::system::error_code ec;
-#ifdef _WIN32
-  boost::asio::detail::socket_type c_socket = fh_release(fd);
-  WSAPROTOCOL_INFO pi;
-  size_t n = sizeof(pi);
-  char *p = reinterpret_cast<char *>(&pi);
-  const int level = SOL_SOCKET;
-  const int opt = SO_PROTOCOL_INFO;
-  if (boost::asio::detail::socket_ops::getsockopt(c_socket, 0, level, opt, p, &n, ec) !=
-      boost::asio::detail::socket_error_retval) {
-    switch (pi.iAddressFamily) {
-    case AF_INET:
-      socket_.assign(boost::asio::ip::tcp::v4(), c_socket, ec);
-      break;
-    case AF_INET6:
-      socket_.assign(boost::asio::ip::tcp::v6(), c_socket, ec);
-      break;
-    default:
-      ec = boost::system::errc::make_error_code(
-          boost::system::errc::address_family_not_supported);
-      break;
-    }
-  }
-#else
-  socket_.assign(boost::asio::local::stream_protocol(), fd, ec);
-#endif
-  RAY_CHECK(!ec);
+  local_stream_socket socket(io_service);
+  RAY_CHECK_OK(ConnectSocketRetry(socket, store_socket_name));
+  store_client_ = ServerConnection::Create(std::move(socket));
+  // Subscribe messages.
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = plasma::flatbuf::CreatePlasmaSubscribeRequest(fbb);
+  fbb.Finish(message);
+  RAY_CHECK_OK(store_client_->WriteMessage(
+      static_cast<int64_t>(plasma::flatbuf::MessageType::PlasmaSubscribeRequest),
+      fbb.GetSize(), fbb.GetBufferPointer()));
+  RAY_CHECK_OK(store_client_->SetNonBlocking(true));
   NotificationWait();
 }
 
 ObjectStoreNotificationManagerIPC::~ObjectStoreNotificationManagerIPC() {
-  RAY_CHECK_OK(store_client_.Disconnect());
+  store_client_->Close();
 }
 
-void ObjectStoreNotificationManagerIPC::Shutdown() {
-  RAY_CHECK_OK(store_client_.Disconnect());
-}
+void ObjectStoreNotificationManagerIPC::Shutdown() { store_client_->Close(); }
 
 void ObjectStoreNotificationManagerIPC::NotificationWait() {
-  boost::asio::async_read(
-      socket_, boost::asio::buffer(&length_, sizeof(length_)),
-      boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreLength, this,
-                  boost::asio::placeholders::error));
+  store_client_->ReadBufferAsync({boost::asio::buffer(&length_, sizeof(length_))},
+                                 [this](const ray::Status &s) { ProcessStoreLength(s); });
 }
 
-void ObjectStoreNotificationManagerIPC::ProcessStoreLength(
-    const boost::system::error_code &error) {
+void ObjectStoreNotificationManagerIPC::ProcessStoreLength(const ray::Status &s) {
   notification_.resize(length_);
-  if (error) {
+  if (!s.ok()) {
     if (exit_on_error_) {
       // When shutting down a cluster, it's possible that the plasma store is killed
       // earlier than raylet. In this case we don't want raylet to crash, we instead
       // log an error message and exit.
-      RAY_LOG(ERROR) << "Failed to process store length: "
-                     << boost_to_ray_status(error).ToString()
+      RAY_LOG(ERROR) << "Failed to process store length: " << s.ToString()
                      << ", most likely plasma store is down, raylet will exit";
       // Exit raylet process.
       _exit(kRayletStoreErrorExitCode);
     } else {
       // The log level is set to debug so user don't see it on ctrl+c exit.
-      RAY_LOG(DEBUG) << "Failed to process store length: "
-                     << boost_to_ray_status(error).ToString()
+      RAY_LOG(DEBUG) << "Failed to process store length: " << s.ToString()
                      << ", most likely plasma store is down. "
                      << "The error is silenced because exit_on_error_ "
                      << "flag is set.";
@@ -109,24 +71,22 @@ void ObjectStoreNotificationManagerIPC::ProcessStoreLength(
     }
   }
 
-  boost::asio::async_read(
-      socket_, boost::asio::buffer(notification_),
-      boost::bind(&ObjectStoreNotificationManagerIPC::ProcessStoreNotification, this,
-                  boost::asio::placeholders::error));
+  store_client_->ReadBufferAsync(
+      {boost::asio::buffer(notification_)},
+      [this](const ray::Status &s) { ProcessStoreNotification(s); });
 }
 
-void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(
-    const boost::system::error_code &error) {
-  if (error) {
+void ObjectStoreNotificationManagerIPC::ProcessStoreNotification(const ray::Status &s) {
+  if (!s.ok()) {
     if (exit_on_error_) {
       RAY_LOG(FATAL)
           << "Problem communicating with the object store from raylet, check logs or "
-          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+          << "dmesg for previous errors: " << s.ToString();
     } else {
       // The log level is set to debug so user don't see it on ctrl+c exit.
       RAY_LOG(DEBUG)
           << "Problem communicating with the object store from raylet, check logs or "
-          << "dmesg for previous errors: " << boost_to_ray_status(error).ToString()
+          << "dmesg for previous errors: " << s.ToString()
           << " The error is silenced because exit_on_error_ "
           << "flag is set.";
       return;

@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
-#include "service_based_gcs_client.h"
 
 namespace ray {
 namespace gcs {
@@ -136,6 +136,15 @@ class GlobalStateAccessor {
   /// Service, use string is convenient for python to use.
   /// \return Is operation success.
   bool AddWorkerInfo(const std::string &serialized_string);
+
+  /// Get information of a placement group from GCS Service.
+  ///
+  /// \param placement_group The ID of placement group to look up in the GCS Service.
+  /// \return Placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetPlacementGroupInfo(
+      const PlacementGroupID &placement_group_id);
 
  private:
   /// MultiItem transformation helper in template style.

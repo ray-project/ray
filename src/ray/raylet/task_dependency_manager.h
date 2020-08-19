@@ -164,6 +164,17 @@ class TaskDependencyManager {
   /// Record metrics.
   void RecordMetrics() const;
 
+  /// Get the address of the owner of this object. An address will only be
+  /// returned if the caller previously specified that this object is required
+  /// on this node, through a call to SubscribeGetDependencies or
+  /// SubscribeWaitDependencies.
+  ///
+  /// \param[in] object_id The object whose owner to get.
+  /// \param[out] owner_address The address of the object's owner, if
+  /// available.
+  /// \return True if we have owner information for the object.
+  bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
+
  private:
   struct ObjectDependencies {
     ObjectDependencies(const rpc::ObjectReference &ref)
@@ -216,7 +227,7 @@ class TaskDependencyManager {
   /// transfer or reconstruction. These are objects for which: (1) there is a
   /// subscribed task dependent on it, (2) the object is not local, and (3) the
   /// task that creates the object is not pending execution locally.
-  bool CheckObjectRequired(const ObjectID &object_id) const;
+  bool CheckObjectRequired(const ObjectID &object_id, rpc::Address *owner_address) const;
   /// If the given object is required, then request that the object be made
   /// available through object transfer or reconstruction.
   void HandleRemoteDependencyRequired(const ObjectID &object_id);

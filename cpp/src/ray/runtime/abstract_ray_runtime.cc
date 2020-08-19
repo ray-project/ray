@@ -1,11 +1,12 @@
 
 #include "abstract_ray_runtime.h"
 
-#include <cassert>
-
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
+
+#include <cassert>
+
 #include "../util/address_helper.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"

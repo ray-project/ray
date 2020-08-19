@@ -9,7 +9,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -411,7 +411,9 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False):
+                detached=False,
+                placement_group_id=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,6 +438,11 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group_id: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -446,7 +453,6 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is not None and not is_direct_call:
             raise ValueError("Non-direct call actors are no longer supported.")
-
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(
@@ -568,6 +574,9 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
+            placement_group_id
+            if placement_group_id is not None else ray.PlacementGroupID.nil(),
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 
@@ -581,9 +590,6 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
-
-        if name is not None and not gcs_actor_service_enabled():
-            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 

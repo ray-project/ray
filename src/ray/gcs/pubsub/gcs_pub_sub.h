@@ -16,11 +16,10 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -35,6 +34,7 @@ namespace gcs {
 #define TASK_LEASE_CHANNEL "TASK_LEASE"
 #define HEARTBEAT_CHANNEL "HEARTBEAT"
 #define HEARTBEAT_BATCH_CHANNEL "HEARTBEAT_BATCH"
+#define ERROR_INFO_CHANNEL "ERROR_INFO"
 
 /// \class GcsPubSub
 ///

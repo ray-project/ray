@@ -87,14 +87,11 @@ def check_docker_running_cmd(cname):
 def docker_start_cmds(user, image, mount, cname, user_options):
     cmds = []
 
-    # create flags
-    # ports for the redis, object manager, and tune client
-    port_flags = " ".join([
-        "-p {port}:{port}".format(port=port)
-        for port in ["6379", "8076", "4321"]
+    # TODO(ilr) Move away from defaulting to /root/
+    mount_flags = " ".join([
+        "-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/"))
+        for k, v in mount.items()
     ])
-    mount_flags = " ".join(
-        ["-v {src}:{dest}".format(src=k, dest=v) for k, v in mount.items()])
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
@@ -107,8 +104,7 @@ def docker_start_cmds(user, image, mount, cname, user_options):
     docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        port_flags, mount_flags, env_flags, user_options_str, "--net=host",
-        image, "bash"
+        mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
     cmds.append(docker_check + " ".join(docker_run))
 

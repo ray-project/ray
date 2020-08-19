@@ -21,10 +21,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -66,7 +67,7 @@ class ReferenceCounter : public ReferenceCounterInterface {
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        client_factory_(client_factory) {}
+        borrower_pool_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -207,6 +208,12 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return The addresses of the objects' owners.
   std::vector<rpc::Address> GetOwnerAddresses(
       const std::vector<ObjectID> object_ids) const;
+
+  /// Check whether an object value has been freed.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Whether the object value has been freed.
+  bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
 
   /// Release the underlying value from plasma (if any) for these objects.
   ///
@@ -350,6 +357,27 @@ class ReferenceCounter : public ReferenceCounterInterface {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
+  /// Add location to the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be added to the location table.
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Remove location from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be removed from the location table.
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get the locations from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to get locations for.
+  /// \return The nodes that have the object.
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -364,8 +392,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
           object_size(object_size),
           owned_by_us(true),
           owner_address(owner_address),
-          is_reconstructable(is_reconstructable),
-          pinned_at_raylet_id(pinned_at_raylet_id) {}
+          pinned_at_raylet_id(pinned_at_raylet_id),
+          is_reconstructable(is_reconstructable) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -641,17 +669,24 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
-  /// Map from worker address to core worker client. The owner of an object
+  /// Pool from worker address to core worker client. The owner of an object
   /// uses this client to request a notification from borrowers once the
   /// borrower's ref count for the ID goes to 0.
-  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      borrower_cache_ GUARDED_BY(mutex_);
+  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<ClientID>>;
+
+  /// Holds the client information for the owned objects. This table is seperate from
+  /// the reference table because we add object reference after putting object into the
+  /// plasma store and add the location to the object directory. Therefore we will receive
+  /// object location information before the reference is created.
+  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

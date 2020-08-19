@@ -25,8 +25,12 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace plasma {
+
+class Client;
+class StoreConn;
 
 using ray::Status;
 
@@ -76,44 +80,21 @@ Status ReadGetDebugStringReply(uint8_t* data, size_t size, std::string* debug_st
 
 /* Plasma Create message functions. */
 
-Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id, bool evict_if_full,
+Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
+                         const ray::rpc::Address &owner_address, bool evict_if_full,
                          int64_t data_size, int64_t metadata_size, int device_num);
 
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                         bool* evict_if_full, int64_t* data_size, int64_t* metadata_size,
+                         ClientID* owner_raylet_id, std::string* owner_ip_address,
+                         int* owner_port, WorkerID* owner_worker_id, bool* evict_if_full,
+                         int64_t* data_size, int64_t* metadata_size,
                          int* device_num);
 
 Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id, PlasmaObject* object,
                        PlasmaError error, int64_t mmap_size);
 
 Status ReadCreateReply(uint8_t* data, size_t size, ObjectID* object_id,
-                       PlasmaObject* object, int* store_fd, int64_t* mmap_size);
-
-Status SendCreateAndSealRequest(const std::shared_ptr<StoreConn> &store_conn, const ObjectID& object_id, bool evict_if_full,
-                                const std::string& data, const std::string& metadata);
-
-Status ReadCreateAndSealRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                                bool* evict_if_full, std::string* object_data,
-                                std::string* metadata);
-
-Status SendCreateAndSealBatchRequest(const std::shared_ptr<StoreConn> &store_conn, const std::vector<ObjectID>& object_ids,
-                                     bool evict_if_full,
-                                     const std::vector<std::string>& data,
-                                     const std::vector<std::string>& metadata);
-
-Status ReadCreateAndSealBatchRequest(uint8_t* data, size_t size,
-                                     std::vector<ObjectID>* object_id,
-                                     bool* evict_if_full,
-                                     std::vector<std::string>* object_data,
-                                     std::vector<std::string>* metadata);
-
-Status SendCreateAndSealReply(const std::shared_ptr<Client> &client, PlasmaError error);
-
-Status ReadCreateAndSealReply(uint8_t* data, size_t size);
-
-Status SendCreateAndSealBatchReply(const std::shared_ptr<Client> &client, PlasmaError error);
-
-Status ReadCreateAndSealBatchReply(uint8_t* data, size_t size);
+                       PlasmaObject* object, MEMFD_TYPE* store_fd, int64_t* mmap_size);
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
@@ -143,12 +124,12 @@ Status ReadGetRequest(uint8_t* data, size_t size, std::vector<ObjectID>& object_
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject>& plasma_objects,
-                    int64_t num_objects, const std::vector<int>& store_fds,
+                    int64_t num_objects, const std::vector<MEMFD_TYPE>& store_fds,
                     const std::vector<int64_t>& mmap_sizes);
 
 Status ReadGetReply(uint8_t* data, size_t size, ObjectID object_ids[],
                     PlasmaObject plasma_objects[], int64_t num_objects,
-                    std::vector<int>& store_fds, std::vector<int64_t>& mmap_sizes);
+                    std::vector<MEMFD_TYPE>& store_fds, std::vector<int64_t>& mmap_sizes);
 
 /* Plasma Release message functions. */
 
@@ -202,10 +183,6 @@ Status ReadEvictRequest(uint8_t* data, size_t size, int64_t* num_bytes);
 Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 
 Status ReadEvictReply(uint8_t* data, size_t size, int64_t& num_bytes);
-
-/* Plasma Subscribe message functions. */
-
-Status SendSubscribeRequest(const std::shared_ptr<StoreConn> &store_conn);
 
 /* Data messages. */
 

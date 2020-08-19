@@ -443,28 +443,23 @@ def test_multiple_raylets(ray_start_cluster):
 
 def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
+    cluster.add_node(num_cpus=1, resources={"CustomResource": 0})
     custom_resource_node = cluster.add_node(
-        num_cpus=3, resources={"CustomResource": 1})
+        num_cpus=1, resources={"CustomResource": 1})
     ray.init(address=cluster.address)
 
     @ray.remote
     def f():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
-        time.sleep(0.001)
         return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
         return ray.worker.global_worker.node.unique_id
-
-    # The f tasks should be scheduled on both raylets.
-    assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
@@ -638,6 +633,25 @@ def save_gpu_ids_shutdown_only():
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
+@pytest.mark.parametrize("as_str", [False, True])
+def test_gpu_ids_as_str(save_gpu_ids_shutdown_only, as_str):
+    allowed_gpu_ids = [4, 5, 6]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+        str(i) for i in allowed_gpu_ids)
+    ray.init()
+
+    @ray.remote
+    def get_gpu_ids(as_str):
+        gpu_ids = ray.get_gpu_ids(as_str)
+        for gpu_id in gpu_ids:
+            if as_str:
+                assert isinstance(gpu_id, str)
+            else:
+                assert isinstance(gpu_id, int)
+
+    ray.get([get_gpu_ids.remote(as_str) for _ in range(10)])
+
+
 def test_specific_gpus(save_gpu_ids_shutdown_only):
     allowed_gpu_ids = [4, 5, 6]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -648,14 +662,14 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     def f():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        assert gpu_ids[0] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
 
     @ray.remote(num_gpus=2)
     def g():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
-        assert gpu_ids[0] in allowed_gpu_ids
-        assert gpu_ids[1] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
+        assert int(gpu_ids[1]) in allowed_gpu_ids
 
     ray.get([f.remote() for _ in range(100)])
     ray.get([g.remote() for _ in range(100)])
@@ -676,7 +690,7 @@ def test_local_mode_gpus(save_gpu_ids_shutdown_only):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 3
         for gpu in gpu_ids:
-            assert gpu in allowed_gpu_ids
+            assert int(gpu) in allowed_gpu_ids
 
     ray.get([f.remote() for _ in range(100)])
 

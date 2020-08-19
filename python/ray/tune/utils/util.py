@@ -2,7 +2,7 @@ import copy
 import logging
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -137,6 +137,20 @@ class warn_if_slow:
                 now - self.start)
 
 
+class Tee(object):
+    def __init__(self, stream1, stream2):
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def write(self, *args, **kwargs):
+        self.stream1.write(*args, **kwargs)
+        self.stream2.write(*args, **kwargs)
+
+    def flush(self, *args, **kwargs):
+        self.stream1.flush(*args, **kwargs)
+        self.stream2.flush(*args, **kwargs)
+
+
 def merge_dicts(d1, d2):
     """
     Args:
@@ -214,6 +228,29 @@ def flatten_dict(dt, delimiter="/"):
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
+    """
+    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
+    """
+    keys = deque(flat_key.split(delimiter))
+    base = lookup
+    while keys:
+        key = keys.popleft()
+        try:
+            if isinstance(base, Mapping):
+                base = base[key]
+            elif isinstance(base, Sequence):
+                base = base[int(key)]
+            else:
+                raise KeyError()
+        except KeyError as e:
+            if "default" in kwargs:
+                return kwargs["default"]
+            raise e
+    return base
 
 
 def _to_pinnable(obj):

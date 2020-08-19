@@ -17,7 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -50,9 +50,18 @@ class InMemoryStoreClient : public StoreClient {
   Status AsyncDelete(const std::string &table_name, const std::string &key,
                      const StatusCallback &callback) override;
 
+  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
+                              const std::string &index_key,
+                              const StatusCallback &callback) override;
+
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
                           const StatusCallback &callback) override;
+
+  Status AsyncBatchDeleteWithIndex(const std::string &table_name,
+                                   const std::vector<std::string> &keys,
+                                   const std::vector<std::string> &index_keys,
+                                   const StatusCallback &callback) override;
 
   Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
                             const StatusCallback &callback) override;

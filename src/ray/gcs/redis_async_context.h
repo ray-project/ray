@@ -15,12 +15,16 @@
 #pragma once
 
 #include <stdarg.h>
+
 #include <mutex>
+
 #include "ray/common/status.h"
 
+// These are forward declarations from hiredis.
 extern "C" {
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
+struct redisAsyncContext;
+struct redisReply;
+typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 }
 
 namespace ray {
