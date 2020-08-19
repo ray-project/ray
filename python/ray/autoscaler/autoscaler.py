@@ -451,13 +451,13 @@ class StandardAutoscaler:
     def launch_new_node(self, count, instance_type=None):
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.pending_launches.inc(instance_type, count)
         config = copy.deepcopy(self.config)
         node_config = self.get_instance_specific_config(instance_type)
         # Try to fill in the default instance type so we can tag it properly.
         if not instance_type:
             instance_type = self.provider.get_instance_type(
                 self.config["worker_nodes"])
+        self.pending_launches.inc(instance_type, count)
         self.launch_queue.put((config, count, instance_type, node_config))
 
     def workers(self):

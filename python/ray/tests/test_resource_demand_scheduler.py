@@ -254,7 +254,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
 
         # TODO (Alex): Autoscaler creates the node during one update then
-        # starts the updater in the enxt update. The sleep is largely
+        # starts the updater in the next update. The sleep is largely
         # unavoidable because the updater runs in its own thread and we have no
         # good way of ensuring that the commands are sent in time.
         autoscaler.update()
