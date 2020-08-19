@@ -201,8 +201,7 @@ def build_torch_policy(
                     action_space=action_space,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
-                    framework="torch",
-                    **self.config["model"].get("custom_model_config", {}))
+                    framework="torch")
 
             # Make sure, we passed in a correct Model factory.
             assert isinstance(self.model, TorchModelV2), \

@@ -305,11 +305,85 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
   // requirement. In this case, the bundles should be scheduled on Node0.
   auto node1 = Mocker::GenNodeInfo(1);
   AddNode(node1, 1);
-  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
+  auto create_placement_group_request2 =
+      Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
+  auto placement_group2 =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2);
+  gcs_placement_group_scheduler_->Schedule(placement_group2, failure_handler,
                                            success_handler);
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   WaitPendingDone(success_placement_groups_, 2);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
+  auto node = Mocker::GenNodeInfo();
+  AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+
+  // Schedule the placement_group with 1 available node, and the lease request should be
+  // send to the node.
+  gcs_placement_group_scheduler_->Schedule(
+      placement_group,
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&vector_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&vector_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      });
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  WaitPendingDone(failure_placement_groups_, 0);
+  WaitPendingDone(success_placement_groups_, 1);
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group_id);
+  ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
+
+  // Subsequent destroy request should not do anything.
+  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group_id);
+  ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
+  ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
+  auto node = Mocker::GenNodeInfo();
+  AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+
+  // Schedule the placement_group with 1 available node, and the lease request should be
+  // send to the node.
+  gcs_placement_group_scheduler_->Schedule(
+      placement_group,
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&vector_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&vector_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      });
+
+  // Now, cancel the schedule request.
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  gcs_placement_group_scheduler_->MarkScheduleCancelled(placement_group_id);
+  ASSERT_TRUE(raylet_client_->GrantResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
+  WaitPendingDone(failure_placement_groups_, 1);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyReschedulingWhenNodeAdd) {

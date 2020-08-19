@@ -165,10 +165,10 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
-    // Placement Group is alive.
-    ALIVE = 1;
-    // Placement Group is already dead and won't be reschedule.
-    DEAD = 2;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
   }
 
   // ID of the PlacementGroup.

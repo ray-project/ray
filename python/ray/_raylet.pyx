@@ -1083,6 +1083,16 @@ cdef class CoreWorker:
 
         return PlacementGroupID(c_placement_group_id.Binary())
 
+    def remove_placement_group(self, PlacementGroupID placement_group_id):
+        cdef:
+            CPlacementGroupID c_placement_group_id = \
+                placement_group_id.native()
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().
+                RemovePlacementGroup(c_placement_group_id))
+
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,

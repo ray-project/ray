@@ -356,18 +356,11 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
 
 
 @_ensure_connected
-def get_handle(endpoint_name,
-               relative_slo_ms=None,
-               absolute_slo_ms=None,
-               missing_ok=False):
+def get_handle(endpoint_name, missing_ok=False):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
         endpoint_name (str): A registered service endpoint.
-        relative_slo_ms(float): Specify relative deadline in milliseconds for
-            queries fired using this handle. (Default: None)
-        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
-            queries fired using this handle. (Default: None)
         missing_ok (bool): If true, skip the check for the endpoint existence.
             It can be useful when the endpoint has not been registered.
 
@@ -382,8 +375,6 @@ def get_handle(endpoint_name,
     return RayServeHandle(
         list(routers.values())[0],
         endpoint_name,
-        relative_slo_ms,
-        absolute_slo_ms,
     )
 
 
