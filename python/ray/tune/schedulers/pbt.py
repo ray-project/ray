@@ -393,9 +393,15 @@ class PopulationBasedTraining(FIFOScheduler):
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
         # Only log mutated hyperparameters and not entire config.
-        old_hparams = {k: v for k, v in trial_to_clone.config.items() if k
-                       in self._hyperparam_mutations}
-        new_hparams = {k: v for k, v in new_config.items() if k in self._hyperparam_mutations}
+        old_hparams = {
+            k: v
+            for k, v in trial_to_clone.config.items()
+            if k in self._hyperparam_mutations
+        }
+        new_hparams = {
+            k: v
+            for k, v in new_config.items() if k in self._hyperparam_mutations
+        }
         logger.info("[explore] perturbed config from {} -> {}".format(
             old_hparams, new_hparams))
 
