@@ -306,8 +306,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyResourceCheck) {
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_PACK);
   auto placement_group2 =
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request2);
-  gcs_placement_group_scheduler_->Schedule(placement_group2, failure_handler,
-                                           success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group2, failure_handler, success_handler);
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   WaitPendingDone(success_placement_groups_, 2);
@@ -324,7 +323,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
-  gcs_placement_group_scheduler_->Schedule(
+  scheduler_->ScheduleUnplacedBundles(
       placement_group,
       [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&vector_mutex_);
@@ -339,14 +338,12 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   WaitPendingDone(failure_placement_groups_, 0);
   WaitPendingDone(success_placement_groups_, 1);
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
-      placement_group_id);
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
 
   // Subsequent destroy request should not do anything.
-  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
-      placement_group_id);
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
   ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());
 }
@@ -363,7 +360,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
 
   // Schedule the placement_group with 1 available node, and the lease request should be
   // send to the node.
-  gcs_placement_group_scheduler_->Schedule(
+  scheduler_->ScheduleUnplacedBundles(
       placement_group,
       [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
         absl::MutexLock lock(&vector_mutex_);
@@ -376,7 +373,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyCancelledPlacementGroup) {
 
   // Now, cancel the schedule request.
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
-  gcs_placement_group_scheduler_->MarkScheduleCancelled(placement_group_id);
+  scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());

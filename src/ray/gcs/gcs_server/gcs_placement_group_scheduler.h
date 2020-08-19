@@ -165,6 +165,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// cancelled.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of the dead node.
+  /// \return The bundles belong to the dead node.
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const ClientID &node_id) override;
 
@@ -184,7 +188,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Get an existing lease client or connect a new one.
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
-  
+
   void OnAllBundleSchedulingRequestReturned(
       const std::shared_ptr<GcsPlacementGroup> &placement_group,
       const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
@@ -227,12 +231,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                       absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>>>
       node_to_leased_bundles_;
 
-  /// A map from placement group id to bundle locations.
-  /// It is used to destroy bundles for the placement group. When we reschedule bundles,
-  /// we can get the location of other bundles from here.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
-      placement_group_to_bundle_locations_;
-
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
 
@@ -241,10 +239,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
 
   /// A map from placement group id to bundle locations.
-  /// It is used to destroy bundles for the placement group.
+  /// It is used to destroy bundles for the placement group. When we reschedule bundles,
+  /// we can get the location of other bundles from here.
   /// NOTE: It is a reverse index of `node_to_leased_bundles`.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<BundleLocations>>
-      placement_group_to_bundle_location_;
+      placement_group_to_bundle_locations_;
 };
 
 }  // namespace gcs

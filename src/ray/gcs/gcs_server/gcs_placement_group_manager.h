@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #pragma once
-#include <queue>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -83,7 +82,7 @@ class GcsPlacementGroup {
   rpc::PlacementStrategy GetStrategy() const;
 
   // Get debug string for the placement group.
-  const std::string DebugString() const;
+  std::string DebugString() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
@@ -129,12 +128,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// Register placement_group asynchronously.
   ///
-  /// \param request Contains the meta info to create the placement_group.
+  /// \param placement_group The placement group to be created.
   /// \param callback Will be invoked after the placement_group is created successfully or
   /// be invoked immediately if the placement_group is already registered to
   /// `registered_placement_groups_` and its state is `CREATED`. The callback will not be
   /// called in this case.
-  void RegisterPlacementGroup(const rpc::CreatePlacementGroupRequest &request,
+  void RegisterPlacementGroup(const std::shared_ptr<GcsPlacementGroup> &placement_group,
                               StatusCallback callback);
 
   /// Schedule placement_groups in the `pending_placement_groups_` queue.
@@ -171,14 +170,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnNodeDead(const ClientID &node_id);
 
  private:
-  /// Scheduling priority of placement group: RESCHEDULING > PENDING.
-  struct PlacementGroupCompare {
-    bool operator()(const std::shared_ptr<GcsPlacementGroup> &left,
-                    const std::shared_ptr<GcsPlacementGroup> &right) {
-      return left->GetState() < right->GetState();
-    }
-  };
-
   /// Try to create placement group after a short time.
   void RetryCreatingPlacementGroup();
 
@@ -214,10 +205,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// The pending placement_groups which will not be scheduled until there's a resource
   /// change.
-  std::priority_queue<std::shared_ptr<GcsPlacementGroup>,
-                      std::vector<std::shared_ptr<GcsPlacementGroup>>,
-                      PlacementGroupCompare>
-      pending_placement_groups_;
+  /// NOTE: When we remove placement group, we need to look for
+  /// `pending_placement_groups_` and delete the specific placement group, so we can't use
+  /// `std::priority_queue`.
+  std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
