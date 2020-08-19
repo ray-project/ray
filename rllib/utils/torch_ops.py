@@ -6,6 +6,11 @@ from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
+# Limit values suitable for use as close to a -inf logit. These are useful
+# since -inf / inf cause NaNs during backprop.
+FLOAT_MIN = 1e-15
+FLOAT_MAX = 1e15
+
 
 def atanh(x):
     return 0.5 * torch.log((1 + x) / (1 - x))
