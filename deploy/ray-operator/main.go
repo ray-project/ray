@@ -29,10 +29,13 @@ func init() {
 
 func main() {
 	var metricsAddr string
-	var enableLeaderElection bool
+	var enableLeaderElection, maximizeSharedMem bool
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&maximizeSharedMem, "maximize-shared-memory", true,
+		"sets the /dev/shm size to the container resource requests or limits")
+
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
@@ -51,9 +54,10 @@ func main() {
 	}
 
 	if err = (&controllers.RayClusterReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("RayCluster"),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Log:               ctrl.Log.WithName("controllers").WithName("RayCluster"),
+		Scheme:            mgr.GetScheme(),
+		MaximizeSharedMem: maximizeSharedMem,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RayCluster")
 		os.Exit(1)
