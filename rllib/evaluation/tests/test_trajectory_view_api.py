@@ -226,6 +226,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             self.assertTrue(result.count == 100)
             self.assertTrue(pol_batch.count >= 100)
             self.assertFalse(0 in pol_batch.seq_lens)
+            # Check prev_reward/action, next_obs consistency.
             for t in range(max_seq_len):
                 obs_t = pol_batch["obs"][t]
                 r_t = pol_batch["rewards"][t]
@@ -238,19 +239,18 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Check the sanity of all the buffers in the un underlying
             # PerPolicy collector.
-            for i, agent_slot in enumerate(range(
+            for sample_batch_slot, agent_slot in enumerate(range(
                     sample_batch_offset_before, pc.sample_batch_offset)):
-                t_buf = buffers["t"][:,agent_slot]
-                seq_len = pol_batch.seq_lens[i]
-                # chunk 0
-                if t_buf[seq_len] == seq_len - 1:
-                    assert t_buf[1] == 0
-                # chunk 1
-                elif t_buf[seq_len] == seq_len - 1 + max_seq_len:
-                    assert t_buf[0] == max_seq_len - 1
-                    assert t_buf[1] == max_seq_len
-                else:
-                    raise ValueError("Too many chunks (>2)!")
+                t_buf = buffers["t"][:, agent_slot]
+                obs_buf = buffers["obs"][:, agent_slot]
+                # Skip empty seqs at end (these won't be part of the batch
+                # and have been copied to new agent-slots (even if seq-len=0)).
+                if sample_batch_slot < len(pol_batch.seq_lens):
+                    seq_len = pol_batch.seq_lens[sample_batch_slot]
+                    # Make sure timesteps are always increasing within the seq.
+                    assert all(t_buf[1] + j == n+1 for j, n in enumerate(t_buf) if j < seq_len and j != 0)
+                    # Make sure all obs within seq are non-0.0.
+                    assert all([any(obs_buf[j] != 0.0) for j in range(1, seq_len + 1)])
 
             # Check seq-lens.
             for agent_slot, seq_len in enumerate(pol_batch.seq_lens):

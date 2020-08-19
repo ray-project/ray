@@ -294,20 +294,22 @@ class _PerPolicySampleCollector:
             SampleBatch: Returns the accumulated sample batch for this
                 policy.
         """
-        seq_lens = [
+        seq_lens_w_0s = [
             self.agent_key_to_timestep[k] - self.shift_before
             for k in self.slot_to_agent_key if k is not None
         ]
-        first_zero_len = len(seq_lens)
-        if seq_lens[-1] == 0:
-            first_zero_len = seq_lens.index(0)
+        # We have an agent-axis buffer "rollover" (new SampleBatch will be
+        # built from last n agent records plus first m agent records in
+        # buffer).
+        if self.agent_slot_cursor < self.sample_batch_offset:
+            rollover = -(self.num_agents - self.sample_batch_offset)
+            seq_lens_w_0s = seq_lens_w_0s[rollover:] + seq_lens_w_0s[:rollover]
+        first_zero_len = len(seq_lens_w_0s)
+        if seq_lens_w_0s[-1] == 0:
+            first_zero_len = seq_lens_w_0s.index(0)
             # Assert that all zeros lie at the end of the seq_lens array.
-            try:
-                assert all(seq_lens[i] == 0
-                           for i in range(first_zero_len, len(seq_lens)))
-            except AssertionError as e:
-                print()
-                raise e
+            assert all(seq_lens_w_0s[i] == 0
+                       for i in range(first_zero_len, len(seq_lens_w_0s)))
 
         t_start = self.shift_before
         t_end = t_start + self.num_timesteps
@@ -316,8 +318,8 @@ class _PerPolicySampleCollector:
         # actually already has at least 1 timestep of data (thus it excludes
         # just-rolled over chunks (which only have the initial obs in them)).
         valid_agent_cursor = \
-            (self.agent_slot_cursor - (len(seq_lens) - first_zero_len)) % \
-            self.num_agents
+            (self.agent_slot_cursor -
+             (len(seq_lens_w_0s) - first_zero_len)) % self.num_agents
 
         # Construct the view dict.
         view = {}
@@ -347,7 +349,7 @@ class _PerPolicySampleCollector:
         # Copy all still ongoing trajectories to new agent slots
         # (including the ones that just started (are seq_len=0)).
         new_chunk_args = []
-        for i, seq_len in enumerate(seq_lens):
+        for i, seq_len in enumerate(seq_lens_w_0s):
             if seq_len < self.num_timesteps:
                 agent_slot = (self.sample_batch_offset + i) % self.num_agents
                 if not self.buffers[SampleBatch.
@@ -358,7 +360,7 @@ class _PerPolicySampleCollector:
                         (agent_slot, agent_key,
                          self.agent_key_to_timestep[agent_key]))
         # Cut out all 0 seq-lens.
-        seq_lens = seq_lens[:first_zero_len]
+        seq_lens = seq_lens_w_0s[:first_zero_len]
         batch = SampleBatch(
             view, _seq_lens=np.array(seq_lens), _time_major=self.time_major)
 
