@@ -76,4 +76,5 @@ class OutputCollector(Collector):
                         record)
                 self._writer.write(
                     self._channel_ids[partition_index],
-                    bytes([serialization.CROSS_LANG_TYPE_ID]) + cross_lang_buffer)
+                    bytes([serialization.CROSS_LANG_TYPE_ID]) +
+                    cross_lang_buffer)

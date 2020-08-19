@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class StateBackend(ABC):
-
     @abstractmethod
     def get(self, key):
         pass
@@ -24,7 +23,6 @@ class StateBackend(ABC):
 
 
 class MemoryStateBackend(StateBackend):
-
     def __init__(self, conf):
         self.__dic = dict()
 
@@ -40,10 +38,10 @@ class MemoryStateBackend(StateBackend):
 
 
 class LocalFileStateBackend(StateBackend):
-
     def __init__(self, conf):
         self.__dir = ConfigHelper.get_cp_local_file_root_dir(conf)
-        logger.info("Start init local file state backend, root_dir={}.".format(self.__dir))
+        logger.info("Start init local file state backend, root_dir={}.".format(
+            self.__dir))
         try:
             os.mkdir(self.__dir)
         except FileExistsError:
@@ -82,7 +80,6 @@ class LocalFileStateBackend(StateBackend):
 
 
 class AtomicFsStateBackend(LocalFileStateBackend):
-
     def __init__(self, conf):
         super().__init__(conf)
         self.__tmp_flag = "_tmp"
@@ -109,7 +106,6 @@ class AtomicFsStateBackend(LocalFileStateBackend):
 
 
 class StateBackendFactory:
-
     @staticmethod
     def get_state_backend(worker_config) -> StateBackend:
         backend_type = ConfigHelper.get_cp_state_backend_type(worker_config)

@@ -107,7 +107,6 @@ class StreamOperator(Operator, ABC):
 
 
 class SourceOperator(Operator, ABC):
-
     @abstractmethod
     def fetch(self, checkpoint_id):
         pass
@@ -254,7 +253,6 @@ class UnionOperator(StreamOperator, OneInputOperator):
 
 class ChainedOperator(StreamOperator, ABC):
     class ForwardCollector(Collector):
-
         def __init__(self, succeeding_operator):
             self.succeeding_operator = succeeding_operator
 
@@ -269,13 +267,15 @@ class ChainedOperator(StreamOperator, ABC):
     def open(self, collectors, runtime_context):
         # Dont' call super.open() as we `open` every operator separately.
         num_operators = len(self.operators)
-        succeeding_collectors = [ChainedOperator.ForwardCollector(operator)
-                                 for operator in self.operators[1:]]
+        succeeding_collectors = [
+            ChainedOperator.ForwardCollector(operator)
+            for operator in self.operators[1:]
+        ]
         for i in range(0, num_operators - 1):
             forward_collectors = [succeeding_collectors[i]]
-            self.operators[i].open(forward_collectors,
-                                   self.__create_runtime_context(
-                                       runtime_context, i))
+            self.operators[i].open(
+                forward_collectors,
+                self.__create_runtime_context(runtime_context, i))
         self.operators[-1].open(
             collectors,
             self.__create_runtime_context(runtime_context, num_operators - 1))
@@ -307,7 +307,6 @@ class ChainedOperator(StreamOperator, ABC):
 
 
 class ChainedSourceOperator(SourceOperator, ChainedOperator):
-
     def __init__(self, operators, configs):
         super().__init__(operators, configs)
 
@@ -335,8 +334,9 @@ def load_chained_operator(chained_operator_bytes: bytes):
     """Load chained operator from serialized operators and configs"""
     serialized_operators, configs = gateway_client.deserialize(
         chained_operator_bytes)
-    operators = [load_operator(desc_bytes) for desc_bytes in
-                 serialized_operators]
+    operators = [
+        load_operator(desc_bytes) for desc_bytes in serialized_operators
+    ]
     return ChainedOperator.new_chained_operator(operators, configs)
 
 

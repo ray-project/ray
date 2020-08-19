@@ -47,7 +47,6 @@ class Config:
 
 
 class ConfigHelper(object):
-
     @staticmethod
     def get_cp_local_file_root_dir(conf):
         value = conf.get(Config.FILE_STATE_ROOT_PATH)

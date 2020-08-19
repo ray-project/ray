@@ -57,7 +57,8 @@ class RemoteCallMst:
     """
 
     @staticmethod
-    def request_job_worker_rollback(master: ActorHandle, request: WorkerRollbackRequest):
+    def request_job_worker_rollback(master: ActorHandle,
+                                    request: WorkerRollbackRequest):
         logger.info("Remote call mst: request job worker rollback start.")
         request_pb = remote_call_pb2.BaseWorkerCmd()
         request_pb.actor_id = request.from_actor_id
@@ -75,7 +76,8 @@ class RemoteCallMst:
         return result.boolRes
 
     @staticmethod
-    def report_job_worker_commit(master: ActorHandle, report: WorkerCommitReport):
+    def report_job_worker_commit(master: ActorHandle,
+                                 report: WorkerCommitReport):
         logger.info("Remote call mst: report job worker commit start.")
         report_pb = remote_call_pb2.BaseWorkerCmd()
 

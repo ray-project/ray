@@ -17,6 +17,7 @@ from ray._raylet import Language
 CHANNEL_ID_LEN = 20
 logger = logging.getLogger(__name__)
 
+
 class ChannelID:
     """
     ChannelID is used to identify a transfer channel between
@@ -98,8 +99,8 @@ def channel_bytes_to_str(id_bytes):
         return id_bytes
     return bytes.hex(id_bytes)
 
-class Message(ABC):
 
+class Message(ABC):
     @property
     @abstractmethod
     def body(self):
@@ -124,6 +125,7 @@ class Message(ABC):
     def message_id(self):
         """Get message id of the message"""
         pass
+
 
 class DataMessage(Message):
     """
@@ -208,8 +210,7 @@ class CheckpointBarrier(Message):
         return self.offsets
 
     def __str__(self):
-        return "Barrier(Checkpoint id : {})".format(
-            self.checkpoint_id)
+        return "Barrier(Checkpoint id : {})".format(self.checkpoint_id)
 
 
 class ChannelCreationParametersBuilder:
@@ -350,7 +351,6 @@ class DataWriter:
                     .format(checkpoint_id))
         self.writer.clear_checkpoint(checkpoint_id)
 
-
     def stop(self):
         logger.info("stopping channel writer.")
         self.writer.stop()
@@ -393,7 +393,8 @@ class DataReader:
         self.__creation_status = {}
         for q, status in queues_creation_status.items():
             self.__creation_status[q] = ChannelCreationStatus(status)
-        logger.info("create DataReader succeed, creation_status={}".format(self.__creation_status))
+        logger.info("create DataReader succeed, creation_status={}".format(
+            self.__creation_status))
 
     def read(self, timeout_millis):
         """Read data from channel

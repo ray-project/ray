@@ -752,7 +752,8 @@ class Node:
                 ray.utils.binary_to_hex(worker_id),
                 ray.utils.binary_to_hex(job_id), os.getpid())
         else:
-            name = "worker-{}-{}".format(ray.utils.binary_to_hex(worker_id), os.getpid())
+            name = "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id), os.getpid())
 
         worker_stdout_file, worker_stderr_file = self._get_log_file_names(
             name, unique=False)
