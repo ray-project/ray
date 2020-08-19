@@ -1,3 +1,4 @@
+from typing import Any, Optional, Dict
 import logging
 import threading
 
@@ -28,7 +29,8 @@ class NodeLauncher(threading.Thread):
         self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
-    def _launch_node(self, config, count, instance_type):
+    def _launch_node(self, config: Dict[str, Any], count: int,
+                     instance_type: Optional[str]):
         worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
@@ -36,12 +38,13 @@ class NodeLauncher(threading.Thread):
         node_config = config["worker_nodes"]
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
-            TAG_RAY_INSTANCE_TYPE: instance_type,
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
+        # Only add the instance type if it's not None.
         if instance_type:
+            node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
             node_config = config["available_node_types"][instance_type][
                 "node_config"]
         self.provider.create_node(node_config, node_tags, count)

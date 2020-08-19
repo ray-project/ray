@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Optional
 import copy
 import logging
 import math
@@ -441,7 +442,8 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_type):
+    def launch_new_node(self, count: int,
+                        instance_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(instance_type, count)

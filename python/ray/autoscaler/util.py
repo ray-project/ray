@@ -121,8 +121,8 @@ def merge_node_type_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if "worker_node_default_type" in config:
         if "worker_nodes" in config:
             raise ValueError(
-                "`worker_nodes` and `worker_node_default_type` cannot be both given"
-            )
+                "`worker_nodes` and `worker_node_default_type` cannot be "
+                "both given")
         if config["worker_node_default_type"] not in config[
                 "available_node_types"]:
             raise ValueError(

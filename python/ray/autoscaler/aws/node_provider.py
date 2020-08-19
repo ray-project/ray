@@ -195,9 +195,10 @@ class AWSNodeProvider(NodeProvider):
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
-        assert TAG_RAY_INSTANCE_TYPE in tags, tags
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
+            # TODO(ekl) this is breaking the abstraction boundary a little by
+            # peeking into the tag set.
             filters = [
                 {
                     "Name": "instance-state-name",
@@ -212,14 +213,16 @@ class AWSNodeProvider(NodeProvider):
                     "Values": [tags[TAG_RAY_NODE_TYPE]],
                 },
                 {
-                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
-                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
-                },
-                {
                     "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
                     "Values": [tags[TAG_RAY_LAUNCH_CONFIG]],
                 },
             ]
+            # This tag may not always be present.
+            if TAG_RAY_INSTANCE_TYPE in tags:
+                filters.append({
+                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
+                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
+                })
 
             reuse_nodes = list(
                 self.ec2.instances.filter(Filters=filters))[:count]
