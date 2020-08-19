@@ -36,16 +36,15 @@ class NodeLauncher(threading.Thread):
         node_config = config["worker_nodes"]
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
+            TAG_RAY_INSTANCE_TYPE: instance_type,
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
         if instance_type:
-            node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
-            self.provider.create_node_of_type(node_config, node_tags,
-                                              instance_type, count)
-        else:
-            self.provider.create_node(node_config, node_tags, count)
+            node_config = config["available_node_types"][instance_type][
+                "node_config"]
+        self.provider.create_node(node_config, node_tags, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")

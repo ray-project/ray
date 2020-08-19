@@ -153,10 +153,6 @@ class MockProvider(NodeProvider):
                                                      instance_type)
             self.next_id += 1
 
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        return self.create_node(
-            node_config, tags, count, instance_type=instance_type)
-
     def get_instance_type(self, node_config):
         return self.default_instance_type
 
