@@ -193,19 +193,9 @@ class AWSNodeProvider(NodeProvider):
 
             self.tag_cache_update_event.set()
 
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        assert instance_type is not None
-        node_config["InstanceType"] = instance_type
-        return self.create_node(node_config, tags, count)
-
-    def get_instance_type(self, node_config):
-        return node_config["InstanceType"]
-
     def create_node(self, node_config, tags, count):
-        # Always add the instance type tag, since node reuse is unsafe
-        # otherwise.
         tags = copy.deepcopy(tags)
-        tags[TAG_RAY_INSTANCE_TYPE] = node_config["InstanceType"]
+        assert TAG_RAY_INSTANCE_TYPE in tags, tags
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
             filters = [

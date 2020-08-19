@@ -18,24 +18,28 @@ from time import sleep
 
 TYPES_A = {
     "m4.large": {
+        "node_config": {},
         "resources": {
             "CPU": 2
         },
         "max_workers": 10,
     },
     "m4.4xlarge": {
+        "node_config": {},
         "resources": {
             "CPU": 16
         },
         "max_workers": 8,
     },
     "m4.16xlarge": {
+        "node_config": {},
         "resources": {
             "CPU": 64
         },
         "max_workers": 4,
     },
     "p2.xlarge": {
+        "node_config": {},
         "resources": {
             "CPU": 16,
             "GPU": 1
@@ -43,6 +47,7 @@ TYPES_A = {
         "max_workers": 10,
     },
     "p2.8xlarge": {
+        "node_config": {},
         "resources": {
             "CPU": 32,
             "GPU": 8
@@ -52,7 +57,7 @@ TYPES_A = {
 }
 
 MULTI_WORKER_CLUSTER = dict(SMALL_CLUSTER, **{
-    "available_instance_types": TYPES_A,
+    "available_node_types": TYPES_A,
 })
 
 
