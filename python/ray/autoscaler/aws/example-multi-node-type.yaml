@@ -16,13 +16,11 @@ available_node_types:
     m4.xl_ondemand:
         node_config:
             InstanceType: m4.xlarge
-            ImageId: latest_dlami
         resources: {"CPU": 4}
         max_workers: 5
     m4.xl_spot:
         node_config:
             InstanceType: m4.xlarge
-            ImageId: latest_dlami
             InstanceMarketOptions:
                 MarketType: spot
         resources: {"CPU": 4}
@@ -30,19 +28,16 @@ available_node_types:
     m4.4xl:
         node_config:
             InstanceType: m4.4xlarge
-            ImageId: latest_dlami
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
     p2.xl:
         node_config:
             InstanceType: p2.xlarge
-            ImageId: latest_dlami
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4
     p2.8xl:
         node_config:
             InstanceType: p2.8xlarge
-            ImageId: latest_dlami
         resources: {"CPU": 32, "GPU": 8}
         max_workers: 2
 
@@ -51,6 +46,16 @@ head_node_type: m4.xl_ondemand
 
 # Specify the default type of the worker node (as configured above).
 worker_default_node_type: m4.xl_spot
+
+# The default settings for the head node. This will be merged with the per-node
+# type configs given above.
+head_node:
+    ImageId: latest_dlami
+
+# The default settings for worker nodes. This will be merged with the per-node
+# type configs given above.
+worker_nodes:
+    ImageId: latest_dlami
 
 # Configure the cluster for very conservative auto-scaling otherwise.
 target_utilization_fraction: 1.0
