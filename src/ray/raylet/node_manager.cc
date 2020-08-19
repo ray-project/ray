@@ -527,11 +527,13 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
       objects_ids.push_back(id);
     }
     // We should not spill an object that we are not the primary copy for.
+    // TODO(swang): We should really return an error here but right now there
+    // is a race condition where the raylet receives the owner's request to
+    // spill an object before it receives the message to pin the objects from
+    // the local worker.
     if (pinned_objects_.count(id) == 0) {
-      RAY_LOG(ERROR) << "The object to spill " << id << " is not pinned.";
-      callback(
-          Status::Invalid("Requested object spillage on a non-primary object copy."));
-      return;
+      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
+                          "the primary copy";
     }
   }
   if (objects_ids.empty()) {
