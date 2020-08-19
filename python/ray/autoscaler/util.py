@@ -80,14 +80,11 @@ def validate_config(config: Dict[str, Any]) -> None:
             raise ValueError("You must specify `worker_node_default_type` if "
                              "`available_node_types is set.")
 
-    if "head_node_type" in config and "head_node" in config:
-        raise ValueError(
-            "`head_node` and `head_node_type` cannot be both given")
+    if "head_node" not in config:
+        raise ValueError("`head_node` config missing")
 
-    if "worker_node_default_type" in config and "worker_nodes" in config:
-        raise ValueError(
-            "`worker_nodes` and `worker_node_default_type` cannot be "
-            "both given")
+    if "worker_nodes" not in config:
+        raise ValueError("`worker_nodes` config missing")
 
 
 def prepare_config(config):
@@ -100,6 +97,10 @@ def prepare_config(config):
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
+    if "head_node_type" in config:
+        del defaults["head_node"]
+    if "worker_node_default_type" in config:
+        del defaults["worker_nodes"]
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
@@ -107,11 +108,29 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def merge_node_type_config(config: Dict[str, Any]) -> Dict[str, Any]:
     if "head_node_type" in config:
-        config["head_node"] = copy.deepcopy(
-            config["available_node_types"][config["head_node_type"]])
+        if "head_node" in config:
+            raise ValueError(
+                "`head_node` and `head_node_type` cannot be both given")
+        if config["head_node_type"] not in config["available_node_types"]:
+            raise ValueError(
+                "Could not resolve worker node type {} in ({}).".format(
+                    config["head_node_type"],
+                    config["available_node_types"].keys()))
+        config["head_node"] = copy.deepcopy(config["available_node_types"][
+            config["head_node_type"]]["node_config"])
     if "worker_node_default_type" in config:
-        config["worker_nodes"] = copy.deepcopy(
-            config["available_node_types"][config["worker_node_default_type"]])
+        if "worker_nodes" in config:
+            raise ValueError(
+                "`worker_nodes` and `worker_node_default_type` cannot be both given"
+            )
+        if config["worker_node_default_type"] not in config[
+                "available_node_types"]:
+            raise ValueError(
+                "Could not resolve worker node type {} in ({}).".format(
+                    config["worker_node_default_type"],
+                    config["available_node_types"].keys()))
+        config["worker_nodes"] = copy.deepcopy(config["available_node_types"][
+            config["worker_node_default_type"]]["node_config"])
 
 
 def merge_setup_commands(config):

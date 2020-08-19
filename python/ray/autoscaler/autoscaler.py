@@ -276,8 +276,8 @@ class StandardAutoscaler:
         try:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
-            validate_config(new_config)
             merge_node_type_config(new_config)
+            validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             (new_runtime_hash,
