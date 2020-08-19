@@ -239,10 +239,10 @@ def get_backend_config(backend_tag: str):
 
 @_ensure_connected
 def create_backend(backend_tag: str,
-                   func_or_class: Callable,
-                   *actor_init_args,
-                   ray_actor_options=None,
-                   config: Dict[str, Any] = None) -> None:
+                   func_or_class: Union[Callable, Type[Callable]],
+                   *actor_init_args: Any,
+                   ray_actor_options: Optional[Dict] = None,
+                   config: Optional[Dict[str, Any]] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
