@@ -370,6 +370,10 @@ COMMON_CONFIG: TrainerConfigDict = {
         "replay_mode": "independent",
     },
 
+    # === Logger ===
+    # Define logger-specific configuration to be used inside Logger
+    "logger_config": {},
+
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
