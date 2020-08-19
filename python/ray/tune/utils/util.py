@@ -271,6 +271,38 @@ def _from_pinnable(obj):
 
 
 def diagnose_serialization(trainable):
+    """Utility for detecting accidentally-scoped objects.
+
+    Args:
+        trainable (cls | func): The trainable object passed to
+            tune.run(trainable).
+
+    Returns:
+        bool | set of unserializable objects.
+
+    Example:
+
+    .. code-block::
+
+        import threading
+        # this is not serializable
+        e = threading.Event()
+
+        def test():
+            print(e)
+
+        diagnose_serialization(test)
+        # should help identify that 'e' should be moved into
+        # the `test` scope.
+
+        # correct implementation
+        def test():
+            e = threading.Event()
+            print(e)
+
+        assert diagnose_serialization(test) is True
+
+    """
     from ray.tune.registry import register_trainable, check_serializability
 
     def check_variables(objects, failure_set, printer):
@@ -315,11 +347,13 @@ def diagnose_serialization(trainable):
         print("Nothing was found to have failed the diagnostic test, though "
               "serialization did not succeed. Feel free to raise an "
               "issue on github.")
-        return
+        return failure_set
     else:
         print(f"Variable(s) {failure_set} was found to be non-serializable. "
-              "Consider moving the instantiation/imports "
-              "of these objects into the scope of the trainable. ")
+              "Consider either removing the instantiation/imports "
+              "of these objects or moving them into the scope of "
+              "the trainable. ")
+        return failure_set
 
 
 def validate_save_restore(trainable_cls,

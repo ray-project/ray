@@ -10,7 +10,6 @@ parser.add_argument(
 args, _ = parser.parse_known_args()
 
 
-
 def train_mnist(config):
     # https://github.com/tensorflow/tensorflow/issues/32159
     import tensorflow as tf
