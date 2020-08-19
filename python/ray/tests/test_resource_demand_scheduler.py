@@ -14,6 +14,8 @@ from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_instances_for
 
+from time import sleep
+
 TYPES_A = {
     "m4.large": {
         "resources": {
@@ -225,6 +227,46 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(4)
         assert self.provider.mock_nodes[2].instance_type == "m4.16xlarge"
         assert self.provider.mock_nodes[3].instance_type == "m4.16xlarge"
+
+    def testResourcePassing(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config_path = self.write_config(config)
+        self.provider = MockProvider(default_instance_type="m4.large")
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
+
+        # TODO (Alex): Autoscaler creates the node during one update then
+        # starts the updater in the enxt update. The sleep is largely
+        # unavoidable because the updater runs in its own thread and we have no
+        # good way of ensuring that the commands are sent in time.
+        autoscaler.update()
+        sleep(0.1)
+
+        # These checks are done separately because we have no guarantees on the
+        # order the dict is serialized in.
+        runner.assert_has_call("172.0.0.0", "RAY_OVERRIDE_RESOURCES=")
+        runner.assert_has_call("172.0.0.0", "CPU: 2")
+        runner.assert_has_call("172.0.0.1", "RAY_OVERRIDE_RESOURCES=")
+        runner.assert_has_call("172.0.0.1", "CPU: 32")
+        runner.assert_has_call("172.0.0.1", "GPU: 8")
 
 
 if __name__ == "__main__":
