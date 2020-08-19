@@ -37,6 +37,8 @@ void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
 void TestRandomObjectId() {
   // Round trip test for computing the object ID from random.
   const ObjectID random_object_id = ObjectID::FromRandom();
+  ASSERT_FALSE(random_object_id.TaskId().IsNil());
+  ASSERT_EQ(random_object_id.ObjectIndex(), 0);
 }
 
 const static JobID kDefaultJobId = JobID::FromInt(199);
