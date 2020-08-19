@@ -2,13 +2,16 @@ import pytest
 import time
 import yaml
 import tempfile
+import threading
 import shutil
+import sys
 import unittest
 
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
 from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
@@ -147,6 +150,13 @@ def test_get_instances_respects_max_limit():
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
+        for thread in threading.enumerate():
+            if isinstance(thread, NodeLauncher):
+                thread.exit = True
+            else:
+                print("not killing", thread)
+        sleep(1.0)
+        assert len(list(threading.enumerate())) == 1, "Extra threads running: " + str(list(threading.enumerate()))
         NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
         self.provider = None

@@ -1,5 +1,6 @@
 import logging
 import threading
+from queue import Empty
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_TYPE, TAG_RAY_NODE_NAME,
@@ -26,6 +27,7 @@ class NodeLauncher(threading.Thread):
         self.provider = provider
         self.instance_types = instance_types
         self.index = str(index) if index is not None else ""
+        self.stop = False
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count, instance_type, node_config):
@@ -51,11 +53,17 @@ class NodeLauncher(threading.Thread):
 
     def run(self):
         while True:
-            config, count, instance_type, node_config = self.queue.get()
+            if self.stop:
+                print("EXITING")
+                return
             self.log("Got {} nodes to launch.".format(count))
             try:
+                obj = self.queue.get(timeout=1.0)
+                config, count, instance_type, node_config = obj
                 self._launch_node(config, count, instance_type,
-                                  node_config)
+                                node_config)
+            except Empty:
+                pass
             except Exception:
                 logger.exception("Launch failed")
             finally:
