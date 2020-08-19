@@ -1902,17 +1902,11 @@ genrule(
         fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        files=(
-            python/ray/core/generated/gcs_pb2.py
-            python/ray/core/generated/common_pb2.py
-            python/ray/core/generated/node_manager_pb2.py
-            python/ray/core/generated/node_manager_pb2_grpc.py
-            python/ray/core/generated/reporter_pb2.py
-            python/ray/core/generated/reporter_pb2_grpc.py
-            python/ray/core/generated/core_worker_pb2.py
-            python/ray/core/generated/core_worker_pb2_grpc.py
-        )
+        # shellcheck disable=SC2006
+        files=(`ls python/ray/core/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,
