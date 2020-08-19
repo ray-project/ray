@@ -36,6 +36,8 @@ struct WorkerThreadContext {
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_index_ == 0);
+    // We set the initial put index to the number of return values for the current task
+    // in order to reserve those indices for return objects. See comment on put_index_.
     put_index_ = task_spec.NumReturns();
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
@@ -57,8 +59,10 @@ struct WorkerThreadContext {
   /// Number of tasks that have been submitted from current task.
   int task_index_;
 
-  /// Number of return objects for the current task plus the number of objects that
-  /// have been put from current task.
+  /// Used to calculate ObjectIDs for put objects. The index starts at the number of
+  /// return values for the current task in order to keep the put indices from
+  /// conflicting with return object indices. 0 < idx <= NumReturns() is reserved for
+  /// return objects, while idx > NumReturns is available for put objects.
   int put_index_;
 };
 
