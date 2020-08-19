@@ -96,6 +96,8 @@ The instructions assume you have access to a running Kubernetes cluster via ``ku
 
 ### Running the unit tests
 
+make sure kubebuilder is installed. follow the instructions [here](https://book.kubebuilder.io/quick-start.html#installation).
+
 ```
 go build
 go test ./...
@@ -192,3 +194,5 @@ raycluster-sample-head   ClusterIP   10.100.153.12   <none>        6379/TCP   28
 # Delete the cluster.
 kubectl delete raycluster raycluster-sample
 ```
+# Flag usage:
+`--maximize-shared-memory=false/true`: when set to true, it will set the shared memory size to the requested (or limits if requests is missing) memory for the container.
