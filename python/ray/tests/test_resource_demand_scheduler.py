@@ -62,8 +62,6 @@ MULTI_WORKER_CLUSTER = dict(
         "head_node_type": "m4.large",
         "worker_default_node_type": "m4.large",
     })
-del MULTI_WORKER_CLUSTER["head_node"]
-del MULTI_WORKER_CLUSTER["worker_nodes"]
 
 
 def test_util_score():
