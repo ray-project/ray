@@ -8,6 +8,7 @@ from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     RayTestTimeoutException,
     wait_until_server_available,
+    wait_for_condition,
 )
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
@@ -50,3 +51,45 @@ def test_profiling(shutdown_only):
             break
         time.sleep(1)
     logger.info(profiling_info)
+
+
+def test_node_physical_stats(shutdown_only):
+    addresses = ray.init(include_dashboard=True, num_cpus=6)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    actors = [Actor.remote() for _ in range(6)]
+    actor_pids = ray.get([actor.getpid.remote() for actor in actors])
+    actor_pids = set(actor_pids)
+
+    webui_url = addresses["webui_url"]
+    assert (wait_until_server_available(webui_url) is True)
+    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+
+    def _check_workers():
+        try:
+            resp = requests.get(webui_url +
+                                "/test/dump?key=node_physical_stats")
+            resp.raise_for_status()
+            result = resp.json()
+            assert result["result"] is True
+            node_physical_stats = result["data"]["nodePhysicalStats"]
+            assert len(node_physical_stats) == 1
+            current_stats = node_physical_stats[addresses["raylet_ip_address"]]
+            # Check Actor workers
+            current_actor_pids = set()
+            for worker in current_stats["workers"]:
+                if "ray::Actor" in worker["cmdline"][0]:
+                    current_actor_pids.add(worker["pid"])
+            assert current_actor_pids == actor_pids
+            # Check raylet cmdline
+            assert "raylet" in current_stats["cmdline"][0]
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_check_workers, timeout=30)

@@ -118,7 +118,7 @@ def push_error_to_driver_through_redis(redis_client,
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
     pubsub_msg = ray.gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.hex()
+    pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
                          pubsub_msg.SerializeAsString())
