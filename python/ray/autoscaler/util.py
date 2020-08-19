@@ -80,12 +80,6 @@ def validate_config(config: Dict[str, Any]) -> None:
             raise ValueError("You must specify `worker_node_default_type` if "
                              "`available_node_types is set.")
 
-    if "head_node" not in config:
-        raise ValueError("`head_node` config missing")
-
-    if "worker_nodes" not in config:
-        raise ValueError("`worker_nodes` config missing")
-
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
