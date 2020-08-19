@@ -272,6 +272,7 @@ def _from_pinnable(obj):
 
 def diagnose_serialization(trainable):
     from ray.tune.registry import register_trainable, check_serializability
+
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():
             msg = None
@@ -285,6 +286,7 @@ def diagnose_serialization(trainable):
             printer(f"{str(variable)}[name='{var_name}'']... {status}")
             if msg:
                 printer(msg)
+
     print(f"Trying to serialize {trainable}...")
     try:
         register_trainable("__test:" + str(trainable), trainable, warn=False)
@@ -294,18 +296,20 @@ def diagnose_serialization(trainable):
         print(f"Serialization failed: {e}")
 
     print("Inspecting the scope of the trainable by running "
-         f"`inspect.getclosurevars({str(trainable)})`...")
+          f"`inspect.getclosurevars({str(trainable)})`...")
     closure = inspect.getclosurevars(trainable)
     failure_set = set()
     if closure.globals:
         print(f"Detected {len(closure.globals)} global variables. "
               "Checking serializability...")
-        check_variables(closure.globals, failure_set, lambda s: print("   " + s))
+        check_variables(closure.globals, failure_set,
+                        lambda s: print("   " + s))
 
     if closure.nonlocals:
         print(f"Detected {len(closure.nonlocals)} nonlocal variables. "
               "Checking serializability...")
-        check_variables(closure.nonlocals, failure_set, lambda s: print("   " + s))
+        check_variables(closure.nonlocals, failure_set,
+                        lambda s: print("   " + s))
 
     if not failure_set:
         print("Nothing was found to have failed the diagnostic test, though "
@@ -314,8 +318,8 @@ def diagnose_serialization(trainable):
         return
     else:
         print(f"Variable(s) {failure_set} was found to be non-serializable. "
-            "Consider moving the instantiation/imports "
-            "of these objects into the scope of the trainable. ")
+              "Consider moving the instantiation/imports "
+              "of these objects into the scope of the trainable. ")
 
 
 def validate_save_restore(trainable_cls,

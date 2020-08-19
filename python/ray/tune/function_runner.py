@@ -502,7 +502,6 @@ def wrap_function(train_func, warn=True):
                 "certain schedulers. To enable, set the train function "
                 "arguments to be `func(config, checkpoint_dir=None)`.")
 
-
     class ImplicitFunc(*inherit_from):
         _name = train_func.__name__ if hasattr(train_func, "__name__") \
             else "func"

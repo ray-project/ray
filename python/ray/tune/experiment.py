@@ -259,8 +259,7 @@ class Experiment:
                     "the type annotations and try again.\n\n"
                     "If you have any suggestions on how to improve "
                     "this error message, please reach out to the "
-                    "Ray developers on github.com/ray-project/ray/issues/"
-                )
+                    "Ray developers on github.com/ray-project/ray/issues/")
                 raise type(e)(msg) from None
             return name
         else:

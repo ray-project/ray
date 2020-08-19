@@ -86,6 +86,7 @@ def register_env(name, env_creator):
         raise TypeError("Second argument must be a function.", env_creator)
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
+
 def check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 

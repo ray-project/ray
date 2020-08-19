@@ -9,10 +9,11 @@ parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
 args, _ = parser.parse_known_args()
 
-import tensorflow as tf
+
 
 def train_mnist(config):
     # https://github.com/tensorflow/tensorflow/issues/32159
+    import tensorflow as tf
     batch_size = 128
     num_classes = 10
     epochs = 12
