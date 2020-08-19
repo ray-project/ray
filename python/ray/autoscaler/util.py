@@ -89,10 +89,6 @@ def prepare_config(config):
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
-    if "head_node_type" in config:
-        del defaults["head_node"]
-    if "worker_default_node_type" in config:
-        del defaults["worker_nodes"]
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
