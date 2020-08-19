@@ -5,6 +5,14 @@ from ray._raylet import (
     PlacementGroupID, )
 
 
+class PlacementGroup:
+    """A handle to a placement group.
+    """
+    def __init__(self, id, bundle_count):
+        self.id = id
+        self.bundle_count = bundle_count
+
+
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
                     name: str = "unnamed_group"):
@@ -33,7 +41,7 @@ def placement_group(bundles: List[Dict[str, float]],
     placement_group_id = worker.core_worker.create_placement_group(
         name, bundles, strategy)
 
-    return placement_group_id
+    return PlacementGroup(placement_group_id, len(bundles))
 
 
 def remove_placement_group(placement_group_id: PlacementGroupID):

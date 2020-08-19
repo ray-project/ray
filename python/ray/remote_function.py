@@ -4,6 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
+from ray.experimental.placement_group import PlacementGroup
 import ray.signature
 
 # Default parameters for remote functions.
@@ -60,7 +61,7 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries, placement_group_id,
+                 num_return_vals, max_calls, max_retries, placement_group,
                  placement_group_bundle_index):
         self._language = language
         self._function = function
@@ -150,7 +151,7 @@ class RemoteFunction:
                 object_store_memory=None,
                 resources=None,
                 max_retries=None,
-                placement_group_id=None,
+                placement_group=None,
                 placement_group_bundle_index=-1):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -187,8 +188,16 @@ class RemoteFunction:
             raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
-        if placement_group_id is None:
-            placement_group_id = ray.PlacementGroupID.nil()
+
+        if placement_group is None:
+            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+            if placement_group_bundle_index != -1:
+                raise ValueError("If placement group is not set, "
+                                 "the value of bundle index must be -1.")
+        elif placement_group_bundle_index >= placement_group.bundle_count \
+                or placement_group_bundle_index < -1:
+            raise ValueError("placement group bundle index {} is invalid."
+                             .format(placement_group_bundle_index))
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -210,7 +219,7 @@ class RemoteFunction:
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args,
-                num_return_vals, resources, max_retries, placement_group_id,
+                num_return_vals, resources, max_retries, placement_group.id,
                 placement_group_bundle_index)
 
             if len(object_refs) == 1:
