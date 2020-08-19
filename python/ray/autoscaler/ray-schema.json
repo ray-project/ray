@@ -279,7 +279,7 @@
                            "type": "object",
                            ".*": {"type": "number"}
                        },
-                       "provider_options": {
+                       "node_config": {
                            "type": "object",
                            "description": "Provider-specific config for worker nodes. e.g. instance type."
                        },

@@ -82,11 +82,6 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
-    for instance_type in defaults.get("available_instance_types", []):
-        defaults["available_instance_types"][instance_type][
-            "provider_options"] = \
-                defaults["available_instance_types"][instance_type] \
-                .get("provider_options", {})
     return defaults
 
 

@@ -19,7 +19,7 @@ available_instance_types:
     m4.4xlarge:
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
-        provider_options:
+        node_config:
           InstanceType: m5.large
           ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
