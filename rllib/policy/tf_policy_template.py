@@ -18,14 +18,14 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, \
 def build_tf_policy(
         name: str,
         *,
-        loss_fn: Callable[
-            [Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
-            Union[TensorType, List[TensorType]]],
+        loss_fn: Callable[[
+            Policy, ModelV2, Type[TFActionDistribution], SampleBatch
+        ], Union[TensorType, List[TensorType]]],
         get_default_config: Optional[Callable[[None],
                                               TrainerConfigDict]] = None,
         postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch,
-            Optional[List[SampleBatch]], Optional["MultiAgentEpisode"]
+            Policy, SampleBatch, Optional[List[SampleBatch]], Optional[
+                "MultiAgentEpisode"]
         ], SampleBatch]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,

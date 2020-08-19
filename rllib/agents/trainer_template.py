@@ -39,15 +39,15 @@ def build_trainer(
         default_config: TrainerConfigDict = None,
         validate_config: Callable[[TrainerConfigDict], None] = None,
         default_policy: Optional[Type[Policy]] = None,
-        get_policy_class: Optional[Callable[
-            [TrainerConfigDict], Optional[Type[Policy]]]] = None,
+        get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
+            Policy]]]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
         mixins: Optional[List[type]] = None,
-        execution_plan: Optional[Callable[
-            [WorkerSet, TrainerConfigDict],
-            Iterable[ResultDict]]] = default_execution_plan):
+        execution_plan: Optional[Callable[[
+            WorkerSet, TrainerConfigDict
+        ], Iterable[ResultDict]]] = default_execution_plan):
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -102,8 +102,7 @@ def build_trainer(
                      logger_creator: Optional[Callable[[], Logger]] = None):
             Trainer.__init__(self, config, env, logger_creator)
 
-        def _init(self,
-                  config: TrainerConfigDict,
+        def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
             # Validate config via custom validation function.
             if validate_config:
@@ -122,9 +121,9 @@ def build_trainer(
                 before_init(self)
 
             # Creating all workers (excluding evaluation workers).
-            self.workers = self._make_workers(
-                env_creator, self._policy_class, config,
-                self.config["num_workers"])
+            self.workers = self._make_workers(env_creator, self._policy_class,
+                                              config,
+                                              self.config["num_workers"])
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
 

@@ -19,9 +19,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 def pg_tf_loss(
-        policy: Policy,
-        model: ModelV2,
-        dist_class: Type[ActionDistribution],
+        policy: Policy, model: ModelV2, dist_class: Type[ActionDistribution],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 

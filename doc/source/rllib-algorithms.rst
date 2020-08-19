@@ -305,7 +305,15 @@ SpaceInvaders  650                       1001                           1025    
 Policy Gradients
 ----------------
 |pytorch| |tensorflow|
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
+
+An implementation of a vanilla policy gradient algorithm for TensorFlow and PyTorch.
+
+**Papers**:
+`[1] - Policy Gradient Methods for Reinforcement Learning with Function Approximation. <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
+and
+`[2] - Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning. <http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf>`__
+
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
 
 .. figure:: a2c-arch.svg
 

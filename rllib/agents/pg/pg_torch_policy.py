@@ -19,8 +19,7 @@ torch, _ = try_import_torch()
 
 
 def pg_torch_loss(
-        policy: Policy,
-        model: ModelV2,
+        policy: Policy, model: ModelV2,
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
@@ -52,10 +51,8 @@ def pg_torch_loss(
     return policy.pi_err
 
 
-def pg_loss_stats(
-        policy: Policy,
-        train_batch: SampleBatch) -> Dict[str, TensorType]:
-
+def pg_loss_stats(policy: Policy,
+                  train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:

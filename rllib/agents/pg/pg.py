@@ -1,15 +1,8 @@
 """
-Implementation of a vanilla policy gradients algorithm. Based on:
+Policy Gradient (PG)
+====================
 
-[1] - Policy Gradient Methods for Reinforcement Learning with Function
-    Approximation.
-    Sutton, McAllester, Singh, Mansour - AT&T Labs - 1999
-    https://papers.nips.cc/paper/1713-policy-gradient-methods-for-
-    reinforcement-learning-with-function-approximation.pdf
-[2] - Simple Statistical Gradient-Following Algorithms for Connectionist
-    Reinforcement Learning.
-    Williams - College of Computer Science - Northeastern University - 1992
-    http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf
+Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#pg
 """
 
 from typing import Optional, Type
@@ -19,7 +12,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.types import TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict
 
 # yapf: disable
 # __sphinx_doc_begin__

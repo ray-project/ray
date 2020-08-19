@@ -22,8 +22,9 @@ torch, _ = try_import_torch()
 def build_torch_policy(
         name: str,
         *,
-        loss_fn: Callable[[Policy, ModelV2, Type[TorchDistributionWrapper],
-                           SampleBatch], Union[TensorType, List[TensorType]]],
+        loss_fn: Callable[[
+            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
+        ], Union[TensorType, List[TensorType]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
