@@ -13,39 +13,39 @@ provider:
 # The key is the name of the node type, which is just for debugging purposes.
 # The node config specifies the launch config and physical instance type.
 available_node_types:
-    m4.xl_ondemand:
+    cpu_4_ondemand:
         node_config:
             InstanceType: m4.xlarge
         resources: {"CPU": 4}
         max_workers: 5
-    m4.xl_spot:
+    cpu_4_spot:
         node_config:
             InstanceType: m4.xlarge
             InstanceMarketOptions:
                 MarketType: spot
         resources: {"CPU": 4}
         max_workers: 20
-    m4.4xl:
+    cpu_16_ondemand:
         node_config:
             InstanceType: m4.4xlarge
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
-    p2.xl:
+    gpu_1_ondemand:
         node_config:
             InstanceType: p2.xlarge
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4
-    p2.8xl:
+    gpu_8_ondemand:
         node_config:
             InstanceType: p2.8xlarge
         resources: {"CPU": 32, "GPU": 8}
         max_workers: 2
 
 # Specify the node type of the head node (as configured above).
-head_node_type: m4.xl_ondemand
+head_node_type: cpu_4_ondemand
 
 # Specify the default type of the worker node (as configured above).
-worker_default_node_type: m4.xl_spot
+worker_default_node_type: cpu_4_spot
 
 # The default settings for the head node. This will be merged with the per-node
 # type configs given above.
