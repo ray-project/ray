@@ -8,6 +8,7 @@ Supports color, bold text, italics, underlines, etc.
 as well as indentation and other structured output.
 """
 
+import time
 import sys
 import logging
 import inspect
@@ -159,7 +160,6 @@ def _format_msg(msg,
     res = [str(x) for x in res]
     return ", ".join(res)
 
-
 class _CliLogger():
     """Singleton class for CLI logging.
 
@@ -197,11 +197,11 @@ class _CliLogger():
     """
 
     def __init__(self):
-        self.strip = False
-        self.old_style = True
+        self._non_interactive = False
         self.color_mode = "auto"
         self.indent_level = 0
-        self.verbosity = 0
+
+        self._verbosity = 0
 
         self.dump_command_output = False
 
@@ -209,6 +209,27 @@ class _CliLogger():
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
         self._autodetected_cf_colormode = cf.colormode
+
+        self.non_interactive = True
+
+    @property
+    def non_interactive(self):
+        return self._non_interactive
+    @non_interactive.setter
+    def non_interactive(self, x):
+        if x:
+            self.color_mode = "false"
+            self.detect_colors()
+        self._non_interactive = x
+
+    @property
+    def verbosity(self):
+        if self.non_interactive:
+            return 999
+        return self._verbosity
+    @verbosity.setter
+    def verbosity(self, x):
+        self._verbosity = x
 
     def detect_colors(self):
         """Update color output settings.
@@ -239,7 +260,7 @@ class _CliLogger():
         """
         self.print("")
 
-    def _print(self, msg, linefeed=True):
+    def _print(self, msg, _level_str="INFO", _linefeed=True):
         """Proxy for printing messages.
 
         Args:
@@ -248,13 +269,20 @@ class _CliLogger():
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
         """
+        if self.non_interactive:
+            if msg.strip() == "":
+                return
 
-        if self.old_style:
-            return
+            timestamp = time.strftime("[%x %X] ")
+            # TODO(maximsmol): figure out the required level string
+            #                  width automatically
+            rendered_message = "{}{:6} {}".format(timestamp,
+                                                 _level_str,
+                                                 msg)
+        else:
+            rendered_message = "  " * self.indent_level + msg
 
-        rendered_message = "  " * self.indent_level + msg
-
-        if not linefeed:
+        if not _linefeed:
             sys.stdout.write(rendered_message)
             sys.stdout.flush()
             return
@@ -324,9 +352,6 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         self._print(
             cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
 
@@ -336,7 +361,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.print(msg, *args, **kwargs)
+            self.print(msg, *args, _level_str="VINFO", **kwargs)
 
     def verbose_warning(self, msg, *args, **kwargs):
         """Prints a formatted warning if verbosity is not 0.
@@ -344,7 +369,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.warning(msg, *args, **kwargs)
+            self._warning(msg, *args, _level_str="VWARN", **kwargs)
 
     def verbose_error(self, msg, *args, **kwargs):
         """Logs an error if verbosity is not 0.
@@ -352,7 +377,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.error(msg, *args, **kwargs)
+            self._error(msg, *args, _level_str="VERR", **kwargs)
 
     def very_verbose(self, msg, *args, **kwargs):
         """Prints if verbosity is > 1.
@@ -360,52 +385,64 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 1:
-            self.print(msg, *args, **kwargs)
+            self.print(msg, *args, _level_str="VVINFO", **kwargs)
 
     def success(self, msg, *args, **kwargs):
         """Prints a formatted success message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.green(msg), *args, **kwargs)
+        self.print(cf.green(msg), *args, _level_str="SUCC", **kwargs)
 
-    def warning(self, msg, *args, **kwargs):
+    def _warning(self, msg, *args, _level_str=None, **kwargs):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.yellow(msg), *args, **kwargs)
+        if _level_str is None:
+            raise ValueError("Log level not set.")
+        self.print(cf.yellow(msg), *args, _level_str=_level_str, **kwargs)
+    def warning(self, *args, **kwargs):
+        self._warning(*args, _level_str="WARN", **kwargs)
 
-    def error(self, msg, *args, **kwargs):
+    def _error(self, msg, *args, _level_str=None, **kwargs):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.red(msg), *args, **kwargs)
+        if _level_str is None:
+            raise ValueError("Log level not set.")
+        self.print(cf.red(msg), *args, _level_str=_level_str, **kwargs)
+    def error(self, *args, **kwargs):
+        self._error(*args, _level_str="ERR", **kwargs)
 
-    def print(self, msg, *args, **kwargs):
+    # Fine to expose _level_str here, since this is a general log function.
+    def print(self, msg, *args, _level_str="INFO", _linefeed=True, **kwargs):
         """Prints a message.
 
         For arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
 
-        self._print(_format_msg(msg, *args, **kwargs))
+        self._print(_format_msg(msg, *args, **kwargs),
+                    _level_str=_level_str, _linefeed=_linefeed)
 
-    def abort(self, msg=None, *args, **kwargs):
+    def abort(self, msg=None, exc=None, *args, **kwargs):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
         (the exception will not print a message).
         """
-        if self.old_style:
-            return
 
         if msg is not None:
-            self.error(msg, *args, **kwargs)
+            self._error(msg, *args, _level_str="PANIC", **kwargs)
 
-        raise SilentClickException("Exiting due to cli_logger.abort()")
+        if exc is not None:
+            raise exc
+
+        exc_cls = SilentClickException
+        if self.non_interactive:
+            exc_cls = click.ClickException
+        raise exc_cls("Exiting due to cli_logger.abort()")
 
     def doassert(self, val, msg, *args, **kwargs):
         """Handle assertion without throwing a scary exception.
@@ -415,96 +452,27 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         if not val:
-            self.abort(msg, *args, **kwargs)
+            exc = None
+            if self.non_interactive:
+                exc = AssertionError()
+
+            # TODO(maximsmol): rework asserts so that we get the expression
+            #                  that triggered the assert
+            #                  to do this, install a global try-catch
+            #                  for AssertionError and raise them normally
+            self.abort(msg, *args, exc=exc, **kwargs)
 
     def old_debug(self, logger, msg, *args, **kwargs):
-        """Old debug logging proxy.
-
-        Pass along an old debug log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.debug(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
-            return
-
+        return
     def old_info(self, logger, msg, *args, **kwargs):
-        """Old info logging proxy.
-
-        Pass along an old info log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.info(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
-            return
-
+        return
     def old_warning(self, logger, msg, *args, **kwargs):
-        """Old warning logging proxy.
-
-        Pass along an old warning log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.warning(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
-            return
-
+        return
     def old_error(self, logger, msg, *args, **kwargs):
-        """Old error logging proxy.
-
-        Pass along an old error log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.error(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
-            return
-
+        return
     def old_exception(self, logger, msg, *args, **kwargs):
-        """Old exception logging proxy.
-
-        Pass along an old exception log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.exception(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
-            return
+        return
 
     def render_list(self, xs, separator=cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
@@ -526,11 +494,15 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
-        if self.old_style:
-            return
-
         should_abort = _abort
         default = _default
+
+        if self.non_interactive and not yes:
+            # no formatting around --yes here since this is non-interactive
+            self.error(
+                "This command requires user confirmation. "
+                "When running non-interactively, supply --yes to skip.")
+            raise ValueError("Non-interactive confirm without --yes.")
 
         if default:
             yn_str = cf.green("Y") + "/" + cf.red("n")
@@ -551,7 +523,7 @@ class _CliLogger():
                         cf.gray("[automatic, due to --yes]"))
             return True
 
-        self._print(complete_str, linefeed=False)
+        self._print(complete_str, _linefeed=False)
 
         res = None
         yes_answers = ["y", "yes", "true", "1"]
@@ -578,7 +550,7 @@ class _CliLogger():
                            "Expected {} or {}", indent, cf.bold(ans.strip()),
                            self.render_list(yes_answers, "/"),
                            self.render_list(no_answers, "/"))
-                self._print(indent + confirm_str, linefeed=False)
+                self._print(indent + confirm_str, _linefeed=False)
         except KeyboardInterrupt:
             self.newline()
             res = default
@@ -593,14 +565,7 @@ class _CliLogger():
         return res
 
     def old_confirm(self, msg, yes):
-        """Old confirm dialog proxy.
-
-        Let `click` display a confirm dialog iff new logging is disabled.
-        """
-        if not self.old_style:
-            return
-
-        return None if yes else click.confirm(msg, abort=True)
+        return
 
 
 class SilentClickException(click.ClickException):
