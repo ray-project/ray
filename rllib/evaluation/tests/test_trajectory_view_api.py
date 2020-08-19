@@ -16,8 +16,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        #TODO remove local-mode
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -260,14 +259,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     # may be filled with "old" values (from longer sequences)).
                     if i < 10:
                         self.assertTrue(
-                            (pol_batch["obs"][seq_len + 1][agent_slot] == 0.0).all())
+                            (pol_batch["obs"][seq_len + 1][agent_slot] ==
+                             0.0).all())
                     print(end="")
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
-
-        #TODO: finish this test case: check, whether everything in buffer makes sense:
-        # - all cursors in sample collector make sense
-        # - sample as long as there is a rollover in the buffer, then check again
 
 
 if __name__ == "__main__":

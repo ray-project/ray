@@ -1,6 +1,5 @@
 import numpy as np
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch

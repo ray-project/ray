@@ -569,8 +569,8 @@ def _env_runner(
                     preprocessors=preprocessors,
                     obs_filters=obs_filters,
                     rollout_fragment_length=rollout_fragment_length,
-                    pack_multiple_episodes_in_batch=
-                    pack_multiple_episodes_in_batch,
+                    pack_multiple_episodes_in_batch= \
+                        pack_multiple_episodes_in_batch,
                     callbacks=callbacks,
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
@@ -593,8 +593,8 @@ def _env_runner(
                 preprocessors=preprocessors,
                 obs_filters=obs_filters,
                 rollout_fragment_length=rollout_fragment_length,
-                pack_multiple_episodes_in_batch=
-                pack_multiple_episodes_in_batch,
+                pack_multiple_episodes_in_batch= \
+                    pack_multiple_episodes_in_batch,
                 callbacks=callbacks,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
@@ -1168,7 +1168,6 @@ def _process_observations_w_trajectory_view_api(
                 # type: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = episode.policy_for(agent_id)
-                    policy: Policy = _get_or_raise(policies, policy_id)
                     prep_obs: EnvObsType = _get_or_raise(
                         preprocessors, policy_id).transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
@@ -1237,8 +1236,8 @@ def _do_policy_eval(
         # type: PolicyID, PolicyEvalData
         for policy_id, eval_data in to_eval.items():
             policy: Policy = _get_or_raise(policies, policy_id)
-            # If tf (non eager) AND TFPolicy's compute_action method has not been
-            # overridden -> Use `policy._build_compute_actions()`.
+            # If tf (non eager) AND TFPolicy's compute_action method has not
+            # been overridden -> Use `policy._build_compute_actions()`.
             if builder and (policy.compute_actions.__code__ is
                             TFPolicy.compute_actions.__code__):
 
@@ -1332,9 +1331,6 @@ def _process_policy_eval_results(
 
     # type: PolicyID, List[PolicyEvalData]
     for policy_id in to_eval:
-        #if _use_trajectory_view_api:
-        #    eval_data.reset_inference_call()
-
         actions: TensorStructType = eval_results[policy_id][0]
         actions = convert_to_numpy(actions)
 

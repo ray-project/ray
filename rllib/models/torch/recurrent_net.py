@@ -1,6 +1,5 @@
 from gym.spaces import Box
 import numpy as np
-from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
