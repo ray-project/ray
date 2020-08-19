@@ -46,7 +46,7 @@ increase throughput. If the handler (the function for the backend or
 otherwise, worker will block until the handler returns.
 
 FAQ
--------
+---
 How does Serve handle fault tolerance?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
