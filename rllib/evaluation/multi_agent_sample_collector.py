@@ -64,8 +64,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
             num_agents = 1000
         self.num_agents = int(num_agents)
 
-        # Collect SampleBatches per-policy in PolicyTrajectories objects.
-        self.rollout_sample_collectors = {}
+        # Collect SampleBatches per-policy in _PerPolicySampleCollectors.
+        self.policy_sample_collectors = {}
         for pid, policy in policy_map.items():
             # Figure out max-shifts (before and after).
             view_reqs = policy.training_view_requirements
@@ -86,7 +86,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
             elif num_timesteps is not None:
                 kwargs["num_timesteps"] = num_timesteps
 
-            self.rollout_sample_collectors[pid] = _PerPolicySampleCollector(
+            self.policy_sample_collectors[pid] = _PerPolicySampleCollector(
                 num_agents=self.num_agents,
                 shift_before=-max_shift_before,
                 shift_after=max_shift_after,
@@ -109,7 +109,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
             assert self.agent_to_policy[agent_id] == policy_id
 
         # Add initial obs to Trajectory.
-        self.rollout_sample_collectors[policy_id].add_init_obs(
+        self.policy_sample_collectors[policy_id].add_init_obs(
             episode_id, agent_id, env_id, chunk_num=0, init_obs=obs)
 
     @override(_SampleCollector)
@@ -117,7 +117,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
                                    agent_id: AgentID, env_id: EnvID,
                                    policy_id: PolicyID, agent_done: bool,
                                    values: Dict[str, TensorType]) -> None:
-        assert policy_id in self.rollout_sample_collectors
+        assert policy_id in self.policy_sample_collectors
 
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
@@ -130,13 +130,13 @@ class _MultiAgentSampleCollector(_SampleCollector):
             values["agent_id"] = agent_id
 
         # Add action/reward/next-obs (and other data) to Trajectory.
-        self.rollout_sample_collectors[policy_id].add_action_reward_next_obs(
+        self.policy_sample_collectors[policy_id].add_action_reward_next_obs(
             episode_id, agent_id, env_id, agent_done, values)
 
     @override(_SampleCollector)
     def total_env_steps(self) -> int:
         return sum(a.timesteps_since_last_reset
-                   for a in self.rollout_sample_collectors.values())
+                   for a in self.policy_sample_collectors.values())
 
     def total(self):
         # TODO: (sven) deprecate; use `self.total_env_steps`, instead.
@@ -148,7 +148,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.inference_view_requirements
-        return self.rollout_sample_collectors[
+        return self.policy_sample_collectors[
             policy_id].get_inference_input_dict(view_reqs)
 
     @override(_SampleCollector)
@@ -161,7 +161,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
         # Loop through each per-policy collector and create a view (for each
         # agent as SampleBatch) from its buffers for post-processing
         all_agent_batches = {}
-        for pid, rc in self.rollout_sample_collectors.items():
+        for pid, rc in self.policy_sample_collectors.items():
             policy = self.policy_map[pid]
             view_reqs = policy.training_view_requirements
             agent_batches = rc.get_postprocessing_sample_batches(
@@ -211,7 +211,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
     @override(_SampleCollector)
     def check_missing_dones(self, episode_id: EpisodeID) -> None:
-        for pid, rc in self.rollout_sample_collectors.items():
+        for pid, rc in self.policy_sample_collectors.items():
             for agent_key in rc.agent_key_to_slot.keys():
                 # Only check for given episode and only for last chunk
                 # (all previous chunks for that agent in the episode are
@@ -235,7 +235,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
     def get_multi_agent_batch_and_reset(self):
         self.postprocess_trajectories_so_far()
         policy_batches = {}
-        for pid, rc in self.rollout_sample_collectors.items():
+        for pid, rc in self.policy_sample_collectors.items():
             policy = self.policy_map[pid]
             view_reqs = policy.training_view_requirements
             policy_batches[pid] = rc.get_train_sample_batch_and_reset(

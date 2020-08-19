@@ -1057,7 +1057,7 @@ def _process_observations_w_trajectory_view_api(
                     episode.episode_id, agent_id, env_id,
                     policy_id, filtered_obs)
             else:
-                rc = _sample_collector.rollout_sample_collectors[policy_id]
+                rc = _sample_collector.policy_sample_collectors[policy_id]
                 eval_idx = rc.agent_key_to_forward_pass_index[(
                     agent_id, episode.episode_id)]
                 values_dict = {
@@ -1379,7 +1379,7 @@ def _process_policy_eval_results(
             #  end of episode).
             if _use_trajectory_view_api:
                 agent_id, episode_id, env_id = \
-                    _sample_collector.rollout_sample_collectors[
+                    _sample_collector.policy_sample_collectors[
                         policy_id].forward_pass_index_to_agent_info[i]
             else:
                 env_id: int = eval_data[i].env_id

@@ -8,12 +8,6 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 
 
-class EpisodeEnvAwareCallback(DefaultCallbacks):
-    def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
-        policies["pol0"].episode_id = episode.episode_id
-        policies["pol0"].env_id = worker.env_context.vector_index
-
-
 class EpisodeEnvAwarePolicy(RandomPolicy):
     """A Policy that always knows the current EpisodeID and EnvID and
     returns these in its actions."""
@@ -24,7 +18,10 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         self.env_id = None
         class _fake_model: pass
         self.model = _fake_model()
+        self.model.time_major = True
         self.model.inference_view_requirements = {
+            SampleBatch.EPS_ID: ViewRequirement(),
+            "env_id": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
             SampleBatch.PREV_ACTIONS: ViewRequirement(
                 SampleBatch.ACTIONS, space=self.action_space, shift=-1),
@@ -48,6 +45,8 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
                                         explore=None,
                                         timestep=None,
                                         **kwargs):
+        self.episode_id = input_dict[SampleBatch.EPS_ID][0]
+        self.env_id = input_dict["env_id"][0]
         # Always return (episodeID, envID)
         return [np.array([self.episode_id, self.env_id])
                 for _ in input_dict["obs"]], [], {}

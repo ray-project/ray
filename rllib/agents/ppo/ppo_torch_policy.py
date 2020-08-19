@@ -120,7 +120,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,
-            time_major=model.model_config.get("_time_major", False))
+            time_major=model.is_time_major())
         mask = torch.reshape(mask, [-1])
 
     policy.loss_obj = PPOLoss(

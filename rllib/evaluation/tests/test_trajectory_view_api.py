@@ -8,7 +8,7 @@ import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwareCallback, EpisodeEnvAwarePolicy
+    EpisodeEnvAwarePolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -211,12 +211,15 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "max_seq_len": max_seq_len,
                 },
             },
-            callbacks=EpisodeEnvAwareCallback,
             policy=policies,
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
-        for _ in range(100):
+        for i in range(100):
+            pc = rollout_worker.sampler.sample_collector. \
+                policy_sample_collectors["pol0"]
+            sample_batch_offset_before = pc.sample_batch_offset
+            buffers = pc.buffers
             result = rollout_worker.sample()
             pol_batch = result.policy_batches["pol0"]
 
@@ -232,14 +235,33 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 if t < max_seq_len - 1:
                     prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
                     self.assertTrue((r_t == prev_rewards_t_p_1).all())
-            # Check seq-lens (must find dones at end of each sequence,
-            # unless == 50).
+
+            # Check the sanity of all the buffers in the un underlying
+            # PerPolicy collector.
+            for i, agent_slot in enumerate(range(
+                    sample_batch_offset_before, pc.sample_batch_offset)):
+                t_buf = buffers["t"][:,agent_slot]
+                seq_len = pol_batch.seq_lens[i]
+                # chunk 0
+                if t_buf[seq_len] == seq_len - 1:
+                    assert t_buf[1] == 0
+                # chunk 1
+                elif t_buf[seq_len] == seq_len - 1 + max_seq_len:
+                    assert t_buf[0] == max_seq_len - 1
+                    assert t_buf[1] == max_seq_len
+                else:
+                    raise ValueError("Too many chunks (>2)!")
+
+            # Check seq-lens.
             for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
                 if seq_len < max_seq_len - 1:
-                    print()
-                    self.assertTrue(
-                        (pol_batch["obs"][seq_len + 1][agent_slot] == 0.0).all())
-                    print()
+                    # At least in the beginning, the next slots should always
+                    # be empty (once all agent slots have been used once, these
+                    # may be filled with "old" values (from longer sequences)).
+                    if i < 10:
+                        self.assertTrue(
+                            (pol_batch["obs"][seq_len + 1][agent_slot] == 0.0).all())
+                    print(end="")
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
 

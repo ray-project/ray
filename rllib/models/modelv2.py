@@ -58,6 +58,7 @@ class ModelV2:
         self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
+        self.time_major = self.model_config.get("_time_major")
         self.inference_view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0),
         }
@@ -304,6 +305,16 @@ class ModelV2:
                 of this ModelV2.
         """
         raise NotImplementedError
+
+    @PublicAPI
+    def is_time_major(self) -> bool:
+        """If True, data for calling this ModelV2 must be in time-major format.
+
+        Returns
+            bool: Whether this ModelV2 requires a time-major (TxBx...) data
+                format.
+        """
+        return self.time_major is True
 
 
 class NullContextManager:

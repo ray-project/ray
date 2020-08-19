@@ -68,12 +68,12 @@ class RecurrentNetwork(TorchModelV2):
         if isinstance(seq_lens, np.ndarray):
             seq_lens = torch.Tensor(seq_lens).int()
         max_seq_len = flat_inputs.shape[0] // seq_lens.shape[0]
-        time_major = self.model_config.get("_time_major", False)
+        self.time_major = self.model_config.get("_time_major", False)
         inputs = add_time_dimension(
             flat_inputs,
             max_seq_len=max_seq_len,
             framework="torch",
-            time_major=time_major,
+            time_major=self.time_major,
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
         output = torch.reshape(output, [-1, self.num_outputs])
