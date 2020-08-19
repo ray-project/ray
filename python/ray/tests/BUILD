@@ -64,6 +64,7 @@ py_test_module_list(
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
     "test_component_failures.py",
+    "test_command_runner.py",
     "test_coordinator_server.py",
     "test_dask_scheduler.py",
     "test_debug_tools.py",
