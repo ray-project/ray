@@ -103,8 +103,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 out_channels,
                 1,
                 initializer=normc_initializer(0.01),
-                activation_fn=None
-            )
+                activation_fn=None)
         else:
             vf_layers = []
             (w, h, in_channels) = obs_space.shape
