@@ -1,5 +1,4 @@
 import collections
-import copy
 import hashlib
 import json
 import jsonschema
@@ -84,7 +83,6 @@ def validate_config(config: Dict[str, Any]) -> None:
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
-    merge_node_type_config(with_defaults)
     dockerize_if_needed(with_defaults)
     return with_defaults
 
@@ -98,33 +96,6 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
-
-
-def merge_node_type_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    if "head_node_type" in config:
-        if "head_node" in config:
-            raise ValueError(
-                "`head_node` and `head_node_type` cannot be both given")
-        if config["head_node_type"] not in config["available_node_types"]:
-            raise ValueError(
-                "Could not resolve worker node type {} in ({}).".format(
-                    config["head_node_type"],
-                    config["available_node_types"].keys()))
-        config["head_node"] = copy.deepcopy(config["available_node_types"][
-            config["head_node_type"]]["node_config"])
-    if "worker_default_node_type" in config:
-        if "worker_nodes" in config:
-            raise ValueError(
-                "`worker_nodes` and `worker_default_node_type` cannot be "
-                "both given")
-        if config["worker_default_node_type"] not in config[
-                "available_node_types"]:
-            raise ValueError(
-                "Could not resolve worker node type {} in ({}).".format(
-                    config["worker_default_node_type"],
-                    config["available_node_types"].keys()))
-        config["worker_nodes"] = copy.deepcopy(config["available_node_types"][
-            config["worker_default_node_type"]]["node_config"])
 
 
 def merge_setup_commands(config):
