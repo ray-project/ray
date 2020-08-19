@@ -442,7 +442,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
+    const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
   }
 }

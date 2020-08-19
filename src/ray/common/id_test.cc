@@ -18,20 +18,12 @@
 
 namespace ray {
 
-void TestReturnObjectId(const TaskID &task_id, int64_t return_index) {
-  // Round trip test for computing the object ID for a task's return value,
-  // then computing the task ID that created the object.
-  ObjectID return_id = ObjectID::ForTaskReturn(task_id, return_index);
-  ASSERT_EQ(return_id.TaskId(), task_id);
-  ASSERT_EQ(return_id.ObjectIndex(), return_index);
-}
-
-void TestPutObjectId(const TaskID &task_id, int64_t put_index) {
-  // Round trip test for computing the object ID for a task's put value, then
-  // computing the task ID that created the object.
-  ObjectID put_id = ObjectID::ForPut(task_id, put_index);
-  ASSERT_EQ(put_id.TaskId(), task_id);
-  ASSERT_EQ(put_id.ObjectIndex(), put_index);
+void TestFromIndexObjectId(const TaskID &task_id, int64_t index) {
+  // Round trip test for computing the object ID for an object created by a task, either
+  // via an object put or by being a return object for the task.
+  ObjectID obj_id = ObjectID::FromIndex(task_id, index);
+  ASSERT_EQ(obj_id.TaskId(), task_id);
+  ASSERT_EQ(obj_id.ObjectIndex(), index);
 }
 
 void TestRandomObjectId() {
@@ -78,17 +70,10 @@ TEST(ObjectIDTest, TestObjectID) {
       TaskID::ForActorTask(kDefaultJobId, kDefaultDriverTaskId, 1, default_actor_id);
 
   {
-    // test for put
-    TestPutObjectId(default_task_id, 1);
-    TestPutObjectId(default_task_id, 2);
-    TestPutObjectId(default_task_id, ObjectID::kMaxObjectIndex);
-  }
-
-  {
-    // test for return
-    TestReturnObjectId(default_task_id, 1);
-    TestReturnObjectId(default_task_id, 2);
-    TestReturnObjectId(default_task_id, ObjectID::kMaxObjectIndex);
+    // test from index
+    TestFromIndexObjectId(default_task_id, 1);
+    TestFromIndexObjectId(default_task_id, 2);
+    TestFromIndexObjectId(default_task_id, ObjectID::kMaxObjectIndex);
   }
 
   {

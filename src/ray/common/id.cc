@@ -200,23 +200,16 @@ TaskID ObjectID::TaskId() const {
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
 
-ObjectID ObjectID::ForPut(const TaskID &task_id, ObjectIDIndexType put_index) {
-  RAY_CHECK(put_index >= 1 && put_index <= kMaxObjectIndex) << "index=" << put_index;
-
-  return GenerateObjectId(task_id.Binary(), put_index);
-}
-
 ObjectIDIndexType ObjectID::ObjectIndex() const {
   ObjectIDIndexType index;
   std::memcpy(&index, id_ + TaskID::kLength, sizeof(index));
   return index;
 }
 
-ObjectID ObjectID::ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index) {
-  RAY_CHECK(return_index >= 1 && return_index <= kMaxObjectIndex)
-      << "index=" << return_index;
+ObjectID ObjectID::FromIndex(const TaskID &task_id, ObjectIDIndexType index) {
+  RAY_CHECK(index >= 1 && index <= kMaxObjectIndex) << "index=" << index;
 
-  return GenerateObjectId(task_id.Binary(), return_index);
+  return GenerateObjectId(task_id.Binary(), index);
 }
 
 ObjectID ObjectID::FromRandom() {
@@ -228,8 +221,8 @@ ObjectID ObjectID::FromRandom() {
 }
 
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
-  return ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_id),
-                                 /*return_index=*/1);
+  return ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id),
+                             /*return_index=*/1);
 }
 
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,

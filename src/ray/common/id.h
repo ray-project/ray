@@ -269,21 +269,14 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
-  /// Compute the object ID of an object put by the task.
+  /// Compute the object ID of an object created by a task, either via an object put
+  /// within the task or by being a task return object.
   ///
   /// \param task_id The task ID of the task that created the object.
-  /// \param index What index of the object put in the task.
+  /// \param index The index of the object created by the task.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
-
-  /// Compute the object ID of an object returned by the task.
-  ///
-  /// \param task_id The task ID of the task that created the object.
-  /// \param return_index What index of the object returned by in the task.
-  ///
-  /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
+  static ObjectID FromIndex(const TaskID &task_id, ObjectIDIndexType index);
 
   /// Create an object id randomly.
   ///
