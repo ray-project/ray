@@ -586,10 +586,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SetResource(const std::string &resource_name, const double capacity,
                      const ClientID &client_id);
 
-  /// Force spilling objects to external storage.
+  /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
   /// \return Status
-  Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+  Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Restore objects from external storage.
   /// \param[in] object_ids The objects to be restored.

@@ -1174,8 +1174,77 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-Status CoreWorker::ForceSpillObjects(const std::vector<ObjectID> &object_ids) {
-  return local_raylet_client_->ForceSpillObjects(object_ids);
+Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
+  absl::Mutex mutex;
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto final_status = std::make_shared<Status>();
+  auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
+
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Requesting spill for object " << object_id;
+    AddLocalReference(object_id, "<temporary (get object status)>");
+
+    rpc::Address owner_address;
+    auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+    if (!has_owner) {
+      return Status::Invalid("Cannot call spill on objects that have gone out of scope.");
+    } else if (WorkerID::FromBinary(owner_address.worker_id()) !=
+               worker_context_.GetWorkerID()) {
+      return Status::Invalid("Cannot call spill on objects that we do not own.");
+    } else {
+      memory_store_->GetAsync(object_id, [this, object_id, num_remaining, final_status,
+                                          ready_promise](std::shared_ptr<RayObject> obj) {
+        // Find the raylet that hosts the primary copy of the object.
+        ClientID pinned_at;
+        RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
+        if (pinned_at.IsNil()) {
+          absl::MutexLock lock(&mutex_);
+          *final_status =
+              Status::Invalid("Objects not stored in plasma cannot be spilled");
+          (*num_remaining)--;
+          if (*num_remaining == 0) {
+            ready_promise->set_value();
+          }
+          return;
+        }
+        auto node = gcs_client_->Nodes().Get(pinned_at);
+        if (!node) {
+          absl::MutexLock lock(&mutex_);
+          *final_status = Status::Invalid("No address registered for the primary raylet");
+          (*num_remaining)--;
+          if (*num_remaining == 0) {
+            ready_promise->set_value();
+          }
+          return;
+        }
+
+        // Ask the raylet to spill the object.
+        auto raylet_client =
+            std::make_shared<raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
+                node->node_manager_address(), node->node_manager_port(),
+                *client_call_manager_));
+        raylet_client->RequestObjectSpillage(
+            object_id,
+            [this, num_remaining, final_status, ready_promise, object_id](
+                const Status &status, const rpc::RequestObjectSpillageReply &reply) {
+              absl::MutexLock lock(&mutex_);
+              if (!status.ok()) {
+                *final_status = status;
+              } else if (!reply.success()) {
+                *final_status =
+                    Status::Invalid("Raylet reachable but object could not be spilled");
+              }
+              (*num_remaining)--;
+              if (*num_remaining == 0) {
+                ready_promise->set_value();
+              }
+            });
+      });
+    }
+  }
+
+  ready_promise->get_future().wait();
+  return *final_status;
 }
 
 Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {
