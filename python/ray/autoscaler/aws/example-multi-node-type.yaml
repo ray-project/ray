@@ -50,7 +50,7 @@ available_node_types:
 head_node_type: m4.xl_ondemand
 
 # Specify the default type of the worker node (as configured above).
-worker_node_default_type: m4.xl_spot
+worker_default_node_type: m4.xl_spot
 
 # Configure the cluster for very conservative auto-scaling otherwise.
 target_utilization_fraction: 1.0

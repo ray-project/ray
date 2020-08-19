@@ -214,7 +214,7 @@ class StandardAutoscaler:
 
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
-                                 self.config.get("worker_node_default_type"))
+                                 self.config.get("worker_default_node_type"))
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:

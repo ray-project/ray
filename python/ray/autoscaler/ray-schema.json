@@ -224,7 +224,7 @@
             "type": "string",
             "description": "If using multiple node types, specifies the head node type."
         },
-        "worker_node_default_type": {
+        "worker_default_node_type": {
             "type": "string",
             "description": "If using multiple node types, specifies the default worker node type."
         },

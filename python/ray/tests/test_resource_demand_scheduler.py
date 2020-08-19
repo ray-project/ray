@@ -60,7 +60,7 @@ MULTI_WORKER_CLUSTER = dict(
     SMALL_CLUSTER, **{
         "available_node_types": TYPES_A,
         "head_node_type": "m4.large",
-        "worker_node_default_type": "m4.large",
+        "worker_default_node_type": "m4.large",
     })
 del MULTI_WORKER_CLUSTER["head_node"]
 del MULTI_WORKER_CLUSTER["worker_nodes"]
