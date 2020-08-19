@@ -100,7 +100,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._value_branch_separate = self._value_branch = None
         if vf_share_layers:
             self._value_branch = SlimFC(
-                out_channels, 1,
+                out_channels,
+                1,
                 initializer=normc_initializer(0.01),
                 activation_fn=None
             )
@@ -139,8 +140,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     kernel=1,
                     stride=1,
                     padding=None,
-                    activation_fn=None
-                ))
+                    activation_fn=None))
             self._value_branch_separate = nn.Sequential(*vf_layers)
 
         # Holds the current "base" output (before logits layer).

@@ -135,7 +135,8 @@ class Exploration:
     @DeveloperAPI
     def postprocess_trajectory(self,
                                policy: "Policy",
-                               sample_batch, tf_sess=None):
+                               sample_batch,
+                               tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
