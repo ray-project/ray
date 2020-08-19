@@ -9,7 +9,7 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 controller = None
 
