@@ -28,13 +28,12 @@ namespace ray {
 // was available. This class is thread-safe.
 class FutureResolver {
  public:
-  FutureResolver(
-      std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-      const rpc::Address &rpc_address)
+  FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
+                 std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+                 const rpc::Address &rpc_address)
       : in_memory_store_(store),
-      owner_clients_(core_worker_client_pool),
-      rpc_address_(rpc_address) {}
+        owner_clients_(core_worker_client_pool),
+        rpc_address_(rpc_address) {}
 
   /// Resolve the value for a future. This will periodically contact the given
   /// owner until the owner dies or the owner has finished creating the object.

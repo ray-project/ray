@@ -447,8 +447,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id);
   }
 
-  core_worker_client_pool_ = std::make_shared<rpc::CoreWorkerClientPool>(
-      *client_call_manager_);
+  core_worker_client_pool_ =
+      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
     auto grpc_client =
@@ -466,17 +466,19 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
-          memory_store_, task_manager_, local_raylet_id,
+          rpc_address_, local_raylet_client_, core_worker_client_pool_,
+          raylet_client_factory, memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
           boost::asio::steady_timer(io_service_)));
-  future_resolver_.reset(new FutureResolver(memory_store_, core_worker_client_pool_, rpc_address_));
+  future_resolver_.reset(
+      new FutureResolver(memory_store_, core_worker_client_pool_, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
-    direct_task_receiver_->Init(core_worker_client_pool_, rpc_address_, task_argument_waiter_);
+    direct_task_receiver_->Init(core_worker_client_pool_, rpc_address_,
+                                task_argument_waiter_);
   }
 
   actor_manager_ = std::unique_ptr<ActorManager>(

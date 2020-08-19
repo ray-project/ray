@@ -429,11 +429,9 @@ class DirectActorReceiverTest : public ::testing::Test {
     receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
-    receiver_->Init(
-        std::make_shared<rpc::CoreWorkerClientPool>(
-            [&](const rpc::Address &addr) { return worker_client_; }),
-        rpc_address_,
-        dependency_waiter_);
+    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
+                        [&](const rpc::Address &addr) { return worker_client_; }),
+                    rpc_address_, dependency_waiter_);
   }
 
   Status MockExecuteTask(const TaskSpecification &task_spec,

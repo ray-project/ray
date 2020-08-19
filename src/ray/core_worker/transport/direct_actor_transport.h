@@ -63,9 +63,10 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  CoreWorkerDirectActorTaskSubmitter(std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store,
-                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
+  CoreWorkerDirectActorTaskSubmitter(
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<TaskFinisherInterface> task_finisher)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
