@@ -437,7 +437,7 @@ If run with ``profile=True``, timing stats for a single worker is returned along
 
 To add additional metrics to return you should implement your own custom training operator (:ref:`raysgd-custom-training`).
 If overriding ``train_batch`` or ``validate_batch``, the result outputs are automatically averaged across all batches, and the results for the last batch are automatically returned.
-If overriding ``train_epoch`` or ``validate`` you may find ``ray.util.sgd.utils.AverageMeterCollection`` useful to handle this averaging.
+If overriding ``train_epoch`` or ``validate`` you may find ``ray.util.sgd.utils.AverageMeterCollection`` (:ref:`ref-utils`) useful to handle this averaging.
 
 Mixed Precision (FP16) Training
 -------------------------------
