@@ -1,4 +1,5 @@
 import collections
+import copy
 import hashlib
 import json
 import jsonschema
