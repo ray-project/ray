@@ -72,9 +72,12 @@ bool GetRequest::Wait(int64_t timeout_ms) {
 
   // Wait until all objects are ready, or the timeout expires.
   std::unique_lock<std::mutex> lock(mutex_);
+  RAY_LOG(ERROR) << "GetRequest::Wait timeout: " << timeout_ms;
   while (!is_ready_) {
     auto status = cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms));
+    RAY_LOG(ERROR) << "no timeout";
     if (status == std::cv_status::timeout) {
+      RAY_LOG(ERROR) << "timeout!";
       return false;
     }
   }
@@ -316,15 +319,15 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  while (!(done = get_request->Wait(iteration_timeout)) && !timed_out &&
-         signal_status.ok()) {
+  while (!timed_out && signal_status.ok() &&
+         !(done = get_request->Wait(iteration_timeout))) {
     if (check_signals_) {
       signal_status = check_signals_();
     }
 
     if (remaining_timeout >= 0) {
-      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       remaining_timeout -= iteration_timeout;
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       timed_out = remaining_timeout <= 0;
     }
   }
