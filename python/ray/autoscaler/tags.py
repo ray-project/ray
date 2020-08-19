@@ -3,14 +3,15 @@
 # Tag for the name of the node
 TAG_RAY_NODE_NAME = "ray-node-name"
 
-# Tag for the type of node (e.g. Head, Worker)
+# Tag for the type of node (e.g. Head, Worker). Note that this is different
+# from TAG_RAY_USER_NODE_TYPE!
 TAG_RAY_NODE_TYPE = "ray-node-type"
 NODE_TYPE_HEAD = "head"
 NODE_TYPE_WORKER = "worker"
 
-# Tag for the provider-specific instance type (e.g., m4.4xlarge). This is used
-# for automatic worker instance type selection.
-TAG_RAY_INSTANCE_TYPE = "ray-instance-type"
+# Tag for user defined node types (e.g., m4xl_spot). This is used for multi
+# node type clusters.
+TAG_RAY_USER_NODE_TYPE = "ray-user-node-type"
 
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"

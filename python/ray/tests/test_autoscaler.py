@@ -14,7 +14,7 @@ from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_INSTANCE_TYPE
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -149,7 +149,7 @@ class MockProvider(NodeProvider):
                     node.tags.update(tags)
         for _ in range(count):
             self.mock_nodes[self.next_id] = MockNode(
-                self.next_id, tags.copy(), tags.get(TAG_RAY_INSTANCE_TYPE))
+                self.next_id, tags.copy(), tags.get(TAG_RAY_USER_NODE_TYPE))
             self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
