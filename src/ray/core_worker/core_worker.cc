@@ -1199,8 +1199,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
           node->node_manager_address(), node->node_manager_port(),
           *client_call_manager_));
   raylet_client->RequestObjectSpillage(
-      object_id, [this, object_id, callback](
-                     const Status &status, const rpc::RequestObjectSpillageReply &reply) {
+      object_id, [object_id, callback](const Status &status,
+                                       const rpc::RequestObjectSpillageReply &reply) {
         if (!status.ok() || !reply.success()) {
           RAY_LOG(ERROR) << "Failed to spill object " << object_id
                          << ", raylet unreachable or object could not be spilled.";
@@ -1215,7 +1215,7 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
   Status final_status;
 
-  auto callback = [this, mutex, num_remaining, ready_promise]() {
+  auto callback = [mutex, num_remaining, ready_promise]() {
     absl::MutexLock lock(mutex.get());
     (*num_remaining)--;
     if (*num_remaining == 0) {
