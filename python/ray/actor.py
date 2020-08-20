@@ -480,7 +480,8 @@ class ActorClass:
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError(f"name must be None or a string, got: '{type(name)}'.")
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -743,8 +744,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        f"Actor method {item} is not supported by cross language.")
+                    logger.warning(f"Actor method {item} is not "
+                                   f"supported by cross language.")
 
             return FakeActorMethod()
 

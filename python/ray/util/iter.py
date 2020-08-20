@@ -53,7 +53,8 @@ def from_range(n: int, num_shards: int = 2,
         else:
             end = (i + 1) * shard_size
         generators.append(range(start, end))
-    name = f"from_range[{n}, shards={num_shards}{', repeat=True' if repeat else ''}]"
+    name = (f"from_range[{n}, shards={num_shards}"
+            f"{', repeat=True' if repeat else ''}]")
     return from_iterators(
         generators,
         repeat=repeat,

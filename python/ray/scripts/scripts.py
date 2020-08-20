@@ -1582,8 +1582,7 @@ try:
     from ray.serve.scripts import serve_cli
     cli.add_command(serve_cli)
 except Exception as e:
-    logger.debug(
-        f"Integrating ray serve command line tool failed with {e}")
+    logger.debug(f"Integrating ray serve command line tool failed with {e}")
 
 
 def main():

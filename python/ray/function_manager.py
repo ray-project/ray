@@ -274,8 +274,8 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
             logger.exception("Failed to load function %s.", function_name)
-            raise RuntimeError(
-                f"Function {function_descriptor} failed to be loaded from local code.")
+            raise RuntimeError(f"Function {function_descriptor} failed "
+                               f"to be loaded from local code.")
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.

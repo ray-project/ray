@@ -25,8 +25,7 @@ def mock_data(train_dir, val_dir):
 
         for i in range(total_imgs):
             random_img = random.randint(per_img * i, per_img * i + per_img)
-            file = join(sub_dir,
-                        f"ILSVRC2012_val_{random_img:08d}.JPEG")
+            file = join(sub_dir, f"ILSVRC2012_val_{random_img:08d}.JPEG")
 
             PIL.Image.fromarray(np.zeros((375, 500, 3),
                                          dtype=np.uint8)).save(file)

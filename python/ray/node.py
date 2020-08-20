@@ -514,7 +514,8 @@ class Node:
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = f"tcp://{self._localhost}:{self._get_unused_port()[0]}"
+                result = (f"tcp://{self._localhost}"
+                          f":{self._get_unused_port()[0]}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -551,8 +552,7 @@ class Node:
         redis_log_files = [self.get_log_file_handles("redis", unique=True)]
         for i in range(self._ray_params.num_redis_shards):
             redis_log_files.append(
-                self.get_log_file_handles(
-                    f"redis-shard_{i}", unique=True))
+                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray.services.start_redis(
@@ -775,8 +775,8 @@ class Node:
 
     def start_head_processes(self):
         """Start head processes on the node."""
-        logger.debug(
-            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}.")
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
         assert self._redis_address is None
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
@@ -792,8 +792,8 @@ class Node:
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
-        logger.debug(
-            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}.")
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
 
         self.start_plasma_store()
         self.start_raylet()

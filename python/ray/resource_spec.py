@@ -304,7 +304,8 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{pretty_name}"
+        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                           f"{pretty_name}")
         return {constraint_name: 1}
     return {}
 

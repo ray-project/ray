@@ -355,7 +355,8 @@ class Pool:
                     os.environ[RAY_ADDRESS_ENV]))
                 ray.init()
             elif ray_address is not None:
-                logger.info(f"Connecting to ray cluster at address='{ray_address}'")
+                logger.info(
+                    f"Connecting to ray cluster at address='{ray_address}'")
                 ray.init(address=ray_address)
             # Local mode.
             else:

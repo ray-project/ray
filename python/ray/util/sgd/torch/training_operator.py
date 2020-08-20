@@ -74,18 +74,16 @@ class TrainingOperator:
             models,
             Iterable), (f"Components need to be iterable. Got: {type(models)}")
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(
-            optimizers,
-            Iterable), (f"Components need to be iterable. Got: {type(optimizers)}")
+        assert isinstance(optimizers, Iterable), (
+            f"Components need to be iterable. Got: {type(optimizers)}")
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(
-                schedulers,
-                Iterable), (f"Components need to be iterable. Got: {type(schedulers)}")
+            assert isinstance(schedulers, Iterable), (
+                f"Components need to be iterable. Got: {type(schedulers)}")
         self._config = config
         self._use_fp16 = use_fp16
         self._device_ids = device_ids

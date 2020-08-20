@@ -254,8 +254,8 @@ class SerializationContext:
             try:
                 error_type = int(metadata)
             except Exception:
-                raise Exception(
-                    f"Can't deserialize object: {object_ref}, metadata: {metadata}")
+                raise Exception(f"Can't deserialize object: {object_ref}, "
+                                f"metadata: {metadata}")
 
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language

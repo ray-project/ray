@@ -51,7 +51,8 @@ def get_signature(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError(f"{func!r} is not a Python function we can process")
+            raise TypeError(
+                f"{func!r} is not a Python function we can process")
 
     return inspect.signature(func)
 

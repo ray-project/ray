@@ -163,8 +163,8 @@ def find_redis_address_or_die():
             pass
     if len(redis_addresses) > 1:
         raise ConnectionError(
-            f"Found multiple active Ray instances: {redis_addresses}. "
-            + "Please specify the one to connect to by setting `address`.")
+            f"Found multiple active Ray instances: {redis_addresses}. " +
+            "Please specify the one to connect to by setting `address`.")
         sys.exit(1)
     elif not redis_addresses:
         raise ConnectionError(
@@ -428,7 +428,8 @@ def start_ray_process(command,
         logger.info("Detected environment variable '%s'.",
                     valgrind_profiler_env_var)
         use_valgrind_profiler = True
-    perftools_profiler_env_var = f"RAY_{process_type.upper()}_PERFTOOLS_PROFILER"
+    perftools_profiler_env_var = (f"RAY_{process_type.upper()}"
+                                  f"_PERFTOOLS_PROFILER")
     if os.environ.get(perftools_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.",
                     perftools_profiler_env_var)
@@ -466,8 +467,8 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = os.path.join(
-            ray.utils.get_ray_temp_dir(), f"gdb_init_{process_type}_{time.time()}")
+        gdb_init_path = os.path.join(ray.utils.get_ray_temp_dir(),
+                                     f"gdb_init_{process_type}_{time.time()}")
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -1156,7 +1157,8 @@ def start_dashboard(require_dashboard,
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
-            raise ValueError(f"The given dashboard port {port} is already in use")
+            raise ValueError(
+                f"The given dashboard port {port} is already in use")
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
@@ -1194,7 +1196,8 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}"
+        dashboard_url = (
+            f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
 
         cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
                                  dashboard_url)
@@ -1367,14 +1370,11 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path,
-        f"--node-ip-address={node_ip_address}",
+        sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
         f"--node-manager-port={node_manager_port}",
         f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-address={redis_address}",
-        f"--config-list={config_str}",
-        f"--temp-dir={temp_dir}",
+        f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
+        f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
     if redis_password:
@@ -1413,8 +1413,8 @@ def start_raylet(redis_address,
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
-        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",
-        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",
+        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
+        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1600,8 +1600,8 @@ def determine_plasma_store_config(object_store_memory,
                        "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise ValueError(
-            f"The file {plasma_directory} does not exist or is not a directory.")
+        raise ValueError(f"The file {plasma_directory} does not "
+                         f"exist or is not a directory.")
 
     if huge_pages and plasma_directory is None:
         raise ValueError("If huge_pages is True, then the "
