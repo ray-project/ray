@@ -3207,6 +3207,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3271,6 +3272,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
@@ -3280,7 +3285,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
           worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_worker_id(worker->WorkerId().Binary());
           worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          worker_stats->set_language(worker->GetLanguage());
           reply->set_num_workers(reply->num_workers() + 1);
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());

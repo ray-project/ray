@@ -387,3 +387,19 @@ async def get_aioredis_client(redis_address, redis_password,
     # Raise exception from create_redis_pool
     return await aioredis.create_redis_pool(
         address=redis_address, password=redis_password)
+
+
+def async_loop_forever(interval_seconds):
+    def _wrapper(coro):
+        @functools.wraps(coro)
+        async def _looper(*args, **kwargs):
+            while True:
+                try:
+                    await coro(*args, **kwargs)
+                except Exception as ex:
+                    logger.exception(ex)
+                await asyncio.sleep(interval_seconds)
+
+        return _looper
+
+    return _wrapper

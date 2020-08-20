@@ -17,6 +17,11 @@ import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
 
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
@@ -305,8 +310,24 @@ def test_class_method_route_table():
             break
     assert post_handler is not None
 
-    r = asyncio.run(post_handler())
+    loop = asyncio.get_event_loop()
+    r = loop.run_until_complete(post_handler())
     assert r.status == 200
     resp = json.loads(r.body)
     assert resp["result"] is False
     assert "Traceback" in resp["msg"]
+
+
+def test_async_loop_forever():
+    counter = [0]
+
+    @dashboard_utils.async_loop_forever(interval_seconds=1)
+    async def foo():
+        counter[0] += 1
+        raise Exception("Test exception")
+
+    loop = asyncio.get_event_loop()
+    loop.create_task(foo())
+    loop.call_later(4, loop.stop)
+    loop.run_forever()
+    assert counter[0] > 2
