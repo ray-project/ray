@@ -122,11 +122,10 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
-  void AddWorkerLeaseClient(const rpc::WorkerAddress &addr,
-                            std::shared_ptr<WorkerLeaseInterface> lease_client,
-                            const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
-                            const SchedulingKey &scheduling_key)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void AddWorkerLeaseClient(
+      const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
+      const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
@@ -189,10 +188,13 @@ class CoreWorkerDirectTaskSubmitter {
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources_;
     SchedulingKey scheduling_key_;
 
-    LeaseEntry(std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-               int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
-               google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources = google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-               SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil()))
+    LeaseEntry(
+        std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
+        int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
+        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
+            google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
+        SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
+                                                       ActorID::Nil()))
         : lease_client_(lease_client),
           lease_expiration_time_(lease_expiration_time),
           tasks_in_flight_(tasks_in_flight),
@@ -215,8 +217,8 @@ class CoreWorkerDirectTaskSubmitter {
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
       GUARDED_BY(mu_);
 
-  // For each SchedulingKey, a pair of unsigned integers keeps track of 
-  // (1) how many worker leases have been granted to execute tasks with 
+  // For each SchedulingKey, a pair of unsigned integers keeps track of
+  // (1) how many worker leases have been granted to execute tasks with
   //     the current SchedulingKey
   // (2) how many tasks are in flight to all the workers from (1)
   absl::flat_hash_map<SchedulingKey, std::pair<uint32_t, uint32_t>> worker_info_
