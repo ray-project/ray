@@ -25,7 +25,7 @@ from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
     PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
     try_reload_log_state
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
+    TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD, TAG_RAY_USER_NODE_TYPE
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
@@ -505,7 +505,14 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                     _abort=True)
         cli_logger.newline()
 
-        launch_hash = hash_launch_conf(config["head_node"], config["auth"])
+        # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
+        head_node_config = copy.deepcopy(config["head_node"])
+        if "head_node_type" in config:
+            head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
+            head_node_config.update(config["available_node_types"][config[
+                "head_node_type"]]["node_config"])
+
+        launch_hash = hash_launch_conf(head_node_config, config["auth"])
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:
             with cli_logger.group("Acquiring an up-to-date head node"):
