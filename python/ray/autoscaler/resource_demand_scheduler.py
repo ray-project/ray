@@ -73,10 +73,10 @@ class ResourceDemandScheduler:
 
         return node_resources, node_type_counts
 
-    def get_instances_to_launch(self, nodes: List[NodeID],
-                                pending_nodes: Dict[NodeType, int],
-                                resource_demands: List[ResourceDict]
-                                ) -> List[Tuple[NodeType, int]]:
+    def get_nodes_to_launch(self, nodes: List[NodeID],
+                            pending_nodes: Dict[NodeType, int],
+                            resource_demands: List[ResourceDict]
+                            ) -> List[Tuple[NodeType, int]]:
         """Get a list of instance types that should be added to the cluster.
 
         This method:
