@@ -74,6 +74,7 @@ def run(run_or_experiment,
         local_dir=None,
         upload_dir=None,
         trial_name_creator=None,
+        trial_dirname_creator=None,
         loggers=None,
         log_to_file=False,
         sync_to_cloud=None,
@@ -141,6 +142,8 @@ def run(run_or_experiment,
             to (e.g. ``s3://bucket`` or ``gs://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
+        trial_dirname_creator (func): Optional function for generating
+            the trial dirname. Note that this should not be an absolute path.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
@@ -279,6 +282,7 @@ def run(run_or_experiment,
                 upload_dir=upload_dir,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
+                trial_dirname_creator=trial_dirname_creator,
                 loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
