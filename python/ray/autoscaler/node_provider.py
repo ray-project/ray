@@ -234,22 +234,6 @@ class NodeProvider:
         """Clean-up when a Provider is no longer required."""
         pass
 
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        """Creates a number of nodes with a given instance type.
-
-        This is an optional method only required if using the resource
-        demand scheduler.
-        """
-        assert instance_type is not None
-        raise NotImplementedError
-
-    def get_instance_type(self, node_config):
-        """Returns the instance type of this node config.
-
-        This is an optional method only required if using the resource
-        demand scheduler."""
-        return None
-
     @staticmethod
     def bootstrap_config(cluster_config):
         """Bootstraps the cluster config by adding env defaults if needed."""

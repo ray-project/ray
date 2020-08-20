@@ -11,22 +11,24 @@ from jsonschema.exceptions import ValidationError
 import ray
 import ray.services as services
 from ray.autoscaler.util import prepare_config, validate_config
+from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_INSTANCE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags, instance_type=None):
+    def __init__(self, node_id, tags, node_config, instance_type):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
+        self.node_config = node_config
         self.instance_type = instance_type
 
     def matches(self, tags):
@@ -95,7 +97,7 @@ class MockProcessRunner:
 
 
 class MockProvider(NodeProvider):
-    def __init__(self, cache_stopped=False, default_instance_type=None):
+    def __init__(self, cache_stopped=False):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
@@ -103,7 +105,6 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
-        self.default_instance_type = default_instance_type
 
     def non_terminated_nodes(self, tag_filters):
         if self.throw:
@@ -138,7 +139,7 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count, instance_type=None):
+    def create_node(self, node_config, tags, count):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
@@ -149,16 +150,10 @@ class MockProvider(NodeProvider):
                     node.state = "pending"
                     node.tags.update(tags)
         for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy(),
-                                                     instance_type)
+            self.mock_nodes[self.next_id] = MockNode(
+                self.next_id, tags.copy(), node_config,
+                tags.get(TAG_RAY_INSTANCE_TYPE))
             self.next_id += 1
-
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        return self.create_node(
-            node_config, tags, count, instance_type=instance_type)
-
-    def get_instance_type(self, node_config):
-        return self.default_instance_type
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
@@ -375,6 +370,25 @@ class AutoscalingTest(unittest.TestCase):
             validate_config(config)
         except ValidationError:
             self.fail("Default config did not pass validation test!")
+
+    def testGetOrCreateHeadNode(self):
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        get_or_create_head_node(
+            SMALL_CLUSTER,
+            config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].instance_type, None)
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)

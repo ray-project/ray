@@ -204,8 +204,9 @@ void GcsServer::InitGcsActorManager() {
 
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
-        // All of the related actors should be reconstructed when a node is removed from
-        // the GCS.
+        // All of the related placement groups and actors should be reconstructed when a
+        // node is removed from the GCS.
+        gcs_placement_group_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
         gcs_actor_manager_->OnNodeDead(ClientID::FromBinary(node->node_id()));
       });
 
