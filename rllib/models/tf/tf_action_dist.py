@@ -10,7 +10,7 @@ from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.types import TensorType, List
+from ray.rllib.utils.typing import TensorType, List
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()

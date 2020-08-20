@@ -464,9 +464,8 @@ void NodeManager::Heartbeat() {
     should_local_gc_ = false;
   }
 
-  ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
-                                                                 /*done*/ nullptr);
-  RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
+  RAY_CHECK_OK(
+      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, /*done*/ nullptr));
 
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
@@ -505,6 +504,115 @@ void NodeManager::DoLocalGC() {
           }
         });
   }
+}
+
+void NodeManager::HandleRequestObjectSpillage(
+    const rpc::RequestObjectSpillageRequest &request,
+    rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  SpillObjects({ObjectID::FromBinary(request.object_id())},
+               [reply, send_reply_callback](const ray::Status &status) {
+                 if (status.ok()) {
+                   reply->set_success(true);
+                 }
+                 send_reply_callback(Status::OK(), nullptr, nullptr);
+               });
+}
+
+void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+                               std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> objects_ids;
+  for (const auto &id : objects_ids_to_spill) {
+    // Do not spill already spilled objects.
+    if (spilled_objects_.count(id) == 0) {
+      objects_ids.push_back(id);
+    }
+    // We should not spill an object that we are not the primary copy for.
+    // TODO(swang): We should really return an error here but right now there
+    // is a race condition where the raylet receives the owner's request to
+    // spill an object before it receives the message to pin the objects from
+    // the local worker.
+    if (pinned_objects_.count(id) == 0) {
+      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
+                          "the primary copy";
+    }
+  }
+  if (objects_ids.empty()) {
+    if (callback) {
+      callback(Status::OK());
+    }
+    return;
+  }
+  worker_pool_.PopIOWorker([this, objects_ids,
+                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::SpillObjectsRequest request;
+    for (const auto &object_id : objects_ids) {
+      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+      request.add_object_ids_to_spill(object_id.Binary());
+    }
+    io_worker->rpc_client()->SpillObjects(
+        request, [this, objects_ids, callback, io_worker](
+                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
+          worker_pool_.PushIOWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send object spilling request: "
+                           << status.ToString();
+          } else {
+            RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
+                      objects_ids.size());
+            for (size_t i = 0; i < objects_ids.size(); ++i) {
+              const ObjectID &object_id = objects_ids[i];
+              const std::string &object_url = r.spilled_objects_url(i);
+              RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+              // TODO(suquark): write to object directory.
+              spilled_objects_[object_id] = object_url;
+              auto search = pinned_objects_.find(object_id);
+              if (search != pinned_objects_.end()) {
+                pinned_objects_.erase(search);
+              } else {
+                RAY_LOG(ERROR) << "The spilled object " << object_id.Hex()
+                               << " is not pinned.";
+              }
+            }
+          }
+          if (callback) {
+            callback(status);
+          }
+        });
+  });
+}
+
+void NodeManager::RestoreSpilledObjects(
+    const std::vector<ObjectID> &object_ids,
+    std::function<void(const ray::Status &)> callback) {
+  std::vector<std::string> object_urls;
+  object_urls.reserve(object_ids.size());
+  for (const auto &object_id : object_ids) {
+    if (spilled_objects_.count(object_id) == 0) {
+      callback(Status::Invalid("No object URL recorded"));
+      return;
+    }
+    object_urls.push_back(spilled_objects_[object_id]);
+  }
+  worker_pool_.PopIOWorker([this, object_urls,
+                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+    RAY_LOG(DEBUG) << "Sending restore spilled object request";
+    rpc::RestoreSpilledObjectsRequest request;
+    for (const auto &url : object_urls) {
+      request.add_spilled_objects_url(std::move(url));
+    }
+    io_worker->rpc_client()->RestoreSpilledObjects(
+        request, [this, callback, io_worker](const ray::Status &status,
+                                             const rpc::RestoreSpilledObjectsReply &r) {
+          worker_pool_.PushIOWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
+                           << status.ToString();
+          }
+          if (callback) {
+            callback(status);
+          }
+        });
+  });
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -1144,7 +1252,24 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
   } break;
-
+  case protocol::MessageType::ForceRestoreSpilledObjectsRequest: {
+    auto message =
+        flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsRequest>(message_data);
+    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+    RestoreSpilledObjects(object_ids, [this, client](const ray::Status &status) {
+      flatbuffers::FlatBufferBuilder fbb;
+      flatbuffers::Offset<protocol::ForceRestoreSpilledObjectsReply> reply =
+          protocol::CreateForceRestoreSpilledObjectsReply(fbb);
+      fbb.Finish(reply);
+      auto reply_status = client->WriteMessage(
+          static_cast<int64_t>(protocol::MessageType::ForceRestoreSpilledObjectsReply),
+          fbb.GetSize(), fbb.GetBufferPointer());
+      if (!reply_status.ok()) {
+        // We failed to write to the client, so disconnect the client.
+        ProcessDisconnectClientMessage(client);
+      }
+    });
+  } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
   }
@@ -1162,8 +1287,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
+  // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
+  rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
-      worker_id, language, worker_ip_address, client, client_call_manager_));
+      worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1187,7 +1314,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         });
   };
 
-  if (message->is_worker()) {
+  if (worker_type == rpc::WorkerType::WORKER ||
+      worker_type == rpc::WorkerType::IO_WORKER) {
     // Register the new worker.
     RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, send_reply_callback));
   } else {
@@ -1238,6 +1366,13 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<ClientConnection> 
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker);
+
+  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushIOWorker(worker);
+    return;
+  }
+
   bool worker_idle = true;
 
   // If the worker was assigned a task, mark it as finished.
@@ -1400,14 +1535,22 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
+    std::vector<ObjectID> spilled_object_ids;
     for (const auto &ref : refs) {
       ObjectID object_id = ObjectID::FromBinary(ref.object_id());
       // If only a fetch is required, then do not subscribe to the
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-        // Fetch the object if it's not already local.
-        RAY_CHECK_OK(object_manager_.Pull(object_id));
+        if (spilled_objects_.count(object_id) > 0) {
+          spilled_object_ids.push_back(object_id);
+        } else {
+          // Fetch the object if it's not already local.
+          RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
+        }
       }
+    }
+    if (spilled_object_ids.size() > 0) {
+      RestoreSpilledObjects(spilled_object_ids);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -1428,6 +1571,12 @@ void NodeManager::ProcessWaitRequestMessage(
   int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
   bool wait_local = message->wait_local();
+  const auto refs =
+      FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
 
   bool resolve_objects = false;
   for (auto const &object_id : object_ids) {
@@ -1444,14 +1593,12 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    const auto refs =
-        FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
 
   ray::Status status = object_manager_.Wait(
-      object_ids, wait_ms, num_required_objects, wait_local,
+      object_ids, owner_addresses, wait_ms, num_required_objects, wait_local,
       [this, resolve_objects, was_blocked, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
@@ -1487,6 +1634,10 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // managers or store an error if the objects have failed.
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
+  std::unordered_map<ObjectID, rpc::Address> owner_addresses;
+  for (const auto &ref : refs) {
+    owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
+  }
   AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
   // Reply to the client once a location has been found for all arguments.
@@ -1494,7 +1645,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
   ray::Status status = object_manager_.Wait(
-      object_ids, -1, object_ids.size(), false,
+      object_ids, owner_addresses, -1, object_ids.size(), false,
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<WorkerInterface> worker =
@@ -1701,11 +1852,33 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(INFO) << "bundle return resource request " << bundle_spec.BundleId().first
+                << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
-  // TODO(ekl) doesn't this not return in-use resources? We need to be able to
-  // reclaim those somehow (i.e., destroy the workers allocated in the bundle).
+
+  // Kill all workers that are currently associated with the placement group.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
+  for (const auto &worker_it : leased_workers_) {
+    auto &worker = worker_it.second;
+    if (worker->GetPlacementGroupId() == bundle_spec.PlacementGroupId()) {
+      workers_associated_with_pg.push_back(worker);
+    }
+  }
+  for (const auto &worker : workers_associated_with_pg) {
+    RAY_LOG(DEBUG)
+        << "Destroying worker since its placement group was removed. Placement group id: "
+        << worker->GetPlacementGroupId()
+        << ", bundle index: " << bundle_spec.BundleId().second
+        << ", task id: " << worker->GetAssignedTaskId()
+        << ", actor id: " << worker->GetActorId()
+        << ", worker id: " << worker->WorkerId();
+    // We should disconnect the client first. Otherwise, we'll remove bundle resources
+    // before actual resources are returned. Subsequent disconnect request that comes
+    // due to worker dead will be ignored.
+    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+    worker->MarkDead();
+    KillWorker(worker);
+  }
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
@@ -1992,9 +2165,12 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
     num_returns -= 1;
   }
   // Determine which IDs should be marked as failed.
-  std::vector<ObjectID> objects_to_fail;
+  std::vector<rpc::ObjectReference> objects_to_fail;
   for (int64_t i = 0; i < num_returns; i++) {
-    objects_to_fail.push_back(spec.ReturnId(i));
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(spec.CallerAddress());
+    objects_to_fail.push_back(ref);
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
@@ -2007,14 +2183,15 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
-void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
-                                      const std::vector<ObjectID> objects_to_fail,
-                                      const JobID &job_id) {
+void NodeManager::MarkObjectsAsFailed(
+    const ErrorType &error_type, const std::vector<rpc::ObjectReference> objects_to_fail,
+    const JobID &job_id) {
   const std::string meta = std::to_string(static_cast<int>(error_type));
-  for (const auto &object_id : objects_to_fail) {
+  for (const auto &ref : objects_to_fail) {
+    ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, 0,
+    status = store_client_.Create(object_id, ref.owner_address(), 0,
                                   reinterpret_cast<const uint8_t *>(meta.c_str()),
                                   meta.length(), &data);
     if (status.ok()) {
@@ -2057,9 +2234,10 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
     const ObjectID object_id = spec.ReturnId(i);
     // Lookup the return value's locations.
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, [this, task_marked_as_failed, task](
-                       const ray::ObjectID &object_id,
-                       const std::unordered_set<ray::ClientID> &clients) {
+        object_id, spec.CallerAddress(),
+        [this, task_marked_as_failed, task](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (!*task_marked_as_failed) {
             // Only process the object locations if we haven't already marked the
             // task as failed.
@@ -2360,6 +2538,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
+  worker->SetPlacementGroupId(spec.PlacementGroupId());
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
   const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
@@ -2527,8 +2706,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       // LRU eviction is enabled. The object may still be in scope, but we
       // weren't able to fetch the value within the timeout, so the value has
       // most likely been evicted. Mark the object as unreachable.
-      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                          JobID::Nil());
+      rpc::ObjectReference ref;
+      ref.set_object_id(required_object_id.Binary());
+      ref.mutable_owner_address()->CopyFrom(owner_addr);
+      MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
     } else {
       RAY_LOG(DEBUG) << "Required object " << required_object_id
                      << " fetch timed out, asking owner "
@@ -2544,7 +2725,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
       rpc::GetObjectStatusRequest request;
       request.set_object_id(required_object_id.Binary());
       request.set_owner_worker_id(owner_addr.worker_id());
-      client->GetObjectStatus(request, [this, required_object_id](
+      client->GetObjectStatus(request, [this, required_object_id, owner_addr](
                                            Status status,
                                            const rpc::GetObjectStatusReply &reply) {
         if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE ||
@@ -2556,8 +2737,10 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
           // freed. Store an error in the local plasma store so that an
           // exception will be thrown when the worker tries to get the
           // value.
-          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                              JobID::Nil());
+          rpc::ObjectReference ref;
+          ref.set_object_id(required_object_id.Binary());
+          ref.mutable_owner_address()->CopyFrom(owner_addr);
+          MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
         }
         // Do nothing if the owner replied that the object is available. The
         // object manager will continue trying to fetch the object, and this
@@ -2574,8 +2757,9 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
            "If this was not how your object ID was generated, please file an "
            "issue "
            "at https://github.com/ray-project/ray/issues/";
-    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {required_object_id},
-                        JobID::Nil());
+    rpc::ObjectReference ref;
+    ref.set_object_id(required_object_id.Binary());
+    MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE, {ref}, JobID::Nil());
   }
 }
 

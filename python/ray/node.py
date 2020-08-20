@@ -104,7 +104,8 @@ class Node:
                     head), "LRU Evict can only be passed into the head node."
 
         self._raylet_ip_address = raylet_ip_address
-        self.metrics_agent_port = self._get_unused_port()[0]
+        self.metrics_agent_port = (ray_params.metrics_agent_port
+                                   or self._get_unused_port()[0])
         self._metrics_export_port = ray_params.metrics_export_port
         if self._metrics_export_port is None:
             self._metrics_export_port = self._get_unused_port()[0]
@@ -271,7 +272,7 @@ class Node:
             return result
 
         env_resources = {}
-        env_string = os.getenv("RAY_OVERRIDE_RESOURCES")
+        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
         if env_string:
             env_resources = json.loads(env_string)
 
@@ -717,7 +718,8 @@ class Node:
             socket_to_use=self.socket,
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job)
+            start_initial_python_workers_for_first_job,
+            object_spilling_config=self._ray_params.object_spilling_config)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -746,11 +748,12 @@ class Node:
             return None, None
 
         if job_id is not None:
-            name = "worker-{}-{}".format(
+            name = "worker-{}-{}-{}".format(
                 ray.utils.binary_to_hex(worker_id),
-                ray.utils.binary_to_hex(job_id))
+                ray.utils.binary_to_hex(job_id), os.getpid())
         else:
-            name = "worker-{}".format(ray.utils.binary_to_hex(worker_id))
+            name = "worker-{}-{}".format(
+                ray.utils.binary_to_hex(worker_id), os.getpid())
 
         worker_stdout_file, worker_stderr_file = self._get_log_file_names(
             name, unique=False)

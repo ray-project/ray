@@ -1,5 +1,5 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -9,11 +9,11 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
-from ray.rllib.utils.types import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -22,7 +22,9 @@ torch, _ = try_import_torch()
 def build_torch_policy(
         name: str,
         *,
-        loss_fn: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+        loss_fn: Callable[[
+            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
+        ], Union[TensorType, List[TensorType]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -80,8 +82,9 @@ def build_torch_policy(
             super's `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],
             Dict[str, TensorType]]]): Optional callable that returns a dict of
-            values given the policy and batch input tensors. If None,
-            will use `TorchPolicy.extra_grad_info()` instead.
+            values given the policy and training batch. If None,
+            will use `TorchPolicy.extra_grad_info()` instead. The stats dict is
+            used for logging (e.g. in TensorBoard).
         extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType,
             List[TensorType], ModelV2, TorchDistributionWrapper]], Dict[str,
             TensorType]]]): Optional callable that returns a dict of extra
@@ -201,8 +204,7 @@ def build_torch_policy(
                     action_space=action_space,
                     num_outputs=logit_dim,
                     model_config=self.config["model"],
-                    framework="torch",
-                    **self.config["model"].get("custom_model_config", {}))
+                    framework="torch")
 
             # Make sure, we passed in a correct Model factory.
             assert isinstance(self.model, TorchModelV2), \
@@ -294,9 +296,14 @@ def build_torch_policy(
         @override(TorchPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return TorchPolicy.optimizer(self)
+                optimizers = TorchPolicy.optimizer(self)
+            optimizers = force_list(optimizers)
+            if hasattr(self, "exploration"):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            return optimizers
 
         @override(TorchPolicy)
         def extra_grad_info(self, train_batch):

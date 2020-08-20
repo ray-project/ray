@@ -53,6 +53,7 @@ from ray.utils import (_random_string, check_oversized_pickle, is_cython,
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
+IO_WORKER_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -373,7 +374,7 @@ class Worker:
         sys.exit(0)
 
 
-def get_gpu_ids():
+def get_gpu_ids(as_str=False):
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -387,9 +388,12 @@ def get_gpu_ids():
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = [
-        resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
-    ]
+    assigned_ids = []
+    for resource, assignment in all_resource_ids.items():
+        # Handle both normal and placement group GPU resources.
+        if resource == "GPU" or resource.startswith("GPU_group_"):
+            for resource_id, _ in assignment:
+                assigned_ids.append(resource_id)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -400,7 +404,17 @@ def get_gpu_ids():
         # Give all GPUs in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_gpus = global_worker.node.get_resource_spec().num_gpus
-            return global_worker.original_gpu_ids[:max_gpus]
+            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
+
+    if not as_str:
+        from ray.util.debug import log_once
+        if log_once("ray.get_gpu_ids.as_str"):
+            logger.warning(
+                "ray.get_gpu_ids() will return a list of strings by default"
+                " in a future version of Ray for compatibility with CUDA. "
+                "To enable the forward-compatible behavior, use "
+                "`ray.get_gpu_ids(as_str=True)`.")
+        assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
 
     return assigned_ids
 
@@ -500,7 +514,8 @@ def init(address=None,
          _internal_config=None,
          lru_evict=False,
          enable_object_reconstruction=False,
-         _metrics_export_port=None):
+         _metrics_export_port=None,
+         object_spilling_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -629,6 +644,8 @@ def init(address=None,
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
+        object_spilling_config (str): The configuration json string for object
+            spilling I/O worker.
 
     Returns:
         Address information about the started processes.
@@ -724,7 +741,8 @@ def init(address=None,
             _internal_config=_internal_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port)
+            metrics_export_port=_metrics_export_port,
+            object_spilling_config=object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -1193,7 +1211,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE:
+    if mode in (WORKER_MODE, IO_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1247,7 +1265,7 @@ def connect(node,
         import __main__ as main
         driver_name = (main.__file__
                        if hasattr(main, "__file__") else "INTERACTIVE MODE")
-    elif mode == WORKER_MODE:
+    elif mode == WORKER_MODE or mode == IO_WORKER_MODE:
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
@@ -1282,8 +1300,7 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,

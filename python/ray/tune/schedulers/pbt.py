@@ -9,9 +9,12 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.sample import sample_from
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
+
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
-                new_config[key] = distribution()
+                new_config[key] = distribution.func(None) if isinstance(
+                    distribution, sample_from) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -74,8 +78,6 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
         new_config = custom_explore_fn(new_config)
         assert new_config is not None, \
             "Custom explore fn failed to return new config"
-    logger.info("[explore] perturbed config from {} -> {}".format(
-        config, new_config))
     return new_config
 
 
@@ -86,6 +88,20 @@ def make_experiment_tag(orig_tag, config, mutations):
     for k in mutations.keys():
         resolved_vars[("config", k)] = config[k]
     return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
+
+
+def fill_config(config, attr, search_space):
+    """Add attr to config by sampling from search_space."""
+    if callable(search_space):
+        config[attr] = search_space()
+    elif isinstance(search_space, sample_from):
+        config[attr] = search_space.func(None)
+    elif isinstance(search_space, list):
+        config[attr] = random.choice(search_space)
+    elif isinstance(search_space, dict):
+        config[attr] = {}
+        for k, v in search_space.items():
+            fill_config(config[attr], k, v)
 
 
 class PopulationBasedTraining(FIFOScheduler):
@@ -127,11 +143,18 @@ class PopulationBasedTraining(FIFOScheduler):
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
-            as follows: for each key, either a list or function can be
-            provided. A list specifies an allowed set of categorical values.
-            A function specifies the distribution of a continuous parameter.
+            as follows: for each key, either a list, function,
+            or a tune search space object (tune.loguniform, tune.uniform,
+            etc.) can be provided. A list specifies an allowed set of
+            categorical values. A function or tune search space object
+            specifies the distribution of a continuous parameter. You must
+            use tune.choice, tune.uniform, tune.loguniform, etc.. Arbitrary
+            tune.sample_from objects are not supported.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
+            Tune will use the search space provided by
+            `hyperparam_mutations` for the initial samples if the
+            corresponding attributes are not present in `config`.
         quantile_fraction (float): Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
@@ -148,6 +171,9 @@ class PopulationBasedTraining(FIFOScheduler):
         log_config (bool): Whether to log the ray config of each model to
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
+        require_attrs (bool): Whether to require time_attr and metric to appear
+            in result for every iteration. If True, error will be raised
+            if these values are not present in trial result.
 
     .. code-block:: python
 
@@ -165,9 +191,15 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
                 # resets it to a value sampled from the lambda function.
                 "factor_1": lambda: random.uniform(0.0, 20.0),
-                # Perturb factor2 by changing it to an adjacent value, e.g.
+                # Alternatively, use tune search space primitives.
+                # The search space for factor_1 is equivalent to factor_2.
+                "factor_2": tune.uniform(0.0, 20.0),
+                # Perturb factor3 by changing it to an adjacent value, e.g.
                 # 10 -> 1 or 10 -> 100. Resampling will choose at random.
-                "factor_2": [1, 10, 100, 1000, 10000],
+                "factor_3": [1, 10, 100, 1000, 10000],
+                # Using tune.choice is NOT equivalent to the above.
+                # factor_4 is treated as a continuous hyperparameter.
+                "factor_4": tune.choice([1, 10, 100, 1000, 10000]),
             })
         tune.run({...}, num_samples=8, scheduler=pbt)
     """
@@ -182,11 +214,19 @@ class PopulationBasedTraining(FIFOScheduler):
                  quantile_fraction=0.25,
                  resample_probability=0.25,
                  custom_explore_fn=None,
-                 log_config=True):
+                 log_config=True,
+                 require_attrs=True):
         for value in hyperparam_mutations.values():
-            if not (isinstance(value, (list, dict)) or callable(value)):
+            if not (isinstance(value,
+                               (list, dict, sample_from)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
-                                "a List, Dict, or callable.")
+                                "a List, Dict, a tune search space object, or "
+                                "callable.")
+            if type(value) is sample_from:
+                raise ValueError("arbitrary tune.sample_from objects are not "
+                                 "supported for `hyperparam_mutation` values."
+                                 "You must use other built in primitives like"
+                                 "tune.uniform, tune.loguniform, etc.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
@@ -222,6 +262,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._trial_state = {}
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
+        self._require_attrs = require_attrs
 
         # Metrics
         self._num_checkpoints = 0
@@ -230,9 +271,52 @@ class PopulationBasedTraining(FIFOScheduler):
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
 
+        for attr in self._hyperparam_mutations.keys():
+            if attr not in trial.config:
+                if log_once(attr + "-missing"):
+                    logger.debug("Cannot find {} in config. Using search "
+                                 "space provided by hyperparam_mutations.")
+                # Add attr to trial's config by sampling search space from
+                # hyperparam_mutations.
+                fill_config(trial.config, attr,
+                            self._hyperparam_mutations[attr])
+                # Make sure this attribute is added to CLI output.
+                trial.evaluated_params[attr] = trial.config[attr]
+
     def on_trial_result(self, trial_runner, trial, result):
-        if self._time_attr not in result or self._metric not in result:
+        if self._time_attr not in result:
+            time_missing_msg = "Cannot find time_attr {} " \
+                               "in trial result {}. Make sure that this " \
+                               "attribute is returned in the " \
+                               "results of your Trainable.".format(
+                                self._time_attr, result)
+            if self._require_attrs:
+                raise RuntimeError(
+                    time_missing_msg +
+                    "If this error is expected, you can change this to "
+                    "a warning message by "
+                    "setting PBT(require_attrs=False)")
+            else:
+                if log_once("pbt-time_attr-error"):
+                    logger.warning(time_missing_msg)
+        if self._metric not in result:
+            metric_missing_msg = "Cannot find metric {} in trial result {}. " \
+                                 "Make sure that this attribute is returned " \
+                                 "in the " \
+                                 "results of your Trainable.".format(
+                                    self._metric, result)
+            if self._require_attrs:
+                raise RuntimeError(
+                    metric_missing_msg + "If this error is expected, "
+                    "you can change this to a warning message by "
+                    "setting PBT(require_attrs=False)")
+            else:
+                if log_once("pbt-metric-error"):
+                    logger.warning(metric_missing_msg)
+
+        if self._metric not in result or self._time_attr not in result:
             return TrialScheduler.CONTINUE
+
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
@@ -314,6 +398,18 @@ class PopulationBasedTraining(FIFOScheduler):
                     "{} (score {}) -> {} (score {})".format(
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
+        # Only log mutated hyperparameters and not entire config.
+        old_hparams = {
+            k: v
+            for k, v in trial_to_clone.config.items()
+            if k in self._hyperparam_mutations
+        }
+        new_hparams = {
+            k: v
+            for k, v in new_config.items() if k in self._hyperparam_mutations
+        }
+        logger.info("[explore] perturbed config from {} -> {}".format(
+            old_hparams, new_hparams))
 
         if self._log_config:
             self._log_config_on_step(trial_state, new_state, trial,

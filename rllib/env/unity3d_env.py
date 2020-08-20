@@ -5,7 +5,7 @@ from typing import Callable, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.types import MultiAgentDict, PolicyID, AgentID
+from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
 

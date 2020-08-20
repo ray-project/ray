@@ -19,12 +19,11 @@ import time
 
 import ray
 from ray.rllib.agents.ppo import ppo
-from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
-    _get_shared_metrics
+    _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
 
@@ -32,31 +31,42 @@ logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
-    # During the sampling phase, each rollout worker will collect a batch
-    # `rollout_fragment_length * num_envs_per_worker` steps in size.
-    "rollout_fragment_length": 100,
-    # Vectorize the env (should enable by default since each worker has a GPU).
-    "num_envs_per_worker": 5,
-    # During the SGD phase, workers iterate over minibatches of this size.
-    # The effective minibatch size will be `sgd_minibatch_size * num_workers`.
-    "sgd_minibatch_size": 50,
-    # Number of SGD epochs per optimization round.
-    "num_sgd_iter": 10,
-    # Download weights between each training step. This adds a bit of overhead
-    # but allows the user to access the weights from the trainer.
-    "keep_local_weights_in_sync": True,
+DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
+    ppo.DEFAULT_CONFIG,
+    {
+        # During the sampling phase, each rollout worker will collect a batch
+        # `rollout_fragment_length * num_envs_per_worker` steps in size.
+        "rollout_fragment_length": 100,
+        # Vectorize the env (should enable by default since each worker has
+        # a GPU).
+        "num_envs_per_worker": 5,
+        # During the SGD phase, workers iterate over minibatches of this size.
+        # The effective minibatch size will be:
+        # `sgd_minibatch_size * num_workers`.
+        "sgd_minibatch_size": 50,
+        # Number of SGD epochs per optimization round.
+        "num_sgd_iter": 10,
+        # Download weights between each training step. This adds a bit of
+        # overhead but allows the user to access the weights from the trainer.
+        "keep_local_weights_in_sync": True,
 
-    # *** WARNING: configs below are DDPPO overrides over PPO; you
-    #     shouldn't need to adjust them. ***
-    "framework": "torch",  # DDPPO requires PyTorch distributed.
-    "num_gpus": 0,  # Learning is no longer done on the driver process, so
-                    # giving GPUs to the driver does not make sense!
-    "num_gpus_per_worker": 1,  # Each rollout worker gets a GPU.
-    "truncate_episodes": True,  # Require evenly sized batches. Otherwise,
-                                # collective allreduce could fail.
-    "train_batch_size": -1,  # This is auto set based on sample batch size.
-})
+        # *** WARNING: configs below are DDPPO overrides over PPO; you
+        #     shouldn't need to adjust them. ***
+        # DDPPO requires PyTorch distributed.
+        "framework": "torch",
+        # Learning is no longer done on the driver process, so
+        # giving GPUs to the driver does not make sense!
+        "num_gpus": 0,
+        # Each rollout worker gets a GPU.
+        "num_gpus_per_worker": 1,
+        # Require evenly sized batches. Otherwise,
+        # collective allreduce could fail.
+        "truncate_episodes": True,
+        # This is auto set based on sample batch size.
+        "train_batch_size": -1,
+    },
+    _allow_unknown_configs=True,
+)
 # __sphinx_doc_end__
 # yapf: enable
 
@@ -121,6 +131,13 @@ def execution_plan(workers, config):
                                 config["sgd_minibatch_size"], ["advantages"])
         return info, batch.count
 
+    # Broadcast the local set of global vars.
+    def update_worker_global_vars(item):
+        global_vars = _get_global_vars()
+        for w in workers.remote_workers():
+            w.set_global_vars.remote(global_vars)
+        return item
+
     # Have to manually record stats since we are using "raw" rollouts mode.
     class RecordStats:
         def _on_fetch_start(self):
@@ -142,6 +159,8 @@ def execution_plan(workers, config):
         rollouts.for_each(train_torch_distributed_allreduce)  # allreduce
         .batch_across_shards()  # List[(grad_info, count)]
         .for_each(RecordStats()))
+
+    train_op = train_op.for_each(update_worker_global_vars)
 
     # Sync down the weights. As with the sync up, this is not really
     # needed unless the user is reading the local weights.

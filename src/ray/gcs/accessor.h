@@ -551,6 +551,9 @@ class NodeInfoAccessor {
       const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
+  /// Resend heartbeat when GCS restarts from a failure.
+  virtual void AsyncReReportHeartbeat() = 0;
+
   /// Subscribe to the heartbeat of each node from GCS.
   ///
   /// \param subscribe Callback that will be called each time when heartbeat is updated.
@@ -729,14 +732,31 @@ class PlacementGroupInfoAccessor {
  public:
   virtual ~PlacementGroupInfoAccessor() = default;
 
-  // TODO(AlisaWu): fill the accessor.
-  /// Create an placement group to GCS asynchronously.
+  /// Create a placement group to GCS asynchronously.
   ///
   /// \param placement_group_spec The specification for the placement group creation task.
   /// \param callback Callback that will be called after the placement group info is
-  /// written to GCS. \return Status
+  /// written to GCS.
+  /// \return Status.
   virtual Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) = 0;
+
+  /// Get a placement group data from GCS asynchronously.
+  ///
+  /// \param placement_group_id The id of a placement group to obtain from GCS.
+  /// \return Status.
+  virtual Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
+
+  /// Remove a placement group to GCS synchronously.
+  ///
+  /// \param placement_group_id The id for the placement group to remove.
+  /// \param callback Callback that will be called after the placement group is
+  /// removed from GCS.
+  /// \return Status
+  virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
+                                           const StatusCallback &callback) = 0;
 
  protected:
   PlacementGroupInfoAccessor() = default;

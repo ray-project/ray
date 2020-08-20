@@ -14,7 +14,7 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import MultiAgentDict, EnvInfoDict, EnvObsType, \
+from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
 logger = logging.getLogger(__name__)

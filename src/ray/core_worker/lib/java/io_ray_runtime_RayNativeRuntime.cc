@@ -225,6 +225,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       task_execution_callback,                       // task_execution_callback
       nullptr,                                       // check_signals
       gc_collect,                                    // gc_collect
+      nullptr,                                       // spill_objects
+      nullptr,                                       // restore_spilled_objects
       nullptr,                                       // get_lang_stack
       nullptr,                                       // kill_main
       true,                                          // ref_counting_enabled
