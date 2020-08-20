@@ -25,7 +25,7 @@ from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
-from ray.utils.debug import log_once
+from ray.util.debug import log_once
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
@@ -334,8 +334,8 @@ class Trial:
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = create_logdir(
-                    self._generate_dirname(self), self.local_dir)
+                self.logdir = create_logdir(self._generate_dirname(),
+                                            self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 

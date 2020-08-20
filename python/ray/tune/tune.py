@@ -362,8 +362,8 @@ def run(run_or_experiment,
 
     try:
         runner.checkpoint(force=True)
-    except Exception:
-        logger.exception("Trial Runner checkpointing failed.")
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
     if verbose:
         _report_progress(runner, progress_reporter, done=True)
