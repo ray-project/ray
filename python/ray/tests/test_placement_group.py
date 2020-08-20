@@ -200,9 +200,9 @@ def test_placement_group_strict_spread(ray_start_cluster):
     node_of_actor_1 = actor_info_1["Address"]["NodeID"]
     node_of_actor_2 = actor_info_2["Address"]["NodeID"]
     node_of_actor_3 = actor_info_3["Address"]["NodeID"]
-    assert node_of_actor_1 != node_of_actor_2 \
-           and node_of_actor_1 != node_of_actor_3 \
-           and node_of_actor_2 != node_of_actor_3
+    assert node_of_actor_1 != node_of_actor_2
+    assert node_of_actor_1 != node_of_actor_3
+    assert node_of_actor_2 != node_of_actor_3
 
 
 def test_placement_group_actor_resource_ids(ray_start_cluster):
