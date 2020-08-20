@@ -4,9 +4,6 @@ SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 
-#: Actor name used to register metric monitor actor
-SERVE_METRIC_SINK_NAME = "SERVE_METRIC_SINK_ACTOR"
-
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
 
@@ -18,9 +15,6 @@ DEFAULT_HTTP_PORT = 8000
 
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
-
-#: Interval for metric client to push metrics to exporters
-METRIC_PUSH_INTERVAL_S = 2
 
 #: Time to wait for HTTP proxy in `serve.init()`
 HTTP_PROXY_TIMEOUT = 60

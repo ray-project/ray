@@ -262,7 +262,7 @@ class StandardAutoscaler:
     def _node_resources(self, node_id):
         instance_type = self.provider.node_tags(node_id).get(
             TAG_RAY_INSTANCE_TYPE)
-        if instance_type:
+        if self.instance_types and instance_type in self.instance_types:
             return self.instance_types[instance_type].get("resources", {})
         else:
             return {}
