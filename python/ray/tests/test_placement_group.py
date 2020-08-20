@@ -268,7 +268,7 @@ def test_remove_placement_group(ray_start_cluster):
     assert ray.get(a.f.remote()) == 3
 
     ray.experimental.remove_placement_group(pid)
-    # Subsequent remove request shouldn't do anything
+    # Subsequent remove request shouldn't do anything.
     for _ in range(3):
         ray.experimental.remove_placement_group(pid)
 

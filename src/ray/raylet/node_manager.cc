@@ -1858,7 +1858,9 @@ void NodeManager::HandleCancelResourceReserve(
   for (const auto &worker : workers_associated_with_pg) {
     RAY_LOG(DEBUG)
         << "Destroying worker since its placement group was removed. Placement group id: "
-        << worker->GetPlacementGroupId() << ", task id: " << worker->GetAssignedTaskId()
+        << worker->GetPlacementGroupId()
+        << ", bundle index: " << bundle_spec.BundleId().second
+        << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
     // We should disconnect the client first. Otherwise, we'll remove bundle resources
