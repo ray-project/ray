@@ -676,7 +676,9 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
     assert ray.get(return_a_greek_char.remote()) == "φ"
 
 
-def test_wait_timing(ray_start_regular_shared):
+def test_wait_timing(shutdown_only):
+    ray.init(num_cpus=2)
+
     @ray.remote
     def f():
         time.sleep(1)
