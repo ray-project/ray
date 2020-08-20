@@ -224,9 +224,9 @@ class PopulationBasedTraining(FIFOScheduler):
                                 "callable.")
             if type(value) is sample_from:
                 raise ValueError("arbitrary tune.sample_from objects are not "
-                                "supported for `hyperparam_mutation` values."
-                                "You must use other built in primitives like"
-                                "tune.uniform, tune.loguniform, etc.")
+                                 "supported for `hyperparam_mutation` values."
+                                 "You must use other built in primitives like"
+                                 "tune.uniform, tune.loguniform, etc.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(

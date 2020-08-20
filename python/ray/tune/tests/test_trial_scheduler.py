@@ -880,12 +880,13 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(trials[0].config["const_factor"], 3)
 
     def testTuneSamplePrimitives(self):
-        pbt, runner = self.basicSetup(resample_prob=1.0,
-                                      hyperparam_mutations={
-                                          "float_factor": lambda: 100.0,
-                                          "int_factor": lambda: 10,
-                                          "id_factor": tune.choice([100])
-                                      })
+        pbt, runner = self.basicSetup(
+            resample_prob=1.0,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": lambda: 10,
+                "id_factor": tune.choice([100])
+            })
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
