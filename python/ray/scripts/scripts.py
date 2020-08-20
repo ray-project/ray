@@ -57,7 +57,7 @@ logging_options = [
     click.option(
         "--log-new-style/--log-old-style",
         is_flag=True,
-        default=False,
+        default=True,
         envvar="RAY_LOG_NEWSTYLE",
         help=("Whether to use the old or the new CLI UX. "
               "The new UX supports colored, formatted output and was "
@@ -917,7 +917,7 @@ def stop(force, verbose, log_new_style, log_color):
 @click.option(
     "--dump-command-output",
     is_flag=True,
-    default=False,
+    default=True,
     help=("Print command output straight to "
           "the terminal instead of redirecting to a file."))
 @click.option(
