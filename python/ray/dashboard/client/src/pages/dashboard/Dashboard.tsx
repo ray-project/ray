@@ -9,11 +9,7 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
-import {
-  getNodeInfo,
-  getRayletInfo,
-  getTuneAvailability,
-} from "../../api";
+import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -62,11 +58,7 @@ class Dashboard extends React.Component<
 
   refreshInfo = async () => {
     try {
-      const [
-        nodeInfo,
-        rayletInfo,
-        tuneAvailability,
-      ] = await Promise.all([
+      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
         getTuneAvailability(),
@@ -91,7 +83,6 @@ class Dashboard extends React.Component<
 
   handleTabChange = async (event: React.ChangeEvent<{}>, value: number) =>
     this.props.setTab(value);
-  
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;

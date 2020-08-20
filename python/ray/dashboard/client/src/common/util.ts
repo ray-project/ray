@@ -41,9 +41,9 @@ export const useInterval = (callback: Function, delayMs: number) => {
       if (intervalId.current) {
         clearInterval(intervalId.current);
       }
-    }
+    };
   }, [callback, delayMs]);
-  return intervalId.current ?
-    () => clearInterval(intervalId.current) :
-    () => null;
-}
+  return intervalId.current
+    ? () => clearInterval(intervalId.current)
+    : () => null;
+};

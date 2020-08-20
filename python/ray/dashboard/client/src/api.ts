@@ -356,7 +356,7 @@ export type MemoryTableSummary = {
   total_object_size: number;
   total_pinned_in_memory: number;
   total_used_by_pending_task: number;
-} | null;
+};
 
 export type MemoryTableEntry = {
   node_ip_address: string;
@@ -385,13 +385,12 @@ export type MemoryTableResponse = {
 // This doesn't return anything.
 export type StopMemoryTableResponse = {};
 
-export type MemoryGroupByKey =
-  | "node"
-  | "stack_trace"
-  | "";
+export type MemoryGroupByKey = "node" | "stack_trace" | "";
 
 export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
-    return get<MemoryTableResponse>("/api/memory_table", {"group_by": groupByKey});
+  return get<MemoryTableResponse>("/api/memory_table", {
+    group_by: groupByKey,
+  });
 };
 
 export const stopMemoryTableCollection = () =>
