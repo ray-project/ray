@@ -388,9 +388,10 @@ class RolloutWorker(ParallelIteratorWorker):
             np.random.seed(seed)
             random.seed(seed)
             if not hasattr(self.env, "seed"):
-                raise ValueError("Env doesn't support env.seed(): {}".format(
+                logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
-            self.env.seed(seed)
+            else:
+                self.env.seed(seed)
             try:
                 assert torch is not None
                 torch.manual_seed(seed)
