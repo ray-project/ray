@@ -28,7 +28,7 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 # Mapping from the node type tag to the section of the autoscaler yaml that
 # contains the config for the node type.
-NODE_TYPE_CONFIG_KEYS = {
+NODE_KIND_CONFIG_KEYS = {
     NODE_KIND_WORKER: "worker_nodes",
     NODE_KIND_HEAD: "head_node",
 }
@@ -426,8 +426,8 @@ def _configure_security_group(config):
         head_security_group_src="config", workers_security_group_src="config")
 
     node_types_to_configure = [
-        node_type for node_type, config_key in NODE_TYPE_CONFIG_KEYS.items()
-        if "SecurityGroupIds" not in config[NODE_TYPE_CONFIG_KEYS[node_type]]
+        node_type for node_type, config_key in NODE_KIND_CONFIG_KEYS.items()
+        if "SecurityGroupIds" not in config[NODE_KIND_CONFIG_KEYS[node_type]]
     ]
     if not node_types_to_configure:
         return config  # have user-defined groups
@@ -506,7 +506,7 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     node_type_to_vpc = {
         node_type: _get_vpc_id_or_die(
             ec2,
-            conf[NODE_TYPE_CONFIG_KEYS[node_type]]["SubnetIds"][0],
+            conf[NODE_KIND_CONFIG_KEYS[node_type]]["SubnetIds"][0],
         )
         for node_type in node_types
     }
