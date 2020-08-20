@@ -34,12 +34,12 @@ matrix:
 
     - os: linux
       env:
+        - RAY_ENABLE_MULTI_TENANCY=1
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
-        - RAY_ENABLE_MULTI_TENANCY=1
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
