@@ -95,14 +95,20 @@ that can be used to plug custom functions into the training loop. This way the o
 ``LightningModule`` does not have to be altered at all. Also, we could use the same
 callback for multiple modules.
 
-The callback just reports some metrics back to Tune after each validation epoch:
+Ray Tune comes with ready-to-use PyTorch Lightning callbacks. To report metrics
+back to Tune after each validation epoch, we will use the ``ReportCallback``:
 
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
-   :language: python
-   :start-after: __tune_callback_begin__
-   :end-before: __tune_callback_end__
+.. code-block:: python
 
-Note that we have to explicitly convert the metrics from a tensor to a Python value.
+    from ray.tune.integration.pytorch_lightning import ReportCallback
+    callback = ReportCallback({
+        "loss": "avg_val_loss",
+        "mean_accuracy": "avg_val_accuracy"
+    }, on="validation_end")
+
+This callback will take the ``avg_val_loss`` and ``avg_val_accuracy`` values
+from the PyTorch Lightning trainer and report them to Tune as the ``loss``
+and ``mean_accuracy``, respectively.
 
 Adding the Tune training function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -284,12 +290,17 @@ Adding checkpoints to the PyTorch Lightning module
 First, we need to introduce
 another callback to save model checkpoints:
 
-.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
-   :language: python
-   :start-after: __tune_checkpoint_callback_begin__
-   :end-before: __tune_checkpoint_callback_end__
+.. code-block:: python
 
-We also include checkpoint loading in our training function:
+    from ray.tune.integration.pytorch_lightning import CheckpointCallback
+    callback = CheckpointCallback("checkpoint", on="validation_end")
+
+The ``checkpoint`` value is the name of the checkpoint file within the
+checkpoint directory.
+
+We also include checkpoint loading in our training function. The name
+of the checkpoint has to coincide with the one we passed to the
+``CheckpointCallback``:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
