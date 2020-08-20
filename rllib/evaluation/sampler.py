@@ -55,7 +55,7 @@ class _PerfStats:
     def __init__(self):
         self.iters = 0
         self.env_wait_time = 0.0
-        self.pre_processing_time = 0.0
+        self.raw_obs_processing_time = 0.0
         self.inference_time = 0.0
         self.action_processing_time = 0.0
 
@@ -66,7 +66,8 @@ class _PerfStats:
             # Waiting for environment (during poll).
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
-            "mean_pre_processing_ms": self.pre_processing_time * factor,
+            "mean_raw_obs_processing_ms":
+                self.raw_obs_processing_time * factor,
             # Computing actions through policy.
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
@@ -590,7 +591,7 @@ def _env_runner(
                 observation_fn=observation_fn,
                 perf_stats=perf_stats,
             )
-        perf_stats.pre_processing_time += time.time() - t1
+        perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
             yield o
 
