@@ -93,10 +93,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 }
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
-    const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
-  client_cache_->GetOrConnect(addr.ToProto());
+    const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client,
+    const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
+    const SchedulingKey &scheduling_key) {
+  client_cache_.GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
-  LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
+  LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0, assigned_resources, scheduling_key);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 }
 
@@ -117,6 +119,16 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       current_time_ms() > lease_entry.lease_expiration_time_) {
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight_ == 0) {
+
+      // Decrement the number of active workers consuming tasks from the queue associated with the current scheduling_key
+      auto &worker_info_entry = worker_info_[scheduling_key];
+      RAY_CHECK(worker_info_entry.first >= 1);
+      worker_info_entry.first--;
+      if (worker_info_entry.first == 0) {
+        RAY_CHECK(worker_info_entry.second == 0);
+        worker_info_.erase(scheduling_key);
+      }
+
       auto status =
           lease_entry.lease_client_->ReturnWorker(addr.port, addr.worker_id, was_error);
       if (!status.ok()) {
@@ -133,6 +145,12 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       auto task_spec = queue_entry->second.front();
       lease_entry
           .tasks_in_flight_++;  // Increment the number of tasks in flight to the worker
+
+      // Increment the total number of tasks in flight to any worker associated with the current scheduling_key
+      auto &worker_info_entry = worker_info_[scheduling_key];
+      RAY_CHECK(worker_info_entry.first >= 1);
+      worker_info_entry.second++;
+
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
       queue_entry->second.pop_front();
@@ -217,6 +235,25 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     // We don't have any of this type of task to run.
     return;
   }
+  auto worker_info_entry = worker_info_.find(scheduling_key);
+  if (worker_info_entry != worker_info_.end() && max_tasks_in_flight_per_worker_ > 1) {
+    uint32_t n_active_workers = worker_info_entry->second.first;
+    uint32_t tot_tasks_in_flight = worker_info_entry->second.second;
+    if (tot_tasks_in_flight < n_active_workers * max_tasks_in_flight_per_worker_) {
+      // The pipelines to the current workers are not full yet, so we don't need more workers.
+
+      // Find a worker with a number of tasks in flight that is less than the maximum value (max_tasks_in_flight_per_worker_)
+      // and call OnWorkerIdle to send tasks to that worker
+      for (auto it=worker_to_lease_entry_.begin(); it != worker_to_lease_entry_.end(); it ++) {
+        if (it->second.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
+          OnWorkerIdle(it->first, scheduling_key, false, it->second.assigned_resources_);
+          break;
+        }
+      }
+
+      return;
+    }
+  }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
@@ -242,8 +279,20 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
             rpc::WorkerAddress addr(reply.worker_address());
-            AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
+
+            AddWorkerLeaseClient(addr, std::move(lease_client), resources_copy, scheduling_key);
+
+            // Increment the number of active workers consuming tasks from this scheduling_key's queue
+            if (worker_info_.find(scheduling_key) == worker_info_.end()) {
+              RAY_CHECK(worker_info_.emplace(scheduling_key, std::make_pair(1,0)).second);
+            } else {
+              auto &worker_info_entry = worker_info_[scheduling_key];
+              RAY_CHECK(worker_info_entry.first >= 1);
+              worker_info_entry.first++;
+            }
+
+            
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/false, resources_copy);
           } else {
@@ -300,6 +349,12 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       auto &lease_entry = worker_to_lease_entry_[addr];
       RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
       lease_entry.tasks_in_flight_--;
+
+      // Decrement the total number of tasks in flight to any worker with the current scheduling_key
+      auto &worker_info_entry = worker_info_[scheduling_key];
+      RAY_CHECK(worker_info_entry.first >= 1);
+      RAY_CHECK(worker_info_entry.second >= 1);
+      worker_info_entry.second--;
     }
     if (reply.worker_exiting()) {
       // The worker is draining and will shutdown after it is done. Don't return
@@ -333,6 +388,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  rpc::Address client_addr;
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
@@ -359,6 +415,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
         }
       }
     }
+
     // This will get removed either when the RPC call to cancel is returned
     // or when all dependencies are resolved.
     RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
@@ -377,6 +434,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     client = maybe_client.value();
+    client_addr = rpc_client->second.ToProto();
   }
 
   RAY_CHECK(client != nullptr);
@@ -385,10 +443,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   client->CancelTask(
-      request, [this, task_spec, force_kill](const Status &status,
+      request, [this, task_spec, scheduling_key, client_addr, force_kill](const Status &status,
                                              const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
         cancelled_tasks_.erase(task_spec.TaskId());
+        
         if (status.ok() && !reply.attempt_succeeded()) {
           if (cancel_retry_timer_.has_value()) {
             if (cancel_retry_timer_->expiry().time_since_epoch() <=
@@ -399,7 +458,18 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             cancel_retry_timer_->async_wait(boost::bind(
                 &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
           }
-        }
+        } else if (status.ok() && reply.attempt_succeeded()) {
+          // Decrement the number of active workers consuming tasks from the queue associated with the current scheduling_key
+          auto &worker_info_entry = worker_info_[scheduling_key];
+          RAY_CHECK(worker_info_entry.first >= 1);
+          worker_info_entry.first--;
+          if (worker_info_entry.first == 0) {
+            RAY_CHECK(worker_info_entry.second == 0);
+            worker_info_.erase(scheduling_key);
+          }
+          // Delete lease entry for the killed worker
+          worker_to_lease_entry_.erase(rpc::WorkerAddress(client_addr));
+          }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
       });

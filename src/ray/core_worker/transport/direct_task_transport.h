@@ -123,7 +123,9 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Set up client state for newly granted worker lease.
   void AddWorkerLeaseClient(const rpc::WorkerAddress &addr,
-                            std::shared_ptr<WorkerLeaseInterface> lease_client)
+                            std::shared_ptr<WorkerLeaseInterface> lease_client,
+                            const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
+                            const SchedulingKey &scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
@@ -178,16 +180,24 @@ class CoreWorkerDirectTaskSubmitter {
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
   /// (3) The number of tasks that are currently in flight to the worker
+  /// (4) The resources assigned to the worker
+  /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client_;
     int64_t lease_expiration_time_;
     uint32_t tasks_in_flight_;
+    google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources_;
+    SchedulingKey scheduling_key_;
 
     LeaseEntry(std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-               int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0)
+               int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
+               google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources = google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
+               SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil()))
         : lease_client_(lease_client),
           lease_expiration_time_(lease_expiration_time),
-          tasks_in_flight_(tasks_in_flight) {}
+          tasks_in_flight_(tasks_in_flight),
+          assigned_resources_(assigned_resources),
+          scheduling_key_(scheduling_key) {}
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
@@ -203,6 +213,13 @@ class CoreWorkerDirectTaskSubmitter {
   // scheduling class to ensure fairness.
   // Invariant: if a queue is in this map, it has at least one task.
   absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
+      GUARDED_BY(mu_);
+
+  // For each SchedulingKey, a pair of unsigned integers keeps track of 
+  // (1) how many worker leases have been granted to execute tasks with 
+  //     the current SchedulingKey
+  // (2) how many tasks are in flight to all the workers from (1)
+  absl::flat_hash_map<SchedulingKey, std::pair<uint32_t, uint32_t>> worker_info_
       GUARDED_BY(mu_);
 
   // Tasks that were cancelled while being resolved.
