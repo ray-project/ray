@@ -157,7 +157,7 @@ Now that the trainer is constructed, here's how to train the model.
         val_metrics = trainer.validate()
 
 
-Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
+Each ``train`` call makes one pass over the training data (trains on 1 epoch), and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
 
 You can also obtain profiling information:
 
@@ -395,6 +395,49 @@ The trained torch model can be extracted for use within the same Python program 
 
     trainer.train()
     model = trainer.get_model()  # Returns multiple models if the model_creator does.
+
+Training & Validation Results
+-----------------------------
+The output for ``trainer.train()`` and ``trainer.validate()`` are first collected on a per-batch basis. These results are then averaged: first across each batch in the epoch, and then across all workers.
+
+By default, the output of ``train`` contains the following:
+
+.. code-block:: python
+
+    # Total number of samples trained on in this epoch.
+    num_samples
+    # Current training epoch.
+    epoch
+    # Number of batches trained on in this epoch averaged across all workers.
+    batch_count
+    # Training loss averaged across all batches on all workers.
+    train_loss
+    # Training loss for the last batch in epoch averaged across all workers.
+    last_train_loss
+
+And for ``validate``:
+
+.. code-block:: python
+
+    # Total number of samples validated on.
+    num_samples
+    # Number of batches validated on averaged across all workers.
+    batch_count
+    # Validation loss averaged across all batches on all workers.
+    val_loss
+    # Validation loss for last batch averaged across all workers.
+    last_val_loss
+    # Validation accuracy for last batch averaged across all workers.
+    val_accuracy
+    # Validation accuracy for last batch averaged across all workers.
+    last_val_accuracy
+
+If ``train`` or ``validate`` are run with ``reduce_results=False``, results are not averaged across workers and a list of results for each worker is returned.
+If run with ``profile=True``, timing stats for a single worker is returned alongside the results above.
+
+To add additional metrics to return you should implement your own custom training operator (:ref:`raysgd-custom-training`).
+If overriding ``train_batch`` or ``validate_batch``, the result outputs are automatically averaged across all batches, and the results for the last batch are automatically returned.
+If overriding ``train_epoch`` or ``validate`` you may find ``ray.util.sgd.utils.AverageMeterCollection`` (:ref:`ref-utils`) useful to handle this averaging.
 
 Mixed Precision (FP16) Training
 -------------------------------

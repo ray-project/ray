@@ -265,8 +265,9 @@ class StandardAutoscaler:
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
             TAG_RAY_USER_NODE_TYPE)
-        if node_type:
-            return self.available_node_types[node_type].get("resources", {})
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get(
+                "resources", {})
         else:
             return {}
 

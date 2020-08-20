@@ -9,7 +9,7 @@ from ray.exceptions import RayTaskError
 
 import ray
 from ray import serve
-from ray.serve.metric import MetricClient
+from ray.experimental import metrics
 from ray.serve.endpoint_policy import RandomEndpointPolicy
 from ray.serve.utils import logger, chain_future
 
@@ -145,24 +145,19 @@ class Router:
         for backend, backend_config in backend_configs.items():
             await self.set_backend_config(backend, backend_config)
 
-        # -- Metric Registration -- #
-        [metric_exporter] = ray.get(
-            self.controller.get_metric_exporter.remote())
-        self.metric_client = MetricClient(metric_exporter)
-        self.num_router_requests = self.metric_client.new_counter(
+        # -- Metrics Registration -- #
+        self.num_router_requests = metrics.Count(
             "num_router_requests",
-            description="Number of requests processed by the router.",
-            label_names=("endpoint", ))
-        self.num_error_endpoint_request = self.metric_client.new_counter(
+            "Number of requests processed by the router.", "requests",
+            ["endpoint"])
+        self.num_error_endpoint_requests = metrics.Count(
             "num_error_endpoint_requests",
-            description=("Number of requests errored when getting result "
-                         "for endpoint."),
-            label_names=("endpoint", ))
-        self.num_error_backend_request = self.metric_client.new_counter(
+            ("Number of requests that errored when getting results "
+             "for the endpoint."), "requests", ["endpoint"])
+        self.num_error_backend_requests = metrics.Count(
             "num_error_backend_requests",
-            description=("Number of requests errored when getting result "
-                         "from backend."),
-            label_names=("backend", ))
+            ("Number of requests that errored when getting result "
+             "from the backend."), "requests", ["backend"])
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
@@ -170,7 +165,7 @@ class Router:
                               **request_kwargs):
         endpoint = request_meta.endpoint
         logger.debug("Received a request for endpoint {}".format(endpoint))
-        self.num_router_requests.labels(endpoint=endpoint).add()
+        self.num_router_requests.record(1, {"endpoint": endpoint})
 
         request_context = request_meta.request_context
         query = Query(
@@ -187,7 +182,7 @@ class Router:
         try:
             result = await query.async_future
         except RayTaskError as e:
-            self.num_error_endpoint_request.labels(endpoint=endpoint).add()
+            self.num_error_endpoint_requests.record(1, {"endpoint": endpoint})
             result = e
         return result
 
@@ -311,7 +306,7 @@ class Router:
             else:
                 result = await object_ref
         except RayTaskError as error:
-            self.num_error_backend_request.labels(backend=backend).add()
+            self.num_error_backend_requests.record(1, {"backend": backend})
             result = error
         self.queries_counter[backend][backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
