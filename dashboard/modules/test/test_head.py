@@ -24,6 +24,22 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             ip, port = next(iter(change.old.items()))
             self._notified_agents.pop(ip)
 
+    @routes.get("/test/route_get")
+    async def route_get(self, req) -> aiohttp.web.Response:
+        pass
+
+    @routes.put("/test/route_put")
+    async def route_put(self, req) -> aiohttp.web.Response:
+        pass
+
+    @routes.delete("/test/route_delete")
+    async def route_delete(self, req) -> aiohttp.web.Response:
+        pass
+
+    @routes.view("/test/route_view")
+    async def route_view(self, req) -> aiohttp.web.Response:
+        pass
+
     @routes.get("/test/dump")
     async def dump(self, req) -> aiohttp.web.Response:
         key = req.query.get("key")

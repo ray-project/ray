@@ -2,7 +2,9 @@ import os
 import json
 import time
 import logging
+import asyncio
 
+import aiohttp.web
 import ray
 import psutil
 import pytest
@@ -12,11 +14,13 @@ import requests
 from ray import ray_constants
 from ray.test_utils import wait_for_condition, wait_until_server_available
 import ray.new_dashboard.consts as dashboard_consts
+import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
+routes = dashboard_utils.ClassMethodRouteTable
 
 
 def cleanup_test_files():
@@ -222,3 +226,87 @@ def test_http_get(ray_start_with_dashboard):
             if time.time() > start_time + timeout_seconds:
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
+
+
+def test_class_method_route_table():
+    head_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardHeadModule)
+    agent_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardAgentModule)
+    test_head_cls = None
+    for cls in head_cls_list:
+        if cls.__name__ == "TestHead":
+            test_head_cls = cls
+            break
+    assert test_head_cls is not None
+    test_agent_cls = None
+    for cls in agent_cls_list:
+        if cls.__name__ == "TestAgent":
+            test_agent_cls = cls
+            break
+    assert test_agent_cls is not None
+
+    def _has_route(route, method, path):
+        if isinstance(route, aiohttp.web.RouteDef):
+            if route.method == method and route.path == path:
+                return True
+        return False
+
+    def _has_static(route, path, prefix):
+        if isinstance(route, aiohttp.web.StaticDef):
+            if route.path == path and route.prefix == prefix:
+                return True
+        return False
+
+    all_routes = dashboard_utils.ClassMethodRouteTable.routes()
+    assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
+    assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
+    assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
+    assert any(_has_route(r, "PUT", "/test/route_put") for r in all_routes)
+    assert any(_has_route(r, "PATCH", "/test/route_patch") for r in all_routes)
+    assert any(
+        _has_route(r, "DELETE", "/test/route_delete") for r in all_routes)
+    assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
+
+    # Test bind()
+    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    assert len(bound_routes) == 0
+    dashboard_utils.ClassMethodRouteTable.bind(
+        test_agent_cls.__new__(test_agent_cls))
+    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
+    assert all(
+        not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
+
+    # Static def should be in bound routes.
+    routes.static("/test/route_static", "/path")
+    bound_routes = dashboard_utils.ClassMethodRouteTable.bound_routes()
+    assert any(
+        _has_static(r, "/path", "/test/route_static") for r in bound_routes)
+
+    # Test duplicated routes should raise exception.
+    try:
+
+        @routes.get("/test/route_get")
+        def _duplicated_route(req):
+            pass
+
+        raise Exception("Duplicated routes should raise exception.")
+    except Exception as ex:
+        message = str(ex)
+        assert "/test/route_get" in message
+        assert "test_head.py" in message
+
+    # Test exception in handler
+    post_handler = None
+    for r in bound_routes:
+        if _has_route(r, "POST", "/test/route_post"):
+            post_handler = r.handler
+            break
+    assert post_handler is not None
+
+    r = asyncio.run(post_handler())
+    assert r.status == 200
+    resp = json.loads(r.body)
+    assert resp["result"] is False
+    assert "Traceback" in resp["msg"]
