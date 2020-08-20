@@ -7,7 +7,7 @@ import {
   Theme,
   Typography,
 } from "@material-ui/core";
-import React, { useState } from "react";
+import React, { ReactChild, useState } from "react";
 import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
 import { Expander, Minimizer } from "../../../common/ExpandControls";
 import MemorySummary from "./MemorySummary";
@@ -32,7 +32,7 @@ const useMemoryRowGroupStyles = makeStyles((theme: Theme) =>
 
 type MemoryRowGroupProps = {
   groupKey: string;
-  groupTitle: string;
+  groupTitle: ReactChild;
   summary: MemoryTableSummary;
   entries: MemoryTableEntry[];
   initialExpanded: boolean;
@@ -57,9 +57,7 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
   const visibleEntries = entries.slice(0, numVisibleEntries);
   return (
     <Paper key={groupKey} className={classes.container}>
-      <Typography align="left" variant="h5">
-        {groupTitle}
-      </Typography>
+      {groupTitle}
       <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
       {expanded ? (
         <React.Fragment>

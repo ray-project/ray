@@ -10,6 +10,7 @@ import {
   Theme,
   Typography,
 } from "@material-ui/core";
+import SubdirectoryArrowRightIcon from '@material-ui/icons/SubdirectoryArrowRight';
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -23,18 +24,29 @@ import {
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import MemoryRowGroup from "./MemoryRowGroup";
+
 const groupTitle = (groupKey: string, groupBy: MemoryGroupByKey) => {
   if (groupBy === "node") {
-    return `Node ${groupKey}`;
+    return <Typography variant="h6">{`Node ${groupKey}`}</Typography>;
   }
   if (groupBy === "stack_trace") {
-    return `Stack trace ${groupKey}`;
+    return <PyStackTrace stackTrace={groupKey} />;
   }
   if (groupBy === "") {
-    return "All entries";
+    return <Typography variant="h6">All entries</Typography>;
   }
-  return "Unknown Group";
+  return <Typography variant="h6">Unknown Group</Typography>;
 };
+
+const PyStackTrace: React.FC<{ stackTrace: string }> = ({ stackTrace }) => {
+  const stackFrames = stackTrace.split(" | ");
+  const renderedFrames = stackFrames.map((frame, i) => 
+    <Typography variant="h6" style={{ marginLeft: `${i}em` }}>
+      <SubdirectoryArrowRightIcon />{frame}
+    </Typography>
+  );
+  return <Box>{renderedFrames}</Box>
+}
 
 const MEMORY_POLLING_INTERVAL_MS = 4000;
 
@@ -89,10 +101,14 @@ const MemoryInfo: React.FC<{}> = () => {
     if (!intervalId.current && !paused) {
       fetchData();
       intervalId.current = setInterval(fetchData, MEMORY_POLLING_INTERVAL_MS);
-    } else if (intervalId.current && paused) {
-      clearInterval(intervalId.current);
-      intervalId.current = null;
     }
+    const cleanup = () => {
+      if (intervalId.current) {
+        clearInterval(intervalId.current);
+        intervalId.current = null;
+      }
+    }
+    return cleanup
   }, [paused, fetchData]);
 
   if (!memoryTable) {
@@ -125,7 +141,9 @@ const MemoryInfo: React.FC<{}> = () => {
           labelId="group-by-label"
           value={groupBy}
           className={classes.select}
-          onChange={(e: any) => setGroupBy(e.target.value)}
+          onChange={(e: any) =>
+            setGroupBy(e.target.value)
+          }
           color="primary"
           displayEmpty
         >
