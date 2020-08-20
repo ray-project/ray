@@ -1,3 +1,4 @@
+import colorful as cf
 import copy
 import hashlib
 import json
@@ -35,11 +36,11 @@ from ray.autoscaler.command_runner import set_using_login_shells, \
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
+from ray.util.debug import log_once
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +206,6 @@ def create_or_update_cluster(config_file: str,
 
 CONFIG_CACHE_VERSION = 1
 
-_printed_cached_config_warning = False
-
 
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
@@ -229,10 +228,7 @@ def _bootstrap_config(config: Dict[str, Any],
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
 
-            global _printed_cached_config_warning
-            if not _printed_cached_config_warning:
-                _printed_cached_config_warning = True
-
+            if log_once("_printed_cached_config_warning"):
                 cli_logger.verbose_warning(
                     "Loaded cached provider configuration "
                     "from " + cf.bold("{}"), cache_key)
