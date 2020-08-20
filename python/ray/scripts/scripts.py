@@ -915,11 +915,11 @@ def stop(force, verbose, log_new_style, log_color):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--dump-command-output",
+    "--redirect-command-output",
     is_flag=True,
-    default=True,
-    help=("Print command output straight to "
-          "the terminal instead of redirecting to a file."))
+    default=False,
+    help=("Redirect command output to a file instead "
+          "of straight to the terminal."))
 @click.option(
     "--use-login-shells/--use-normal-shells",
     is_flag=True,
