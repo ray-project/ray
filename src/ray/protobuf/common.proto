@@ -52,6 +52,9 @@ enum PlacementStrategy {
   SPREAD = 1;
   // Packs Bundles within one node. The group is not allowed to span multiple nodes.
   STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
 }
 
 // Address of a worker or node manager.

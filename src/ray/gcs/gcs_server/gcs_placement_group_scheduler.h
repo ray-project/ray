@@ -121,6 +121,15 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
 
+/// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
+/// A node can only deploy one bundle.
+/// If the node resource is insufficient, it will fail to schedule.
+class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
+ public:
+  ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+                       const std::unique_ptr<ScheduleContext> &context) override;
+};
+
 /// GcsPlacementGroupScheduler is responsible for scheduling placement_groups registered
 /// to GcsPlacementGroupManager. This class is not thread-safe.
 class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
