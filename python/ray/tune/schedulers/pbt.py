@@ -65,10 +65,10 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     len(distribution) - 1,
                     distribution.index(config[key]) + 1)]
         else:
-            if isinstance(distribution, sample_from):
-                distribution = distribution.func(None)
+            assert False
             if random.random() < resample_probability:
-                new_config[key] = distribution()
+                new_config[key] = distribution.func(None) if isinstance(
+                    distribution, sample_from) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
