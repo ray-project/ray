@@ -137,10 +137,10 @@ def create_or_update_cluster(config_file: str,
             "Provided cluster configuration file ({}) does not exist",
             cf.bold(config_file))
         raise
-    except yaml.parser.ParserError:
+    except yaml.parser.ParserError as e:
         handle_yaml_error(e)
         raise
-    except yaml.scanner.ScannerError:
+    except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
         raise
 
