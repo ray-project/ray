@@ -929,7 +929,7 @@ def stop(force, verbose, log_new_style, log_color):
           "this can be disabled for a better user experience."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, dump_command_output,
+       yes, cluster_name, no_config_cache, redirect_command_output,
        use_login_shells, log_new_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = not log_new_style
@@ -956,10 +956,17 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
             cli_logger.old_info(logger, "Error downloading file: ", e)
-    create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name,
-                             no_config_cache, dump_command_output,
-                             use_login_shells)
+    create_or_update_cluster(
+        config_file=cluster_config_file,
+        override_min_workers=min_workers,
+        override_max_workers=max_workers,
+        no_restart=no_restart,
+        restart_only=restart_only,
+        yes=yes,
+        override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
+        redirect_command_output=redirect_command_output,
+        use_login_shells=use_login_shells)
 
 
 @cli.command()
@@ -1236,7 +1243,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             yes=True,
             override_cluster_name=cluster_name,
             no_config_cache=False,
-            dump_command_output=True,
+            redirect_command_output=False,
             use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
