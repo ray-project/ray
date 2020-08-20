@@ -139,7 +139,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                     wrapped_out,
                     torch.reshape(input_dict[SampleBatch.PREV_ACTIONS].float(),
                                   [-1, self.action_dim]),
-                    torch.reshape(input_dict[SampleBatch.PREV_REWARDS],
+                    torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
                                   [-1, 1]),
                 ],
                 dim=1)

@@ -1,3 +1,5 @@
+from typing import Any, Optional, Dict
+import copy
 import logging
 import threading
 
@@ -28,24 +30,30 @@ class NodeLauncher(threading.Thread):
         self.index = str(index) if index is not None else ""
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
-    def _launch_node(self, config, count, instance_type):
+    def _launch_node(self, config: Dict[str, Any], count: int,
+                     instance_type: Optional[str]):
+        if self.instance_types:
+            assert instance_type, instance_type
         worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, instance_type))
-        node_config = config["worker_nodes"]
+        node_config = copy.deepcopy(config["worker_nodes"])
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
             TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
+        # A custom node type is specified; set the tag in this case, and also
+        # merge the configs. We merge the configs instead of overriding, so
+        # that the bootstrapped per-cloud properties are preserved.
+        # TODO(ekl) this logic is duplicated in commands.py (keep in sync)
         if instance_type:
             node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
-            self.provider.create_node_of_type(node_config, node_tags,
-                                              instance_type, count)
-        else:
-            self.provider.create_node(node_config, node_tags, count)
+            node_config.update(
+                config["available_node_types"][instance_type]["node_config"])
+        self.provider.create_node(node_config, node_tags, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
             self.log("No new nodes reported after node creation.")

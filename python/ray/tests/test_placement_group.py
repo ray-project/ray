@@ -8,8 +8,9 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-import ray.test_utils
+from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
+from ray._raylet import PlacementGroupID
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -219,6 +220,77 @@ def test_placement_group_hang(ray_start_cluster):
     assert "CPU_group_" in list(resources.keys())[0], resources
 
 
+def test_remove_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    # First try to remove a placement group that doesn't
+    # exist. This should not do anything.
+    random_placement_group_id = PlacementGroupID.from_random()
+    for _ in range(3):
+        ray.experimental.remove_placement_group(random_placement_group_id)
+
+    # Creating a placement group as soon as it is
+    # created should work.
+    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
+    ray.experimental.remove_placement_group(pid)
+
+    def is_placement_group_removed():
+        table = ray.experimental.placement_group_table(pid)
+        if "state" not in table:
+            return False
+        return table["state"] == "REMOVED"
+
+    wait_for_condition(is_placement_group_removed)
+
+    # # Now let's create a placement group.
+    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
+
+    # # This is a hack to wait for placement group creation.
+    # # TODO(sang): Remove it when wait is implemented.
+    @ray.remote(num_cpus=0)
+    class A:
+        def f(self):
+            return 3
+
+    a = A.options(placement_group_id=pid).remote()
+    assert ray.get(a.f.remote()) == 3
+    ray.experimental.remove_placement_group(pid)
+    # # Subsequent remove request shouldn't do anything
+    for _ in range(3):
+        ray.experimental.remove_placement_group(pid)
+
+    # # Make sure placement group resources are
+    # # released and we can schedule this task.
+    @ray.remote(num_cpus=4)
+    def f():
+        return 3
+
+    assert ray.get(f.remote()) == 3
+
+    # Since the placement group is removed,
+    # the actor should've been killed.
+    # That means this request should fail.
+    # TODO(sang): Turn it on.
+    # ray.get(a.f.remote())
+
+
+def test_remove_pending_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    # Create a placement group that cannot be scheduled now.
+    pid = ray.experimental.placement_group([{"GPU": 2}, {"CPU": 2}])
+    ray.experimental.remove_placement_group(pid)
+    # TODO(sang): Add state check here.
+    @ray.remote(num_cpus=4)
+    def f():
+        return 3
+
+    # Make sure this task is still schedulable.
+    assert ray.get(f.remote()) == 3
+
+
 def test_placement_group_table(ray_start_cluster):
     @ray.remote(num_cpus=2)
     class Actor(object):
@@ -257,7 +329,7 @@ def test_placement_group_table(ray_start_cluster):
     ray.get(actor_1.value.remote())
 
     result = ray.experimental.placement_group_table(placement_group_id)
-    assert result["state"] == "ALIVE"
+    assert result["state"] == "CREATED"
 
 
 def test_cuda_visible_devices(ray_start_cluster):
@@ -276,6 +348,74 @@ def test_cuda_visible_devices(ray_start_cluster):
 
     devices = ray.get(o1)
     assert devices == "0", devices
+
+
+def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 3
+    assert nodes[0]["alive"] and nodes[1]["alive"] and nodes[2]["alive"]
+
+    placement_group_id = ray.experimental.placement_group(
+        name="name",
+        strategy="SPREAD",
+        bundles=[{
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }])
+    actor_1 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0,
+        detached=True).remote()
+    actor_2 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1,
+        detached=True).remote()
+    actor_3 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=2,
+        detached=True).remote()
+    print(ray.get(actor_1.value.remote()))
+    print(ray.get(actor_2.value.remote()))
+    print(ray.get(actor_3.value.remote()))
+
+    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
+    cluster.wait_for_nodes()
+
+    actor_4 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0,
+        detached=True).remote()
+    actor_5 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1,
+        detached=True).remote()
+    actor_6 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=2,
+        detached=True).remote()
+    print(ray.get(actor_4.value.remote()))
+    print(ray.get(actor_5.value.remote()))
+    print(ray.get(actor_6.value.remote()))
+    ray.shutdown()
 
 
 if __name__ == "__main__":
