@@ -215,6 +215,8 @@ class AutoscalingTest(unittest.TestCase):
         self.assertEqual(
             self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
         self.assertEqual(
+            self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(
             self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "m4.large")
 
