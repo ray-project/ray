@@ -43,7 +43,7 @@ struct WorkerThreadContext {
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
-  void ResetCurrentTask(const TaskSpecification &task_spec) {
+  void ResetCurrentTask() {
     SetCurrentTaskId(TaskID::Nil());
     task_index_ = 0;
     put_index_ = 0;
@@ -127,7 +127,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 }
 
 void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
-  GetThreadContext().ResetCurrentTask(task_spec);
+  GetThreadContext().ResetCurrentTask();
   if (task_spec.IsNormalTask()) {
     SetCurrentJobId(JobID::Nil());
   }
