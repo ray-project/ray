@@ -6,7 +6,7 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
