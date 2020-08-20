@@ -65,9 +65,9 @@ class WorkerSet:
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
 
             # Always create a local worker
-            self._local_worker = self._make_worker(
-                RolloutWorker, env_creator, self._policy_class, 0,
-                self._local_config)
+            self._local_worker = self._make_worker(RolloutWorker, env_creator,
+                                                   self._policy_class, 0,
+                                                   self._local_config)
 
             # Create a number of remote workers
             self._remote_workers = []
@@ -105,9 +105,9 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(
-                cls, self._env_creator, self._policy_class, i + 1,
-                self._remote_config) for i in range(num_workers)
+            self._make_worker(cls, self._env_creator, self._policy_class,
+                              i + 1, self._remote_config)
+            for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
