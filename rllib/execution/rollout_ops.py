@@ -159,10 +159,6 @@ class ConcatBatches:
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
-        #TODO
-        if isinstance(batch.data["actions"], list):
-            print(end="")
-            raise ValueError
         self.buffer.append(batch)
         self.count += batch.count
         if self.count >= self.min_batch_size:
