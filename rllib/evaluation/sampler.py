@@ -56,7 +56,6 @@ class _PerfStats:
         self.iters = 0
         self.env_wait_time = 0.0
         self.pre_processing_time = 0.0
-        self.storing_samples_in_buffer = 0.0
         self.inference_time = 0.0
         self.action_processing_time = 0.0
 
@@ -65,13 +64,9 @@ class _PerfStats:
         factor = 1000 / self.iters
         return {
             # Waiting for environment (during poll).
-            "total_env_wait_ms": self.env_wait_time,
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
             "mean_pre_processing_ms": self.pre_processing_time * factor,
-            # Time spent storing/copying env/model data in the buffer.
-            "mean_storing_samples_in_buffer_ms":
-                self.storing_samples_in_buffer * factor,
             # Computing actions through policy.
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
@@ -814,7 +809,6 @@ def _process_observations(
             # Record transition info if applicable.
             if (last_observation is not None and infos[env_id].get(agent_id,
                     {}).get("training_enabled", True)):
-                t = time.time()
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -832,7 +826,6 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
-                perf_stats.storing_samples_in_buffer += time.time() - t
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -1047,7 +1040,6 @@ def _process_observations_w_trajectory_view_api(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            t = time.time()
             if last_observation is None:
                 _sample_collector.add_init_obs(
                     episode.episode_id, agent_id, env_id,
@@ -1079,7 +1071,6 @@ def _process_observations_w_trajectory_view_api(
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
-            perf_stats.storing_samples_in_buffer += time.time() - t
 
             if not agent_done:
                 to_eval.add(policy_id)
