@@ -244,19 +244,17 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        seq_lens = None
         if self.time_major is not None:
-            seq_lens = self.seq_lens[start:end]
             return SampleBatch(
                 {k: v[:, start:end]
                  for k, v in self.data.items()},
-                _seq_lens=seq_lens,
+                _seq_lens=self.seq_lens[start:end],
                 _time_major=self.time_major)
         else:
             return SampleBatch(
                 {k: v[start:end]
                  for k, v in self.data.items()},
-                _seq_lens=seq_lens,
+                _seq_lens=None,
                 _time_major=self.time_major)
 
     @PublicAPI
