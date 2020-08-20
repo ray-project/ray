@@ -32,6 +32,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictSpreadStrategy>());
 }
 
 ScheduleMap GcsStrictPackStrategy::Schedule(
@@ -97,19 +98,82 @@ ScheduleMap GcsPackStrategy::Schedule(
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
+  // When selecting nodes, if you traverse from the beginning each time, a large number of
+  // bundles will be deployed to the previous nodes. So we start with the next node of the
+  // last selected node.
   ScheduleMap schedule_map;
-  auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
-  auto iter = alive_nodes.begin();
-  size_t index = 0;
-  size_t alive_nodes_size = alive_nodes.size();
-  for (; iter != alive_nodes.end(); iter++, index++) {
-    for (size_t base = 0;; base++) {
-      if (index + base * alive_nodes_size >= bundles.size()) {
+  auto node_resources = context->node_manager_.GetClusterRealtimeResources();
+  if (node_resources.empty()) {
+    return schedule_map;
+  }
+
+  auto candidate_nodes = node_resources;
+  auto iter = candidate_nodes.begin();
+  auto iter_begin = iter;
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    for (; iter != candidate_nodes.end(); ++iter) {
+      if (required_resources.IsSubset(*iter->second)) {
+        node_resources[iter->first]->SubtractResourcesStrict(required_resources);
+        schedule_map[bundle->BundleId()] = iter->first;
         break;
-      } else {
-        schedule_map[bundles[index + base * alive_nodes_size]->BundleId()] = iter->first;
       }
     }
+
+    if (iter == candidate_nodes.end() && iter_begin != candidate_nodes.begin()) {
+      for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
+        if (required_resources.IsSubset(*iter->second)) {
+          node_resources[iter->first]->SubtractResourcesStrict(required_resources);
+          schedule_map[bundle->BundleId()] = iter->first;
+          break;
+        }
+      }
+      if (iter == iter_begin) {
+        break;
+      }
+    }
+    iter_begin = ++iter;
+  }
+
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
+  }
+  return schedule_map;
+}
+
+ScheduleMap GcsStrictSpreadStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::unique_ptr<ScheduleContext> &context) {
+  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
+  // schedule bundles with special resource requirements first, which will be implemented
+  // in the next pr.
+  ScheduleMap schedule_map;
+  auto candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+
+  // The number of bundles is more than the number of nodes, scheduling fails.
+  if (bundles.size() > candidate_nodes.size()) {
+    return schedule_map;
+  }
+
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    auto iter = candidate_nodes.begin();
+    for (; iter != candidate_nodes.end(); ++iter) {
+      if (required_resources.IsSubset(*iter->second)) {
+        schedule_map[bundle->BundleId()] = iter->first;
+        candidate_nodes.erase(iter);
+        break;
+      }
+    }
+
+    // Node resource is not satisfied, scheduling failed.
+    if (iter == candidate_nodes.end()) {
+      break;
+    }
+  }
+
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
   }
   return schedule_map;
 }

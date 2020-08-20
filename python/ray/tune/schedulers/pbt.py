@@ -65,10 +65,9 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     len(distribution) - 1,
                     distribution.index(config[key]) + 1)]
         else:
-            if isinstance(distribution, sample_from):
-                distribution = distribution.func(None)
             if random.random() < resample_probability:
-                new_config[key] = distribution()
+                new_config[key] = distribution.func(None) if isinstance(
+                    distribution, sample_from) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -145,10 +144,12 @@ class PopulationBasedTraining(FIFOScheduler):
             to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
-            or a tune search space object (tune.sample_from, tune.uniform,
+            or a tune search space object (tune.loguniform, tune.uniform,
             etc.) can be provided. A list specifies an allowed set of
             categorical values. A function or tune search space object
-            specifies the distribution of a continuous parameter.
+            specifies the distribution of a continuous parameter. You must
+            use tune.choice, tune.uniform, tune.loguniform, etc.. Arbitrary
+            tune.sample_from objects are not supported.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
             Tune will use the search space provided by
@@ -221,6 +222,11 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
                                 "callable.")
+            if type(value) is sample_from:
+                raise ValueError("arbitrary tune.sample_from objects are not "
+                                 "supported for `hyperparam_mutation` values."
+                                 "You must use other built in primitives like"
+                                 "tune.uniform, tune.loguniform, etc.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(

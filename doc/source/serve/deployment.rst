@@ -278,6 +278,8 @@ opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :r
 To learn more, in general, about Ray Clusters see :ref:`cluster-index`.
 
 
+.. _serve-instance:
+
 Deploying Multiple Serve Instances on a Single Ray Cluster
 ----------------------------------------------------------
 

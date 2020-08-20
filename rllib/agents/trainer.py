@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union
+from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
@@ -390,19 +390,18 @@ COMMON_CONFIG: TrainerConfigDict = {
 @DeveloperAPI
 def with_common_config(
         extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with common agent confs."""
+    """Returns the given config dict merged with common agent confs.
 
-    return with_base_config(COMMON_CONFIG, extra_config)
+    Args:
+        extra_config (PartialTrainerConfigDict): A user defined partial config
+            which will get merged with COMMON_CONFIG and returned.
 
-
-def with_base_config(
-        base_config: TrainerConfigDict,
-        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with a base agent conf."""
-
-    config = copy.deepcopy(base_config)
-    config.update(extra_config)
-    return config
+    Returns:
+        TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
+            plus `extra_config`.
+    """
+    return Trainer.merge_trainer_configs(
+        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -664,7 +663,7 @@ class Trainer(Trainable):
 
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
-                    self._policy,
+                    self._policy_class,
                     merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
@@ -691,7 +690,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy: type, config: TrainerConfigDict,
+                      policy_class: Type[Policy], config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -701,9 +700,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
-            policy (class): The Policy class to use for creating the policies
-                of the workers.
-            config (dict): The Trainer's config.
+            policy (Type[Policy]): The Policy class to use for creating the
+                policies of the workers.
+            config (TrainerConfigDict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
 
@@ -711,9 +710,9 @@ class Trainer(Trainable):
             WorkerSet: The created WorkerSet.
         """
         return WorkerSet(
-            env_creator,
-            policy,
-            config,
+            env_creator=env_creator,
+            policy_class=policy_class,
+            trainer_config=config,
             num_workers=num_workers,
             logdir=self.logdir)
 
@@ -1044,8 +1043,11 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict) -> dict:
+    def merge_trainer_configs(cls,
+                              config1: TrainerConfigDict,
+                              config2: PartialTrainerConfigDict,
+                              _allow_unknown_configs: Optional[bool] = None
+                              ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -1067,7 +1069,9 @@ class Trainer(Trainable):
                     legacy_callbacks_dict=legacy_callbacks_dict)
 
             config2["callbacks"] = make_callbacks
-        return deep_update(config1, config2, cls._allow_unknown_configs,
+        if _allow_unknown_configs is None:
+            _allow_unknown_configs = cls._allow_unknown_configs
+        return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
 

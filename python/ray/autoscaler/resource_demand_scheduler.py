@@ -5,15 +5,15 @@ import collections
 from typing import List, Dict, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 
 logger = logging.getLogger(__name__)
 
 # e.g., m4.16xlarge.
-InstanceType = str
+NodeType = str
 
 # e.g., {"resources": ..., "max_workers": ...}.
-InstanceTypeConfigDict = str
+NodeTypeConfigDict = str
 
 # e.g., {"GPU": 1}.
 ResourceDict = str
@@ -24,60 +24,59 @@ NodeID = str
 
 class ResourceDemandScheduler:
     def __init__(self, provider: NodeProvider,
-                 instance_types: Dict[InstanceType, InstanceTypeConfigDict],
+                 node_types: Dict[NodeType, NodeTypeConfigDict],
                  max_workers: int):
         self.provider = provider
-        self.instance_types = instance_types
+        self.node_types = node_types
         self.max_workers = max_workers
 
     def debug_string(self, nodes: List[NodeID],
                      pending_nodes: Dict[NodeID, int]) -> str:
-        node_resources, instance_type_counts = self.calculate_node_resources(
+        node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
 
         out = "Worker instance types:"
-        for instance_type, count in instance_type_counts.items():
-            out += "\n - {}: {}".format(instance_type, count)
-            if pending_nodes.get(instance_type):
-                out += " ({} pending)".format(pending_nodes[instance_type])
+        for node_type, count in node_type_counts.items():
+            out += "\n - {}: {}".format(node_type, count)
+            if pending_nodes.get(node_type):
+                out += " ({} pending)".format(pending_nodes[node_type])
 
         return out
 
     def calculate_node_resources(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int]
-    ) -> (List[ResourceDict], Dict[InstanceType, int]):
+    ) -> (List[ResourceDict], Dict[NodeType, int]):
         """Returns node resource list and instance type counts."""
 
         node_resources = []
-        instance_type_counts = collections.defaultdict(int)
+        node_type_counts = collections.defaultdict(int)
 
-        def add_instance(instance_type):
-            if instance_type not in self.instance_types:
-                raise RuntimeError(
-                    "Missing entry for instance_type {} in "
-                    "available_instance_types config: {}".format(
-                        instance_type, self.instance_types))
+        def add_instance(node_type):
+            if node_type not in self.node_types:
+                raise RuntimeError("Missing entry for node_type {} in "
+                                   "available_node_types config: {}".format(
+                                       node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
             node_resources.append(
-                copy.deepcopy(self.instance_types[instance_type]["resources"]))
-            instance_type_counts[instance_type] += 1
+                copy.deepcopy(self.node_types[node_type]["resources"]))
+            node_type_counts[node_type] += 1
 
         for node_id in nodes:
             tags = self.provider.node_tags(node_id)
-            if TAG_RAY_INSTANCE_TYPE in tags:
-                instance_type = tags[TAG_RAY_INSTANCE_TYPE]
-                add_instance(instance_type)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                add_instance(node_type)
 
-        for instance_type, count in pending_nodes.items():
+        for node_type, count in pending_nodes.items():
             for _ in range(count):
-                add_instance(instance_type)
+                add_instance(node_type)
 
-        return node_resources, instance_type_counts
+        return node_resources, node_type_counts
 
     def get_instances_to_launch(self, nodes: List[NodeID],
-                                pending_nodes: Dict[InstanceType, int],
+                                pending_nodes: Dict[NodeType, int],
                                 resource_demands: List[ResourceDict]
-                                ) -> List[Tuple[InstanceType, int]]:
+                                ) -> List[Tuple[NodeType, int]]:
         """Get a list of instance types that should be added to the cluster.
 
         This method:
@@ -91,30 +90,30 @@ class ResourceDemandScheduler:
             logger.info("No resource demands")
             return []
 
-        node_resources, instance_type_counts = self.calculate_node_resources(
+        node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
         logger.info("Cluster resources: {}".format(node_resources))
-        logger.info("Instance counts: {}".format(instance_type_counts))
+        logger.info("Instance counts: {}".format(node_type_counts))
 
         unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        instances = get_instances_for(
-            self.instance_types, instance_type_counts,
-            self.max_workers - len(nodes), unfulfilled)
+        instances = get_instances_for(self.node_types, node_type_counts,
+                                      self.max_workers - len(nodes),
+                                      unfulfilled)
         logger.info("Instance requests: {}".format(instances))
         return instances
 
 
 def get_instances_for(
-        instance_types: Dict[InstanceType, InstanceTypeConfigDict],
-        existing_instances: Dict[InstanceType, int], max_to_add: int,
-        resources: List[ResourceDict]) -> List[Tuple[InstanceType, int]]:
+        node_types: Dict[NodeType, NodeTypeConfigDict],
+        existing_instances: Dict[NodeType, int], max_to_add: int,
+        resources: List[ResourceDict]) -> List[Tuple[NodeType, int]]:
     """Determine instances to add given resource demands and constraints.
 
     Args:
-        instance_types: instance types config.
+        node_types: instance types config.
         existing_instances: counts of existing instances already launched.
             This sets constraints on the number of new instances to add.
         max_to_add: global constraint on instances to add.
@@ -128,15 +127,14 @@ def get_instances_for(
 
     while resources and sum(instances_to_add.values()) < max_to_add:
         utilization_scores = []
-        for instance_type in instance_types:
-            if (existing_instances.get(
-                    instance_type, 0) + instances_to_add.get(instance_type, 0)
-                    >= instance_types[instance_type]["max_workers"]):
+        for node_type in node_types:
+            if (existing_instances.get(node_type, 0) + instances_to_add.get(
+                    node_type, 0) >= node_types[node_type]["max_workers"]):
                 continue
-            node_resources = instance_types[instance_type]["resources"]
+            node_resources = node_types[node_type]["resources"]
             score = _utilization_score(node_resources, resources)
             if score is not None:
-                utilization_scores.append((score, instance_type))
+                utilization_scores.append((score, node_type))
 
         # Give up, no feasible node.
         if not utilization_scores:
@@ -144,10 +142,9 @@ def get_instances_for(
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)
-        best_instance_type = utilization_scores[0][1]
-        instances_to_add[best_instance_type] += 1
-        allocated_resources.append(
-            instance_types[best_instance_type]["resources"])
+        best_node_type = utilization_scores[0][1]
+        instances_to_add[best_node_type] += 1
+        allocated_resources.append(node_types[best_node_type]["resources"])
         residual = get_bin_pack_residual(allocated_resources[-1:], resources)
         assert len(residual) < len(resources), (resources, residual)
         resources = residual
