@@ -180,5 +180,6 @@ service NodeManagerService {
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
   // Ask the raylet to spill an object to external storage.
-  rpc RequestObjectSpillage(RequestObjectSpillageRequest) returns (RequestObjectSpillageReply);
+  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
+      returns (RequestObjectSpillageReply);
 }

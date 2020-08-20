@@ -510,7 +510,7 @@ void NodeManager::HandleRequestObjectSpillage(
     const rpc::RequestObjectSpillageRequest &request,
     rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
   SpillObjects({ObjectID::FromBinary(request.object_id())},
-               [this, reply, send_reply_callback](const ray::Status &status) {
+               [reply, send_reply_callback](const ray::Status &status) {
                  if (status.ok()) {
                    reply->set_success(true);
                  }
