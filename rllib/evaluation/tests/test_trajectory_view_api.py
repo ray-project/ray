@@ -247,9 +247,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 if sample_batch_slot < len(pol_batch.seq_lens):
                     seq_len = pol_batch.seq_lens[sample_batch_slot]
                     # Make sure timesteps are always increasing within the seq.
-                    assert all(t_buf[1] + j == n+1 for j, n in enumerate(t_buf) if j < seq_len and j != 0)
+                    assert all(
+                        t_buf[1] + j == n + 1 for j, n in enumerate(t_buf)
+                        if j < seq_len and j != 0)
                     # Make sure all obs within seq are non-0.0.
-                    assert all([any(obs_buf[j] != 0.0) for j in range(1, seq_len + 1)])
+                    assert all(any(obs_buf[j] != 0.0)
+                               for j in range(1, seq_len + 1))
 
             # Check seq-lens.
             for agent_slot, seq_len in enumerate(pol_batch.seq_lens):

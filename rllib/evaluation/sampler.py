@@ -125,7 +125,7 @@ class SyncSampler(SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  soft_horizon: bool = False,
@@ -153,7 +153,7 @@ class SyncSampler(SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -193,7 +193,7 @@ class SyncSampler(SamplerInput):
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack_multiple_episodes_in_batch, callbacks, tf_sess,
+            multiple_episodes_in_batch, callbacks, tf_sess,
             self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
             _use_trajectory_view_api, self.sample_collector)
         self.metrics_queue = queue.Queue()
@@ -249,7 +249,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  blackhole_outputs: bool = False,
@@ -278,7 +278,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -316,7 +316,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.obs_filters = obs_filters
         self.clip_rewards = clip_rewards
         self.daemon = True
-        self.pack_multiple_episodes_in_batch = pack_multiple_episodes_in_batch
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
@@ -353,7 +353,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack_multiple_episodes_in_batch,
+            self.clip_actions, self.multiple_episodes_in_batch,
             self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
             self._use_trajectory_view_api)
@@ -413,7 +413,7 @@ def _env_runner(
         obs_filters: Dict[PolicyID, Filter],
         clip_rewards: bool,
         clip_actions: bool,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         tf_sess: Optional["tf.Session"],
         perf_stats: _PerfStats,
@@ -443,7 +443,7 @@ def _env_runner(
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         clip_actions (bool): Whether to clip actions to the space range.
@@ -565,8 +565,7 @@ def _env_runner(
                     preprocessors=preprocessors,
                     obs_filters=obs_filters,
                     rollout_fragment_length=rollout_fragment_length,
-                    pack_multiple_episodes_in_batch= \
-                        pack_multiple_episodes_in_batch,
+                    multiple_episodes_in_batch=multiple_episodes_in_batch,
                     callbacks=callbacks,
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
@@ -589,8 +588,7 @@ def _env_runner(
                 preprocessors=preprocessors,
                 obs_filters=obs_filters,
                 rollout_fragment_length=rollout_fragment_length,
-                pack_multiple_episodes_in_batch= \
-                    pack_multiple_episodes_in_batch,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
                 callbacks=callbacks,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
@@ -658,7 +656,7 @@ def _process_observations(
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
         rollout_fragment_length: int,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
         no_done_at_end: bool,
@@ -695,7 +693,7 @@ def _process_observations(
         rollout_fragment_length (int): Number of episode steps before
             `SampleBatch` is yielded. Set to infinity to yield complete
             episodes.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
@@ -853,7 +851,7 @@ def _process_observations(
         # Reached end of episode and we are not allowed to pack the
         # next episode into the same SampleBatch -> Build the SampleBatch
         # and add it to "outputs".
-        if (all_agents_done and not pack_multiple_episodes_in_batch) or \
+        if (all_agents_done and not multiple_episodes_in_batch) or \
                 batch_builder.count >= rollout_fragment_length:
             outputs.append(batch_builder.build_and_reset(episode))
         # Make sure postprocessor stays within one episode.
@@ -940,7 +938,7 @@ def _process_observations_w_trajectory_view_api(
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
         rollout_fragment_length: int,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
         no_done_at_end: bool,
@@ -1104,7 +1102,7 @@ def _process_observations_w_trajectory_view_api(
         # Reached end of episode and we are not allowed to pack the
         # next episode into the same SampleBatch -> Build the SampleBatch
         # and add it to "outputs".
-        if (all_agents_done and not pack_multiple_episodes_in_batch) or \
+        if (all_agents_done and not multiple_episodes_in_batch) or \
                 _sample_collector.count >= rollout_fragment_length:
             # TODO: (sven) Case: rollout_fragment_length reached: Do not
             #  store any data in `episode` anymore
