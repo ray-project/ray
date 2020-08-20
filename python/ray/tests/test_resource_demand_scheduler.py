@@ -12,7 +12,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.tags import TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_instances_for
 
@@ -211,11 +211,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].instance_type, "m4.large")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, "m4.large")
         self.assertEqual(
             self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
         self.assertEqual(
-            self.provider.mock_nodes[0].tags.get(TAG_RAY_INSTANCE_TYPE),
+            self.provider.mock_nodes[0].node_config.get("TestProp"), 1)
+        self.assertEqual(
+            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "m4.large")
 
     def testScaleUpMinSanity(self):
@@ -253,16 +255,16 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.request_resources([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
-        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
         autoscaler.request_resources([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
         autoscaler.request_resources([{"CPU": 32}] * 4)
         autoscaler.update()
         self.waitForNodes(4)
-        assert self.provider.mock_nodes[2].instance_type == "m4.16xlarge"
-        assert self.provider.mock_nodes[3].instance_type == "m4.16xlarge"
+        assert self.provider.mock_nodes[2].node_type == "m4.16xlarge"
+        assert self.provider.mock_nodes[3].node_type == "m4.16xlarge"
 
     def testResourcePassing(self):
         config = MULTI_WORKER_CLUSTER.copy()
@@ -283,11 +285,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.request_resources([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
-        assert self.provider.mock_nodes[0].instance_type == "m4.large"
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
         autoscaler.request_resources([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].instance_type == "p2.8xlarge"
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
         # TODO (Alex): Autoscaler creates the node during one update then
         # starts the updater in the enxt update. The sleep is largely

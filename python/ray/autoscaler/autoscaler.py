@@ -15,8 +15,8 @@ from ray.experimental.internal_kv import _internal_kv_put, \
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
-    TAG_RAY_INSTANCE_TYPE, STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
+    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -65,11 +65,12 @@ class StandardAutoscaler:
 
         # Check whether we can enable the resource demand scheduler.
         if "available_node_types" in self.config:
-            self.instance_types = self.config["available_node_types"]
+            self.available_node_types = self.config["available_node_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.instance_types, self.config["max_workers"])
+                self.provider, self.available_node_types,
+                self.config["max_workers"])
         else:
-            self.instance_types = None
+            self.available_node_types = None
             self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
@@ -97,7 +98,7 @@ class StandardAutoscaler:
                 queue=self.launch_queue,
                 index=i,
                 pending=self.pending_launches,
-                instance_types=self.instance_types,
+                node_types=self.available_node_types,
             )
             node_launcher.daemon = True
             node_launcher.start()
@@ -203,8 +204,8 @@ class StandardAutoscaler:
                     nodes, self.pending_launches.breakdown(),
                     self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
-            for instance_type, count in instances:
-                self.launch_new_node(count, instance_type=instance_type)
+            for node_type, count in instances:
+                self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -262,10 +263,11 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
     def _node_resources(self, node_id):
-        instance_type = self.provider.node_tags(node_id).get(
-            TAG_RAY_INSTANCE_TYPE)
-        if self.instance_types and instance_type in self.instance_types:
-            return self.instance_types[instance_type].get("resources", {})
+        node_type = self.provider.node_tags(node_id).get(
+            TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get(
+                "resources", {})
         else:
             return {}
 
@@ -441,17 +443,16 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count: int,
-                        instance_type: Optional[str]) -> None:
+    def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.pending_launches.inc(instance_type, count)
+        self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, instance_type))
+        self.launch_queue.put((config, count, node_type))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "

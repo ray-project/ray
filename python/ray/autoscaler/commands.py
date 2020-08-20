@@ -25,8 +25,8 @@ from ray.autoscaler.util import validate_config, hash_runtime_conf, \
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
     PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
     try_reload_log_state
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD, TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
+    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
@@ -82,7 +82,7 @@ def request_resources(num_cpus=None, bundles=None):
     Args:
         num_cpus: int -- the number of CPU cores to request
         bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_instance_types`
+            only has an effect if you've configured `available_node_types`
             if your cluster config.
     """
     r = _redis()
@@ -311,7 +311,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
         def remaining_nodes():
 
             workers = provider.non_terminated_nodes({
-                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
             })
 
             if keep_min_workers:
@@ -336,7 +336,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 return workers
 
             head = provider.non_terminated_nodes({
-                TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             })
 
             return head + workers
@@ -379,7 +379,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
         node = random.choice(nodes)
         cli_logger.print("Shutdown " + cf.bold("{}"), node)
@@ -472,7 +472,7 @@ def get_or_create_head_node(config,
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
         if len(nodes) > 0:
@@ -520,7 +520,7 @@ def get_or_create_head_node(config,
         # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
         head_node_config = copy.deepcopy(config["head_node"])
         if "head_node_type" in config:
-            head_node_tags[TAG_RAY_INSTANCE_TYPE] = config["head_node_type"]
+            head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
             head_node_config.update(config["available_node_types"][config[
                 "head_node_type"]]["node_config"])
 
@@ -985,7 +985,7 @@ def get_worker_node_ips(config_file: str,
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
@@ -1005,7 +1005,7 @@ def _get_worker_nodes(config, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         return provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
     finally:
         provider.cleanup()
@@ -1018,7 +1018,7 @@ def _get_head_node(config: Dict[str, Any],
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
     finally:
