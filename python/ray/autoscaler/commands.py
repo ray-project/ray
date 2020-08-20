@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import sys
+import subprocess
 import tempfile
 import time
 from typing import Any, Dict, Optional
@@ -451,11 +452,19 @@ def warn_about_bad_start_command(start_commands):
             "to ray start in the head_start_ray_commands section.")
 
 
-def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
-                            override_cluster_name):
+def get_or_create_head_node(config,
+                            config_file,
+                            no_restart,
+                            restart_only,
+                            yes,
+                            override_cluster_name,
+                            _provider=None,
+                            _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = (_provider or get_node_provider(config["provider"],
+                                               config["cluster_name"]))
 
+    config = copy.deepcopy(config)
     raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
     try:
@@ -544,7 +553,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
                 head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                     config["cluster_name"])
-                provider.create_node(config["head_node"], head_node_tags, 1)
+                provider.create_node(head_node_config, head_node_tags, 1)
                 cli_logger.print("Launched a new head node")
 
                 start = time.time()
@@ -637,6 +646,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 initialization_commands=config["initialization_commands"],
                 setup_commands=init_commands,
                 ray_start_commands=ray_start_commands,
+                process_runner=_runner,
                 runtime_hash=runtime_hash,
                 file_mounts_contents_hash=file_mounts_contents_hash,
                 docker_config=config.get("docker"))
