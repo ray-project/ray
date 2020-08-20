@@ -16,7 +16,7 @@ from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -452,7 +452,7 @@ class StandardAutoscaler:
 
     def workers(self):
         return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_KIND: NODE_TYPE_WORKER})
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "

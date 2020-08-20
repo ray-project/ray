@@ -12,7 +12,7 @@ from botocore.config import Config
 import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
-from ray.autoscaler.tags import NODE_TYPE_WORKER, NODE_TYPE_HEAD
+from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
 from ray.autoscaler.aws.utils import LazyDefaultDict, handle_boto_error
 from ray.autoscaler.node_provider import PROVIDER_PRETTY_NAMES
 
@@ -29,8 +29,8 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 # Mapping from the node type tag to the section of the autoscaler yaml that
 # contains the config for the node type.
 NODE_TYPE_CONFIG_KEYS = {
-    NODE_TYPE_WORKER: "worker_nodes",
-    NODE_TYPE_HEAD: "head_node",
+    NODE_KIND_WORKER: "worker_nodes",
+    NODE_KIND_HEAD: "head_node",
 }
 
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V30.0"
@@ -434,8 +434,8 @@ def _configure_security_group(config):
 
     security_groups = _upsert_security_groups(config, node_types_to_configure)
 
-    if NODE_TYPE_HEAD in node_types_to_configure:
-        head_sg = security_groups[NODE_TYPE_HEAD]
+    if NODE_KIND_HEAD in node_types_to_configure:
+        head_sg = security_groups[NODE_KIND_HEAD]
 
         _set_config_info(head_security_group_src="default")
         cli_logger.old_info(
@@ -444,8 +444,8 @@ def _configure_security_group(config):
             head_sg.group_name, head_sg.id)
         config["head_node"]["SecurityGroupIds"] = [head_sg.id]
 
-    if NODE_TYPE_WORKER in node_types_to_configure:
-        workers_sg = security_groups[NODE_TYPE_WORKER]
+    if NODE_KIND_WORKER in node_types_to_configure:
+        workers_sg = security_groups[NODE_KIND_WORKER]
 
         _set_config_info(workers_security_group_src="default")
         cli_logger.old_info(

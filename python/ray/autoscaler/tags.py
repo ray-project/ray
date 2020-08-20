@@ -6,8 +6,8 @@ TAG_RAY_NODE_NAME = "ray-node-name"
 # Tag for the kind of node (e.g. Head, Worker). For legacy reasons, the tag
 # value says 'type' instead of 'kind'.
 TAG_RAY_NODE_KIND = "ray-node-type"
-NODE_TYPE_HEAD = "head"
-NODE_TYPE_WORKER = "worker"
+NODE_KIND_HEAD = "head"
+NODE_KIND_WORKER = "worker"
 
 # Tag for user defined node types (e.g., m4xl_spot). This is used for multi
 # node type clusters.

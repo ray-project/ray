@@ -9,8 +9,8 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.local.config import bootstrap_local
 from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
-    NODE_TYPE_WORKER,
-    NODE_TYPE_HEAD,
+    NODE_KIND_WORKER,
+    NODE_KIND_HEAD,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class ClusterState:
                     head_config = workers.get(provider_config["head_ip"])
                     if (not head_config or
                             head_config.get("tags", {}).get(TAG_RAY_NODE_KIND)
-                            != NODE_TYPE_HEAD):
+                            != NODE_KIND_HEAD):
                         workers = {}
                         logger.info("Head IP changed - recreating cluster.")
                 else:
@@ -43,23 +43,23 @@ class ClusterState:
                     if worker_ip not in workers:
                         workers[worker_ip] = {
                             "tags": {
-                                TAG_RAY_NODE_KIND: NODE_TYPE_WORKER
+                                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
                             },
                             "state": "terminated",
                         }
                     else:
                         assert (workers[worker_ip]["tags"][TAG_RAY_NODE_KIND]
-                                == NODE_TYPE_WORKER)
+                                == NODE_KIND_WORKER)
                 if provider_config["head_ip"] not in workers:
                     workers[provider_config["head_ip"]] = {
                         "tags": {
-                            TAG_RAY_NODE_KIND: NODE_TYPE_HEAD
+                            TAG_RAY_NODE_KIND: NODE_KIND_HEAD
                         },
                         "state": "terminated",
                     }
                 else:
                     assert (workers[provider_config["head_ip"]]["tags"][
-                        TAG_RAY_NODE_KIND] == NODE_TYPE_HEAD)
+                        TAG_RAY_NODE_KIND] == NODE_KIND_HEAD)
                 # Relevant when a user reduces the number of workers
                 # without changing the headnode.
                 list_of_node_ips = list(provider_config["worker_ips"])

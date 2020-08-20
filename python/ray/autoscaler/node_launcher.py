@@ -6,7 +6,7 @@ import threading
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED,
-                                 NODE_TYPE_WORKER)
+                                 NODE_KIND_WORKER)
 from ray.autoscaler.util import hash_launch_conf
 
 logger = logging.getLogger(__name__)
@@ -34,14 +34,14 @@ class NodeLauncher(threading.Thread):
                      node_type: Optional[str]):
         if self.node_types:
             assert node_type, node_type
-        worker_filter = {TAG_RAY_NODE_KIND: NODE_TYPE_WORKER}
+        worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config["worker_nodes"])
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
-            TAG_RAY_NODE_KIND: NODE_TYPE_WORKER,
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
             TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
             TAG_RAY_LAUNCH_CONFIG: launch_hash,
         }
