@@ -1847,8 +1847,7 @@ void NodeManager::HandleCancelResourceReserve(
                  << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
 
-  // SANG-TODO: Find leased workers that are bound to this placement group and disconnect
-  // them.
+  // Kill all workers that are currently associated with the placement group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
@@ -1857,7 +1856,17 @@ void NodeManager::HandleCancelResourceReserve(
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
-    ProcessDisconnectClientMessage(worker->Connection());
+    RAY_LOG(DEBUG)
+        << "Placement group cancellation disconnects a worker. Plcaement group id: "
+        << worker->GetPlacementGroupId() << ", task id: " << worker->GetAssignedTaskId()
+        << ", actor id: " << worker->GetActorId()
+        << ", worker id: " << worker->WorkerId();
+    // We should disconnect the client first. Otherwise, we'll remove bundle resources
+    // before actual resources are returned. Subsequent disconnect request that comes
+    // due to worker dead will be ignored.
+    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+    worker->MarkDead();
+    KillWorker(worker);
   }
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
@@ -2518,10 +2527,6 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
-
-  // SANG-TODO Mark the worker with a placement group.
-  RAY_LOG(ERROR) << "Sangbin. Placement group id for a task: " << spec.TaskId()
-                 << " placement group id " << spec.PlacementGroupId();
   worker->SetPlacementGroupId(spec.PlacementGroupId());
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
