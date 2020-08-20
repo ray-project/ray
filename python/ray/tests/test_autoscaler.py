@@ -13,7 +13,7 @@ import ray.services as services
 from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
@@ -421,7 +421,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -505,9 +505,9 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
         head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
         runner = MockProcessRunner()
 
         lm = LoadMetrics()
@@ -530,7 +530,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Connect the head and workers to end the bringup phase
         addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
             lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})

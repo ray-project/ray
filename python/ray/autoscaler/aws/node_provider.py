@@ -11,7 +11,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.aws.config import bootstrap_aws
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_INSTANCE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
@@ -209,8 +209,8 @@ class AWSNodeProvider(NodeProvider):
                     "Values": [self.cluster_name],
                 },
                 {
-                    "Name": "tag:{}".format(TAG_RAY_NODE_TYPE),
-                    "Values": [tags[TAG_RAY_NODE_TYPE]],
+                    "Name": "tag:{}".format(TAG_RAY_NODE_KIND),
+                    "Values": [tags[TAG_RAY_NODE_KIND]],
                 },
                 {
                     "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),

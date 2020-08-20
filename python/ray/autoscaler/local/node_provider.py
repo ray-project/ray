@@ -8,7 +8,7 @@ import logging
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.local.config import bootstrap_local
 from ray.autoscaler.tags import (
-    TAG_RAY_NODE_TYPE,
+    TAG_RAY_NODE_KIND,
     NODE_TYPE_WORKER,
     NODE_TYPE_HEAD,
 )
@@ -31,7 +31,7 @@ class ClusterState:
                     workers = json.loads(open(self.save_path).read())
                     head_config = workers.get(provider_config["head_ip"])
                     if (not head_config or
-                            head_config.get("tags", {}).get(TAG_RAY_NODE_TYPE)
+                            head_config.get("tags", {}).get(TAG_RAY_NODE_KIND)
                             != NODE_TYPE_HEAD):
                         workers = {}
                         logger.info("Head IP changed - recreating cluster.")
@@ -43,23 +43,23 @@ class ClusterState:
                     if worker_ip not in workers:
                         workers[worker_ip] = {
                             "tags": {
-                                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                                TAG_RAY_NODE_KIND: NODE_TYPE_WORKER
                             },
                             "state": "terminated",
                         }
                     else:
-                        assert (workers[worker_ip]["tags"][TAG_RAY_NODE_TYPE]
+                        assert (workers[worker_ip]["tags"][TAG_RAY_NODE_KIND]
                                 == NODE_TYPE_WORKER)
                 if provider_config["head_ip"] not in workers:
                     workers[provider_config["head_ip"]] = {
                         "tags": {
-                            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                            TAG_RAY_NODE_KIND: NODE_TYPE_HEAD
                         },
                         "state": "terminated",
                     }
                 else:
                     assert (workers[provider_config["head_ip"]]["tags"][
-                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD)
+                        TAG_RAY_NODE_KIND] == NODE_TYPE_HEAD)
                 # Relevant when a user reduces the number of workers
                 # without changing the headnode.
                 list_of_node_ips = list(provider_config["worker_ips"])
@@ -209,13 +209,13 @@ class LocalNodeProvider(NodeProvider):
 
     def create_node(self, node_config, tags, count):
         """Creates min(count, currently available) nodes."""
-        node_type = tags[TAG_RAY_NODE_TYPE]
+        node_type = tags[TAG_RAY_NODE_KIND]
         with self.state.file_lock:
             workers = self.state.get()
             for node_id, info in workers.items():
                 if (info["state"] == "terminated"
                         and (self.use_coordinator
-                             or info["tags"][TAG_RAY_NODE_TYPE] == node_type)):
+                             or info["tags"][TAG_RAY_NODE_KIND] == node_type)):
                     info["tags"] = tags
                     info["state"] = "running"
                     self.state.put(node_id, info)
