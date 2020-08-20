@@ -354,7 +354,8 @@ class NodeUpdater:
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(True)
-                        self.cmd_runner.run(cmd,  environment_variables=env_vars)
+                        self.cmd_runner.run(
+                            cmd, environment_variables=env_vars)
                         cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":

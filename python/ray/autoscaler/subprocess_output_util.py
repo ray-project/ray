@@ -10,13 +10,13 @@ import colorful as cf
 
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
-_config = {
-    "redirect_output": False,
-    "allow_interactive": False
-}
+_config = {"redirect_output": False, "allow_interactive": False}
+
 
 def is_output_redirected():
     return _config["redirect_output"]
+
+
 def set_output_redirected(val):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
@@ -28,8 +28,11 @@ def set_output_redirected(val):
     """
     _config["redirect_output"] = val
 
+
 def does_allow_interactive():
     return _config["allow_interactive"]
+
+
 def set_allow_interactive(val):
     """Choose whether to pass on stdin to running commands.
 

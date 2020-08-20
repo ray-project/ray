@@ -26,7 +26,6 @@ import re
 import os
 from contextlib import contextmanager
 from pathlib import Path
-import subprocess
 
 import pytest
 
@@ -40,16 +39,19 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 import ray.autoscaler.aws.config as aws_config
 import ray.scripts.scripts as scripts
 
+
 def _debug_die(result):
-    print('!!!!')
+    print("!!!!")
     print(repr(result.output))
-    print('!!!!')
+    print("!!!!")
     assert False
+
 
 def _die_on_error(result):
     if result.exit_code == 0:
         return
     _debug_die(result)
+
 
 def _debug_check_line_by_line(result, expected_lines):
     output_lines = result.output.split("\n")
@@ -60,7 +62,7 @@ def _debug_check_line_by_line(result, expected_lines):
 
         if i >= len(expected_lines):
             i += 1
-            print('!!!!!! Expected fewer lines')
+            print("!!!!!! Expected fewer lines")
             continue
 
         exp = expected_lines[i]
@@ -76,11 +78,13 @@ def _debug_check_line_by_line(result, expected_lines):
 
     assert False
 
+
 def _setup_aws_mock():
     # moto (boto3 mock) only allows a hardcoded set of AMIs
     dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
-                        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
+        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
     aws_config.DEFAULT_AMI["us-west-2"] = dlami
+
 
 @contextmanager
 def _unlink_test_shh_key():
@@ -94,6 +98,7 @@ def _unlink_test_shh_key():
         except FileNotFoundError:
             pass
 
+
 @contextmanager
 def _setup_popen_mock(commands_mock):
     Popen = MockPopen()
@@ -103,14 +108,17 @@ def _setup_popen_mock(commands_mock):
         replacer.replace("subprocess.Popen", Popen)
         yield
 
+
 def _get_pattern_path(name):
     p = Path(__file__).parent / "test_cli_patterns" / name
     return str(p)
+
 
 def _load_output_pattern(name):
     with open(_get_pattern_path(name)) as f:
         # remove \n
         return [x[:-1] for x in f.readlines()]
+
 
 def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
@@ -125,17 +133,18 @@ def _check_output_via_pattern(name, result):
 
     assert result.exit_code == 0
 
+
 default_test_config_path = (
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.json")
 
+
 def test_ray_start():
     runner = CliRunner()
-    result = runner.invoke(
-        scripts.start,
-        ["--head", "--log-new-style"])
+    result = runner.invoke(scripts.start, ["--head", "--log-new-style"])
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)
+
 
 @mock_ec2
 @mock_iam
@@ -159,16 +168,17 @@ def test_ray_up(aws_credentials):
 
     with _unlink_test_shh_key():
         with _setup_popen_mock(commands_mock):
-            expected_lines = _load_output_pattern("test_ray_up.txt")
+            # expected_lines = _load_output_pattern("test_ray_up.txt")
 
             # config cache does not work with mocks
             runner = CliRunner()
-            result = runner.invoke(
-                scripts.up,
-                [str(default_test_config_path),
-                    "--no-config-cache", "-y", "--log-new-style"])
+            result = runner.invoke(scripts.up, [
+                str(default_test_config_path), "--no-config-cache", "-y",
+                "--log-new-style"
+            ])
 
             _check_output_via_pattern("test_ray_up.txt", result)
+
 
 @mock_ec2
 @mock_iam
@@ -184,18 +194,18 @@ def test_ray_attach():
     with _unlink_test_shh_key():
         with _setup_popen_mock(commands_mock):
             runner = CliRunner()
-            result = runner.invoke(
-                scripts.up,
-                [str(default_test_config_path),
-                 "--no-config-cache", "-y", "--log-new-style"])
+            result = runner.invoke(scripts.up, [
+                str(default_test_config_path), "--no-config-cache", "-y",
+                "--log-new-style"
+            ])
             _die_on_error(result)
 
             result = runner.invoke(
                 scripts.attach,
-                [str(default_test_config_path),
-                 "--log-new-style"])
+                [str(default_test_config_path), "--log-new-style"])
 
             _check_output_via_pattern("test_ray_attach.txt", result)
+
 
 @mock_ec2
 @mock_iam
@@ -211,19 +221,19 @@ def test_ray_exec():
     with _unlink_test_shh_key():
         with _setup_popen_mock(commands_mock):
             runner = CliRunner()
-            result = runner.invoke(
-                scripts.up,
-                [str(default_test_config_path),
-                 "--no-config-cache", "-y", "--log-new-style"])
+            result = runner.invoke(scripts.up, [
+                str(default_test_config_path), "--no-config-cache", "-y",
+                "--log-new-style"
+            ])
             _die_on_error(result)
 
-            result = runner.invoke(
-                scripts.exec,
-                [str(default_test_config_path),
-                 "--log-new-style",
-                 "\"echo This is a test!\""])
+            result = runner.invoke(scripts.exec, [
+                str(default_test_config_path), "--log-new-style",
+                "\"echo This is a test!\""
+            ])
 
             _check_output_via_pattern("test_ray_exec.txt", result)
+
 
 @mock_ec2
 @mock_iam
@@ -240,22 +250,25 @@ def test_ray_submit():
     with _unlink_test_shh_key():
         with _setup_popen_mock(commands_mock):
             runner = CliRunner()
-            result = runner.invoke(
-                scripts.up,
-                [str(default_test_config_path),
-                 "--no-config-cache", "-y", "--log-new-style"])
+            result = runner.invoke(scripts.up, [
+                str(default_test_config_path), "--no-config-cache", "-y",
+                "--log-new-style"
+            ])
             _die_on_error(result)
 
             result = runner.invoke(
                 scripts.submit,
-                [str(default_test_config_path),
-                 "--log-new-style",
-                 # this is somewhat misleading, since the file
-                 # actually never gets run
-                 # TODO(maximsmol): make this work properly one day?
-                 _get_pattern_path("test.py")])
+                [
+                    str(default_test_config_path),
+                    "--log-new-style",
+                    # this is somewhat misleading, since the file
+                    # actually never gets run
+                    # TODO(maximsmol): make this work properly one day?
+                    _get_pattern_path("test.py")
+                ])
 
             _check_output_via_pattern("test_ray_submit.txt", result)
+
 
 @pytest.fixture(scope="function")
 def aws_credentials():
@@ -264,6 +277,7 @@ def aws_credentials():
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -22,7 +22,6 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
 
-from ray.autoscaler.subprocess_output_util import set_output_redirected
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -991,18 +990,22 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     is_flag=True,
     default=False,
     help="Do not attempt to shut down the Ray runtime before stopping "
-         "or terminating nodes.")
+    "or terminating nodes.")
 @add_click_options(logging_options)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers, skip_ray_stop,
-         log_new_style, log_color, verbose):
+         keep_min_workers, skip_ray_stop, log_new_style, log_color, verbose):
     """Tear down a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
 
-    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
-                     keep_min_workers, skip_ray_stop=skip_ray_stop)
+    teardown_cluster(
+        cluster_config_file,
+        yes,
+        workers_only,
+        cluster_name,
+        keep_min_workers,
+        skip_ray_stop=skip_ray_stop)
 
 
 @cli.command()

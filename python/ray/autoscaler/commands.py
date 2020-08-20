@@ -205,8 +205,9 @@ def create_or_update_cluster(config_file: str,
 
 CONFIG_CACHE_VERSION = 1
 
-
 _printed_cached_config_warning = False
+
+
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
@@ -276,9 +277,12 @@ def _bootstrap_config(config: Dict[str, Any],
     return resolved_config
 
 
-def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
+def teardown_cluster(config_file: str,
+                     yes: bool,
+                     workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool, skip_ray_stop: bool = False):
+                     keep_min_workers: bool,
+                     skip_ray_stop: bool = False):
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -316,9 +320,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 logger, "Ignoring error attempting a clean shutdown.")
 
     if skip_ray_stop:
-        cli_logger.print(
-            "Skipped stopping the Ray runtime "
-            "before bringing down the cluster.")
+        cli_logger.print("Skipped stopping the Ray runtime "
+                         "before bringing down the cluster.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
