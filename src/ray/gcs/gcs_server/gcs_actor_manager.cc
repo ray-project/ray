@@ -794,7 +794,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
                    << ", remaining_restarts = " << remaining_restarts;
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GSC, or the RESTARTING
-    // m actor notification might contains a wrong num_restarts.
+    // actor notification might contains a wrong num_restarts.
     mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
     const auto actor_table_data = actor->GetActorTableData();
