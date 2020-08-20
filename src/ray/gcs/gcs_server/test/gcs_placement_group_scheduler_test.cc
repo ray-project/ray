@@ -80,7 +80,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
 
     // Schedule the placement_group with zero node.
-    scheduler_->Schedule(
+    scheduler_->ScheduleUnplacedBundles(
         placement_group,
         [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           failure_placement_groups_.emplace_back(std::move(placement_group));
@@ -107,7 +107,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
     // Schedule the placement_group with 1 available node, and the lease request should be
     // send to the node.
-    scheduler_->Schedule(
+    scheduler_->ScheduleUnplacedBundles(
         placement_group,
         [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
           absl::MutexLock lock(&vector_mutex_);
@@ -504,8 +504,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   auto request = Mocker::GenCreatePlacementGroupRequest(
       "", rpc::PlacementStrategy::STRICT_SPREAD, 2, 2);
   auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request);
-  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
-                                           success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
 
   // The number of nodes is less than the number of bundles, scheduling failed.
   WaitPendingDone(failure_placement_groups_, 1);
@@ -513,15 +512,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   // Node1 resource is insufficient, scheduling failed.
   auto node1 = Mocker::GenNodeInfo(1);
   AddNode(node1, 1);
-  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
-                                           success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   WaitPendingDone(failure_placement_groups_, 2);
 
   // The node2 resource is enough and the scheduling is successful.
   auto node2 = Mocker::GenNodeInfo(2);
   AddNode(node2);
-  gcs_placement_group_scheduler_->Schedule(placement_group, failure_handler,
-                                           success_handler);
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_client_->GrantResourceReserve());
   ASSERT_TRUE(raylet_client2_->GrantResourceReserve());
   WaitPendingDone(success_placement_groups_, 1);
