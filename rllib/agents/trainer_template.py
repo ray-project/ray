@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Iterable, List, Optional, Type, Union
+from typing import Callable, Iterable, List, Optional, Type
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -96,10 +96,7 @@ def build_trainer(
         _default_config = default_config or COMMON_CONFIG
         _policy_class = default_policy
 
-        def __init__(self,
-                     config: PartialTrainerConfigDict = None,
-                     env: Optional[Union[str, EnvType]] = None,
-                     logger_creator: Optional[Callable[[], Logger]] = None):
+        def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
 
         def _init(self, config: TrainerConfigDict,
