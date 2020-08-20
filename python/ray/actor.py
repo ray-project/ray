@@ -8,7 +8,8 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray.experimental.placement_group import PlacementGroup
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -508,13 +509,9 @@ class ActorClass:
 
         if placement_group is None:
             placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
-            if placement_group_bundle_index != -1:
-                raise ValueError("If placement group is not set, "
-                                 "the value of bundle index must be -1.")
-        elif placement_group_bundle_index >= placement_group.bundle_count \
-                or placement_group_bundle_index < -1:
-            raise ValueError("placement group bundle index {} is invalid."
-                             .format(placement_group_bundle_index))
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the

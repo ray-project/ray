@@ -357,7 +357,11 @@ def test_remove_pending_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     # Create a placement group that cannot be scheduled now.
-    placement_group = ray.experimental.placement_group([{"GPU": 2}, {"CPU": 2}])
+    placement_group = ray.experimental.placement_group([{
+        "GPU": 2
+    }, {
+        "CPU": 2
+    }])
     ray.experimental.remove_placement_group(placement_group.id)
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
@@ -505,9 +509,7 @@ def test_check_bundle_index(ray_start_cluster):
             return self.n
 
     cluster = ray_start_cluster
-    num_nodes = 2
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     placement_group = ray.experimental.placement_group(

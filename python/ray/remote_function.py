@@ -4,7 +4,8 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.experimental.placement_group import PlacementGroup
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
 import ray.signature
 
 # Default parameters for remote functions.
@@ -191,13 +192,9 @@ class RemoteFunction:
 
         if placement_group is None:
             placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
-            if placement_group_bundle_index != -1:
-                raise ValueError("If placement group is not set, "
-                                 "the value of bundle index must be -1.")
-        elif placement_group_bundle_index >= placement_group.bundle_count \
-                or placement_group_bundle_index < -1:
-            raise ValueError("placement group bundle index {} is invalid."
-                             .format(placement_group_bundle_index))
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
