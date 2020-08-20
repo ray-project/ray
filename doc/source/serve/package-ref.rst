@@ -32,9 +32,6 @@ Advanced APIs
 .. autofunction:: ray.serve.get_handle
 .. autoclass:: ray.serve.handle.RayServeHandle
 
-``serve.stat`` queries Ray Serve's built-in metric monitor.
-.. autofunction:: ray.serve.stat
-
 
 ``serve.accept_batch`` marks your backend API does accept list of input instead
 of just single input.

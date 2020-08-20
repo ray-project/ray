@@ -1289,7 +1289,8 @@ def start_raylet(redis_address,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False):
+                 start_initial_python_workers_for_first_job=False,
+                 object_spilling_config=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1371,8 +1372,7 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable,
-        worker_path,
+        sys.executable, worker_path,
         "--node-ip-address={}".format(node_ip_address),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
@@ -1380,6 +1380,7 @@ def start_raylet(redis_address,
         "--redis-address={}".format(redis_address),
         "--config-list={}".format(config_str),
         "--temp-dir={}".format(temp_dir),
+        f"--metrics-agent-port={metrics_agent_port}"
     ]
     if redis_password:
         start_worker_command += ["--redis-password={}".format(redis_password)]
@@ -1397,6 +1398,10 @@ def start_raylet(redis_address,
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
+
+    if object_spilling_config:
+        start_worker_command.append(
+            f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
     command = [
         RAYLET_EXECUTABLE,

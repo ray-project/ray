@@ -155,14 +155,13 @@ export enum ActorState {
   Dead = 4,
 }
 
-export type RayletActorInfo = FullActorInfo | PartialActorInfo;
+export type ActorInfo = FullActorInfo | PartialActorInfo;
 
 export type FullActorInfo = {
   actorId: string;
   actorTitle: string;
   averageTaskExecutionSpeed: number;
-  children: RayletInfoResponse["actors"];
-  // currentTaskFuncDesc: string[];
+  children?: ActorInfo[];
   ipAddress: string;
   jobId: string;
   nodeId: string;
@@ -187,8 +186,8 @@ export type FullActorInfo = {
 };
 
 export type PartialActorInfo = {
-  actorId: string;
-  actorTitle: string;
+  actorId?: string;
+  actorTitle?: string;
   requiredResources?: { [key: string]: number };
   state: ActorState.Invalid;
   invalidStateType?: InvalidStateType;
@@ -196,12 +195,12 @@ export type PartialActorInfo = {
 
 // eslint-disable-next-line
 export function isFullActorInfo(
-  rayletInfo: RayletActorInfo,
-): rayletInfo is FullActorInfo {
+  actorInfo: ActorInfo,
+): actorInfo is FullActorInfo {
   // Lint disabled because arrow functions don't play well with type guards.
   // This function is used to determine what kind of information we have about
   // a given actor in a response based on its state.
-  return rayletInfo.state !== ActorState.Invalid;
+  return actorInfo.state !== ActorState.Invalid;
 }
 
 export type InvalidStateType = "infeasibleActor" | "pendingActor";
@@ -214,7 +213,7 @@ export type RayletInfoResponse = {
     };
   };
   actors: {
-    [actorId: string]: RayletActorInfo;
+    [actorId: string]: ActorInfo;
   };
 };
 

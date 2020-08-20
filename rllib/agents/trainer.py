@@ -25,7 +25,7 @@ from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import TrainerConfigDict, \
+from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -370,6 +370,10 @@ COMMON_CONFIG: TrainerConfigDict = {
         "replay_mode": "independent",
     },
 
+    # === Logger ===
+    # Define logger-specific configuration to be used inside Logger
+    "logger_config": {},
+
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
@@ -569,7 +573,8 @@ class Trainer(Trainable):
             # Try gym.
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env)
+                self.env_creator = \
+                    lambda env_config: gym.make(env, **env_config)
         else:
             self.env_creator = lambda env_config: None
 

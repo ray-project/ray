@@ -8,7 +8,6 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.metric import InMemoryExporter
 
 controller = None
 
@@ -58,7 +57,6 @@ def accept_batch(f):
 def init(name=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         metric_exporter=InMemoryExporter,
          _http_middlewares=[]):
     """Initialize or connect to a serve cluster.
 
@@ -75,10 +73,6 @@ def init(name=None,
         http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
             starts one HTTP server per node in the Ray cluster.
         http_port (int, List[int]): Port for HTTP server. Default to 8000.
-        metric_exporter(ExporterInterface): The class aggregates metrics from
-            all RayServe actors and optionally export them to external
-            services. Ray Serve has two options built in: InMemoryExporter and
-            PrometheusExporter
     """
     if name is not None and not isinstance(name, str):
         raise TypeError("name must be a string.")
@@ -100,7 +94,7 @@ def init(name=None,
         name=controller_name,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_host, http_port, metric_exporter, _http_middlewares)
+    ).remote(name, http_host, http_port, _http_middlewares)
 
     futures = []
     for node_id in ray.state.node_ids():
@@ -160,6 +154,17 @@ def create_endpoint(endpoint_name,
         raise TypeError(
             "methods must be a list of strings, but got type {}".format(
                 type(methods)))
+
+    endpoints = list_endpoints()
+    if endpoint_name in endpoints:
+        methods_old = endpoints[endpoint_name]["methods"]
+        route_old = endpoints[endpoint_name]["route"]
+        if methods_old.sort() == methods.sort() and route_old == route:
+            raise ValueError(
+                "Route '{}' is already registered to endpoint '{}' "
+                "with methods '{}'.  To set the backend for this "
+                "endpoint, please use serve.set_traffic().".format(
+                    route, endpoint_name, methods))
 
     upper_methods = []
     for method in methods:
@@ -260,6 +265,11 @@ def create_backend(backend_tag,
             be sent to a replica of this backend without receiving a
             response.
     """
+    if backend_tag in list_backends():
+        raise ValueError(
+            "Cannot create backend. "
+            "Backend '{}' is already registered.".format(backend_tag))
+
     if config is None:
         config = {}
     if not isinstance(config, dict):
@@ -340,18 +350,11 @@ def shadow_traffic(endpoint_name, backend_tag, proportion):
 
 
 @_ensure_connected
-def get_handle(endpoint_name,
-               relative_slo_ms=None,
-               absolute_slo_ms=None,
-               missing_ok=False):
+def get_handle(endpoint_name, missing_ok=False):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
         endpoint_name (str): A registered service endpoint.
-        relative_slo_ms(float): Specify relative deadline in milliseconds for
-            queries fired using this handle. (Default: None)
-        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
-            queries fired using this handle. (Default: None)
         missing_ok (bool): If true, skip the check for the endpoint existence.
             It can be useful when the endpoint has not been registered.
 
@@ -366,33 +369,4 @@ def get_handle(endpoint_name,
     return RayServeHandle(
         list(routers.values())[0],
         endpoint_name,
-        relative_slo_ms,
-        absolute_slo_ms,
     )
-
-
-@_ensure_connected
-def stat():
-    """Retrieve metric statistics about ray serve system.
-
-    Returns:
-        metric_stats(Any): Metric information returned by the metric exporter.
-            This can vary by exporter. For the default InMemoryExporter, it
-            returns a list of the following format:
-
-            .. code-block::python
-              [
-                  {"info": {
-                      "name": ...,
-                      "type": COUNTER|MEASURE,
-                      "label_key": label_value,
-                      "label_key": label_value,
-                      ...
-                  }, "value": float}
-              ]
-
-            For PrometheusExporter, it returns the metrics in prometheus format
-            in plain text.
-    """
-    [metric_exporter] = ray.get(controller.get_metric_exporter.remote())
-    return ray.get(metric_exporter.inspect_metrics.remote())

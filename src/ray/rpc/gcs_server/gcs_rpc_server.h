@@ -456,6 +456,14 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual void HandleCreatePlacementGroup(const CreatePlacementGroupRequest &request,
                                           CreatePlacementGroupReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemovePlacementGroup(const RemovePlacementGroupRequest &request,
+                                          RemovePlacementGroupReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetPlacementGroup(const GetPlacementGroupRequest &request,
+                                       GetPlacementGroupReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -475,6 +483,8 @@ class PlacementGroupInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
   }
 
  private:
