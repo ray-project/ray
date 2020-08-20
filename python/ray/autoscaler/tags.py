@@ -3,8 +3,8 @@
 # Tag for the name of the node
 TAG_RAY_NODE_NAME = "ray-node-name"
 
-# Tag for the type of node (e.g. Head, Worker). Note that this is different
-# from TAG_RAY_USER_NODE_TYPE!
+# Tag for the kind of node (e.g. Head, Worker). For legacy reasons, the tag
+# value says 'type' instead of 'kind'.
 TAG_RAY_NODE_KIND = "ray-node-type"
 NODE_TYPE_HEAD = "head"
 NODE_TYPE_WORKER = "worker"
