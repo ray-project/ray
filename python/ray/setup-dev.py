@@ -36,7 +36,7 @@ def do_link(package, force=False, local_path=""):
     else:
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
-            print(f"You don't have write permission "
+            print("You don't have write permission "
                   f"to {package_home}, using sudo:")
             sudo = ["sudo"]
         subprocess.check_call(sudo + ["rm", "-rf", package_home])

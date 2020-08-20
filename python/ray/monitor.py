@@ -365,7 +365,7 @@ if __name__ == "__main__":
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = (f"The monitor failed with the "
+        message = ("The monitor failed with the "
                    f"following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)

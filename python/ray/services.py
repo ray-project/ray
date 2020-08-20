@@ -163,7 +163,7 @@ def find_redis_address_or_die():
             pass
     if len(redis_addresses) > 1:
         raise ConnectionError(
-            f"Found multiple active Ray instances: {redis_addresses}. " +
+            f"Found multiple active Ray instances: {redis_addresses}. "
             "Please specify the one to connect to by setting `address`.")
         sys.exit(1)
     elif not redis_addresses:
@@ -429,7 +429,7 @@ def start_ray_process(command,
                     valgrind_profiler_env_var)
         use_valgrind_profiler = True
     perftools_profiler_env_var = (f"RAY_{process_type.upper()}"
-                                  f"_PERFTOOLS_PROFILER")
+                                  "_PERFTOOLS_PROFILER")
     if os.environ.get(perftools_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.",
                     perftools_profiler_env_var)
@@ -1601,7 +1601,7 @@ def determine_plasma_store_config(object_store_memory,
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(f"The file {plasma_directory} does not "
-                         f"exist or is not a directory.")
+                         "exist or is not a directory.")
 
     if huge_pages and plasma_directory is None:
         raise ValueError("If huge_pages is True, then the "

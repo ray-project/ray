@@ -745,7 +745,7 @@ class ActorHandle:
 
                 def remote(self, *args, **kwargs):
                     logger.warning(f"Actor method {item} is not "
-                                   f"supported by cross language.")
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 
