@@ -246,9 +246,8 @@ def test_remove_placement_group(ray_start_cluster):
     # # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
-    # # This is a hack to wait for placement group creation.
-    # # TODO(sang): Remove it when wait is implemented.
-    @ray.remote(num_cpus=0)
+    # Create an actor that occupies resources.
+    @ray.remote(num_cpus=4)
     class A:
         def f(self):
             return 3
@@ -271,8 +270,8 @@ def test_remove_placement_group(ray_start_cluster):
     # Since the placement group is removed,
     # the actor should've been killed.
     # That means this request should fail.
-    # TODO(sang): Turn it on.
-    # ray.get(a.f.remote())
+    with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
+        ray.get(a.f.remote(), timeout=3.0)
 
 
 def test_remove_pending_placement_group(ray_start_cluster):

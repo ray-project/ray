@@ -189,6 +189,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Compute a static key that represents the given resource shape.
   static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
 
+  const PlacementGroupID PlacementGroupId() const;
+
  private:
   void ComputeResources();
 

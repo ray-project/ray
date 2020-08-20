@@ -40,7 +40,7 @@ struct Mocker {
     auto resource = std::unordered_map<std::string, double>();
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, resource,
-                              resource);
+                              resource, PlacementGroupID::Nil());
     builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
