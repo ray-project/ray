@@ -63,6 +63,17 @@ class MockParam(object):
         return val
 
 
+class PopulationBasedTrainingSyncTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testSync(self):
+        """End-to-end test of synchronous PBT"""
+        
+
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
         ray.init()
