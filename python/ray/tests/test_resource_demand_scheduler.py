@@ -12,7 +12,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.tags import TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_instances_for
 
@@ -215,7 +215,7 @@ class AutoscalingTest(unittest.TestCase):
         self.assertEqual(
             self.provider.mock_nodes[0].node_config.get("FooProperty"), 42)
         self.assertEqual(
-            self.provider.mock_nodes[0].tags.get(TAG_RAY_INSTANCE_TYPE),
+            self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "m4.large")
 
     def testScaleUpMinSanity(self):
