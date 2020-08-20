@@ -37,12 +37,12 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids) {
+    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, address, num_returns,
-                            required_resources, required_placement_resources);
+  builder.SetCommonTaskSpec(
+      task_id, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      current_task_id, task_index, caller_id, address, num_returns, required_resources,
+      required_placement_resources, placement_group_id);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1222,7 +1222,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, return_ids);
+                      constrained_resources, required_resources, return_ids,
+                      placement_options.first);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1262,7 +1263,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, &return_ids);
+                      new_placement_resources, &return_ids,
+                      actor_creation_options.placement_options.first);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_restarts,
       actor_creation_options.dynamic_worker_options,
@@ -1363,7 +1365,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids);
+                      required_resources, return_ids, PlacementGroupID::Nil());
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);

@@ -377,7 +377,6 @@ class GlobalState:
 
         return dict(result)
 
-    # SANG-TODO Add functions.
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()
 

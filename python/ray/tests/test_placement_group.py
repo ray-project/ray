@@ -246,33 +246,46 @@ def test_remove_placement_group(ray_start_cluster):
     # # Now let's create a placement group.
     pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
 
-    # # This is a hack to wait for placement group creation.
-    # # TODO(sang): Remove it when wait is implemented.
-    @ray.remote(num_cpus=0)
+    # Create an actor that occupies resources.
+    @ray.remote(num_cpus=2)
     class A:
         def f(self):
             return 3
 
+    # Currently, there's no way to prevent
+    # tasks to be retried for removed placement group.
+    # Set max_retrie=0 for testing.
+    # TODO(sang): Handle this edge case.
+    @ray.remote(num_cpus=2, max_retries=0)
+    def long_running_task():
+        print(os.getpid())
+        import time
+        time.sleep(50)
+
+    # Schedule a long running task and actor.
+    task_ref = long_running_task.options(placement_group_id=pid).remote()
     a = A.options(placement_group_id=pid).remote()
     assert ray.get(a.f.remote()) == 3
+
     ray.experimental.remove_placement_group(pid)
-    # # Subsequent remove request shouldn't do anything
+    # Subsequent remove request shouldn't do anything.
     for _ in range(3):
         ray.experimental.remove_placement_group(pid)
 
-    # # Make sure placement group resources are
-    # # released and we can schedule this task.
+    # Make sure placement group resources are
+    # released and we can schedule this task.
     @ray.remote(num_cpus=4)
     def f():
         return 3
 
     assert ray.get(f.remote()) == 3
-
     # Since the placement group is removed,
     # the actor should've been killed.
     # That means this request should fail.
-    # TODO(sang): Turn it on.
-    # ray.get(a.f.remote())
+    with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
+        ray.get(a.f.remote(), timeout=3.0)
+    with pytest.raises(ray.exceptions.RayWorkerError):
+        ray.get(task_ref)
 
 
 def test_remove_pending_placement_group(ray_start_cluster):

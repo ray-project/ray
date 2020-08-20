@@ -1843,11 +1843,33 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(INFO) << "bundle return resource request " << bundle_spec.BundleId().first
+                << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
-  // TODO(ekl) doesn't this not return in-use resources? We need to be able to
-  // reclaim those somehow (i.e., destroy the workers allocated in the bundle).
+
+  // Kill all workers that are currently associated with the placement group.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
+  for (const auto &worker_it : leased_workers_) {
+    auto &worker = worker_it.second;
+    if (worker->GetPlacementGroupId() == bundle_spec.PlacementGroupId()) {
+      workers_associated_with_pg.push_back(worker);
+    }
+  }
+  for (const auto &worker : workers_associated_with_pg) {
+    RAY_LOG(DEBUG)
+        << "Destroying worker since its placement group was removed. Placement group id: "
+        << worker->GetPlacementGroupId()
+        << ", bundle index: " << bundle_spec.BundleId().second
+        << ", task id: " << worker->GetAssignedTaskId()
+        << ", actor id: " << worker->GetActorId()
+        << ", worker id: " << worker->WorkerId();
+    // We should disconnect the client first. Otherwise, we'll remove bundle resources
+    // before actual resources are returned. Subsequent disconnect request that comes
+    // due to worker dead will be ignored.
+    ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+    worker->MarkDead();
+    KillWorker(worker);
+  }
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
@@ -2507,6 +2529,7 @@ void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
   if (task.GetTaskSpecification().IsDetachedActor()) {
     worker->MarkDetachedActor();
   }
+  worker->SetPlacementGroupId(spec.PlacementGroupId());
 
   const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
   const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
