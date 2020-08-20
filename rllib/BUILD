@@ -1025,6 +1025,21 @@ py_test(
     srcs = ["models/tests/test_attention_nets.py"]
 )
 
+
+# --------------------------------------------------------------------
+# Evaluation components
+# rllib/evaluation/
+#
+# Tag: evaluation
+# --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_trajectory_view_api",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+)
+
+
 # --------------------------------------------------------------------
 # Optimizers and Memories
 # rllib/execution/
@@ -1058,13 +1073,6 @@ py_test(
     tags = ["policy"],
     size = "medium",
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
-)
-
-py_test(
-    name = "policy/tests/test_trajectory_view_api",
-    tags = ["policy"],
-    size = "medium",
-    srcs = ["policy/tests/test_trajectory_view_api.py"]
 )
 
 # --------------------------------------------------------------------
