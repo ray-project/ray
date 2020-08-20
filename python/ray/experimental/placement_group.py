@@ -8,6 +8,7 @@ from ray._raylet import (
 class PlacementGroup:
     """A handle to a placement group.
     """
+
     def __init__(self, id, bundle_count):
         self.id = id
         self.bundle_count = bundle_count
