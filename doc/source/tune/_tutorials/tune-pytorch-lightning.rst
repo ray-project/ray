@@ -349,5 +349,5 @@ In some runs, the parameters have been perturbed. And the best configuration eve
 mean validation accuracy of ``0.987062``!
 
 In summary, PyTorch Lightning Modules are easy to extend to use with Tune. It just took
-us writing one or two callbacks and a small wrapper function to get great performing
+us importing one or two callbacks and a small wrapper function to get great performing
 parameter configurations.
