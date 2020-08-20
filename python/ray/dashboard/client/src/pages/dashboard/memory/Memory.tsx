@@ -10,9 +10,9 @@ import {
   Theme,
   Typography,
 } from "@material-ui/core";
-import SubdirectoryArrowRightIcon from '@material-ui/icons/SubdirectoryArrowRight';
 import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import SubdirectoryArrowRightIcon from "@material-ui/icons/SubdirectoryArrowRight";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -40,13 +40,17 @@ const groupTitle = (groupKey: string, groupBy: MemoryGroupByKey) => {
 
 const PyStackTrace: React.FC<{ stackTrace: string }> = ({ stackTrace }) => {
   const stackFrames = stackTrace.split(" | ");
-  const renderedFrames = stackFrames.map((frame, i) => 
-    <Typography variant="h6" style={{ marginLeft: `${i}em` }}>
-      <SubdirectoryArrowRightIcon />{frame}
+  const renderedFrames = stackFrames.map((frame, i) => (
+    <Typography
+      variant={i === 0 ? "h6" : "subtitle2"}
+      style={{ marginLeft: `${i}em` }}
+    >
+      {i !== 0 && <SubdirectoryArrowRightIcon />}
+      {frame}
     </Typography>
-  );
-  return <Box>{renderedFrames}</Box>
-}
+  ));
+  return <Box>{renderedFrames}</Box>;
+};
 
 const MEMORY_POLLING_INTERVAL_MS = 4000;
 
@@ -107,8 +111,8 @@ const MemoryInfo: React.FC<{}> = () => {
         clearInterval(intervalId.current);
         intervalId.current = null;
       }
-    }
-    return cleanup
+    };
+    return cleanup;
   }, [paused, fetchData]);
 
   if (!memoryTable) {
@@ -141,9 +145,7 @@ const MemoryInfo: React.FC<{}> = () => {
           labelId="group-by-label"
           value={groupBy}
           className={classes.select}
-          onChange={(e: any) =>
-            setGroupBy(e.target.value)
-          }
+          onChange={(e: any) => setGroupBy(e.target.value)}
           color="primary"
           displayEmpty
         >

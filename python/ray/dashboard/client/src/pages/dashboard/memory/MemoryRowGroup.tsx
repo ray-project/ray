@@ -5,7 +5,6 @@ import {
   Paper,
   styled,
   Theme,
-  Typography,
 } from "@material-ui/core";
 import React, { ReactChild, useState } from "react";
 import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
