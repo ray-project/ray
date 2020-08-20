@@ -124,7 +124,7 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
 
   QueueItem item(seq_id, buffer, buffer_size, timestamp, msg_id_start, msg_id_end, raw);
   Queue::Push(item);
-  STREAMING_LOG(DEBUG) << "WriterQueue::Push seq_id: " << seq_id_;
+  STREAMING_LOG(DEBUG) << "WriterQueue::Push seq_id_: " << seq_id_;
   seq_id_++;
   return Status::OK();
 }
