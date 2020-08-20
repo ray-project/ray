@@ -13,7 +13,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.types import TensorType
+from ray.rllib.utils.typing import TensorType
 
 torch, _ = try_import_torch()
 
