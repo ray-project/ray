@@ -86,7 +86,7 @@ class TFTrainer:
                 [worker.find_free_port.remote() for worker in self.workers])
 
             urls = [
-                "{ip}:{port}".format(ip=ips[i], port=ports[i])
+                f"{ips[i]}:{ports[i]}"
                 for i in range(len(self.workers))
             ]
 

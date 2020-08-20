@@ -218,7 +218,7 @@ class Collector(object):
 
         else:
             raise ValueError(
-                "unsupported aggregation type %s" % type(agg_data))
+                f"unsupported aggregation type {type(agg_data)}")
 
     def collect(self):  # pragma: NO COVER
         """Collect fetches the statistics from OpenCensus

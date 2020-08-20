@@ -275,8 +275,7 @@ class FunctionActorManager:
         except Exception:
             logger.exception("Failed to load function %s.", function_name)
             raise RuntimeError(
-                "Function {} failed to be loaded from local code.".format(
-                    function_descriptor))
+                f"Function {function_descriptor} failed to be loaded from local code.")
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -448,8 +447,7 @@ class FunctionActorManager:
         except Exception:
             logger.exception("Failed to load actor_class %s.", class_name)
             raise RuntimeError(
-                "Actor {} failed to be imported from local code.".format(
-                    class_name))
+                f"Actor {class_name} failed to be imported from local code.")
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
         class TemporaryActor:
