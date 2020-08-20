@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, PolicyID, \
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 from ray.util.debug import log_once
 

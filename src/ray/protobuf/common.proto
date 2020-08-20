@@ -146,6 +146,8 @@ message Bundle {
   }
   BundleIdentifier bundle_id = 1;
   map<string, double> unit_resources = 2;
+  // The location of this bundle.
+  bytes node_id = 3;
 }
 
 message PlacementGroupSpec {
@@ -192,11 +194,11 @@ message ActorCreationTaskSpec {
   repeated string dynamic_worker_options = 4;
   // The max number of concurrent calls for direct call actors.
   int32 max_concurrency = 5;
-  // Whether the actor is persistent
+  // Whether the actor is persistent.
   bool is_detached = 6;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
   string name = 7;
-  // Whether the actor use async actor calls
+  // Whether the actor use async actor calls.
   bool is_asyncio = 8;
   // Field used for storing application-level extensions to the actor definition.
   string extension_data = 9;

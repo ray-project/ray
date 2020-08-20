@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Optional
 import copy
 import logging
 import math
@@ -63,8 +64,8 @@ class StandardAutoscaler:
                                           self.config["cluster_name"])
 
         # Check whether we can enable the resource demand scheduler.
-        if "available_instance_types" in self.config:
-            self.instance_types = self.config["available_instance_types"]
+        if "available_node_types" in self.config:
+            self.instance_types = self.config["available_node_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
                 self.provider, self.instance_types, self.config["max_workers"])
         else:
@@ -212,7 +213,8 @@ class StandardAutoscaler:
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_node(num_launches,
+                                 self.config.get("worker_default_node_type"))
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -262,7 +264,7 @@ class StandardAutoscaler:
     def _node_resources(self, node_id):
         instance_type = self.provider.node_tags(node_id).get(
             TAG_RAY_INSTANCE_TYPE)
-        if instance_type:
+        if self.instance_types and instance_type in self.instance_types:
             return self.instance_types[instance_type].get("resources", {})
         else:
             return {}
@@ -439,24 +441,10 @@ class StandardAutoscaler:
             return False
         return True
 
-    def get_instance_specific_config(self, instance_type):
-        default_node_config = self.config["worker_nodes"]
-        if instance_type is None:
-            return default_node_config
-        assert instance_type in self.instance_types, \
-            "Unknown instance type: {}.".format(instance_type)
-        return self.instance_types[instance_type].get("node_config",
-                                                      default_node_config)
-
-    def launch_new_node(self, count, instance_type=None):
+    def launch_new_node(self, count: int,
+                        instance_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        config = copy.deepcopy(self.config)
-        node_config = self.get_instance_specific_config(instance_type)
-        # Try to fill in the default instance type so we can tag it properly.
-        if not instance_type:
-            instance_type = self.provider.get_instance_type(
-                self.config["worker_nodes"])
         self.pending_launches.inc(instance_type, count)
         self.launch_queue.put((config, count, instance_type, node_config))
 

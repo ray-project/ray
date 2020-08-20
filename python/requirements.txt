@@ -46,6 +46,7 @@ dataclasses
 dask[complete]
 feather-format
 gym
+gym-minigrid
 kubernetes
 lxml
 mypy
