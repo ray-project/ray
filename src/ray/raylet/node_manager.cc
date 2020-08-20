@@ -1843,8 +1843,8 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle return resource request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(INFO) << "bundle return resource request " << bundle_spec.BundleId().first
+                << bundle_spec.BundleId().second;
   auto resource_set = bundle_spec.GetRequiredResources();
 
   // Kill all workers that are currently associated with the placement group.
@@ -1857,7 +1857,7 @@ void NodeManager::HandleCancelResourceReserve(
   }
   for (const auto &worker : workers_associated_with_pg) {
     RAY_LOG(DEBUG)
-        << "Placement group cancellation disconnects a worker. Plcaement group id: "
+        << "Destroying worker since its placement group was removed. Placement group id: "
         << worker->GetPlacementGroupId() << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
