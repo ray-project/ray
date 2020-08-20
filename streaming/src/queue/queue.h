@@ -67,8 +67,15 @@ class Queue {
   /// Return the last item in pending state.
   QueueItem BackPending();
 
-  inline bool IsPendingEmpty();
-  inline bool IsPendingFull(uint64_t data_size = 0);
+  inline bool IsPendingEmpty() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return std::next(watershed_iter_) == buffer_queue_.end();
+  };
+
+  inline bool IsPendingFull(uint64_t data_size = 0) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return max_data_size_ < data_size + data_size_;
+  }
 
   /// Return the size in bytes of all items in queue.
   inline uint64_t QueueSize() { return data_size_; }
@@ -83,10 +90,10 @@ class Queue {
   inline size_t Count() { return buffer_queue_.size(); }
 
   /// Return item count in pending state.
-  inline size_t PendingCount();
+  size_t PendingCount();
 
   /// Return item count in processed state.
-  inline size_t ProcessedCount();
+  size_t ProcessedCount();
 
   inline ActorID GetActorID() { return actor_id_; }
   inline ActorID GetPeerActorID() { return peer_actor_id_; }
