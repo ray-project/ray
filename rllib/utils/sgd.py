@@ -45,13 +45,12 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size, policy=None):
+def minibatches(samples, sgd_minibatch_size):
     """Return a generator yielding minibatches from a sample batch.
 
     Arguments:
         samples (SampleBatch): batch of samples to split up.
         sgd_minibatch_size (int): size of minibatches to return.
-        policy
 
     Returns:
         generator that returns mini-SampleBatches of size sgd_minibatch_size.
@@ -115,7 +114,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
     fetches = {}
-    for policy_id, policy in policies.items():
+    for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
 
@@ -125,7 +124,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
 
         for i in range(num_sgd_iter):
             iter_extra_fetches = defaultdict(list)
-            for minibatch in minibatches(batch, sgd_minibatch_size, policy):
+            for minibatch in minibatches(batch, sgd_minibatch_size):
                 batch_fetches = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
