@@ -150,8 +150,7 @@ class AgentIOTest(unittest.TestCase):
             self.assertTrue(np.isnan(result["episode_reward_mean"]))
 
     def testAgentInputDict(self):
-        #TODO
-        for fw in framework_iterator(frameworks="tf"):
+        for fw in framework_iterator():
             self.writeOutputs(self.test_dir, fw)
             agent = PGTrainer(
                 env="CartPole-v0",
@@ -226,8 +225,7 @@ class AgentIOTest(unittest.TestCase):
 
 class JsonIOTest(unittest.TestCase):
     def setUp(self):
-        #TODO
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
         self.test_dir = tempfile.mkdtemp()
 
     def tearDown(self):
