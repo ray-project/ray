@@ -1460,7 +1460,7 @@ cdef class CoreWorker:
         object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ForceSpillObjects(object_ids))
+                         .SpillObjects(object_ids))
 
     def force_restore_spilled_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids

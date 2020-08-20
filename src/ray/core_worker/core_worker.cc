@@ -1174,8 +1174,85 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-Status CoreWorker::ForceSpillObjects(const std::vector<ObjectID> &object_ids) {
-  return local_raylet_client_->ForceSpillObjects(object_ids);
+void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
+                                  const std::shared_ptr<RayObject> &obj,
+                                  std::function<void()> callback) {
+  if (!obj->IsInPlasmaError()) {
+    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
+    callback();
+    return;
+  }
+
+  // Find the raylet that hosts the primary copy of the object.
+  ClientID pinned_at;
+  RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
+  auto node = gcs_client_->Nodes().Get(pinned_at);
+  if (pinned_at.IsNil() || !node) {
+    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
+    callback();
+    return;
+  }
+
+  // Ask the raylet to spill the object.
+  auto raylet_client =
+      std::make_shared<raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
+          node->node_manager_address(), node->node_manager_port(),
+          *client_call_manager_));
+  raylet_client->RequestObjectSpillage(
+      object_id, [object_id, callback](const Status &status,
+                                       const rpc::RequestObjectSpillageReply &reply) {
+        if (!status.ok() || !reply.success()) {
+          RAY_LOG(ERROR) << "Failed to spill object " << object_id
+                         << ", raylet unreachable or object could not be spilled.";
+        }
+        callback();
+      });
+}
+
+Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
+  auto mutex = std::make_shared<absl::Mutex>();
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
+  Status final_status;
+
+  auto callback = [mutex, num_remaining, ready_promise]() {
+    absl::MutexLock lock(mutex.get());
+    (*num_remaining)--;
+    if (*num_remaining == 0) {
+      ready_promise->set_value();
+    }
+  };
+
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Requesting spill for object " << object_id;
+    // Acquire a temporary reference to make sure that the object is still in
+    // scope by the time we register the callback to spill the object.
+    // Otherwise, the callback may never get called.
+    AddLocalReference(object_id, "<temporary (get object status)>");
+
+    rpc::Address owner_address;
+    auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+    if (!has_owner) {
+      final_status =
+          Status::Invalid("Cannot call spill on objects that have gone out of scope.");
+      callback();
+    } else if (WorkerID::FromBinary(owner_address.worker_id()) !=
+               worker_context_.GetWorkerID()) {
+      final_status = Status::Invalid("Cannot call spill on objects that we do not own.");
+      callback();
+    } else {
+      memory_store_->GetAsync(
+          object_id, [this, object_id, callback](std::shared_ptr<RayObject> obj) {
+            SpillOwnedObject(object_id, obj, callback);
+          });
+    }
+
+    // Remove the temporary reference.
+    RemoveLocalReference(object_id);
+  }
+
+  ready_promise->get_future().wait();
+  return final_status;
 }
 
 Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {

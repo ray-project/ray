@@ -319,10 +319,13 @@ class RayletClient : public PinObjectsInterface,
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
-  /// Spill objects to external storage.
-  /// \param object_ids The IDs of objects to be spilled.
-  /// \return ray::Status
-  ray::Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+  /// Ask the raylet to spill an object to external storage.
+  /// \param object_id The ID of the object to be spilled.
+  /// \param callback Callback that will be called after raylet completes the
+  /// object spilling (or it fails).
+  void RequestObjectSpillage(
+      const ObjectID &object_id,
+      const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
   /// Restore spilled objects from external storage.
   /// \param object_ids The IDs of objects to be restored.
