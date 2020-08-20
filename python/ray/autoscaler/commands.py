@@ -136,10 +136,13 @@ def create_or_update_cluster(config_file: str,
         cli_logger.abort(
             "Provided cluster configuration file ({}) does not exist",
             cf.bold(config_file))
+        raise
     except yaml.parser.ParserError as e:
         handle_yaml_error(e)
+        raise
     except yaml.scanner.ScannerError as e:
         handle_yaml_error(e)
+        raise
 
     # todo: validate file_mounts, ssh keys, etc.
 

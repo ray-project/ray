@@ -245,66 +245,10 @@ That's it. Let's take a look at an example:
 Monitoring
 ==========
 
-Ray Serve exposes system metrics like number of requests through Python API
-``serve.stat`` and HTTP ``/-/metrics`` API. By default, it uses a custom
-structured format for easy parsing and debugging.
-
-Via python:
-
-.. code-block:: python
-
-  serve.stat()
-  """
-    [..., {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/-/routes",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 1
-      },
-      {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/echo",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 10
-      }, ...]
-  """
-
-Via HTTP:
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-  # Returns the same output as above in JSON format.
-
-You can also access the result in `Prometheus <https://prometheus.io/>`_ format,
-by setting the ``metric_exporter`` option in :mod:`serve.init <ray.serve.init>`.
-
-.. code-block:: python
-
-  from ray.serve.metric import PrometheusExporter
-  serve.init(metric_exporter=PrometheusExporter)
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-
-  # HELP backend_request_counter_total Number of queries that have been processed in this replica
-  # TYPE backend_request_counter_total counter
-  backend_request_counter_total{backend="echo:v1"} 5.0
-  backend_request_counter_total{backend="echo:v2"} 5.0
-  ...
-
-The metric exporter is extensible and you can customize it for your own metric
-infrastructure. We are gathering feedback and welcome contribution! Feel free
-to submit a github issue to chat with us in #serve channel in `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_.
-
-Here's an simple example of a dummy exporter that writes metrics to file:
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metric_export.py
+Ray Serve exposes important system metrics like the number of successful and
+errored requests through the Ray metrics monitoring infrastructure. By default,
+the metrics are exposed in Prometheus format on each node. See the
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
 
 .. _serve-faq:
 
