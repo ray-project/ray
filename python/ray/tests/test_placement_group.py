@@ -8,7 +8,7 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
 
@@ -348,6 +348,74 @@ def test_cuda_visible_devices(ray_start_cluster):
 
     devices = ray.get(o1)
     assert devices == "0", devices
+
+
+def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 3
+    assert nodes[0]["alive"] and nodes[1]["alive"] and nodes[2]["alive"]
+
+    placement_group_id = ray.experimental.placement_group(
+        name="name",
+        strategy="SPREAD",
+        bundles=[{
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }])
+    actor_1 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0,
+        detached=True).remote()
+    actor_2 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1,
+        detached=True).remote()
+    actor_3 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=2,
+        detached=True).remote()
+    print(ray.get(actor_1.value.remote()))
+    print(ray.get(actor_2.value.remote()))
+    print(ray.get(actor_3.value.remote()))
+
+    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
+    cluster.wait_for_nodes()
+
+    actor_4 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=0,
+        detached=True).remote()
+    actor_5 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=1,
+        detached=True).remote()
+    actor_6 = Actor.options(
+        placement_group_id=placement_group_id,
+        placement_group_bundle_index=2,
+        detached=True).remote()
+    print(ray.get(actor_4.value.remote()))
+    print(ray.get(actor_5.value.remote()))
+    print(ray.get(actor_6.value.remote()))
+    ray.shutdown()
 
 
 if __name__ == "__main__":

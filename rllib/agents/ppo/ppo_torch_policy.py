@@ -74,9 +74,7 @@ class PPOLoss:
                 return torch.sum(t[valid_mask]) / num_valid
 
         else:
-
-            def reduce_mean_valid(t):
-                return torch.mean(t)
+            reduce_mean_valid = torch.mean
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
