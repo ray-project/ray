@@ -1239,6 +1239,179 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
+TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+
+  // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
+  // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
+  // parameter to the CoreWorkerDirectTaskSubmitter.
+  uint32_t max_tasks_in_flight_per_worker = 10;
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout,
+                                          actor_creator, max_tasks_in_flight_per_worker);
+
+  // prepare 30 tasks and save them in a vector
+  std::unordered_map<std::string, double> empty_resources;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  std::vector<TaskSpecification> tasks;
+  for (int i = 0; i < 30; i++) {
+    tasks.push_back(BuildTaskSpec(empty_resources, empty_descriptor));
+  }
+  ASSERT_EQ(tasks.size(), 30);
+
+  // Submit 4 tasks, and check that 1 worker is requested.
+  for (int i = 1; i <= 4; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 26);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Grant a worker lease, and check that still only 1 worker was requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 4);
+
+  // Submit 6 more tasks, and check that still only 1 worker was requested.
+  for (int i = 1; i <= 6; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 20);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+
+  // Submit 1 more task, and check that one more worker is requested, for a total of 2.
+  auto task = tasks.front();
+  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  tasks.erase(tasks.begin());
+  ASSERT_EQ(tasks.size(), 19);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 10);
+
+  // Grant a worker lease, and check that still only 2 workers were requested.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 11);
+
+  // Submit 9 more tasks, and check that the total number of workers requested is still 2.
+  for (int i = 1; i <= 9; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 10);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+
+  // Call ReplyPushTask on a quarter of the submitted tasks (5), and check that the total
+  // number of workers requested remains equal to 2.
+  for (int i = 1; i <= 5; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 5);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 15);
+
+  // Submit 5 new tasks, and check that we still have requested only 2 workers.
+  for (int i = 1; i <= 5; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 5);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 5);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+
+  // Call ReplyPushTask on a quarter of the submitted tasks (5), and check that the total
+  // number of workers requested remains equal to 2.
+  for (int i = 1; i <= 5; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 15);
+
+  // Submit last 5 tasks, and check that the total number of workers requested is still 2
+  for (int i = 1; i <= 5; i++) {
+    auto task = tasks.front();
+    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    tasks.erase(tasks.begin());
+  }
+  ASSERT_EQ(tasks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 10);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 20);
+
+  // Execute all the resulting 20 tasks, and check that the total number of workers
+  // requested is 2.
+  for (int i = 1; i <= 20; i++) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
+  }
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 30);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
