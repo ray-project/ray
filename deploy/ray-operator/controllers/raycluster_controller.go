@@ -12,6 +12,7 @@ import (
 	mapset "github.com/deckarep/golang-set"
 	"github.com/go-logr/logr"
 	_ "k8s.io/api/apps/v1beta1"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -43,8 +44,9 @@ var _ reconcile.Reconciler = &RayClusterReconciler{}
 // RayClusterReconciler reconciles a RayCluster object
 type RayClusterReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log               logr.Logger
+	Scheme            *runtime.Scheme
+	MaximizeSharedMem bool
 }
 
 // Reconcile reads that state of the cluster for a RayCluster object and makes changes based on it
@@ -191,6 +193,10 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 	var pods []corev1.Pod
 	if instance.Spec.Extensions != nil && len(instance.Spec.Extensions) > 0 {
 		for _, extension := range instance.Spec.Extensions {
+			//maximize the shared memory
+			if r.MaximizeSharedMem {
+				addEmptyDir(&extension)
+			}
 			var i int32 = 0
 			for i = 0; i < *extension.Replicas; i++ {
 				podType := fmt.Sprintf("%v", extension.Type)
@@ -210,6 +216,48 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 	}
 
 	return pods
+}
+
+func addEmptyDir(ext *rayiov1alpha1.Extension) {
+	//1) check if a mount exists on "/dev/shm"
+	for _, mount := range ext.VolumeMounts {
+		if mount.MountPath == "/dev/shm" {
+			log.Info("shared memory directory already mounted /dev/shm")
+			return
+		}
+	}
+	//2) create a Volume of type emptyDir and add it to Volumes
+	emptyDirVolume := corev1.Volume{
+		Name: "shared-mem",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{
+				Medium:    corev1.StorageMediumMemory,
+				SizeLimit: findMemoryReqOrLimit(*ext),
+			},
+		},
+	}
+	ext.Volumes = append(ext.Volumes, emptyDirVolume)
+
+	//3) create a VolumeMount that uses the emptyDir
+	mountedVolume := corev1.VolumeMount{
+		MountPath: "/dev/shm",
+		Name:      "shared-mem",
+		ReadOnly:  false,
+	}
+	ext.VolumeMounts = append(ext.VolumeMounts, mountedVolume)
+
+}
+func findMemoryReqOrLimit(ext rayiov1alpha1.Extension) (res *resource.Quantity) {
+	mem := &resource.Quantity{}
+	//check the requests, if they are not set, check the limits.
+	if q, ok := ext.Resources.Requests[corev1.ResourceMemory]; ok {
+		mem = &q
+	} else {
+		if q, ok := ext.Resources.Limits[corev1.ResourceMemory]; ok {
+			mem = &q
+		}
+	}
+	return mem
 }
 
 // SetupWithManager builds the reconciler.
