@@ -95,7 +95,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         action_space = Discrete(2)
-        obs_space = Box(-1.0, 1.0, shape=(7000, ))
+        obs_space = Box(-1.0, 1.0, shape=(1000, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
@@ -128,7 +128,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         num_iterations = 1
         # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
-            print("w/ API")
+            print("w/ traj. view API (and time-major)")
             config["_use_trajectory_view_api"] = True
             config["model"]["_time_major"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
@@ -150,12 +150,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 for k, v in sampler_perf.items()
             }
             duration_w = time.time() - start
-            print("w/ traj-view API: Duration: {}s "
+            print("Duration: {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
                       duration_w, sampler_perf, learn_time_w / num_iterations))
             trainer.stop()
 
-            print("w/o API")
+            print("w/o traj. view API (and w/o time-major)")
             config["_use_trajectory_view_api"] = False
             config["model"]["_time_major"] = False
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
@@ -177,7 +177,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 for k, v in sampler_perf.items()
             }
             duration_wo = time.time() - start
-            print("w/o traj-view API: Duration: {}s "
+            print("Duration: {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
                       duration_wo, sampler_perf,
                       learn_time_wo / num_iterations))
