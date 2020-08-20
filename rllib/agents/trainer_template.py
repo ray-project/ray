@@ -105,7 +105,8 @@ def build_trainer(
                 validate_config(config)
 
             if get_policy_class is None:
-                assert default_policy is not None
+                if not config["multiagent"]["policies"]:
+                    assert default_policy is not None
                 self._policy_class = default_policy
             else:
                 self._policy_class = get_policy_class(config)
