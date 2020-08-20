@@ -21,7 +21,6 @@
 namespace ray {
 
 namespace gcs {
-class RedisGcsClient;
 
 /// GcsRedisFailureDetector is responsible for monitoring redis and binding GCS server and
 /// redis life cycle together. GCS client subscribes to redis messages and it cannot sense

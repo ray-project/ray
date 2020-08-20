@@ -20,22 +20,44 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/test/mock_accessor_test.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 
 using ::testing::_;
 
-class MockGcsClient : public gcs::RedisGcsClient {
+class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client_impl)
+      : gcs::ServiceBasedActorInfoAccessor(client_impl) {}
 
-  void Init(gcs::MockActorInfoAccessor *actor_accesor_mock) {
-    actor_accessor_.reset(actor_accesor_mock);
+  ~MockActorInfoAccessor() {}
+
+  ray::Status AsyncSubscribe(
+      const ActorID &actor_id,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::StatusCallback &done) {
+    auto callback_entry = std::make_pair(actor_id, subscribe);
+    callback_map_.emplace(actor_id, subscribe);
+    return Status::OK();
   }
 
-  ~MockGcsClient() {}
+  bool ActorStateNotificationPublished(const ActorID &actor_id,
+                                       const gcs::ActorTableData &actor_data) {
+    auto it = callback_map_.find(actor_id);
+    if (it == callback_map_.end()) return false;
+    auto actor_state_notification_callback = it->second;
+    actor_state_notification_callback(actor_id, actor_data);
+    return true;
+  }
+
+  bool CheckSubscriptionRequested(const ActorID &actor_id) {
+    return callback_map_.find(actor_id) != callback_map_.end();
+  }
+
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+      callback_map_;
 };
 
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
@@ -77,22 +99,31 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   virtual ~MockReferenceCounter() {}
 };
 
+class MockGcsClient : public gcs::ServiceBasedGcsClient {
+ public:
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
+
+  void Init(MockActorInfoAccessor *actor_info_accessor) {
+    actor_accessor_.reset(actor_info_accessor);
+  }
+};
+
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-      : options_("", 1, ""),
-        gcs_client_mock_(new MockGcsClient(options_)),
-        actor_info_accessor_(new gcs::MockActorInfoAccessor()),
+      : options_("", 1, "", true),
+        gcs_client_(new MockGcsClient(options_)),
+        actor_info_accessor_(new MockActorInfoAccessor(gcs_client_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
-    gcs_client_mock_->Init(actor_info_accessor_);
+    gcs_client_->Init(actor_info_accessor_);
   }
 
   ~ActorManagerTest() {}
 
   void SetUp() {
-    actor_manager_ = std::make_shared<ActorManager>(
-        gcs_client_mock_, direct_actor_submitter_, reference_counter_);
+    actor_manager_ = std::make_shared<ActorManager>(gcs_client_, direct_actor_submitter_,
+                                                    reference_counter_);
   }
 
   void TearDown() { actor_manager_.reset(); }
@@ -117,8 +148,8 @@ class ActorManagerTest : public ::testing::Test {
   }
 
   gcs::GcsClientOptions options_;
-  std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  gcs::MockActorInfoAccessor *actor_info_accessor_;
+  std::shared_ptr<MockGcsClient> gcs_client_;
+  MockActorInfoAccessor *actor_info_accessor_;
   std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;

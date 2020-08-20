@@ -729,7 +729,7 @@ cc_test(
     copts = COPTS,
     deps = [
         ":core_worker_lib",
-        ":mock_accessor_lib",
+        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -770,7 +770,6 @@ cc_test(
         ],
     }),
     deps = [
-        ":mock_accessor_lib",
         ":node_manager_fbs",
         ":object_manager",
         ":raylet_lib",
@@ -866,7 +865,6 @@ cc_test(
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
     copts = COPTS,
     deps = [
-        ":mock_accessor_lib",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -927,7 +925,6 @@ cc_test(
 cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
-        "src/ray/gcs/test/accessor_test_base.h",
         "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
@@ -1518,28 +1515,6 @@ cc_test(
     ],
     deps = [
         ":gcs",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "subscription_executor_test",
-    srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        ":mock_accessor_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

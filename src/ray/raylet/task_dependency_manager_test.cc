@@ -21,8 +21,8 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/test/mock_accessor_test.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 
@@ -48,18 +48,21 @@ class MockReconstructionPolicy : public ReconstructionPolicyInterface {
   MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 
-class MockTaskInfoAccessor2 : public gcs::MockTaskInfoAccessor {
+class MockTaskInfoAccessor : public gcs::ServiceBasedTaskInfoAccessor {
  public:
+  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client_impl)
+      : gcs::ServiceBasedTaskInfoAccessor(client_impl) {}
+
   MOCK_METHOD2(AsyncAddTaskLease,
                ray::Status(const std::shared_ptr<TaskLeaseData> &data_ptr,
                            const gcs::StatusCallback &callback));
 };
 
-class MockGcsClient : public gcs::RedisGcsClient {
+class MockGcsClient : public gcs::ServiceBasedGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
 
-  void Init(MockTaskInfoAccessor2 *task_accessor_mock) {
+  void Init(MockTaskInfoAccessor *task_accessor_mock) {
     task_accessor_.reset(task_accessor_mock);
   }
 };
@@ -72,7 +75,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
         io_service_(),
         options_("", 1, ""),
         gcs_client_mock_(new MockGcsClient(options_)),
-        task_accessor_mock_(new MockTaskInfoAccessor2()),
+        task_accessor_mock_(new MockTaskInfoAccessor(gcs_client_mock_.get())),
         initial_lease_period_ms_(100),
         task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
                                  io_service_, ClientID::Nil(), initial_lease_period_ms_,
@@ -97,7 +100,7 @@ class TaskDependencyManagerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockTaskInfoAccessor2 *task_accessor_mock_;
+  MockTaskInfoAccessor *task_accessor_mock_;
   int64_t initial_lease_period_ms_;
   TaskDependencyManager task_dependency_manager_;
 };

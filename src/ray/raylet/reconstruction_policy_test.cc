@@ -21,7 +21,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/test/mock_accessor_test.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -98,23 +99,95 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
-class MockNodeInfoAccessor2 : public gcs::MockNodeInfoAccessor {
+class MockNodeInfoAccessor : public gcs::ServiceBasedNodeInfoAccessor {
  public:
-  MockNodeInfoAccessor2() {}
-
-  MockNodeInfoAccessor2(gcs::RedisGcsClient *client) : MockNodeInfoAccessor(client) {}
-
-  MockNodeInfoAccessor2(const ClientID &node_id) : MockNodeInfoAccessor(node_id) {}
+  MockNodeInfoAccessor(gcs::ServiceBasedGcsClient *client_impl)
+      : gcs::ServiceBasedNodeInfoAccessor(client_impl) {}
 
   bool IsRemoved(const ClientID &node_id) const override { return false; }
 };
 
-class MockGcs : public gcs::RedisGcsClient {
+class MockTaskInfoAccessor : public gcs::ServiceBasedTaskInfoAccessor {
  public:
-  MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
+  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client_impl)
+      : gcs::ServiceBasedTaskInfoAccessor(client_impl) {}
 
-  void Init(gcs::MockTaskInfoAccessor *task_accessor,
-            MockNodeInfoAccessor2 *node_accessor) {
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+      const gcs::StatusCallback &done) override {
+    subscribe_callback_ = subscribe;
+    subscribed_tasks_.insert(task_id);
+    auto entry = task_lease_table_.find(task_id);
+    if (entry == task_lease_table_.end()) {
+      boost::optional<TaskLeaseData> result;
+      subscribe(task_id, result);
+    } else {
+      boost::optional<TaskLeaseData> result(*entry->second);
+      subscribe(task_id, result);
+    }
+    return ray::Status::OK();
+  }
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override {
+    subscribed_tasks_.erase(task_id);
+    return ray::Status::OK();
+  }
+
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &task_lease_data,
+                           const gcs::StatusCallback &done) override {
+    TaskID task_id = TaskID::FromBinary(task_lease_data->task_id());
+    task_lease_table_[task_id] = task_lease_data;
+    if (subscribed_tasks_.count(task_id) == 1) {
+      boost::optional<TaskLeaseData> result(*task_lease_data);
+      subscribe_callback_(task_id, result);
+    }
+    return Status::OK();
+  }
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const gcs::OptionalItemCallback<rpc::TaskLeaseData> &callback) override {
+    auto iter = task_lease_table_.find(task_id);
+    if (iter != task_lease_table_.end()) {
+      callback(Status::OK(), *iter->second);
+    } else {
+      callback(Status::OK(), boost::none);
+    }
+    return Status::OK();
+  }
+
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<TaskReconstructionData> &task_data,
+      const gcs::StatusCallback &done) override {
+    int log_index = task_data->num_reconstructions();
+    TaskID task_id = TaskID::FromBinary(task_data->task_id());
+    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
+      task_reconstruction_log_[task_id].push_back(*task_data);
+      if (done != nullptr) {
+        done(Status::OK());
+      }
+    } else {
+      if (done != nullptr) {
+        done(Status::Invalid("Updating task reconstruction failed."));
+      }
+    }
+    return Status::OK();
+  }
+
+ private:
+  gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
+  std::unordered_map<TaskID, std::shared_ptr<TaskLeaseData>> task_lease_table_;
+  std::unordered_set<TaskID> subscribed_tasks_;
+  std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
+      task_reconstruction_log_;
+};
+
+class MockGcs : public gcs::ServiceBasedGcsClient {
+ public:
+  MockGcs() : gcs::ServiceBasedGcsClient(gcs::GcsClientOptions("", 0, "")) {}
+
+  void Init(gcs::TaskInfoAccessor *task_accessor, gcs::NodeInfoAccessor *node_accessor) {
     task_accessor_.reset(task_accessor);
     node_accessor_.reset(node_accessor);
   }
@@ -125,8 +198,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
   ReconstructionPolicyTest()
       : io_service_(),
         mock_gcs_(new MockGcs()),
-        task_accessor_(new gcs::MockTaskInfoAccessor()),
-        node_accessor_(new MockNodeInfoAccessor2()),
+        task_accessor_(new MockTaskInfoAccessor(mock_gcs_.get())),
+        node_accessor_(new MockNodeInfoAccessor(mock_gcs_.get())),
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
@@ -197,8 +270,8 @@ class ReconstructionPolicyTest : public ::testing::Test {
  protected:
   boost::asio::io_service io_service_;
   std::shared_ptr<MockGcs> mock_gcs_;
-  gcs::MockTaskInfoAccessor *task_accessor_;
-  MockNodeInfoAccessor2 *node_accessor_;
+  MockTaskInfoAccessor *task_accessor_;
+  MockNodeInfoAccessor *node_accessor_;
   gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::shared_ptr<MockObjectDirectory> mock_object_directory_;
   uint64_t reconstruction_timeout_ms_;

@@ -43,18 +43,17 @@ void GcsServer::Start() {
   InitBackendClient();
 
   // Init gcs pub sub instance.
-  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
+  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
   // Init gcs table storage.
-  gcs_table_storage_ =
-      std::make_shared<gcs::RedisGcsTableStorage>(redis_gcs_client_->GetRedisClient());
+  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
 
   // Init gcs node_manager.
   InitGcsNodeManager();
 
   // Init gcs detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-      main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+      main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
   // Init gcs actor manager.
@@ -144,15 +143,15 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitBackendClient() {
-  GcsClientOptions options(config_.redis_address, config_.redis_port,
-                           config_.redis_password, config_.is_test);
-  redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
-  auto status = redis_gcs_client_->Connect(main_service_);
-  RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
+                                          config_.redis_password, config_.is_test);
+  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+  auto status = redis_client_->Connect(main_service_);
+  RAY_CHECK(status.ok()) << "Failed to init redis client as " << status;
 }
 
 void GcsServer::InitGcsNodeManager() {
-  RAY_CHECK(redis_gcs_client_ != nullptr);
+  RAY_CHECK(redis_client_ != nullptr);
 
   node_manager_io_service_thread_.reset(new std::thread([this] {
     /// The asio work to keep node_manager_io_service_ alive.
@@ -259,7 +258,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
       ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
-  RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
