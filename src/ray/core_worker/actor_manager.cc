@@ -133,7 +133,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ClientID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts();
   if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts() - 1, false);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts() - 1,
+                                             false);
   } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
     // We cannot erase the actor handle here because clients can still
