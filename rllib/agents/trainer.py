@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
@@ -663,7 +663,7 @@ class Trainer(Trainable):
 
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
-                    self._policy,
+                    self._policy_class,
                     merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
@@ -690,7 +690,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy: type, config: TrainerConfigDict,
+                      policy_class: Type[Policy], config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -700,9 +700,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
-            policy (class): The Policy class to use for creating the policies
-                of the workers.
-            config (dict): The Trainer's config.
+            policy (Type[Policy]): The Policy class to use for creating the
+                policies of the workers.
+            config (TrainerConfigDict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
 
@@ -710,9 +710,9 @@ class Trainer(Trainable):
             WorkerSet: The created WorkerSet.
         """
         return WorkerSet(
-            env_creator,
-            policy,
-            config,
+            env_creator=env_creator,
+            policy_class=policy_class,
+            trainer_config=config,
             num_workers=num_workers,
             logdir=self.logdir)
 
