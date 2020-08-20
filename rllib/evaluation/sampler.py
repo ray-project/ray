@@ -188,8 +188,8 @@ class SyncSampler(SamplerInput):
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            multiple_episodes_in_batch, callbacks, tf_sess,
-            self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
+            multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
+            soft_horizon, no_done_at_end, observation_fn,
             _use_trajectory_view_api, self.sample_collector)
         self.metrics_queue = queue.Queue()
 
@@ -348,8 +348,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.multiple_episodes_in_batch,
-            self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
+            self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
+            self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
             self._use_trajectory_view_api)
         while not self.shutdown:
@@ -807,8 +807,8 @@ def _process_observations(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            if (last_observation is not None and infos[env_id].get(agent_id,
-                    {}).get("training_enabled", True)):
+            if (last_observation is not None and infos[env_id].get(
+                    agent_id, {}).get("training_enabled", True)):
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -940,7 +940,6 @@ def _process_observations_w_trajectory_view_api(
         _sample_collector: _SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
-
     """Trajectory View API version of `_process_observations()`.
     TODO: (sven) Move docstring here once original function is deprecated.
     """
@@ -969,8 +968,7 @@ def _process_observations_w_trajectory_view_api(
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     _sample_collector.total_env_steps(),
-                    _sample_collector.count) +
-                "are buffered in "
+                    _sample_collector.count) + "are buffered in "
                 "the sampler. If this is more than you expected, check that "
                 "that you set a horizon on your environment correctly and that"
                 " it terminates at some point. "
@@ -1041,9 +1039,8 @@ def _process_observations_w_trajectory_view_api(
 
             # Record transition info if applicable.
             if last_observation is None:
-                _sample_collector.add_init_obs(
-                    episode.episode_id, agent_id, env_id,
-                    policy_id, filtered_obs)
+                _sample_collector.add_init_obs(episode.episode_id, agent_id,
+                                               env_id, policy_id, filtered_obs)
             else:
                 rc = _sample_collector.policy_sample_collectors[policy_id]
                 eval_idx = rc.agent_key_to_forward_pass_index[(
@@ -1058,8 +1055,8 @@ def _process_observations_w_trajectory_view_api(
                     "rewards": rewards[env_id][agent_id],
                     # After taking a, did we reach terminal?
                     "dones": (False if (no_done_at_end
-                                        or (hit_horizon and soft_horizon))
-                              else agent_done),
+                                        or (hit_horizon and soft_horizon)) else
+                              agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
                 }
@@ -1102,8 +1099,7 @@ def _process_observations_w_trajectory_view_api(
             #  SampleBatchBuilder
             #  to be able to still reference into it
             #  should a model require this.
-            outputs.append(
-                _sample_collector.get_multi_agent_batch_and_reset())
+            outputs.append(_sample_collector.get_multi_agent_batch_and_reset())
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
             _sample_collector.postprocess_trajectories_so_far(episode)
@@ -1158,9 +1154,9 @@ def _process_observations_w_trajectory_view_api(
                     episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(
-                        episode.episode_id, agent_id, env_id, policy_id,
-                        filtered_obs)
+                    _sample_collector.add_init_obs(episode.episode_id,
+                                                   agent_id, env_id, policy_id,
+                                                   filtered_obs)
                     to_eval.add(policy_id)
 
     return active_envs, to_eval, outputs

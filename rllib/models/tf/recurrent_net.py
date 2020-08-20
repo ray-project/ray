@@ -58,8 +58,7 @@ class RecurrentNetwork(TFModelV2):
         max_seq_len = tf.shape(padded_inputs)[0] // tf.shape(seq_lens)[0]
         output, new_state = self.forward_rnn(
             add_time_dimension(
-                padded_inputs, max_seq_len=max_seq_len, framework="tf"),
-            state,
+                padded_inputs, max_seq_len=max_seq_len, framework="tf"), state,
             seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 

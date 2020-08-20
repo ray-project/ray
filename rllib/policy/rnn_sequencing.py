@@ -72,8 +72,8 @@ def pad_batch_to_sequences_of_same_size(
                     # Cut time-dim at `max_seq_len`.
                     if batch.time_major:
                         batch[col] = batch[col][:batch.max_seq_len]
-                    batch[col] = batch[col].reshape(
-                        (-1,) + batch[col].shape[2:])
+                    batch[col] = batch[col].reshape((-1, ) +
+                                                    batch[col].shape[2:])
         return
 
     if batch_divisibility_req > 1:

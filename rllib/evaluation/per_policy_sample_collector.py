@@ -103,12 +103,13 @@ class _PerPolicySampleCollector:
         self._next_agent_slot()
 
         if SampleBatch.OBS not in self.buffers:
-            self._build_buffers(single_row={
-                SampleBatch.OBS: init_obs,
-                SampleBatch.EPS_ID: episode_id,
-                SampleBatch.AGENT_INDEX: agent_id,
-                "env_id": env_id,
-            })
+            self._build_buffers(
+                single_row={
+                    SampleBatch.OBS: init_obs,
+                    SampleBatch.EPS_ID: episode_id,
+                    SampleBatch.AGENT_INDEX: agent_id,
+                    "env_id": env_id,
+                })
         if self.time_major:
             self.buffers[SampleBatch.OBS][self.shift_before-1, agent_slot] = \
                 init_obs
@@ -332,8 +333,8 @@ class _PerPolicySampleCollector:
             # If agent_slot has been rolled-over to beginning, we have to copy
             # here.
             if valid_agent_cursor < self.sample_batch_offset:
-                time_slice = self.buffers[data_col][t_start + shift:
-                                                    t_end + shift]
+                time_slice = self.buffers[data_col][t_start + shift:t_end +
+                                                    shift]
                 one_ = time_slice[:, self.sample_batch_offset:]
                 two_ = time_slice[:, :valid_agent_cursor]
                 if torch and isinstance(time_slice, torch.Tensor):

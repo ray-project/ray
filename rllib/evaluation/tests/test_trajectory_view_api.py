@@ -139,18 +139,20 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 out = trainer.train()
                 sampler_perf_ = out["sampler_perf"]
                 sampler_perf = {
-                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
-                    k, v in sampler_perf_.items()}
+                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k]
+                    for k, v in sampler_perf_.items()
+                }
                 delta = out["timers"]["learn_time_ms"] / 1000
                 learn_time_w += delta
                 print("{}={}s".format(i, delta))
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf.items()}
+                for k, v in sampler_perf.items()
+            }
             duration_w = time.time() - start
             print("w/ traj-view API: Duration: {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
-                duration_w, sampler_perf, learn_time_w / num_iterations))
+                      duration_w, sampler_perf, learn_time_w / num_iterations))
             trainer.stop()
 
             print("w/o API")
@@ -164,18 +166,21 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 out = trainer.train()
                 sampler_perf_ = out["sampler_perf"]
                 sampler_perf = {
-                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k] for
-                    k, v in sampler_perf_.items()}
+                    k: sampler_perf.get(k, 0.0) + sampler_perf_[k]
+                    for k, v in sampler_perf_.items()
+                }
                 delta = out["timers"]["learn_time_ms"] / 1000
                 learn_time_wo += delta
                 print("{}={}s".format(i, delta))
             sampler_perf = {
                 k: sampler_perf[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf.items()}
+                for k, v in sampler_perf.items()
+            }
             duration_wo = time.time() - start
             print("w/o traj-view API: Duration: {}s "
                   "sampler-perf.={} learn-time/iter={}s".format(
-                duration_wo, sampler_perf, learn_time_wo / num_iterations))
+                      duration_wo, sampler_perf,
+                      learn_time_wo / num_iterations))
             trainer.stop()
 
             # Assert `_use_trajectory_view_api` is much faster.
@@ -183,7 +188,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             self.assertLess(learn_time_w, learn_time_wo * 0.6)
 
     def test_traj_view_lstm_functionality(self):
-        action_space = Box(-float("inf"), float("inf"), shape=(2,))
+        action_space = Box(-float("inf"), float("inf"), shape=(2, ))
         obs_space = Box(float("-inf"), float("inf"), (4, ))
         max_seq_len = 50
         policies = {
@@ -235,8 +240,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Check the sanity of all the buffers in the un underlying
             # PerPolicy collector.
-            for sample_batch_slot, agent_slot in enumerate(range(
-                    sample_batch_offset_before, pc.sample_batch_offset)):
+            for sample_batch_slot, agent_slot in enumerate(
+                    range(sample_batch_offset_before, pc.sample_batch_offset)):
                 t_buf = buffers["t"][:, agent_slot]
                 obs_buf = buffers["obs"][:, agent_slot]
                 # Skip empty seqs at end (these won't be part of the batch
@@ -244,12 +249,12 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 if sample_batch_slot < len(pol_batch.seq_lens):
                     seq_len = pol_batch.seq_lens[sample_batch_slot]
                     # Make sure timesteps are always increasing within the seq.
-                    assert all(
-                        t_buf[1] + j == n + 1 for j, n in enumerate(t_buf)
-                        if j < seq_len and j != 0)
+                    assert all(t_buf[1] + j == n + 1
+                               for j, n in enumerate(t_buf)
+                               if j < seq_len and j != 0)
                     # Make sure all obs within seq are non-0.0.
-                    assert all(any(obs_buf[j] != 0.0)
-                               for j in range(1, seq_len + 1))
+                    assert all(
+                        any(obs_buf[j] != 0.0) for j in range(1, seq_len + 1))
 
             # Check seq-lens.
             for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
@@ -259,8 +264,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     # may be filled with "old" values (from longer sequences)).
                     if i < 10:
                         self.assertTrue(
-                            (pol_batch["obs"][seq_len + 1][agent_slot] ==
-                             0.0).all())
+                            (pol_batch["obs"][seq_len +
+                                              1][agent_slot] == 0.0).all())
                     print(end="")
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
