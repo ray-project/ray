@@ -505,6 +505,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                     _abort=True)
         cli_logger.newline()
 
+        # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
         head_node_config = copy.deepcopy(config["head_node"])
         if "head_node_type" in config:
             head_node_tags[TAG_RAY_INSTANCE_TYPE] = config["head_node_type"]

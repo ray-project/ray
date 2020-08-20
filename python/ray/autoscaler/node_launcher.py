@@ -48,6 +48,7 @@ class NodeLauncher(threading.Thread):
         # A custom node type is specified; set the tag in this case, and also
         # merge the configs. We merge the configs instead of overriding, so
         # that the bootstrapped per-cloud properties are preserved.
+        # TODO(ekl) this logic is duplicated in commands.py (keep in sync)
         if instance_type:
             node_tags[TAG_RAY_INSTANCE_TYPE] = instance_type
             node_config.update(
