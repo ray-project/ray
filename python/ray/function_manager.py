@@ -195,9 +195,10 @@ class FunctionActorManager:
                 push_error_to_driver(
                     self._worker,
                     ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function '{}' with "
-                    "function ID {}. Traceback:\n{}".format(
-                        function_name, function_id.hex(), traceback_str),
+                    "Failed to unpickle the remote function "
+                    f"'{function_name}' with "
+                    f"function ID {function_id.hex()}. "
+                    f"Traceback:\n{traceback_str}",
                     job_id=job_id)
             else:
                 # The below line is necessary. Because in the driver process,
@@ -455,8 +456,9 @@ class FunctionActorManager:
 
         def temporary_actor_method(*args, **kwargs):
             raise RuntimeError(
-                "The actor with name {} failed to be imported, "
-                "and so cannot execute this method.".format(actor_class_name))
+                "The actor with name {actor_class_name} "
+                "failed to be imported, "
+                "and so cannot execute this method.")
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
@@ -505,9 +507,9 @@ class FunctionActorManager:
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                "Failed to unpickle actor class '{}' for actor ID {}. "
-                "Traceback:\n{}".format(
-                    class_name, self._worker.actor_id.hex(), traceback_str),
+                f"Failed to unpickle actor class '{class_name}' "
+                f"for actor ID {self._worker.actor_id.hex()}. "
+                f"Traceback:\n{traceback_str}",
                 job_id=job_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
