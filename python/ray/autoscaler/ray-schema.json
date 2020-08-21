@@ -291,37 +291,37 @@
                        "resources": {
                            "type": "object",
                            ".*": {"type": "number"}
+                       },
+                       "initialization_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
+                       },
+                       "setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of common shell commands to run to setup nodes."
+                       },
+                       "head_setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "Commands that will be run on the head node after common setup."
+                       },
+                       "worker_setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "Commands that will be run on worker nodes after common setup."
+                       },
+                       "head_start_ray_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "Command to start ray on the head node. You shouldn't need to modify this."
+                       },
+                       "worker_start_ray_commands": {
+                          "$ref": "#/definitions/commands",
+                          "description": "Command to start ray on worker nodes. You shouldn't need to modify this."
+                       },
+                       "no_restart": {
+                           "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
                        }
                     },
                     "additionalProperties": false
                 }
-            },
-            "initialization_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
-            },
-            "setup_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "List of common shell commands to run to setup nodes."
-            },
-            "head_setup_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "Commands that will be run on the head node after common setup."
-            },
-            "worker_setup_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "Commands that will be run on worker nodes after common setup."
-            },
-            "head_start_ray_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "Command to start ray on the head node. You shouldn't need to modify this."
-            },
-            "worker_start_ray_commands": {
-                "$ref": "#/definitions/commands",
-                "description": "Command to start ray on worker nodes. You shouldn't need to modify this."
-            },
-            "no_restart": {
-                "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
             },
             "additionalProperties": false
         }
