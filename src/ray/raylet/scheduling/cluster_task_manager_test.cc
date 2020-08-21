@@ -428,6 +428,35 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 0);
 }
 
+TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+  ASSERT_FALSE(task_manager_.CancelTask(task.TaskId()));
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+
+
+
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  // ASSERT_FALSE(callback_called);
+  // ASSERT_EQ(leased_workers_.size(), 0);
+  // // Worker is unused.
+  // ASSERT_EQ(pool_.workers.size(), 1);
+  // ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  // ASSERT_EQ(node_info_calls_, 0);
+}
+
 }  // namespace raylet
 
 }  // namespace ray
