@@ -1035,7 +1035,7 @@ py_test(
 py_test(
     name = "evaluation/tests/test_trajectory_view_api",
     tags = ["evaluation"],
-    size = "medium",
+    size = "large",
     srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
