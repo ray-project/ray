@@ -160,6 +160,7 @@ def _format_msg(msg,
     res = [str(x) for x in res]
     return ", ".join(res)
 
+
 class _CliLogger():
     """Singleton class for CLI logging.
 
@@ -215,6 +216,7 @@ class _CliLogger():
     @property
     def non_interactive(self):
         return self._non_interactive
+
     @non_interactive.setter
     def non_interactive(self, x):
         if x:
@@ -227,6 +229,7 @@ class _CliLogger():
         if self.non_interactive:
             return 999
         return self._verbosity
+
     @verbosity.setter
     def verbosity(self, x):
         self._verbosity = x
@@ -276,9 +279,7 @@ class _CliLogger():
             timestamp = time.strftime("[%x %X] ")
             # TODO(maximsmol): figure out the required level string
             #                  width automatically
-            rendered_message = "{}{:6} {}".format(timestamp,
-                                                 _level_str,
-                                                 msg)
+            rendered_message = "{}{:6} {}".format(timestamp, _level_str, msg)
         else:
             rendered_message = "  " * self.indent_level + msg
 
@@ -402,6 +403,7 @@ class _CliLogger():
         if _level_str is None:
             raise ValueError("Log level not set.")
         self.print(cf.yellow(msg), *args, _level_str=_level_str, **kwargs)
+
     def warning(self, *args, **kwargs):
         self._warning(*args, _level_str="WARN", **kwargs)
 
@@ -413,6 +415,7 @@ class _CliLogger():
         if _level_str is None:
             raise ValueError("Log level not set.")
         self.print(cf.red(msg), *args, _level_str=_level_str, **kwargs)
+
     def error(self, *args, **kwargs):
         self._error(*args, _level_str="ERR", **kwargs)
 
@@ -423,8 +426,10 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
 
-        self._print(_format_msg(msg, *args, **kwargs),
-                    _level_str=_level_str, _linefeed=_linefeed)
+        self._print(
+            _format_msg(msg, *args, **kwargs),
+            _level_str=_level_str,
+            _linefeed=_linefeed)
 
     def abort(self, msg=None, exc=None, *args, **kwargs):
         """Prints an error and aborts execution.
@@ -465,12 +470,16 @@ class _CliLogger():
 
     def old_debug(self, logger, msg, *args, **kwargs):
         return
+
     def old_info(self, logger, msg, *args, **kwargs):
         return
+
     def old_warning(self, logger, msg, *args, **kwargs):
         return
+
     def old_error(self, logger, msg, *args, **kwargs):
         return
+
     def old_exception(self, logger, msg, *args, **kwargs):
         return
 
@@ -499,9 +508,8 @@ class _CliLogger():
 
         if self.non_interactive and not yes:
             # no formatting around --yes here since this is non-interactive
-            self.error(
-                "This command requires user confirmation. "
-                "When running non-interactively, supply --yes to skip.")
+            self.error("This command requires user confirmation. "
+                       "When running non-interactively, supply --yes to skip.")
             raise ValueError("Non-interactive confirm without --yes.")
 
         if default:
