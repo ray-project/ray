@@ -124,7 +124,7 @@ def test_actor_task_refs(ray_start_regular):
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 2, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
-    assert count(info, "test_memstat.py:test_actor_task_refs") == 2, info
+    assert count(info, "test_memstat.py:test_actor_task_refs") == 3, info
     assert count(info, "test_memstat.py:make_actor") == 1, info
     del x_id
 
