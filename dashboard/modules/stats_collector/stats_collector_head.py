@@ -2,8 +2,10 @@ import asyncio
 import logging
 
 import aiohttp.web
+from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
+import ray.gcs_utils
 import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
@@ -82,24 +84,51 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return await dashboard_utils.rest_response(
             success=True, message="Node detail fetched.", detail=node_info)
 
-    @async_loop_forever(stats_collector_consts.ACTOR_UPDATE_INTERVAL_SECONDS)
     async def _update_actors(self):
-        """ We don't want to rely on redis pubsub, the performance of current
-        implementation is poor.
-        TODO(fyrestone): GCS push actor info to dashboard.
-        """
-        request = gcs_service_pb2.GetAllActorInfoRequest()
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-            request, timeout=2)
-        if reply.status.code == 0:
-            results = {}
-            for actor_info in reply.actor_table_data:
-                results[binary_to_hex(actor_info.actor_id)] = \
+        # Subscribe actor channel.
+        aioredis_client = self._dashboard_head.aioredis_client
+        receiver = Receiver()
+
+        key = "{}:*".format(stats_collector_consts.ACTOR_CHANNEL)
+        pattern = receiver.pattern(key)
+        await aioredis_client.psubscribe(pattern)
+        logger.info("Subscribed to {}".format(key))
+
+        # Get all actor info.
+        while True:
+            try:
+                logger.info("Getting all actor info from GCS.")
+                request = gcs_service_pb2.GetAllActorInfoRequest()
+                reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+                    request, timeout=2)
+                if reply.status.code == 0:
+                    result = {}
+                    for actor_info in reply.actor_table_data:
+                        result[binary_to_hex(actor_info.actor_id)] = \
+                            actor_table_data_to_dict(actor_info)
+                    DataSource.actors.reset(result)
+                    logger.info("Received {} actor info from GCS.".format(
+                        len(result)))
+                    break
+                else:
+                    raise Exception("Failed to GetAllActorInfo: {}".format(
+                        reply.status.message))
+            except Exception as ex:
+                logger.exception(ex)
+                await asyncio.sleep(stats_collector_consts.
+                                    RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
+
+        # Receive actors from channel.
+        async for sender, msg in receiver.iter():
+            try:
+                _, data = msg
+                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+                actor_info = ray.gcs_utils.ActorTableData.FromString(
+                    pubsub_message.data)
+                DataSource.actors[binary_to_hex(actor_info.actor_id)] = \
                     actor_table_data_to_dict(actor_info)
-            DataSource.actors.reset(results)
-        else:
-            raise Exception("Failed to GetAllActorInfo: {}".format(
-                reply.status.message))
+            except Exception as ex:
+                logger.exception(ex)
 
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
@@ -108,10 +137,13 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_info = DataSource.nodes.get(ip)
             if node_info["state"] != "ALIVE":
                 continue
-            reply = await stub.GetNodeStats(
-                node_manager_pb2.GetNodeStatsRequest(), timeout=2)
-            reply_dict = node_stats_to_dict(reply)
-            DataSource.node_stats[ip] = reply_dict
+            try:
+                reply = await stub.GetNodeStats(
+                    node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                reply_dict = node_stats_to_dict(reply)
+                DataSource.node_stats[ip] = reply_dict
+            except Exception as ex:
+                logger.exception(ex)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
