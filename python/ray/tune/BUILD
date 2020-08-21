@@ -477,7 +477,8 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnit_trainable.py"],
     deps = [":tune_lib"],
-    tags = ["e"]
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
 )
 
 py_test(

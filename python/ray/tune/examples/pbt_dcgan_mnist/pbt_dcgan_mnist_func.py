@@ -17,13 +17,14 @@ import torch.optim as optim
 import torch.utils.data
 import numpy as np
 
-from common import beta1, nz, MODEL_PATH
+from common import beta1, MODEL_PATH
 from common import demo_gan, get_data_loader, plot_images, train, weights_init
 from common import Discriminator, Generator, Net
 
+
 # __Train_begin__
 def dcgan_train(config, checkpoint_dir=None):
-    iter = 0
+    step = 0
     use_cuda = config.get("use_gpu") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     netD = Discriminator().to(device)
@@ -32,13 +33,9 @@ def dcgan_train(config, checkpoint_dir=None):
     netG.apply(weights_init)
     criterion = nn.BCELoss()
     optimizerD = optim.Adam(
-        netD.parameters(),
-        lr=config.get("lr", 0.01),
-        betas=(beta1, 0.999))
+        netD.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999))
     optimizerG = optim.Adam(
-        netG.parameters(),
-        lr=config.get("lr", 0.01),
-        betas=(beta1, 0.999))
+        netG.parameters(), lr=config.get("lr", 0.01), betas=(beta1, 0.999))
     with FileLock(os.path.expanduser("~/.data.lock")):
         dataloader = get_data_loader()
 
@@ -49,7 +46,7 @@ def dcgan_train(config, checkpoint_dir=None):
         netG.load_state_dict(checkpoint["netGmodel"])
         optimizerD.load_state_dict(checkpoint["optimD"])
         optimizerG.load_state_dict(checkpoint["optimG"])
-        iter = checkpoint["iter"]
+        step = checkpoint["step"]
 
         if "netD_lr" in config:
             for param_group in optimizerD.param_groups:
@@ -59,20 +56,22 @@ def dcgan_train(config, checkpoint_dir=None):
                 param_group["lr"] = config["netG_lr"]
 
     while True:
-        lossG, lossD, is_score = train(
-            netD, netG, optimizerG, optimizerD,
-            criterion, dataloader, iter, device, config["mnist_model_ref"])
-        iter += 1
-        with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+        lossG, lossD, is_score = train(netD, netG, optimizerG, optimizerD,
+                                       criterion, dataloader, step, device,
+                                       config["mnist_model_ref"])
+        step += 1
+        with tune.checkpoint_dir(step=step) as checkpoint_dir:
             path = os.path.join(checkpoint_dir, "checkpoint")
             torch.save({
                 "netDmodel": netD.state_dict(),
                 "netGmodel": netG.state_dict(),
                 "optimD": optimizerD.state_dict(),
                 "optimG": optimizerG.state_dict(),
-                "iter": iter,
+                "step": step,
             }, path)
         tune.report(lossg=lossG, lossd=lossD, is_score=is_score)
+
+
 # __Train_end__
 
 if __name__ == "__main__":
@@ -96,13 +95,15 @@ if __name__ == "__main__":
     if not args.smoke_test:
         plot_images(dataloader)
 
+    # __tune_begin__
+
     # load the pretrained mnist classification model for inception_score
     mnist_cnn = Net()
     mnist_cnn.load_state_dict(torch.load(MODEL_PATH))
     mnist_cnn.eval()
+    # Put the model in Ray object store.
     mnist_model_ref = ray.put(mnist_cnn)
 
-    # __tune_begin__
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
         metric="is_score",
@@ -135,4 +136,9 @@ if __name__ == "__main__":
 
     # demo of the trained Generators
     if not args.smoke_test:
-        demo_gan(analysis)
+        all_trials = analysis.trials
+        checkpoint_paths = [
+            os.path.join(analysis.get_best_checkpoint(t), "checkpoint")
+            for t in all_trials
+        ]
+        demo_gan(analysis, checkpoint_paths)

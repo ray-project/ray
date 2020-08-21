@@ -17,7 +17,6 @@ from scipy.stats import entropy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-
 # Training parameters
 dataroot = ray.utils.get_user_temp_dir() + os.sep
 workers = 2
@@ -43,6 +42,7 @@ beta1 = 0.5
 train_iterations_per_step = 5
 
 MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
+
 
 def get_data_loader():
     dataset = dset.MNIST(
@@ -141,7 +141,7 @@ def inception_score(imgs, mnist_model_ref, batch_size=32, splits=1):
     N = len(imgs)
     dtype = torch.FloatTensor
     dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
-    cm = ray.get(mnist_model_ref)
+    cm = ray.get(mnist_model_ref)  # Get the mnist model from Ray object store.
     up = nn.Upsample(size=(28, 28), mode="bilinear").type(dtype)
 
     def get_pred(x):
@@ -173,8 +173,8 @@ def inception_score(imgs, mnist_model_ref, batch_size=32, splits=1):
 # __INCEPTION_SCORE_end__
 
 
-def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
-          device, mnist_model_ref):
+def train(netD, netG, optimG, optimD, criterion, dataloader, iteration, device,
+          mnist_model_ref):
     real_label = 1
     fake_label = 0
 
@@ -220,6 +220,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
 
     return errG.item(), errD.item(), is_score
 
+
 def plot_images(dataloader):
     # Plot some training images
     real_batch = next(iter(dataloader))
@@ -228,17 +229,16 @@ def plot_images(dataloader):
     plt.title("Original Images")
     plt.imshow(
         np.transpose(
-            vutils.make_grid(
-                real_batch[0][:64], padding=2, normalize=True).cpu(),
-            (1, 2, 0)))
+            vutils.make_grid(real_batch[0][:64], padding=2,
+                             normalize=True).cpu(), (1, 2, 0)))
 
     plt.show()
 
-def demo_gan(analysis, netG_path):
-    logdirs = analysis.dataframe()["logdir"].tolist()
+
+def demo_gan(checkpoint_paths):
     img_list = []
     fixed_noise = torch.randn(64, nz, 1, 1)
-    for d in logdirs:
+    for netG_path in checkpoint_paths:
         loadedG = Generator()
         loadedG.load_state_dict(torch.load(netG_path)["netGmodel"])
         with torch.no_grad():

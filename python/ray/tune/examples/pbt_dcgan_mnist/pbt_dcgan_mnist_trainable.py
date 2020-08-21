@@ -19,9 +19,10 @@ import torch.optim as optim
 import torch.utils.data
 import numpy as np
 
-from common import beta1, nz, MODEL_PATH
+from common import beta1, MODEL_PATH
 from common import demo_gan, get_data_loader, plot_images, train, weights_init
 from common import Discriminator, Generator, Net
+
 
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
@@ -46,10 +47,10 @@ class PytorchTrainable(tune.Trainable):
         self.mnist_model_ref = config["mnist_model_ref"]
 
     def step(self):
-        lossG, lossD, is_score = train(
-            self.netD, self.netG, self.optimizerG, self.optimizerD,
-            self.criterion, self.dataloader, self._iteration, self.device,
-            self.mnist_model_ref)
+        lossG, lossD, is_score = train(self.netD, self.netG, self.optimizerG,
+                                       self.optimizerD, self.criterion,
+                                       self.dataloader, self._iteration,
+                                       self.device, self.mnist_model_ref)
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
     def save_checkpoint(self, checkpoint_dir):
@@ -159,4 +160,6 @@ if __name__ == "__main__":
 
     # demo of the trained Generators
     if not args.smoke_test:
-        demo_gan(analysis)
+        logdirs = analysis.dataframe()["logdir"].tolist()
+        model_paths = [os.path.join(d, "exported_models") for d in logdirs]
+        demo_gan(analysis, model_paths)
