@@ -388,6 +388,7 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def _get_commands(self, node_id : str, commands_key : str):
+        node_tags = self.provider.node_tags(node_id)
         instance_type = node_tags[TAG_RAY_USER_NODE_TYPE]
         assert instance_type in self.available_node_types, "Unknown instance type tag: {}.".format(instance_type)
         instance_specific_config = self.available_node_types
@@ -400,8 +401,7 @@ class StandardAutoscaler:
         if not self.can_update(node_id):
             return None, None, None  # no update
 
-        node_tags = self.provider.node_tags(node_id)
-        status = node_tags.get(TAG_RAY_NODE_STATUS)
+        status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
             return None, None, None  # no update
 
