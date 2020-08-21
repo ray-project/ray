@@ -123,18 +123,19 @@ const MemoryInfo: React.FC<{}> = () => {
     );
   }
 
-  const children = Object.entries(
-    memoryTable.group,
-  ).map(([groupKey, memoryGroup]) => (
-    <MemoryRowGroup
-      groupKey={groupKey}
-      groupTitle={groupTitle(groupKey, groupBy)}
-      entries={memoryGroup.entries}
-      summary={memoryGroup.summary}
-      initialExpanded={false}
-      initialVisibleEntries={10}
-    />
-  ));
+  const children = Object.entries(memoryTable.group)
+    .sort(([key1], [key2]) => (key1 < key2 ? -1 : 1))
+    .map(([groupKey, memoryGroup]) => (
+      <MemoryRowGroup
+        key={groupKey}
+        groupKey={groupKey}
+        groupTitle={groupTitle(groupKey, groupBy)}
+        entries={memoryGroup.entries}
+        summary={memoryGroup.summary}
+        initialExpanded={false}
+        initialVisibleEntries={10}
+      />
+    ));
   return (
     <Box>
       <FormControl>

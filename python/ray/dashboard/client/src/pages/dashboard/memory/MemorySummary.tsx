@@ -51,7 +51,7 @@ const MemorySummary: React.FC<MemorySummaryProps> = ({
   return (
     <Grid container className={classes.container}>
       {memoryData.map(([label, value]) => (
-        <LabeledDatum label={label} datum={value} />
+        <LabeledDatum key={label} label={label} datum={value} />
       ))}
     </Grid>
   );
