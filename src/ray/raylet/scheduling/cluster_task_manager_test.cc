@@ -207,6 +207,15 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
+  const PlacementGroupID &GetPlacementGroupId() const {
+    RAY_CHECK(false) << "Method unused";
+    return PlacementGroupID::Nil();
+  }
+
+  void SetPlacementGroupId(const PlacementGroupID &placement_group_id) {
+    RAY_CHECK(false) << "Method unused";
+  }
+
   std::vector<double> &GetBorrowedCPUInstances() {
     RAY_CHECK(false) << "Method unused";
     auto *t = new std::vector<double>();
@@ -258,9 +267,10 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(
-      id, Language::PYTHON, FunctionDescriptorBuilder::BuildPython("", "", "", ""),
-      job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0, required_resources, {});
+  spec_builder.SetCommonTaskSpec(id, Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
+                                 required_resources, {}, PlacementGroupID::Nil());
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i + 1);

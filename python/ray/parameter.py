@@ -228,8 +228,8 @@ class RayParams:
             if hasattr(self, arg):
                 setattr(self, arg, kwargs[arg])
             else:
-                raise ValueError("Invalid RayParams parameter in"
-                                 " update: %s" % arg)
+                raise ValueError(
+                    f"Invalid RayParams parameter in update: {arg}")
 
         self._check_usage()
 

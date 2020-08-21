@@ -607,6 +607,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `RequestObjectSpillage` request.
+  void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
+                                   rpc::RequestObjectSpillageReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();

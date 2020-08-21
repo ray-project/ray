@@ -176,5 +176,5 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                                "failed."
                                .format(self.writer.get_target_file_name()))
                 logger.warning(traceback.format_exc())
-                logger.warning("Error message: {}".format(e))
+                logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)

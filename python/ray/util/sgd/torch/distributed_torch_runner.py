@@ -230,7 +230,7 @@ def reserve_resources(num_cpus, num_gpus, retries=20):
     cuda_device_set = {}
     match_devices = bool(cuda_devices)
     if match_devices:
-        logger.debug("Found set devices: {}".format(cuda_devices))
+        logger.debug(f"Found set devices: {cuda_devices}")
         assert isinstance(cuda_devices, str)
         cuda_device_set = set(cuda_devices.split(","))
 
