@@ -762,7 +762,8 @@ def attach_cluster(config_file: str,
         start=start,
         override_cluster_name=override_cluster_name,
         no_config_cache=no_config_cache,
-        port_forward=port_forward)
+        port_forward=port_forward,
+    )
 
 
 def exec_cluster(config_file: str,
