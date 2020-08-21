@@ -392,7 +392,7 @@ class StandardAutoscaler:
         node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
         assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
         node_specific_config = self.available_node_types[node_type]
-        print("instance type: ", instance_type)
+        print("instance type: ", node_type)
         print("available node types: ", self.available_node_types)
         if commands_key in node_specific_config:
             print("Found node specific config")
