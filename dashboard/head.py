@@ -28,7 +28,8 @@ def gcs_node_info_to_dict(message):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, redis_address, redis_password):
+    def __init__(self, http_host, http_port, redis_address, redis_password,
+                 log_dir):
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
@@ -37,6 +38,7 @@ class DashboardHead:
         self.http_port = http_port
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
+        self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
