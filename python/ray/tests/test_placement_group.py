@@ -11,6 +11,7 @@ import ray
 from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
+from ray.experimental.placement_group import PlacementGroup
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -163,7 +164,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name",
         strategy="STRICT_SPREAD",
         bundles=[{
@@ -174,13 +175,13 @@ def test_placement_group_strict_spread(ray_start_cluster):
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1).remote()
     actor_3 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=2).remote()
 
     print(ray.get(actor_1.value.remote()))
@@ -282,9 +283,10 @@ def test_remove_placement_group(ray_start_cluster):
     ray.init(address=cluster.address)
     # First try to remove a placement group that doesn't
     # exist. This should not do anything.
-    random_placement_group_id = PlacementGroupID.from_random()
+    random_group_id = PlacementGroupID.from_random()
+    random_placement_group = PlacementGroup(random_group_id, -1)
     for _ in range(3):
-        ray.experimental.remove_placement_group(random_placement_group_id)
+        ray.experimental.remove_placement_group(random_placement_group)
 
     # Creating a placement group as soon as it is
     # created should work.
@@ -293,10 +295,10 @@ def test_remove_placement_group(ray_start_cluster):
     }, {
         "CPU": 2
     }])
-    ray.experimental.remove_placement_group(placement_group.id)
+    ray.experimental.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
-        table = ray.experimental.placement_group_table(placement_group.id)
+        table = ray.experimental.placement_group_table(placement_group)
         if "state" not in table:
             return False
         return table["state"] == "REMOVED"
@@ -327,14 +329,14 @@ def test_remove_placement_group(ray_start_cluster):
         time.sleep(50)
 
     # Schedule a long running task and actor.
-    task_ref = long_running_task.options(placement_group_id=pid).remote()
-    a = A.options(placement_group_id=pid).remote()
+    task_ref = long_running_task.options(placement_group=placement_group).remote()
+    a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
-    ray.experimental.remove_placement_group(pid)
+    ray.experimental.remove_placement_group(placement_group)
     # Subsequent remove request shouldn't do anything.
     for _ in range(3):
-        ray.experimental.remove_placement_group(placement_group.id)
+        ray.experimental.remove_placement_group(placement_group)
 
     # Make sure placement group resources are
     # released and we can schedule this task.
@@ -362,7 +364,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     }, {
         "CPU": 2
     }])
-    ray.experimental.remove_placement_group(placement_group.id)
+    ray.experimental.remove_placement_group(placement_group)
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -394,7 +396,7 @@ def test_placement_group_table(ray_start_cluster):
     bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
     placement_group = ray.experimental.placement_group(
         name=name, strategy=strategy, bundles=bundles)
-    result = ray.experimental.placement_group_table(placement_group.id)
+    result = ray.experimental.placement_group_table(placement_group)
     assert result["name"] == name
     assert result["strategy"] == strategy
     for i in range(len(bundles)):
@@ -409,7 +411,7 @@ def test_placement_group_table(ray_start_cluster):
         placement_group_bundle_index=0).remote()
     ray.get(actor_1.value.remote())
 
-    result = ray.experimental.placement_group_table(placement_group.id)
+    result = ray.experimental.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
 
 

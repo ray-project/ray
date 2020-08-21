@@ -45,22 +45,23 @@ def placement_group(bundles: List[Dict[str, float]],
     return PlacementGroup(placement_group_id, len(bundles))
 
 
-def remove_placement_group(placement_group_id: PlacementGroupID):
-    assert type(placement_group_id) == PlacementGroupID
+def remove_placement_group(placement_group):
+    assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    worker.core_worker.remove_placement_group(placement_group_id)
+    worker.core_worker.remove_placement_group(placement_group.id)
 
 
-def placement_group_table(placement_group_id):
-    assert placement_group_id is not None
+def placement_group_table(placement_group):
+    assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
-    return ray.state.state.placement_group_table(placement_group_id)
+    return ray.state.state.placement_group_table(placement_group.id)
 
 
 def check_placement_group_index(placement_group, bundle_index):
+    assert placement_group is not None
     if placement_group.id.is_nil():
         if bundle_index != -1:
             raise ValueError("If placement group is not set, "
