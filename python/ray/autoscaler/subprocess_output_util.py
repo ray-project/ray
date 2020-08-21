@@ -190,8 +190,8 @@ def _run_and_process_output(cmd,
     Implementation notes:
     1. `use_login_shells` disables special processing
     If we run interactive apps, output processing will likely get
-    overwhelemed with the interactive output elements.
-    Thus we disable output processing for login shells. This makes
+    overwhelmed with the interactive output elements.
+    Thus, we disable output processing for login shells. This makes
     the logging experience considerably worse, but it only degrades
     to old-style logging.
 
@@ -230,7 +230,7 @@ def _run_and_process_output(cmd,
             # this is most probably a bug since the user has no control
             # over these settings
             raise ValueError(
-                "Output was redirected for an interactive command")
+                "Output was redirected for an interactive command.")
         else:
             stdin_overwrite = None
 
