@@ -40,6 +40,7 @@
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
 #ifdef __APPLE__
@@ -136,7 +137,7 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        new_env_block.c_str();  // Ensure there's a final terminator for Windows
+        RAY_UNUSED(new_env_block.c_str());  // Ensure there's a final terminator for Windows
         char *const envp = &new_env_block[0];
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
