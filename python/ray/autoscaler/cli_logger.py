@@ -187,12 +187,6 @@ class _CliLogger():
             Output verbosity.
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
-        dump_command_output (bool):
-            Determines whether the old behavior of dumping command output
-            to console will be used, or the new behavior of redirecting to
-            a file.
-
-            ! Currently unused.
     """
     strip: bool
     old_style: bool
@@ -201,7 +195,6 @@ class _CliLogger():
     indent_level: int
     verbosity: int
 
-    dump_command_output: bool
     _autodetected_cf_colormode: int
 
     def __init__(self):
@@ -210,8 +203,6 @@ class _CliLogger():
         self.indent_level = 0
 
         self.verbosity = 0
-
-        self.dump_command_output = False
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,

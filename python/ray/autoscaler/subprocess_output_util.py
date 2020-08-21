@@ -10,14 +10,15 @@ import colorful as cf
 
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
-_config = {"redirect_output": False, "allow_interactive": False}
+_redirect_output = False  # Whether to log command output to a temporary file
+_allow_interactive = True  # whether to pass on stdin to running commands.
 
 
 def is_output_redirected():
-    return _config["redirect_output"]
+    return _redirect_output
 
 
-def set_output_redirected(val):
+def set_output_redirected(val: bool):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
     The default is to log to a file.
@@ -26,14 +27,15 @@ def set_output_redirected(val):
         val (bool): If true, subprocess output will be redirected to
                     a temporary file.
     """
-    _config["redirect_output"] = val
+    global _redirect_output
+    _redirect_output = val
 
 
 def does_allow_interactive():
-    return _config["allow_interactive"]
+    return _allow_interactive
 
 
-def set_allow_interactive(val):
+def set_allow_interactive(val: bool):
     """Choose whether to pass on stdin to running commands.
 
     The default is to pipe stdin and close it immediately.
@@ -41,7 +43,8 @@ def set_allow_interactive(val):
     Args:
         val (bool): If true, stdin will be passed to commands.
     """
-    _config["allow_interactive"] = val
+    global _allow_interactive
+    _allow_interactive = val
 
 
 class ProcessRunnerError(Exception):

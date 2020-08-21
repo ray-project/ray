@@ -916,11 +916,10 @@ def stop(force, verbose, log_new_style, log_color):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--dump-command-output/--redirect-command-output",
+    "--redirect-command-output",
     is_flag=True,
-    default=None,
-    help=("Whether to print command output straight to "
-          "the terminal instead of redirecting to a file."))
+    default=False,
+    help="Whether to redirect command output to a file.")
 @click.option(
     "--use-login-shells/--use-normal-shells",
     is_flag=True,
@@ -930,7 +929,7 @@ def stop(force, verbose, log_new_style, log_color):
           "this can be disabled for a better user experience."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, dump_command_output,
+       yes, cluster_name, no_config_cache, redirect_command_output,
        use_login_shells, log_new_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = not log_new_style
@@ -958,10 +957,17 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
             cli_logger.old_info(logger, "Error downloading file: ", e)
-    create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name,
-                             no_config_cache, dump_command_output,
-                             use_login_shells)
+    create_or_update_cluster(
+        cluster_config_file,
+        min_workers,
+        max_workers,
+        no_restart,
+        restart_only,
+        yes,
+        cluster_name,
+        no_config_cache=no_config_cache,
+        redirect_command_output=redirect_command_output,
+        use_login_shells=use_login_shells)
 
 
 @cli.command()
@@ -1260,7 +1266,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             yes=True,
             override_cluster_name=cluster_name,
             no_config_cache=no_config_cache,
-            dump_command_output=True,
+            redirect_command_output=False,
             use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
