@@ -37,6 +37,7 @@ Worker::Worker(const WorkerID &worker_id, const Language &language,
       assigned_port_(-1),
       port_(-1),
       connection_(connection),
+      placement_group_id_(PlacementGroupID::Nil()),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
@@ -188,6 +189,14 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
         }
       });
+}
+
+const PlacementGroupID &Worker::GetPlacementGroupId() const {
+  return placement_group_id_;
+}
+
+void Worker::SetPlacementGroupId(const PlacementGroupID &placement_group_id) {
+  placement_group_id_ = placement_group_id;
 }
 
 }  // namespace raylet

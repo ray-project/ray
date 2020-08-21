@@ -85,7 +85,8 @@ class TaskSpecBuilder {
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
       const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::unordered_map<std::string, double> &required_placement_resources) {
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const PlacementGroupID &placement_group_id) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_language(language);
     *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
@@ -100,6 +101,7 @@ class TaskSpecBuilder {
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
+    message_->set_placement_group_id(placement_group_id.Binary());
     return *this;
   }
 

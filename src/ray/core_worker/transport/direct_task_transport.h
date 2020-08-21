@@ -52,7 +52,8 @@ class CoreWorkerDirectTaskSubmitter {
  public:
   explicit CoreWorkerDirectTaskSubmitter(
       rpc::Address rpc_address, std::shared_ptr<WorkerLeaseInterface> lease_client,
-      rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, ClientID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
@@ -67,7 +68,7 @@ class CoreWorkerDirectTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         actor_creator_(std::move(actor_creator)),
-        client_cache_(client_factory),
+        client_cache_(core_worker_client_pool),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         cancel_retry_timer_(std::move(cancel_timer)) {}
 
@@ -167,7 +168,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  rpc::CoreWorkerClientPool client_cache_;
+  std::shared_ptr<rpc::CoreWorkerClientPool> client_cache_;
 
   // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a
   // worker using a single lease.

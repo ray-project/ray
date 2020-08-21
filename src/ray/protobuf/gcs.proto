@@ -169,6 +169,8 @@ message PlacementGroupTableData {
     CREATED = 1;
     // Placement Group is already removed and won't be reschedule.
     REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
   }
 
   // ID of the PlacementGroup.

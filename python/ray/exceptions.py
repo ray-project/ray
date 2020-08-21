@@ -86,7 +86,7 @@ class RayTaskError(RayError):
                 RayTaskError.__init__(self, function_name, traceback_str,
                                       cause_cls, proctitle, pid, ip)
 
-        name = "RayTaskError({})".format(self.cause_cls.__name__)
+        name = f"RayTaskError({self.cause_cls.__name__})"
         cls.__name__ = name
         cls.__qualname__ = name
 
@@ -140,7 +140,7 @@ class RayletError(RayError):
         self.client_exc = client_exc
 
     def __str__(self):
-        return "The Raylet died with this message: {}".format(self.client_exc)
+        return f"The Raylet died with this message: {self.client_exc}"
 
 
 class ObjectStoreFullError(RayError):

@@ -104,16 +104,21 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids(as_str=True):
+        if torch.cuda.is_available() and ray.get_gpu_ids():
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.view_requirements = {
-            **self.model.inference_view_requirements(),
-            **self.training_view_requirements(),
-        }
+        self.training_view_requirements = dict(
+            **{
+                SampleBatch.ACTIONS: ViewRequirement(
+                    space=self.action_space, shift=0),
+                SampleBatch.REWARDS: ViewRequirement(shift=0),
+                SampleBatch.DONES: ViewRequirement(shift=0),
+            },
+            **self.model.inference_view_requirements)
+
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
@@ -130,17 +135,6 @@ class TorchPolicy(Policy):
         self.batch_divisibility_req = get_batch_divisibility_req(self) if \
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
-
-    @override(Policy)
-    def training_view_requirements(self):
-        if hasattr(self, "view_requirements"):
-            return self.view_requirements
-        return {
-            SampleBatch.ACTIONS: ViewRequirement(
-                space=self.action_space, shift=0),
-            SampleBatch.REWARDS: ViewRequirement(shift=0),
-            SampleBatch.DONES: ViewRequirement(shift=0),
-        }
 
     @override(Policy)
     @DeveloperAPI
@@ -204,9 +198,11 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            # TODO: (sven) support RNNs w/ fast sampling.
-            state_batches = []
-            seq_lens = None
+            state_batches = [
+                input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
+            ]
+            seq_lens = np.array([1] * len(input_dict["obs"])) \
+                if state_batches else None
 
             actions, state_out, extra_fetches, logp = \
                 self._compute_action_helper(
@@ -340,7 +336,9 @@ class TorchPolicy(Policy):
             postprocessed_batch,
             max_seq_len=self.max_seq_len,
             shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req)
+            batch_divisibility_req=self.batch_divisibility_req,
+            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
+        )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
@@ -359,6 +357,7 @@ class TorchPolicy(Policy):
                 loss_out, train_batch)
 
         assert len(loss_out) == len(self._optimizers)
+
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
