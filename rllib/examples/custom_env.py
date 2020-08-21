@@ -21,7 +21,7 @@ from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -114,6 +114,8 @@ if __name__ == "__main__":
         "env_config": {
             "corridor_length": 5,
         },
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "model": {
             "custom_model": "my_model",
         },

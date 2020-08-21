@@ -12,6 +12,7 @@ from ray.tune import sample_from
 from ray.rllib.examples.env.fast_image_env import FastImageEnv
 from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=2)
@@ -32,7 +33,8 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "fast_model"
         },
-        "num_gpus": 0,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 2,
         "num_envs_per_worker": 10,
         "num_data_loader_buffers": 1,

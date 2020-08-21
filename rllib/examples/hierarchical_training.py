@@ -31,7 +31,7 @@ from ray import tune
 from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
@@ -94,6 +94,8 @@ if __name__ == "__main__":
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
             "framework": "torch" if args.torch else "tf",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
         }
 
         results = tune.run("PPO", stop=stop, config=config)

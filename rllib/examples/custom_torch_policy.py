@@ -5,6 +5,7 @@ from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -36,6 +37,8 @@ if __name__ == "__main__":
         stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
             "num_workers": 2,
             "framework": "torch",
         })

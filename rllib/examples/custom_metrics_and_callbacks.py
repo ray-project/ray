@@ -10,11 +10,12 @@ import numpy as np
 
 import ray
 from ray import tune
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
+from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -77,6 +78,8 @@ if __name__ == "__main__":
             "env": "CartPole-v0",
             "callbacks": MyCallbacks,
             "framework": "tf",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
         },
         return_trials=True)
 

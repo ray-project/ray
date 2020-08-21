@@ -36,7 +36,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
 from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
@@ -218,6 +218,8 @@ if __name__ == "__main__":
     config = {
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "multiagent": {
             "policies": {

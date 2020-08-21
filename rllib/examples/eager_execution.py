@@ -9,7 +9,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -64,6 +64,8 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "model": {
             "custom_model": "eager_model"

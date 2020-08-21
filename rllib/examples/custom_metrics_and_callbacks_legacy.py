@@ -5,6 +5,7 @@ import numpy as np
 
 import ray
 from ray import tune
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 
 def on_episode_start(info):
@@ -73,6 +74,8 @@ if __name__ == "__main__":
                 "on_postprocess_traj": on_postprocess_traj,
             },
             "framework": "tf",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
         },
         return_trials=True)
 

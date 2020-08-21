@@ -21,7 +21,7 @@ from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
@@ -63,6 +63,8 @@ if __name__ == "__main__":
                     lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
             },
             "framework": "torch" if args.torch else "tf",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
         },
     )
 

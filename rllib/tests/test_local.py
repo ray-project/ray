@@ -15,7 +15,8 @@ class LocalModeTest(unittest.TestCase):
     def test_local(self):
         cf = DEFAULT_CONFIG.copy()
         cf["num_gpus"] = NUM_GPUS
-        for _ in framework_iterator(cf):
+        #TODO remove "torch"
+        for _ in framework_iterator(cf, frameworks="torch"):
             agent = PPOTrainer(cf, "CartPole-v0")
             print(agent.train())
             agent.stop()

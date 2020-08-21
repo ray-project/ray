@@ -1,7 +1,7 @@
 import argparse
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     configs = {
         "PPO": {
@@ -37,6 +37,7 @@ if __name__ == "__main__":
     config = dict(
         configs[args.run], **{
             "env": StatelessCartPole,
+            "num_gpus": FORCED_NUM_GPUS,
             "model": {
                 "use_lstm": True,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,

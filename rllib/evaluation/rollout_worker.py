@@ -417,9 +417,9 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
-            # Check available number of GPUs
+        if (ray.is_initialized()):
+                #and ray.worker._mode() != ray.worker.LOCAL_MODE):
+            # Check available number of GPUs.
             if not ray.get_gpu_ids(as_str=True):
                 logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +

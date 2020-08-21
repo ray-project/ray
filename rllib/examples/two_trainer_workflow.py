@@ -27,7 +27,7 @@ from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -140,6 +140,8 @@ if __name__ == "__main__":
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
         "framework": "torch" if args.torch else "tf",
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
     }
 
     stop = {

@@ -6,7 +6,7 @@ import ray.tune as tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import \
     NestedSpaceRepeatAfterMeEnv
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -40,6 +40,8 @@ if __name__ == "__main__":
         "gamma": 0.0,  # No history in Env (bandit problem).
         "lr": 0.0005,
         "num_envs_per_worker": 20,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_sgd_iter": 4,
         "num_workers": 0,
         "vf_loss_coeff": 0.01,

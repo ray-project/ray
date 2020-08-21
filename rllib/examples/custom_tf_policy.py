@@ -6,6 +6,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -50,6 +51,8 @@ if __name__ == "__main__":
         stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",
+            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": FORCED_NUM_GPUS,
             "num_workers": 2,
             "framework": "tf",
         })

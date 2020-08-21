@@ -25,7 +25,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.env.unity3d_env import Unity3DEnv
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -96,6 +96,8 @@ if __name__ == "__main__":
         "gamma": 0.99,
         "sgd_minibatch_size": 256,
         "train_batch_size": 4000,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_sgd_iter": 20,
         "rollout_fragment_length": 200,
         "clip_param": 0.2,

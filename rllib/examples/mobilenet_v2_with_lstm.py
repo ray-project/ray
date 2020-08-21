@@ -12,6 +12,7 @@ from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import \
     MobileV2PlusRNNModel, TorchMobileV2PlusRNNModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -42,6 +43,8 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
         "vf_share_layers": True,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,  # no parallelism
         "env_config": {
             "action_space": Discrete(2),

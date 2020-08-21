@@ -6,12 +6,12 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
 from ray.rllib.tests.test_rollout_worker import MockPolicy
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 
 
 def one_hot(i, n):
@@ -22,7 +22,7 @@ def one_hot(i, n):
 
 class TestMultiAgentEnv(unittest.TestCase):
     def setUp(self) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, num_gpus=NUM_GPUS)
 
     def tearDown(self) -> None:
         ray.shutdown()

@@ -9,7 +9,7 @@ from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.models.rnn_model import RNNModel, TorchRNNModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
@@ -37,6 +37,8 @@ if __name__ == "__main__":
             "repeat_delay": 2,
         },
         "gamma": 0.9,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.001,

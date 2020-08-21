@@ -20,7 +20,7 @@ from ray.rllib.examples.models.centralized_critic_models import \
 from ray.rllib.examples.env.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
@@ -87,6 +87,8 @@ if __name__ == "__main__":
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
         "callbacks": FillInActions,
+        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "multiagent": {
             "policies": {
