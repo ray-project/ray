@@ -95,7 +95,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         action_space = Discrete(2)
-        obs_space = Box(-1.0, 1.0, shape=(1000, ))
+        obs_space = Box(-1.0, 1.0, shape=(700, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
@@ -112,7 +112,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["num_sgd_iter"] = 6
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
-        config["model"]["max_seq_len"] = 200
+        config["model"]["max_seq_len"] = 100
 
         policies = {
             "pol0": (None, obs_space, action_space, {}),
