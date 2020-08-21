@@ -9,8 +9,8 @@ from ray.tune.result import TRAINING_ITERATION
 from torch.utils.data import DataLoader, Dataset
 
 from ray import tune
-from ray.tune.integration.pytorch_lightning import CheckpointCallback, \
-    ReportCallback
+from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback, \
+    TuneReportCallback
 
 
 class _MockDataset(Dataset):
@@ -72,7 +72,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
-                    ReportCallback(
+                    TuneReportCallback(
                         {
                             "tune_loss": "avg_val_loss"
                         }, on="validation_end")
@@ -92,7 +92,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
-                    CheckpointCallback(
+                    TuneCheckpointCallback(
                         "trainer.ckpt", on=["batch_end", "train_end"])
                 ])
             trainer.fit(module)

@@ -96,12 +96,12 @@ that can be used to plug custom functions into the training loop. This way the o
 callback for multiple modules.
 
 Ray Tune comes with ready-to-use PyTorch Lightning callbacks. To report metrics
-back to Tune after each validation epoch, we will use the ``ReportCallback``:
+back to Tune after each validation epoch, we will use the ``TuneReportCallback``:
 
 .. code-block:: python
 
-    from ray.tune.integration.pytorch_lightning import ReportCallback
-    callback = ReportCallback({
+    from ray.tune.integration.pytorch_lightning import TuneReportCallback
+    callback = TuneReportCallback({
         "loss": "avg_val_loss",
         "mean_accuracy": "avg_val_accuracy"
     }, on="validation_end")
@@ -292,15 +292,15 @@ another callback to save model checkpoints:
 
 .. code-block:: python
 
-    from ray.tune.integration.pytorch_lightning import CheckpointCallback
-    callback = CheckpointCallback("checkpoint", on="validation_end")
+    from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback
+    callback = TuneCheckpointCallback(filename="checkpoint", on="validation_end")
 
 The ``checkpoint`` value is the name of the checkpoint file within the
 checkpoint directory.
 
 We also include checkpoint loading in our training function. The name
 of the checkpoint has to coincide with the one we passed to the
-``CheckpointCallback``:
+``TuneCheckpointCallback``:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python

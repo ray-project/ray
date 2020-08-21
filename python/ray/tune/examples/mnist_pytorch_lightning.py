@@ -20,8 +20,8 @@ from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
-from ray.tune.integration.pytorch_lightning import CheckpointCallback, \
-    ReportCallback
+from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback, \
+    TuneReportCallback
 # __import_tune_end__
 
 
@@ -141,7 +141,7 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[ReportCallback({
+        callbacks=[TuneReportCallback({
             "loss": "avg_val_loss",
             "mean_accuracy": "avg_val_accuracy"
         }, on="validation_end")])
@@ -163,8 +163,9 @@ def train_mnist_tune_checkpoint(
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[CheckpointCallback("checkpoint", on="validation_end"),
-                   ReportCallback({
+        callbacks=[TuneCheckpointCallback(
+            filename="checkpoint", on="validation_end"),
+                   TuneReportCallback({
                        "loss": "avg_val_loss",
                        "mean_accuracy": "avg_val_accuracy"
                    }, on="validation_end")])
