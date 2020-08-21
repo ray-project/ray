@@ -110,6 +110,7 @@ class TorchPolicy(Policy):
             print("TorchPolicy running on GPU.")
             self.device = torch.device("cuda")
         else:
+            print("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
