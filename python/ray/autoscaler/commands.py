@@ -715,9 +715,14 @@ def get_or_create_head_node(config,
         provider.cleanup()
 
 
-def attach_cluster(config_file: str, start: bool, use_screen: bool,
-                   use_tmux: bool, override_cluster_name: Optional[str],
-                   new: bool, port_forward: Any):
+def attach_cluster(config_file: str,
+                   start: bool,
+                   use_screen: bool,
+                   use_tmux: bool,
+                   override_cluster_name: Optional[str],
+                   no_config_cache: bool = False,
+                   new: bool = False,
+                   port_forward: Any = None):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -755,6 +760,7 @@ def attach_cluster(config_file: str, start: bool, use_screen: bool,
         stop=False,
         start=start,
         override_cluster_name=override_cluster_name,
+        no_config_cache=no_config_cache,
         port_forward=port_forward)
 
 

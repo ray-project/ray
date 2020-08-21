@@ -997,12 +997,8 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
 
-    teardown_cluster(
-        cluster_config_file,
-        yes,
-        workers_only,
-        cluster_name,
-        keep_min_workers)
+    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
+                     keep_min_workers)
 
 
 @cli.command()
@@ -1075,6 +1071,11 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
 @click.option(
     "--port-forward",
@@ -1084,8 +1085,9 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
-def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
-           port_forward, log_new_style, log_color, verbose):
+def attach(cluster_config_file, start, screen, tmux, cluster_name,
+           no_config_cache, new, port_forward, log_new_style, log_color,
+           verbose):
     """Create or attach to a SSH session to a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -1093,8 +1095,15 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
     cli_logger.detect_colors()
 
     port_forward = [(port, port) for port in list(port_forward)]
-    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
-                   port_forward)
+    attach_cluster(
+        cluster_config_file,
+        start,
+        screen,
+        tmux,
+        cluster_name,
+        no_config_cache=no_config_cache,
+        new=new,
+        port_forward=port_forward)
 
 
 @cli.command()

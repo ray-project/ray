@@ -193,7 +193,8 @@ def test_ray_attach(configure_aws, _unlink_test_ssh_key):
         _die_on_error(result)
 
         result = runner.invoke(scripts.attach, [
-            DEFAULT_TEST_CONFIG_PATH, "--log-new-style", "--log-color", "False"
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "--log-new-style",
+            "--log-color", "False"
         ])
 
         _check_output_via_pattern("test_ray_attach.txt", result)
