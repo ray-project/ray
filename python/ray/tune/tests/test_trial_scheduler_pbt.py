@@ -52,6 +52,16 @@ def MockTrainingFunc(config, checkpoint_dir=None):
         tune.report(mean_accuracy=(a - iter) * b)
 
 
+def MockTrainingFunc2(config):
+    a = config["a"]
+    b = config["b"]
+    c1 = config["c"]["c1"]
+    c2 = config["c"]["c2"]
+
+    while True:
+        tune.report(mean_accuracy=a * b * (c1 + c2))
+
+
 class MockParam(object):
     def __init__(self, params):
         self._params = params
@@ -61,6 +71,38 @@ class MockParam(object):
         val = self._params[self._index % len(self._params)]
         self._index += 1
         return val
+
+
+class PopulationBasedTrainingConfigTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testNoConfig(self):
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="mean_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations={
+                "a": tune.uniform(0, 0.3),
+                "b": [1, 2, 3],
+                "c": {
+                    "c1": lambda: np.random.uniform(0.5),
+                    "c2": tune.choice([2, 3, 4])
+                }
+            },
+        )
+
+        tune.run(
+            MockTrainingFunc2,
+            fail_fast=True,
+            num_samples=4,
+            scheduler=scheduler,
+            name="testNoConfig",
+            stop={"training_iteration": 3})
 
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
@@ -99,14 +141,14 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 "c": 1
             },
             fail_fast=True,
-            num_samples=20,
+            num_samples=4,
             checkpoint_freq=1,
             checkpoint_at_end=True,
             keep_checkpoints_num=1,
             checkpoint_score_attr="min-training_iteration",
             scheduler=scheduler,
             name="testPermutationContinuation",
-            stop={"training_iteration": 5})
+            stop={"training_iteration": 3})
 
     def testPermutationContinuationFunc(self):
         scheduler = PopulationBasedTraining(

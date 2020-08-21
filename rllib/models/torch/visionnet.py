@@ -5,7 +5,7 @@ from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 _, nn = try_import_torch()
 
@@ -22,8 +22,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        activation = get_activation_fn(
-            self.model_config.get("conv_activation"), framework="torch")
+        activation = self.model_config.get("conv_activation")
         filters = self.model_config["conv_filters"]
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
@@ -101,7 +100,10 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._value_branch_separate = self._value_branch = None
         if vf_share_layers:
             self._value_branch = SlimFC(
-                out_channels, 1, initializer=normc_initializer(0.01))
+                out_channels,
+                1,
+                initializer=normc_initializer(0.01),
+                activation_fn=None)
         else:
             vf_layers = []
             (w, h, in_channels) = obs_space.shape
@@ -136,7 +138,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
                     out_channels=1,
                     kernel=1,
                     stride=1,
-                    padding=None))
+                    padding=None,
+                    activation_fn=None))
             self._value_branch_separate = nn.Sequential(*vf_layers)
 
         # Holds the current "base" output (before logits layer).

@@ -213,8 +213,7 @@ def decode(byte_str, allow_none=False):
         return ""
 
     if not isinstance(byte_str, bytes):
-        raise ValueError(
-            "The argument {} must be a bytes object.".format(byte_str))
+        raise ValueError(f"The argument {byte_str} must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -456,7 +455,7 @@ def create_and_init_new_worker_log(path, worker_pid):
         # This should always be the first message to appear in the worker's
         # stdout and stderr log files. The string "Ray worker pid:" is
         # parsed in the log monitor process.
-        print("Ray worker pid: {}".format(worker_pid), file=f)
+        print(f"Ray worker pid: {worker_pid}", file=f)
     return f
 
 

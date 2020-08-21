@@ -37,12 +37,12 @@ void BuildCommonTaskSpec(
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids) {
+    std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, address, num_returns,
-                            required_resources, required_placement_resources);
+  builder.SetCommonTaskSpec(
+      task_id, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      current_task_id, task_index, caller_id, address, num_returns, required_resources,
+      required_placement_resources, placement_group_id);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1174,8 +1174,85 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
-Status CoreWorker::ForceSpillObjects(const std::vector<ObjectID> &object_ids) {
-  return local_raylet_client_->ForceSpillObjects(object_ids);
+void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
+                                  const std::shared_ptr<RayObject> &obj,
+                                  std::function<void()> callback) {
+  if (!obj->IsInPlasmaError()) {
+    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
+    callback();
+    return;
+  }
+
+  // Find the raylet that hosts the primary copy of the object.
+  ClientID pinned_at;
+  RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
+  auto node = gcs_client_->Nodes().Get(pinned_at);
+  if (pinned_at.IsNil() || !node) {
+    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
+    callback();
+    return;
+  }
+
+  // Ask the raylet to spill the object.
+  auto raylet_client =
+      std::make_shared<raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
+          node->node_manager_address(), node->node_manager_port(),
+          *client_call_manager_));
+  raylet_client->RequestObjectSpillage(
+      object_id, [object_id, callback](const Status &status,
+                                       const rpc::RequestObjectSpillageReply &reply) {
+        if (!status.ok() || !reply.success()) {
+          RAY_LOG(ERROR) << "Failed to spill object " << object_id
+                         << ", raylet unreachable or object could not be spilled.";
+        }
+        callback();
+      });
+}
+
+Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
+  auto mutex = std::make_shared<absl::Mutex>();
+  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+  auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
+  Status final_status;
+
+  auto callback = [mutex, num_remaining, ready_promise]() {
+    absl::MutexLock lock(mutex.get());
+    (*num_remaining)--;
+    if (*num_remaining == 0) {
+      ready_promise->set_value();
+    }
+  };
+
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Requesting spill for object " << object_id;
+    // Acquire a temporary reference to make sure that the object is still in
+    // scope by the time we register the callback to spill the object.
+    // Otherwise, the callback may never get called.
+    AddLocalReference(object_id, "<temporary (get object status)>");
+
+    rpc::Address owner_address;
+    auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
+    if (!has_owner) {
+      final_status =
+          Status::Invalid("Cannot call spill on objects that have gone out of scope.");
+      callback();
+    } else if (WorkerID::FromBinary(owner_address.worker_id()) !=
+               worker_context_.GetWorkerID()) {
+      final_status = Status::Invalid("Cannot call spill on objects that we do not own.");
+      callback();
+    } else {
+      memory_store_->GetAsync(
+          object_id, [this, object_id, callback](std::shared_ptr<RayObject> obj) {
+            SpillOwnedObject(object_id, obj, callback);
+          });
+    }
+
+    // Remove the temporary reference.
+    RemoveLocalReference(object_id);
+  }
+
+  ready_promise->get_future().wait();
+  return final_status;
 }
 
 Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {
@@ -1222,7 +1299,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources, return_ids);
+                      constrained_resources, required_resources, return_ids,
+                      placement_options.first);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1262,7 +1340,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
-                      new_placement_resources, &return_ids);
+                      new_placement_resources, &return_ids,
+                      actor_creation_options.placement_options.first);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_restarts,
       actor_creation_options.dynamic_worker_options,
@@ -1309,7 +1388,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  const PlacementGroupID placement_group_id = PlacementGroupID ::FromRandom();
+  const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(placement_group_id, placement_group_creation_options.name,
                                 placement_group_creation_options.bundles,
@@ -1320,6 +1399,27 @@ Status CoreWorker::CreatePlacementGroup(
   RAY_CHECK_OK(
       gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
   return Status::OK();
+}
+
+Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
+  std::shared_ptr<std::promise<Status>> status_promise =
+      std::make_shared<std::promise<Status>>();
+  // Synchronously wait for placement group removal.
+  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
+      placement_group_id,
+      [status_promise](Status status) { status_promise->set_value(status); }));
+  auto status_future = status_promise->get_future();
+  if (status_future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in removing the placement group of id "
+           << placement_group_id
+           << ". It is probably "
+              "because GCS server is dead or there's a high load there.";
+    return Status::TimedOut(stream.str());
+  }
+  return status_future.get();
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -1342,7 +1442,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids);
+                      required_resources, return_ids, PlacementGroupID::Nil());
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);
@@ -1396,7 +1496,6 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
   return Status::OK();
 }
 
-// SANG-TODO
 Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
   // KillActor doesn't do anything in local mode. We only remove named actor entry if
   // exists.

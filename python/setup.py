@@ -110,7 +110,7 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "blist", "requests"],
+    "serve": ["uvicorn", "flask", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 

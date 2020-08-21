@@ -304,8 +304,8 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = "{}{}".format(
-            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                           f"{pretty_name}")
         return {constraint_name: 1}
     return {}
 
@@ -324,8 +324,7 @@ def _get_gpu_info_string():
         if os.path.isdir(proc_gpus_path):
             gpu_dirs = os.listdir(proc_gpus_path)
             if len(gpu_dirs) > 0:
-                gpu_info_path = "{}/{}/information".format(
-                    proc_gpus_path, gpu_dirs[0])
+                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
                 info_str = open(gpu_info_path).read()
                 return info_str
     return None
