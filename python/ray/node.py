@@ -135,8 +135,7 @@ class Node:
             # date including microsecond
             date_str = datetime.datetime.today().strftime(
                 "%Y-%m-%d_%H-%M-%S_%f")
-            self.session_name = "session_{date_str}_{pid}".format(
-                pid=os.getpid(), date_str=date_str)
+            self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             redis_client = self.create_redis_client()
             self.session_name = ray.utils.decode(
@@ -328,8 +327,7 @@ class Node:
     @property
     def unique_id(self):
         """Get a unique identifier for this node."""
-        return "{}:{}".format(self.node_ip_address,
-                              self._plasma_store_socket_name)
+        return f"{self.node_ip_address}:{self._plasma_store_socket_name}"
 
     @property
     def webui_url(self):
@@ -472,8 +470,8 @@ class Node:
             log_stderr = self._make_inc_temp(
                 suffix=".err", prefix=name, directory_name=self._logs_dir)
         else:
-            log_stdout = os.path.join(self._logs_dir, "{}.out".format(name))
-            log_stderr = os.path.join(self._logs_dir, "{}.err".format(name))
+            log_stdout = os.path.join(self._logs_dir, f"{name}.out")
+            log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
     def _get_unused_port(self, close_on_exit=True):
@@ -516,8 +514,8 @@ class Node:
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = "tcp://{}:{}".format(self._localhost,
-                                              self._get_unused_port()[0])
+                result = (f"tcp://{self._localhost}"
+                          f":{self._get_unused_port()[0]}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -554,8 +552,7 @@ class Node:
         redis_log_files = [self.get_log_file_handles("redis", unique=True)]
         for i in range(self._ray_params.num_redis_shards):
             redis_log_files.append(
-                self.get_log_file_handles(
-                    "redis-shard_{}".format(i), unique=True))
+                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray.services.start_redis(
@@ -752,8 +749,7 @@ class Node:
                 ray.utils.binary_to_hex(worker_id),
                 ray.utils.binary_to_hex(job_id), os.getpid())
         else:
-            name = "worker-{}-{}".format(
-                ray.utils.binary_to_hex(worker_id), os.getpid())
+            name = f"worker-{ray.utils.binary_to_hex(worker_id)}-{os.getpid()}"
 
         worker_stdout_file, worker_stderr_file = self._get_log_file_names(
             name, unique=False)
@@ -779,9 +775,8 @@ class Node:
 
     def start_head_processes(self):
         """Start head processes on the node."""
-        logger.debug(
-            "Process STDOUT and STDERR is being redirected to {}.".format(
-                self._logs_dir))
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
         assert self._redis_address is None
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
@@ -797,9 +792,8 @@ class Node:
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
-        logger.debug(
-            "Process STDOUT and STDERR is being redirected to {}.".format(
-                self._logs_dir))
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
 
         self.start_plasma_store()
         self.start_raylet()
