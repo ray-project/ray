@@ -285,10 +285,7 @@ class StandardAutoscaler:
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
                  new_config["cluster_synced_files"],
-                 [
-                     new_config["worker_setup_commands"],
-                     new_config["worker_start_ray_commands"],
-                 ],
+                 new_config["available_node_types"],
                  generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
@@ -380,7 +377,8 @@ class StandardAutoscaler:
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
-                self.config["worker_start_ray_commands"]),
+                self._get_commands("worker_start_ray_commands")
+            ),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
@@ -389,24 +387,34 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
+    def _get_commands(self, node_id : str, commands_key : str):
+        instance_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+        assert instance_type in self.available_node_types, "Unknown instance type tag: {}.".format(instance_type)
+        instance_specific_config = self.available_node_types
+        if commands_key in self.available_node_types:
+            return self.available_node_types[commands_key]
+        else:
+            return self.config[commands_key]
+
     def should_update(self, node_id):
         if not self.can_update(node_id):
             return None, None, None  # no update
 
-        status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
+        node_tags = self.provider.node_tags(node_id)
+        status = node_tags.get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
             return None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
             init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            ray_commands = self._get_commands(node_id, "worker_start_ray_commands")
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_commands(node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self.config["worker_setup_commands"]
-            ray_commands = self.config["worker_start_ray_commands"]
+            init_commands = self._get_commands(node_id, "worker_setup_commands")
+            ray_commands = self._get_commands(node_id, "worker_start_ray_commands")
 
         return (node_id, init_commands, ray_commands)
 
@@ -420,7 +428,8 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
+                self._get_commands("intialization_commands")
+            ),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
