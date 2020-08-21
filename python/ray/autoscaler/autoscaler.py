@@ -398,7 +398,7 @@ class StandardAutoscaler:
             print("Found node specific config")
             commands = node_specific_config[commands_key]
         else:
-            print("Did not find node specific config")
+            print("Did not find node specific config", node_specific_config)
             commands = self.config[commands_key]
         print("Node: {} {} : {}".format(node_id, commands_key, commands))
         return commands
