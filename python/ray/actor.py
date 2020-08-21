@@ -8,6 +8,9 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
+
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
@@ -412,7 +415,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 detached=False,
-                placement_group_id=None,
+                placement_group=None,
                 placement_group_bundle_index=-1):
         """Create an actor.
 
@@ -438,7 +441,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
-            placement_group_id: the placement group this actor belongs to,
+            placement_group: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
@@ -503,6 +506,12 @@ class ActorClass:
             detached = True
         else:
             detached = False
+
+        if placement_group is None:
+            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -574,8 +583,7 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
-            placement_group_id
-            if placement_group_id is not None else ray.PlacementGroupID.nil(),
+            placement_group.id,
             placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
