@@ -101,7 +101,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     to_fill = ["head_setup_commands", "worker_setup_commands",
                "setup_commands", "initialization_commands", "head_start_ray_commands",
                "worker_start_ray_commands"]
-    for node_specific_config in defaults.get("available_node_types", {}):
+    for node_specific_config in defaults.get("available_node_types", {}).values():
         for key in to_fill:
             if key not in node_specific_config:
                 node_specific_config[key] = defaults[key]
@@ -113,7 +113,7 @@ def merge_setup_commands(config):
         config["setup_commands"] + config["head_setup_commands"])
     config["worker_setup_commands"] = (
         config["setup_commands"] + config["worker_setup_commands"])
-    for node_specific_config in defaults.get("available_node_types", {}):
+    for node_specific_config in config.get("available_node_types", {}).values():
         node_specific_config["head_setup_commands"] = (
             node_specific_config["setup_commands"] + node_specific_config["head_setup_commands"])
         node_specific_config["worker_setup_commands"] = (
