@@ -394,10 +394,13 @@ class StandardAutoscaler:
         node_specific_config = self.available_node_types[node_type]
         print("instance type: ", node_type)
         print("available node types: ", self.available_node_types)
-        print("Found node specific config")
-        # This key definitely exists because prepare_config fills it in.
-        assert commands_key in node_specific_config
-        commands = node_specific_config[commands_key]
+        if commands_key in node_specific_config:
+            print("Found node specific config")
+            commands = node_specific_config[commands_key]
+        else:
+            print("Did not find node specific config", node_specific_config)
+            commands = self.config[commands_key]
+        print("Node: {} {} : {}".format(node_id, commands_key, commands))
         return commands
 
     def should_update(self, node_id):
