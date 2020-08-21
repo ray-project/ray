@@ -103,11 +103,11 @@ def create_or_update_cluster(config_file: str,
                              yes: bool,
                              override_cluster_name: Optional[str],
                              no_config_cache: bool,
-                             dump_command_output: bool = True,
+                             redirect_command_output: bool = False,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
-    cmd_output_util.set_output_redirected(not dump_command_output)
+    cmd_output_util.set_output_redirected(redirect_command_output)
 
     if use_login_shells:
         cli_logger.warning(

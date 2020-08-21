@@ -57,9 +57,10 @@ logging_options = [
     click.option(
         "--log-new-style/--log-old-style",
         is_flag=True,
-        default=False,
+        default=True,
         envvar="RAY_LOG_NEWSTYLE",
         help=("Whether to use the old or the new CLI UX. "
+              "You can also toggle this via the env var RAY_LOG_NEWSTYLE. "
               "The new UX supports colored, formatted output and was "
               "designed to display only the most important information for "
               "human users. The old UX uses the standard `logging` module. "
@@ -915,11 +916,11 @@ def stop(force, verbose, log_new_style, log_color):
     default=False,
     help="Disable the local cluster config cache.")
 @click.option(
-    "--dump-command-output",
+    "--redirect-command-output",
     is_flag=True,
     default=False,
-    help=("Print command output straight to "
-          "the terminal instead of redirecting to a file."))
+    help=("Redirect command output to a file instead "
+          "of straight to the terminal."))
 @click.option(
     "--use-login-shells/--use-normal-shells",
     is_flag=True,
@@ -929,7 +930,7 @@ def stop(force, verbose, log_new_style, log_color):
           "this can be disabled for a better user experience."))
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
-       yes, cluster_name, no_config_cache, dump_command_output,
+       yes, cluster_name, no_config_cache, redirect_command_output,
        use_login_shells, log_new_style, log_color, verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = not log_new_style
@@ -956,10 +957,17 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
             cli_logger.old_info(logger, "Error downloading file: ", e)
-    create_or_update_cluster(cluster_config_file, min_workers, max_workers,
-                             no_restart, restart_only, yes, cluster_name,
-                             no_config_cache, dump_command_output,
-                             use_login_shells)
+    create_or_update_cluster(
+        config_file=cluster_config_file,
+        override_min_workers=min_workers,
+        override_max_workers=max_workers,
+        no_restart=no_restart,
+        restart_only=restart_only,
+        yes=yes,
+        override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
+        redirect_command_output=redirect_command_output,
+        use_login_shells=use_login_shells)
 
 
 @cli.command()
@@ -1236,7 +1244,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             yes=True,
             override_cluster_name=cluster_name,
             no_config_cache=False,
-            dump_command_output=True,
+            redirect_command_output=False,
             use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
