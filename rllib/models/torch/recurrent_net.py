@@ -1,6 +1,5 @@
 from gym.spaces import Box
 import numpy as np
-from typing import Dict
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -136,13 +135,16 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        self.inference_view_requirements.update(dict(**{
-            SampleBatch.OBS: ViewRequirement(shift=0),
-            SampleBatch.PREV_REWARDS: ViewRequirement(
-                SampleBatch.REWARDS, shift=-1),
-            SampleBatch.PREV_ACTIONS: ViewRequirement(
-                SampleBatch.ACTIONS, space=self.action_space, shift=-1),
-        }))
+        self.inference_view_requirements.update(
+            dict(
+                **{
+                    SampleBatch.OBS: ViewRequirement(shift=0),
+                    SampleBatch.PREV_REWARDS: ViewRequirement(
+                        SampleBatch.REWARDS, shift=-1),
+                    SampleBatch.PREV_ACTIONS: ViewRequirement(
+                        SampleBatch.ACTIONS, space=self.action_space,
+                        shift=-1),
+                }))
         for i in range(2):
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
@@ -166,7 +168,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                     wrapped_out,
                     torch.reshape(input_dict[SampleBatch.PREV_ACTIONS].float(),
                                   [-1, self.action_dim]),
-                    torch.reshape(input_dict[SampleBatch.PREV_REWARDS],
+                    torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
                                   [-1, 1]),
                 ],
                 dim=1)

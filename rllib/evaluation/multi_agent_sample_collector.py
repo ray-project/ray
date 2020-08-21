@@ -1,7 +1,6 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
-from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.per_policy_sample_collector import \
@@ -16,6 +15,9 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 from ray.util.debug import log_once
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
     def __init__(
             self,
             policy_map: Dict[PolicyID, Policy],
-            callbacks: DefaultCallbacks,
+            callbacks: "DefaultCallbacks",
             # TODO: (sven) make `num_agents` flexibly grow in size.
             num_agents: int = 100,
             num_timesteps=None,

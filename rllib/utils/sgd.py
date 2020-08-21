@@ -115,7 +115,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
     fetches = {}
-    for policy_id, policy in policies.items():
+    for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
 

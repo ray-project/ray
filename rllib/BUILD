@@ -1025,6 +1025,22 @@ py_test(
     srcs = ["models/tests/test_attention_nets.py"]
 )
 
+
+# --------------------------------------------------------------------
+# Evaluation components
+# rllib/evaluation/
+#
+# Tag: evaluation
+# --------------------------------------------------------------------
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
+
+
 # --------------------------------------------------------------------
 # Optimizers and Memories
 # rllib/execution/
@@ -1060,19 +1076,19 @@ py_test(
     srcs = ["policy/tests/test_compute_log_likelihoods.py"]
 )
 
-py_test(
-    name = "policy/tests/test_trajectory_view_api",
-    tags = ["policy"],
-    size = "medium",
-    srcs = ["policy/tests/test_trajectory_view_api.py"]
-)
-
 # --------------------------------------------------------------------
 # Utils:
 # rllib/utils/
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_curiosity",
+    tags = ["utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
 
 py_test(
     name = "test_explorations",

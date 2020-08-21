@@ -73,6 +73,8 @@ class SampleBatch:
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
             lengths.append(len(v))
+            if isinstance(v, list):
+                self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
         assert len(set(lengths)) == 1, \
@@ -244,19 +246,17 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        seq_lens = None
         if self.time_major is not None:
-            seq_lens = self.seq_lens[start:end]
             return SampleBatch(
                 {k: v[:, start:end]
                  for k, v in self.data.items()},
-                _seq_lens=seq_lens,
+                _seq_lens=self.seq_lens[start:end],
                 _time_major=self.time_major)
         else:
             return SampleBatch(
                 {k: v[start:end]
                  for k, v in self.data.items()},
-                _seq_lens=seq_lens,
+                _seq_lens=None,
                 _time_major=self.time_major)
 
     @PublicAPI

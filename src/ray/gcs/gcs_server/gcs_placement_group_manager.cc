@@ -40,12 +40,24 @@ std::string GcsPlacementGroup::GetName() const {
 }
 
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
-  auto bundles = placement_group_table_data_.bundles();
+  const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
   for (auto &bundle : bundles) {
     ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
   }
   return ret_bundles;
+}
+
+std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
+    const {
+  const auto &bundles = placement_group_table_data_.bundles();
+  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
+  for (auto &bundle : bundles) {
+    if (ClientID::FromBinary(bundle.node_id()).IsNil()) {
+      unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
+    }
+  }
+  return unplaced_bundles;
 }
 
 rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
@@ -56,11 +68,15 @@ const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableDat
   return placement_group_table_data_;
 }
 
-const std::string GcsPlacementGroup::DebugString() const {
+std::string GcsPlacementGroup::DebugString() const {
   std::stringstream stream;
   stream << "placement group id = " << GetPlacementGroupID() << ", name = " << GetName()
          << ", strategy = " << GetStrategy();
   return stream.str();
+}
+
+rpc::Bundle *GcsPlacementGroup::GetMutableBundle(int bundle_index) {
+  return placement_group_table_data_.mutable_bundles(bundle_index);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -74,20 +90,18 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       gcs_table_storage_(std::move(gcs_table_storage)) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
-    const ray::rpc::CreatePlacementGroupRequest &request, StatusCallback callback) {
+    const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
   RAY_CHECK(callback);
-  const auto &placement_group_spec = request.placement_group_spec();
-  auto placement_group_id =
-      PlacementGroupID::FromBinary(placement_group_spec.placement_group_id());
-  auto placement_group = std::make_shared<GcsPlacementGroup>(request);
 
   // TODO(ffbin): If GCS is restarted, GCS client will repeatedly send
   // `CreatePlacementGroup` requests,
   //  which will lead to resource leakage, we will solve it in next pr.
   // Mark the callback as pending and invoke it after the placement_group has been
   // successfully created.
-  placement_group_to_register_callback_[placement_group_id] = std::move(callback);
-  registered_placement_groups_.emplace(placement_group_id, placement_group);
+  placement_group_to_register_callback_[placement_group->GetPlacementGroupID()] =
+      std::move(callback);
+  registered_placement_groups_.emplace(placement_group->GetPlacementGroupID(),
+                                       placement_group);
   pending_placement_groups_.emplace_back(std::move(placement_group));
   SchedulePendingPlacementGroups();
 }
@@ -108,9 +122,20 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
   RAY_LOG(WARNING) << "Failed to create placement group " << placement_group->GetName()
                    << ", try again.";
-  // We will attempt to schedule this placement_group once
-  // an eligible node is registered.
-  pending_placement_groups_.emplace_back(std::move(placement_group));
+  // We will attempt to schedule this placement_group once an eligible node is
+  // registered.
+  auto state = placement_group->GetState();
+  RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
+            state == rpc::PlacementGroupTableData::PENDING);
+  if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
+    // NOTE: If a node is dead, the placement group scheduler should try to recover the
+    // group by rescheduling the bundles of the dead node. This should have higher
+    // priority than trying to place other placement groups.
+    pending_placement_groups_.emplace_front(std::move(placement_group));
+  } else {
+    pending_placement_groups_.emplace_back(std::move(placement_group));
+  }
+
   MarkSchedulingDone();
   RetryCreatingPlacementGroup();
 }
@@ -147,7 +172,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   if (registered_placement_groups_.find(placement_group_id) !=
       registered_placement_groups_.end()) {
     MarkSchedulingStarted(placement_group_id);
-    gcs_placement_group_scheduler_->Schedule(
+    gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
           OnPlacementGroupCreationFailed(std::move(placement_group));
@@ -186,18 +211,18 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
           return;
         }
 
-        RegisterPlacementGroup(
-            request, [reply, send_reply_callback, placement_group](Status status) {
-              if (status.ok()) {
-                RAY_LOG(INFO) << "Finished registering placement group, "
-                              << placement_group->DebugString();
-              } else {
-                RAY_LOG(WARNING)
-                    << "Failed to register placement group, "
-                    << placement_group->DebugString() << ", cause: " << status.message();
-              }
-              GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-            });
+        RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
+                                                 placement_group](Status status) {
+          if (status.ok()) {
+            RAY_LOG(INFO) << "Finished registering placement group, "
+                          << placement_group->DebugString();
+          } else {
+            RAY_LOG(WARNING) << "Failed to register placement group, "
+                             << placement_group->DebugString()
+                             << ", cause: " << status.message();
+          }
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        });
       }));
 }
 
@@ -297,6 +322,27 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
   execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+}
+
+void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
+  RAY_LOG(WARNING) << "Node " << node_id
+                   << " failed, rescheduling the placement groups on the dead node.";
+  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
+  for (const auto &bundle : bundles) {
+    auto iter = registered_placement_groups_.find(bundle.first);
+    if (iter != registered_placement_groups_.end()) {
+      for (const auto &bundle_index : bundle.second) {
+        iter->second->GetMutableBundle(bundle_index)->clear_node_id();
+      }
+      // TODO(ffbin): If we have a placement group bundle that requires a unique resource
+      // (for example gpu resource when there’s only one gpu node), this can postpone
+      // creating until a node with the resources is added. we will solve it in next pr.
+      iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+      pending_placement_groups_.emplace_front(iter->second);
+    }
+  }
+
+  SchedulePendingPlacementGroups();
 }
 
 }  // namespace gcs

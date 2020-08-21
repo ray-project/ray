@@ -72,8 +72,8 @@ def pad_batch_to_sequences_of_same_size(
                     # Cut time-dim at `max_seq_len`.
                     if batch.time_major:
                         batch[col] = batch[col][:batch.max_seq_len]
-                    batch[col] = batch[col].reshape(
-                        (-1,) + batch[col].shape[2:])
+                    batch[col] = batch[col].reshape((-1, ) +
+                                                    batch[col].shape[2:])
         return
 
     if batch_divisibility_req > 1:
@@ -159,7 +159,6 @@ def add_time_dimension(padded_inputs: TensorType,
     if framework in ["tf2", "tf", "tfe"]:
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
-
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +

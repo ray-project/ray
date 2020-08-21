@@ -8,8 +8,6 @@ import time
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     TYPE_CHECKING, Union
 
-from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
-from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.multi_agent_sample_collector import \
     _MultiAgentSampleCollector
@@ -17,6 +15,8 @@ from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
 from ray.rllib.evaluation.sample_collector import _SampleCollector
+from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
+from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import clip_action, Policy
@@ -55,33 +55,23 @@ class _PerfStats:
     def __init__(self):
         self.iters = 0
         self.env_wait_time = 0.0
-        self.pre_processing_time = 0.0
-        self.storing_samples_in_buffer = 0.0
+        self.raw_obs_processing_time = 0.0
         self.inference_time = 0.0
         self.action_processing_time = 0.0
-        self.get_ma_train_batch = 0.0
-        self.postprocess_trajectories_so_far = 0.0
 
     def get(self):
         # Mean multiplicator (1000 = ms -> sec).
         factor = 1000 / self.iters
         return {
             # Waiting for environment (during poll).
-            "total_env_wait_ms": self.env_wait_time,
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
-            "mean_pre_processing_ms": self.pre_processing_time * factor,
-            # Time spent storing/copying env/model data in the buffer.
-            "mean_storing_samples_in_buffer_ms":
-                self.storing_samples_in_buffer * factor,
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time *
+            factor,
             # Computing actions through policy.
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
             "mean_action_processing_ms": self.action_processing_time * factor,
-            # Legacy: "processing" = obs pre-processing + action processing.
-            "mean_processing_ms":
-                (self.action_processing_time + self.pre_processing_time) *
-                factor,
         }
 
 
@@ -131,7 +121,7 @@ class SyncSampler(SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  soft_horizon: bool = False,
@@ -159,7 +149,7 @@ class SyncSampler(SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -188,18 +178,19 @@ class SyncSampler(SamplerInput):
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
-        self.sample_collector = None
         if _use_trajectory_view_api:
             self.sample_collector = _MultiAgentSampleCollector(
                 policies, callbacks)
+        else:
+            self.sample_collector = None
 
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
-            pack_multiple_episodes_in_batch, callbacks, tf_sess,
-            self.perf_stats, soft_horizon, no_done_at_end, observation_fn,
+            multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
+            soft_horizon, no_done_at_end, observation_fn,
             _use_trajectory_view_api, self.sample_collector)
         self.metrics_queue = queue.Queue()
 
@@ -254,7 +245,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  rollout_fragment_length: int,
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
-                 pack_multiple_episodes_in_batch: bool = False,
+                 multiple_episodes_in_batch: bool = False,
                  tf_sess=None,
                  clip_actions: bool = True,
                  blackhole_outputs: bool = False,
@@ -283,7 +274,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
-            pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+            multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
             tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
@@ -321,7 +312,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.obs_filters = obs_filters
         self.clip_rewards = clip_rewards
         self.daemon = True
-        self.pack_multiple_episodes_in_batch = pack_multiple_episodes_in_batch
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.clip_actions = clip_actions
@@ -332,10 +323,11 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.shutdown = False
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
-        self.sample_collector = None
         if _use_trajectory_view_api:
             self.sample_collector = _MultiAgentSampleCollector(
                 policies, callbacks)
+        else:
+            self.sample_collector = None
 
     @override(threading.Thread)
     def run(self):
@@ -357,8 +349,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter, self.policies,
             self.policy_mapping_fn, self.rollout_fragment_length, self.horizon,
             self.preprocessors, self.obs_filters, self.clip_rewards,
-            self.clip_actions, self.pack_multiple_episodes_in_batch,
-            self.callbacks, self.tf_sess, self.perf_stats, self.soft_horizon,
+            self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
+            self.tf_sess, self.perf_stats, self.soft_horizon,
             self.no_done_at_end, self.observation_fn,
             self._use_trajectory_view_api)
         while not self.shutdown:
@@ -417,7 +409,7 @@ def _env_runner(
         obs_filters: Dict[PolicyID, Filter],
         clip_rewards: bool,
         clip_actions: bool,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         tf_sess: Optional["tf.Session"],
         perf_stats: _PerfStats,
@@ -447,7 +439,7 @@ def _env_runner(
         obs_filters (dict): Map of policy id to filter used to process
             observations for the policy.
         clip_rewards (bool): Whether to clip rewards before postprocessing.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         clip_actions (bool): Whether to clip actions to the space range.
@@ -537,12 +529,12 @@ def _env_runner(
 
     while True:
         perf_stats.iters += 1
-        t = time.time()
+        t0 = time.time()
         # Get observations from all ready agents.
         # type: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
-        perf_stats.env_wait_time += time.time() - t
+        perf_stats.env_wait_time += time.time() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(
@@ -550,7 +542,7 @@ def _env_runner(
             logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation.
-        t = time.time()
+        t1 = time.time()
         # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
         if _use_trajectory_view_api:
@@ -569,8 +561,7 @@ def _env_runner(
                     preprocessors=preprocessors,
                     obs_filters=obs_filters,
                     rollout_fragment_length=rollout_fragment_length,
-                    pack_multiple_episodes_in_batch=
-                    pack_multiple_episodes_in_batch,
+                    multiple_episodes_in_batch=multiple_episodes_in_batch,
                     callbacks=callbacks,
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
@@ -593,33 +584,38 @@ def _env_runner(
                 preprocessors=preprocessors,
                 obs_filters=obs_filters,
                 rollout_fragment_length=rollout_fragment_length,
-                pack_multiple_episodes_in_batch=
-                pack_multiple_episodes_in_batch,
+                multiple_episodes_in_batch=multiple_episodes_in_batch,
                 callbacks=callbacks,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 perf_stats=perf_stats,
             )
-        perf_stats.pre_processing_time += time.time() - t
+        perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
             yield o
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
         # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
-        eval_results = _do_policy_eval(
-            to_eval=to_eval,
-            policies=policies,
-            active_episodes=active_episodes,
-            tf_sess=tf_sess,
-            _use_trajectory_view_api=_use_trajectory_view_api,
-            _sample_collector=_sample_collector,
-        )
+        if _use_trajectory_view_api:
+            eval_results = _do_policy_eval_w_trajectory_view_api(
+                to_eval=to_eval,
+                policies=policies,
+                _sample_collector=_sample_collector,
+                tf_sess=tf_sess,
+            )
+        else:
+            eval_results = _do_policy_eval(
+                to_eval=to_eval,
+                policies=policies,
+                active_episodes=active_episodes,
+                tf_sess=tf_sess,
+            )
         perf_stats.inference_time += time.time() - t2
 
         # Process results and update episode state.
-        t = time.time()
+        t3 = time.time()
         actions_to_send: Dict[EnvID, Dict[AgentID, EnvActionType]] = \
             _process_policy_eval_results(
                 to_eval=to_eval,
@@ -632,13 +628,13 @@ def _env_runner(
                 _use_trajectory_view_api=_use_trajectory_view_api,
                 _sample_collector=_sample_collector,
             )
-        perf_stats.action_processing_time += time.time() - t
+        perf_stats.action_processing_time += time.time() - t3
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        t = time.time()
+        t4 = time.time()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t
+        perf_stats.env_wait_time += time.time() - t4
 
 
 def _process_observations(
@@ -656,7 +652,7 @@ def _process_observations(
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
         rollout_fragment_length: int,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
         no_done_at_end: bool,
@@ -693,7 +689,7 @@ def _process_observations(
         rollout_fragment_length (int): Number of episode steps before
             `SampleBatch` is yielded. Set to infinity to yield complete
             episodes.
-        pack_multiple_episodes_in_batch (bool): Whether to pack multiple
+        multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
@@ -812,9 +808,8 @@ def _process_observations(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            if (last_observation is not None and infos[env_id].get(agent_id,
-                    {}).get("training_enabled", True)):
-                t = time.time()
+            if (last_observation is not None and infos[env_id].get(
+                    agent_id, {}).get("training_enabled", True)):
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -832,7 +827,6 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
-                perf_stats.storing_samples_in_buffer += time.time() - t
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -851,16 +845,12 @@ def _process_observations(
         # Reached end of episode and we are not allowed to pack the
         # next episode into the same SampleBatch -> Build the SampleBatch
         # and add it to "outputs".
-        if (all_agents_done and not pack_multiple_episodes_in_batch) or \
+        if (all_agents_done and not multiple_episodes_in_batch) or \
                 batch_builder.count >= rollout_fragment_length:
-            t = time.time()
             outputs.append(batch_builder.build_and_reset(episode))
-            perf_stats.get_ma_train_batch += time.time() - t
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
-            t = time.time()
             batch_builder.postprocess_batch_so_far(episode)
-            perf_stats.postprocess_trajectories_so_far += time.time() - t
 
         # Episode is done.
         if all_agents_done:
@@ -942,7 +932,7 @@ def _process_observations_w_trajectory_view_api(
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
         rollout_fragment_length: int,
-        pack_multiple_episodes_in_batch: bool,
+        multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
         no_done_at_end: bool,
@@ -951,7 +941,6 @@ def _process_observations_w_trajectory_view_api(
         _sample_collector: _SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
-
     """Trajectory View API version of `_process_observations()`.
     TODO: (sven) Move docstring here once original function is deprecated.
     """
@@ -980,8 +969,7 @@ def _process_observations_w_trajectory_view_api(
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     _sample_collector.total_env_steps(),
-                    _sample_collector.count) +
-                "are buffered in "
+                    _sample_collector.count) + "are buffered in "
                 "the sampler. If this is more than you expected, check that "
                 "that you set a horizon on your environment correctly and that"
                 " it terminates at some point. "
@@ -1051,11 +1039,9 @@ def _process_observations_w_trajectory_view_api(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            t = time.time()
             if last_observation is None:
-                _sample_collector.add_init_obs(
-                    episode.episode_id, agent_id, env_id,
-                    policy_id, filtered_obs)
+                _sample_collector.add_init_obs(episode.episode_id, agent_id,
+                                               env_id, policy_id, filtered_obs)
             else:
                 rc = _sample_collector.policy_sample_collectors[policy_id]
                 eval_idx = rc.agent_key_to_forward_pass_index[(
@@ -1070,8 +1056,8 @@ def _process_observations_w_trajectory_view_api(
                     "rewards": rewards[env_id][agent_id],
                     # After taking a, did we reach terminal?
                     "dones": (False if (no_done_at_end
-                                        or (hit_horizon and soft_horizon))
-                              else agent_done),
+                                        or (hit_horizon and soft_horizon)) else
+                              agent_done),
                     # Next observation.
                     "new_obs": filtered_obs,
                 }
@@ -1083,7 +1069,6 @@ def _process_observations_w_trajectory_view_api(
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
-            perf_stats.storing_samples_in_buffer += time.time() - t
 
             if not agent_done:
                 to_eval.add(policy_id)
@@ -1106,7 +1091,7 @@ def _process_observations_w_trajectory_view_api(
         # Reached end of episode and we are not allowed to pack the
         # next episode into the same SampleBatch -> Build the SampleBatch
         # and add it to "outputs".
-        if (all_agents_done and not pack_multiple_episodes_in_batch) or \
+        if (all_agents_done and not multiple_episodes_in_batch) or \
                 _sample_collector.count >= rollout_fragment_length:
             # TODO: (sven) Case: rollout_fragment_length reached: Do not
             #  store any data in `episode` anymore
@@ -1115,15 +1100,10 @@ def _process_observations_w_trajectory_view_api(
             #  SampleBatchBuilder
             #  to be able to still reference into it
             #  should a model require this.
-            t = time.time()
-            outputs.append(
-                _sample_collector.get_multi_agent_batch_and_reset())
-            perf_stats.get_ma_train_batch += time.time() - t
+            outputs.append(_sample_collector.get_multi_agent_batch_and_reset())
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
-            t = time.time()
             _sample_collector.postprocess_trajectories_so_far(episode)
-            perf_stats.postprocess_trajectories_so_far += time.time() - t
 
         # Episode is done.
         if all_agents_done:
@@ -1168,7 +1148,6 @@ def _process_observations_w_trajectory_view_api(
                 # type: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = episode.policy_for(agent_id)
-                    policy: Policy = _get_or_raise(policies, policy_id)
                     prep_obs: EnvObsType = _get_or_raise(
                         preprocessors, policy_id).transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
@@ -1176,9 +1155,9 @@ def _process_observations_w_trajectory_view_api(
                     episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(
-                        episode.episode_id, agent_id, env_id, policy_id,
-                        filtered_obs)
+                    _sample_collector.add_init_obs(episode.episode_id,
+                                                   agent_id, env_id, policy_id,
+                                                   filtered_obs)
                     to_eval.add(policy_id)
 
     return active_envs, to_eval, outputs
@@ -1190,8 +1169,6 @@ def _do_policy_eval(
         policies: Dict[PolicyID, Policy],
         active_episodes: Dict[str, MultiAgentEpisode],
         tf_sess=None,
-        _use_trajectory_view_api=False,
-        _sample_collector=None,
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -1205,9 +1182,6 @@ def _do_policy_eval(
             episode ID to currently ongoing MultiAgentEpisode object.
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
             batching TF policy evaluations.
-        _use_trajectory_view_api (bool): Whether to use the (experimental)
-            `_use_trajectory_view_api` procedure to collect samples.
-            Default: False.
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
@@ -1225,51 +1199,96 @@ def _do_policy_eval(
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
             summarize(to_eval)))
 
-    if _use_trajectory_view_api:
-        for policy_id in to_eval:
-            policy: Policy = _get_or_raise(policies, policy_id)
-            input_dict = _sample_collector.get_inference_input_dict(policy_id)
-            eval_results[policy_id] = \
-                policy.compute_actions_from_input_dict(
-                    input_dict, timestep=policy.global_timestep)
+    # type: PolicyID, PolicyEvalData
+    for policy_id, eval_data in to_eval.items():
+        policy: Policy = _get_or_raise(policies, policy_id)
+        # If tf (non eager) AND TFPolicy's compute_action method has not
+        # been overridden -> Use `policy._build_compute_actions()`.
+        if builder and (policy.compute_actions.__code__ is
+                        TFPolicy.compute_actions.__code__):
 
+            obs_batch: List[EnvObsType] = [t.obs for t in eval_data]
+            state_batches: StateBatch = _to_column_format(
+                [t.rnn_state for t in eval_data])
+            # TODO(ekl): how can we make info batch available to TF code?
+            prev_action_batch = [t.prev_action for t in eval_data]
+            prev_reward_batch = [t.prev_reward for t in eval_data]
+
+            pending_fetches[policy_id] = policy._build_compute_actions(
+                builder,
+                obs_batch=obs_batch,
+                state_batches=state_batches,
+                prev_action_batch=prev_action_batch,
+                prev_reward_batch=prev_reward_batch,
+                timestep=policy.global_timestep)
+        else:
+            rnn_in = [t.rnn_state for t in eval_data]
+            rnn_in_cols: StateBatch = [
+                np.stack([row[i] for row in rnn_in])
+                for i in range(len(rnn_in[0]))
+            ]
+            eval_results[policy_id] = policy.compute_actions(
+                [t.obs for t in eval_data],
+                state_batches=rnn_in_cols,
+                prev_action_batch=[t.prev_action for t in eval_data],
+                prev_reward_batch=[t.prev_reward for t in eval_data],
+                info_batch=[t.info for t in eval_data],
+                episodes=[active_episodes[t.env_id] for t in eval_data],
+                timestep=policy.global_timestep)
+
+    if builder:
+        # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]
+        for pid, v in pending_fetches.items():
+            eval_results[pid] = builder.get(v)
+
+    if log_once("compute_actions_result"):
+        logger.info("Outputs of compute_actions():\n\n{}\n".format(
+            summarize(eval_results)))
+
+    return eval_results
+
+
+def _do_policy_eval_w_trajectory_view_api(
+        *,
+        to_eval: Dict[PolicyID, List[PolicyEvalData]],
+        policies: Dict[PolicyID, Policy],
+        _sample_collector,
+        tf_sess=None,
+) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
+    """Call compute_actions on collected episode/model data to get next action.
+
+    Args:
+        to_eval (Dict[PolicyID, List[PolicyEvalData]]): Mapping of policy
+            IDs to lists of PolicyEvalData objects (items in these lists will
+            be the batch's items for the model forward pass).
+        policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
+            obj.
+        _sample_collector (SampleCollector): The SampleCollector object to use.
+        tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
+            batching TF policy evaluations.
+
+    Returns:
+        eval_results: dict of policy to compute_action() outputs.
+    """
+
+    eval_results: Dict[PolicyID, TensorStructType] = {}
+
+    if tf_sess:
+        builder = TFRunBuilder(tf_sess, "policy_eval")
+        pending_fetches: Dict[PolicyID, Any] = {}
     else:
-        # type: PolicyID, PolicyEvalData
-        for policy_id, eval_data in to_eval.items():
-            policy: Policy = _get_or_raise(policies, policy_id)
-            # If tf (non eager) AND TFPolicy's compute_action method has not been
-            # overridden -> Use `policy._build_compute_actions()`.
-            if builder and (policy.compute_actions.__code__ is
-                            TFPolicy.compute_actions.__code__):
+        builder = None
 
-                obs_batch: List[EnvObsType] = [t.obs for t in eval_data]
-                state_batches: StateBatch = _to_column_format(
-                    [t.rnn_state for t in eval_data])
-                # TODO(ekl): how can we make info batch available to TF code?
-                prev_action_batch = [t.prev_action for t in eval_data]
-                prev_reward_batch = [t.prev_reward for t in eval_data]
+    if log_once("compute_actions_input"):
+        logger.info("Inputs to compute_actions():\n\n{}\n".format(
+            summarize(to_eval)))
 
-                pending_fetches[policy_id] = policy._build_compute_actions(
-                    builder,
-                    obs_batch=obs_batch,
-                    state_batches=state_batches,
-                    prev_action_batch=prev_action_batch,
-                    prev_reward_batch=prev_reward_batch,
-                    timestep=policy.global_timestep)
-            else:
-                rnn_in = [t.rnn_state for t in eval_data]
-                rnn_in_cols: StateBatch = [
-                    np.stack([row[i] for row in rnn_in])
-                    for i in range(len(rnn_in[0]))
-                ]
-                eval_results[policy_id] = policy.compute_actions(
-                    [t.obs for t in eval_data],
-                    state_batches=rnn_in_cols,
-                    prev_action_batch=[t.prev_action for t in eval_data],
-                    prev_reward_batch=[t.prev_reward for t in eval_data],
-                    info_batch=[t.info for t in eval_data],
-                    episodes=[active_episodes[t.env_id] for t in eval_data],
-                    timestep=policy.global_timestep)
+    for policy_id in to_eval:
+        policy: Policy = _get_or_raise(policies, policy_id)
+        input_dict = _sample_collector.get_inference_input_dict(policy_id)
+        eval_results[policy_id] = \
+            policy.compute_actions_from_input_dict(
+                input_dict, timestep=policy.global_timestep)
 
     if builder:
         # type: PolicyID, Tuple[TensorStructType, StateBatch, dict]

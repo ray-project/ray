@@ -8,11 +8,9 @@ import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_worker
-from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
-                                 SERVE_METRIC_SINK_NAME)
+from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.metric.exporter import MetricExporterActor
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
@@ -92,7 +90,7 @@ class ServeController:
     """
 
     async def __init__(self, instance_name, http_host, http_port,
-                       metric_exporter_class, _http_middlewares):
+                       _http_middlewares):
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -131,7 +129,6 @@ class ServeController:
         # Cached handles to actors in the system.
         # node_id -> actor_handle
         self.routers = dict()
-        self.metric_exporter = None
 
         self.http_host = http_host
         self.http_port = http_port
@@ -139,7 +136,6 @@ class ServeController:
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self._start_metric_exporter(metric_exporter_class)
         self._start_routers_if_needed()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
@@ -225,25 +221,6 @@ class ServeController:
     def get_router_config(self):
         """Called by the router on startup to fetch required state."""
         return self.routes
-
-    def _start_metric_exporter(self, metric_exporter_class):
-        """Get the metric exporter belonging to this serve instance.
-
-        If the metric exporter does not already exist, it will be started.
-        """
-        metric_sink_name = format_actor_name(SERVE_METRIC_SINK_NAME,
-                                             self.instance_name)
-        try:
-            self.metric_exporter = ray.get_actor(metric_sink_name)
-        except ValueError:
-            logger.info("Starting metric exporter with name '{}'".format(
-                metric_sink_name))
-            self.metric_exporter = MetricExporterActor.options(
-                name=metric_sink_name).remote(metric_exporter_class)
-
-    def get_metric_exporter(self):
-        """Returns a handle to the metric exporter managed by this actor."""
-        return [self.metric_exporter]
 
     def _checkpoint(self):
         """Checkpoint internal state and write it to the KV store."""
@@ -879,7 +856,6 @@ class ServeController:
         async with self.write_lock:
             for router in self.routers.values():
                 ray.kill(router, no_restart=True)
-            ray.kill(self.metric_exporter, no_restart=True)
             for replica_dict in self.workers.values():
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
