@@ -115,8 +115,6 @@ def create_or_update_cluster(config_file: str,
     else:
         cmd_output_util.set_output_redirected(not dump_command_output)
 
-    cli_logger.detect_colors()
-
     if use_login_shells:
         cli_logger.warning(
             "Commands running under a login shell can produce more "

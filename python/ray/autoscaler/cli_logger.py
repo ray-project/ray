@@ -225,7 +225,7 @@ class _CliLogger():
         color output
         (8-color ANSI if no terminal detected to be safe) in colorful.
         """
-
+        self.color_mode = self.color_mode.lower()
         if self.color_mode == "true":
             if self._autodetected_cf_colormode != cf.NO_COLORS:
                 cf.colormode = self._autodetected_cf_colormode

@@ -400,6 +400,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     if gcs_server_port and not head:
         raise ValueError(
@@ -766,6 +767,7 @@ def stop(force, verbose, log_new_style, log_color):
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
@@ -934,6 +936,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     if restart_only or no_restart:
         cli_logger.doassert(restart_only != no_restart,
@@ -998,6 +1001,7 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     teardown_cluster(
         cluster_config_file,
@@ -1055,6 +1059,7 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
@@ -1092,6 +1097,7 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
@@ -1115,6 +1121,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
@@ -1142,6 +1149,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     rsync(
         cluster_config_file,
@@ -1207,6 +1215,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     cli_logger.doassert(not (screen and tmux),
                         "`{}` and `{}` are incompatible.", cf.bold("--screen"),
@@ -1317,6 +1326,7 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     port_forward = [(port, port) for port in list(port_forward)]
 

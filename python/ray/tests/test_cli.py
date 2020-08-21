@@ -28,6 +28,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from unittest.mock import patch
 
 import moto
 from moto import mock_ec2, mock_iam
@@ -79,24 +80,14 @@ def _debug_check_line_by_line(result, expected_lines):
     assert False
 
 
-def _setup_aws_mock():
-    # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
-        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
-
-
-@contextmanager
-def _unlink_test_shh_key():
-    """Use this to remove the keys spawned by ray up.
-    """
+@pytest.fixture(scope="function")
+def _unlink_test_ssh_key():
+    """Use this to remove the keys spawned by ray up."""
+    yield
     try:
-        yield
-    finally:
-        try:
-            Path("~", ".ssh", "__test-cli_key").unlink()
-        except FileNotFoundError:
-            pass
+        Path("~", ".ssh", "__test-cli_key").unlink()
+    except FileNotFoundError:
+        pass
 
 
 @contextmanager
@@ -109,13 +100,9 @@ def _setup_popen_mock(commands_mock):
         yield
 
 
-def _get_pattern_path(name):
-    p = Path(__file__).parent / "test_cli_patterns" / name
-    return str(p)
-
-
 def _load_output_pattern(name):
-    with open(_get_pattern_path(name)) as f:
+    pattern_dir = Path(__file__).parent / "test_cli_patterns"
+    with open(str(pattern_dir / name)) as f:
         # remove \n
         return [x[:-1] for x in f.readlines()]
 
@@ -134,13 +121,14 @@ def _check_output_via_pattern(name, result):
     assert result.exit_code == 0
 
 
-default_test_config_path = (
-    Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.json")
+DEFAULT_TEST_CONFIG_PATH = str(
+    Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
 
 
 def test_ray_start():
     runner = CliRunner()
-    result = runner.invoke(scripts.start, ["--head", "--log-new-style"])
+    result = runner.invoke(
+        scripts.start, ["--head", "--log-new-style", "--log-color", "False"])
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)
@@ -148,11 +136,7 @@ def test_ray_start():
 
 @mock_ec2
 @mock_iam
-def test_ray_up(aws_credentials):
-    _setup_aws_mock()
-
-    # moto.settings.INITIAL_NO_AUTH_ACTION_COUNT = 0
-
+def test_ray_up(configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -166,80 +150,68 @@ def test_ray_up(aws_credentials):
             return PopenBehaviour(stdout="MOCKED ray")
         return PopenBehaviour(stdout="MOCKED GENERIC")
 
-    with _unlink_test_shh_key():
-        with _setup_popen_mock(commands_mock):
-            # expected_lines = _load_output_pattern("test_ray_up.txt")
-
-            # config cache does not work with mocks
-            runner = CliRunner()
-            result = runner.invoke(scripts.up, [
-                str(default_test_config_path), "--no-config-cache", "-y",
-                "--log-new-style"
-            ])
-
-            _check_output_via_pattern("test_ray_up.txt", result)
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-new-style", "--log-color", "False"
+        ])
+        _check_output_via_pattern("test_ray_up.txt", result)
 
 
 @mock_ec2
 @mock_iam
-def test_ray_attach():
-    _setup_aws_mock()
-
+def test_ray_attach(configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("ubuntu@ip-.+:~$ exit")
         return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
 
-    with _unlink_test_shh_key():
-        with _setup_popen_mock(commands_mock):
-            runner = CliRunner()
-            result = runner.invoke(scripts.up, [
-                str(default_test_config_path), "--no-config-cache", "-y",
-                "--log-new-style"
-            ])
-            _die_on_error(result)
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-new-style", "--log-color", "False"
+        ])
+        _die_on_error(result)
 
-            result = runner.invoke(
-                scripts.attach,
-                [str(default_test_config_path), "--log-new-style"])
+        result = runner.invoke(scripts.attach, [
+            DEFAULT_TEST_CONFIG_PATH, "--log-new-style", "--log-color", "False"
+        ])
 
-            _check_output_via_pattern("test_ray_attach.txt", result)
+        _check_output_via_pattern("test_ray_attach.txt", result)
 
 
 @mock_ec2
 @mock_iam
-def test_ray_exec():
-    _setup_aws_mock()
-
+def test_ray_exec(configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("This is a test!")
         return PopenBehaviour(stdout="This is a test!")
 
-    with _unlink_test_shh_key():
-        with _setup_popen_mock(commands_mock):
-            runner = CliRunner()
-            result = runner.invoke(scripts.up, [
-                str(default_test_config_path), "--no-config-cache", "-y",
-                "--log-new-style"
-            ])
-            _die_on_error(result)
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-new-style"
+        ])
+        _die_on_error(result)
 
-            result = runner.invoke(scripts.exec, [
-                str(default_test_config_path), "--log-new-style",
-                "\"echo This is a test!\""
-            ])
+        result = runner.invoke(scripts.exec, [
+            DEFAULT_TEST_CONFIG_PATH, "--log-new-style",
+            "\"echo This is a test!\""
+        ])
 
-            _check_output_via_pattern("test_ray_exec.txt", result)
+        _check_output_via_pattern("test_ray_exec.txt", result)
 
 
 @mock_ec2
 @mock_iam
-def test_ray_submit():
-    _setup_aws_mock()
-
+def test_ray_submit(configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -247,36 +219,42 @@ def test_ray_submit():
             print("This is a test!")
         return PopenBehaviour(stdout="This is a test!")
 
-    with _unlink_test_shh_key():
-        with _setup_popen_mock(commands_mock):
-            runner = CliRunner()
-            result = runner.invoke(scripts.up, [
-                str(default_test_config_path), "--no-config-cache", "-y",
-                "--log-new-style"
-            ])
-            _die_on_error(result)
+    with _setup_popen_mock(commands_mock):
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-new-style"
+        ])
+        _die_on_error(result)
 
+        with tempfile.NamedTemporaryFile(suffix="test.py") as f:
+            f.write("print('This is a test!')\n")
             result = runner.invoke(
                 scripts.submit,
                 [
-                    str(default_test_config_path),
+                    DEFAULT_TEST_CONFIG_PATH,
                     "--log-new-style",
                     # this is somewhat misleading, since the file
                     # actually never gets run
                     # TODO(maximsmol): make this work properly one day?
-                    _get_pattern_path("test.py")
+                    f.name
                 ])
 
             _check_output_via_pattern("test_ray_submit.txt", result)
 
 
 @pytest.fixture(scope="function")
-def aws_credentials():
+def configure_aws():
     """Mocked AWS Credentials for moto."""
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
+
+    # moto (boto3 mock) only allows a hardcoded set of AMIs
+    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
+        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
+    aws_config.DEFAULT_AMI["us-west-2"] = dlami
 
 
 if __name__ == "__main__":
