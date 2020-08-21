@@ -1040,6 +1040,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
+  /// Shared core worker client pool.
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
+
   /// Timer used to periodically check if the raylet has died.
   boost::asio::steady_timer death_check_timer_;
 
