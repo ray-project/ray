@@ -60,6 +60,7 @@ logging_options = [
         default=True,
         envvar="RAY_LOG_NEWSTYLE",
         help=("Whether to use the old or the new CLI UX. "
+              "You can also toggle this via the env var RAY_LOG_NEWSTYLE. "
               "The new UX supports colored, formatted output and was "
               "designed to display only the most important information for "
               "human users. The old UX uses the standard `logging` module. "
