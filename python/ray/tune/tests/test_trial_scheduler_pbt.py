@@ -4,6 +4,7 @@ import pickle
 import random
 import unittest
 import sys
+import time
 
 import ray
 from ray import tune
@@ -51,6 +52,25 @@ def MockTrainingFunc(config, checkpoint_dir=None):
                 pickle.dump((a, b, iter), fp)
         tune.report(mean_accuracy=(a - iter) * b)
 
+def MockTrainingFuncSync(config, checkpoint_dir=None):
+    iter = 0
+
+    if checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+        with open(checkpoint_path, "rb") as fp:
+            a, iter = pickle.load(fp)
+
+    a = config["a"] # Use the new hyperparameter if perturbed.
+
+    while True:
+        iter += 1
+        with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            with open(checkpoint_path, "wb") as fp:
+                pickle.dump((a, iter), fp)
+        # Score gets better every iteration.
+        time.sleep(10)
+        tune.report(mean_accuracy=iter+a, a=a)
 
 class MockParam(object):
     def __init__(self, params):
@@ -70,8 +90,39 @@ class PopulationBasedTrainingSyncTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def testSync(self):
-        """End-to-end test of synchronous PBT"""
+    def testAsyncFail(self):
+        """End-to-end test of synchronous PBT. This test should fail in
+        async mode."""
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="mean_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            log_config=True,
+            hyperparam_mutations={"c": lambda: 1},
+            synch=True
+        )
+
+        param_a = MockParam([10, 20, 30])
+
+        random.seed(100)
+        np.random.seed(100)
+        analysis = tune.run(
+            MockTrainingFuncSync,
+            config={
+                "a": tune.sample_from(lambda _: param_a()),
+                "c": 1
+            },
+            fail_fast=True,
+            num_samples=3,
+            scheduler=scheduler,
+            name="testPBTSync",
+            stop={"training_iteration": 3},
+            resources_per_trial={"cpu": 8},
+        )
+
+        print(analysis.get_best_config(metric="mean_accuracy"))
+        print(analysis.dataframe())
         
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
