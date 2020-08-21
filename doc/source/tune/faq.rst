@@ -130,11 +130,36 @@ additional outputs:
 
 How do I set resources?
 -----------------------
-Todo
+If you want to allocate specific resources to a trial, you can use the
+``resources_per_trial`` parameter of ``tune.run()``:
+
+.. code-block:: python
+
+    tune.run(
+        train_fn,
+        resources_per_trial={
+            "cpu": 2,
+            "gpu": 0.5,
+            "extra_cpu": 2,
+            "extra_gpu": 0
+        })
+
+The example above showcases three things:
+
+1. The `cpu` and `gpu` options set how many CPUs and GPUs are available for
+   each trial, respectively. **Trials cannot request more resources** than these
+   (exception: see 3).
+2. It is possible to request **fractional GPUs**. A value of 0.5 means that
+   half of the memory of the GPU is made available to the trial. You will have
+   to make sure yourself that your model still fits on the fractional memory.
+3. You can **request extra resources** that are reserved for the trial. This
+   is useful if your trainable starts another process that requires resources.
+   This is for instance the case in some distributed computing settings,
+   including when using RaySGD.
 
 
 Further Questions or Issues?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------
 
 Reach out to us if you have any questions or issues or feedback through the following channels:
 
