@@ -108,6 +108,8 @@ def create_or_update_cluster(config_file: str,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
+    if not use_login_shells:
+        cmd_output_util.set_allow_interactive(False)
     if redirect_command_output is None:
         # Do not redirect by default.
         cmd_output_util.set_output_redirected(False)
@@ -792,7 +794,9 @@ def exec_cluster(config_file: str,
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
         RUN_ENV_TYPES)
-
+    # TODO(rliaw): We default this to True to maintain backwards-compat.
+    # In the future we would want to support disabling login-shells
+    # and interactivity.
     cmd_output_util.set_allow_interactive(True)
 
     config = yaml.safe_load(open(config_file).read())

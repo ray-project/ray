@@ -225,22 +225,19 @@ def _run_and_process_output(cmd,
     """
 
     stdin_overwrite = subprocess.PIPE
-    if does_allow_interactive():
-        if is_output_redirected():
-            # this is most probably a bug since the user has no control
-            # over these settings
-            raise ValueError(
-                "Output was redirected for an interactive command.")
-        else:
-            stdin_overwrite = None
+    assert not (does_allow_interactive() and is_output_redirected()), (
+        "Cannot redirect output while in interactive mode.")
+    if does_allow_interactive() and not is_output_redirected():
+        stdin_overwrite = None
+
 
     # See implementation note #1
-    if stdout_file is None:
-        stdout_file = subprocess.DEVNULL
-    if stderr_file is None:
-        stderr_file = stdout_file
 
     if use_login_shells:
+        if stdout_file is None:
+            stdout_file = subprocess.DEVNULL
+        if stderr_file is None:
+            stderr_file = subprocess.DEVNULL
         return subprocess.check_call(
             cmd,
             # See implementation note #2

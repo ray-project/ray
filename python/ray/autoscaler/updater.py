@@ -73,6 +73,16 @@ class NodeUpdater:
         cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
                             self.runtime_hash)
 
+        if cmd_output_util.does_allow_interactive(
+        ) and cmd_output_util.is_output_redirected():
+            # this is most probably a bug since the user has no control
+            # over these settings
+            msg = ("Output was redirected for an interactive command. "
+                   "Either do not pass `--redirect-command-output` "
+                   "or also pass in `--use-normal-shells`.")
+            cli_logger.abort(msg)
+            raise click.ClickException(msg)
+
         try:
             with LogTimer(self.log_prefix +
                           "Applied config {}".format(self.runtime_hash)):
@@ -298,7 +308,8 @@ class NodeUpdater:
                                             "See above for stderr.")
 
                                     raise click.ClickException(
-                                        "Initialization command failed.")
+                                        "Initialization command failed."
+                                    ) from None
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
