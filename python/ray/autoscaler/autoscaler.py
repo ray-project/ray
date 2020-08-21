@@ -393,9 +393,11 @@ class StandardAutoscaler:
         assert instance_type in self.available_node_types, "Unknown instance type tag: {}.".format(instance_type)
         instance_specific_config = self.available_node_types
         if commands_key in self.available_node_types:
-            return self.available_node_types[commands_key]
+            commands = self.available_node_types[commands_key]
         else:
-            return self.config[commands_key]
+            commands = self.config[commands_key]
+        print("Node: {} {} : {}", node_id, commands_key, commands)
+        return commands
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
