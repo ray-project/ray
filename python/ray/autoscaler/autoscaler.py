@@ -285,7 +285,11 @@ class StandardAutoscaler:
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
                  new_config["cluster_synced_files"],
-                 new_config["available_node_types"],
+                 [
+                     new_config["worker_setup_commands"],
+                     new_config["worker_start_ray_commands"],
+                     new_config.get("available_node_types", {})
+                 ],
                  generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
@@ -388,14 +392,14 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def _get_commands(self, node_id : str, commands_key : str):
+        commands = self.config[commands_key]
         node_tags = self.provider.node_tags(node_id)
-        node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
-        assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
-        node_specific_config = self.available_node_types[node_type]
-        if commands_key in node_specific_config:
-            commands = node_specific_config[commands_key]
-        else:
-            commands = self.config[commands_key]
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+            assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
+            node_specific_config = self.available_node_types[node_type]
+            if commands_key in node_specific_config:
+                commands = node_specific_config[commands_key]
         return commands
 
     def should_update(self, node_id):
