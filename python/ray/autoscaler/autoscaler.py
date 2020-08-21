@@ -247,7 +247,6 @@ class StandardAutoscaler:
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
-                print("STARTING SPAWN UPDATER: ", node_id)
                 resources = self._node_resources(node_id)
                 T.append(
                     threading.Thread(
@@ -422,8 +421,6 @@ class StandardAutoscaler:
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
                       node_resources):
-        print("SPAWN UPDATER: ", node_id)
-        print("node: {}, init commands: {}, start commands: {}".format(node_id, init_commands, ray_start_commands))
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
