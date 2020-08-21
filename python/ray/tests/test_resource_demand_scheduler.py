@@ -333,6 +333,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
         autoscaler.update()
+        sleep(0.1)
         runner.assert_has_call(self.provider.mock_nodes[1].internal_ip, "echo hello world")
 
 
