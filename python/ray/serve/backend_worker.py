@@ -21,6 +21,7 @@ from ray.experimental import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
 from ray.exceptions import RayTaskError
+from typing import Dict, Union, List, Any, Optional, Tuple, Callable, Type
 
 logger = _get_logger()
 
@@ -91,7 +92,7 @@ class BatchQueue:
 
 
 def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]
-                          ) -> Type[RayServeWrappedWorker]:
+                          ) -> 'Type[RayServeWrappedWorker]':
     """Creates a worker class wrapping the provided function or class."""
 
     if inspect.isfunction(func_or_class):
@@ -105,7 +106,7 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]
         def __init__(self,
                      backend_tag: str,
                      replica_tag: str,
-                     init_args: Iterable[Any],
+                     init_args: Iterable,
                      backend_config: BackendConfig,
                      instance_name: str = None):
             serve.init(name=instance_name)
