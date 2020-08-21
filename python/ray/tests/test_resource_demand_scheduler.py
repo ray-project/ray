@@ -307,6 +307,34 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "CPU: 32")
         runner.assert_has_call("172.0.0.1", "GPU: 8")
 
+    def testCommandPassing(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["available_node_types"]["p2.8xlarge"]["worker_setup_commands"] = ["echo hello world"]
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+        autoscaler.update()
+        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip, "echo hello world")
+
 
 if __name__ == "__main__":
     import sys

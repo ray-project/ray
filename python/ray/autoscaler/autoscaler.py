@@ -247,6 +247,7 @@ class StandardAutoscaler:
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
+                print("STARTING SPAWN UPDATER: ", node_id)
                 resources = self._node_resources(node_id)
                 T.append(
                     threading.Thread(
@@ -392,15 +393,10 @@ class StandardAutoscaler:
         node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
         assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
         node_specific_config = self.available_node_types[node_type]
-        print("instance type: ", node_type)
-        print("available node types: ", self.available_node_types)
         if commands_key in node_specific_config:
-            print("Found node specific config")
             commands = node_specific_config[commands_key]
         else:
-            print("Did not find node specific config", node_specific_config)
             commands = self.config[commands_key]
-        print("Node: {} {} : {}".format(node_id, commands_key, commands))
         return commands
 
     def should_update(self, node_id):
@@ -426,6 +422,8 @@ class StandardAutoscaler:
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
                       node_resources):
+        print("SPAWN UPDATER: ", node_id)
+        print("node: {}, init commands: {}, start commands: {}".format(node_id, init_commands, ray_start_commands))
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -502,8 +500,8 @@ class StandardAutoscaler:
             resources: Either a list of resource bundles or a single resource
                 demand dictionary.
         """
-        # logger.info(
-        #     "StandardAutoscaler: resource_requests={}".format(resources))
+        logger.info(
+            "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
