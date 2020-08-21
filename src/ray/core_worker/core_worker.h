@@ -51,6 +51,8 @@ namespace ray {
 
 class CoreWorker;
 
+// If you change this options's definition, you must change the options used in
+// other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
