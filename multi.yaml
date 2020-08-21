@@ -41,25 +41,8 @@ available_node_types:
         max_workers: 5
     gpu_1_ondemand:
         setup_commands:
-          - sudo pkill -9 apt-get || true
-          - sudo pkill -9 dpkg || true
-          - sleep 1 && sudo dpkg --configure -a
-          - sudo apt-get update
-          - sudo apt-get install -y build-essential curl unzip
-          # Install Node.js in order to build the dashboard.
-          - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
-          - sudo apt-get install -y nodejs
-          # Install Anaconda.
-          - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
-          - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
-          - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
-          # Build Ray.
-          - git clone --single-branch --branch multi-node-commands https://github.com/wuisawesome/ray || true
-          - ray/ci/travis/install-bazel.sh
-          - cd ray/python/ray/dashboard/client; npm ci; npm run build
-          - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
-          - cd ray/python; pip install -e . --verbose
-          - touch ~/GPUUU
+          - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+          - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
         node_config:
             InstanceType: p2.xlarge
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}

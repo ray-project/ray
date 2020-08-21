@@ -377,7 +377,7 @@ class StandardAutoscaler:
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
-                self._get_commands("worker_start_ray_commands")
+                self._get_commands(node_id, "worker_start_ray_commands")
             ),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
@@ -428,7 +428,7 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self._get_commands("intialization_commands")
+                self._get_commands(node_id, "intialization_commands")
             ),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
