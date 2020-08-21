@@ -16,6 +16,7 @@ provider:
 available_node_types:
     cpu_4_ondemand:
         setup_commands:
+          - touch ~/cpu_4
           - sudo pkill -9 apt-get || true
           - sudo pkill -9 dpkg || true
           - sleep 1 && sudo dpkg --configure -a
@@ -34,13 +35,13 @@ available_node_types:
           - cd ray/python/ray/dashboard/client; npm ci; npm run build
           - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
           - cd ray/python; pip install -e . --verbose
-          - touch ~/cpu_4
         node_config:
             InstanceType: m4.xlarge
         resources: {"CPU": 4}
         max_workers: 5
     gpu_1_ondemand:
         setup_commands:
+          - touch ~/gpu_instance
           - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
           - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
         node_config:
@@ -87,4 +88,5 @@ setup_commands:
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
     - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
     - cd ray/python; pip install -e . --verbose
+    - touch ~/default
 
