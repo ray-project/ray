@@ -35,7 +35,7 @@ class ResourceDemandScheduler:
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
 
-        out = "Worker instance types:"
+        out = "Worker node types:"
         for node_type, count in node_type_counts.items():
             out += "\n - {}: {}".format(node_type, count)
             if pending_nodes.get(node_type):
@@ -46,12 +46,12 @@ class ResourceDemandScheduler:
     def calculate_node_resources(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int]
     ) -> (List[ResourceDict], Dict[NodeType, int]):
-        """Returns node resource list and instance type counts."""
+        """Returns node resource list and node type counts."""
 
         node_resources = []
         node_type_counts = collections.defaultdict(int)
 
-        def add_instance(node_type):
+        def add_node(node_type):
             if node_type not in self.node_types:
                 raise RuntimeError("Missing entry for node_type {} in "
                                    "available_node_types config: {}".format(
@@ -65,24 +65,24 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                add_instance(node_type)
+                add_node(node_type)
 
         for node_type, count in pending_nodes.items():
             for _ in range(count):
-                add_instance(node_type)
+                add_node(node_type)
 
         return node_resources, node_type_counts
 
-    def get_instances_to_launch(self, nodes: List[NodeID],
-                                pending_nodes: Dict[NodeType, int],
-                                resource_demands: List[ResourceDict]
-                                ) -> List[Tuple[NodeType, int]]:
-        """Get a list of instance types that should be added to the cluster.
+    def get_nodes_to_launch(self, nodes: List[NodeID],
+                            pending_nodes: Dict[NodeType, int],
+                            resource_demands: List[ResourceDict]
+                            ) -> List[Tuple[NodeType, int]]:
+        """Get a list of node types that should be added to the cluster.
 
         This method:
             (1) calculates the resources present in the cluster.
             (2) calculates the unfulfilled resource bundles.
-            (3) calculates which instances need to be launched to fulfill all
+            (3) calculates which nodes need to be launched to fulfill all
                 the bundle requests, subject to max_worker constraints.
         """
 
@@ -93,42 +93,40 @@ class ResourceDemandScheduler:
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
         logger.info("Cluster resources: {}".format(node_resources))
-        logger.info("Instance counts: {}".format(node_type_counts))
+        logger.info("Node counts: {}".format(node_type_counts))
 
         unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        instances = get_instances_for(self.node_types, node_type_counts,
-                                      self.max_workers - len(nodes),
-                                      unfulfilled)
-        logger.info("Instance requests: {}".format(instances))
-        return instances
+        nodes = get_nodes_for(self.node_types, node_type_counts,
+                              self.max_workers - len(nodes), unfulfilled)
+        logger.info("Node requests: {}".format(nodes))
+        return nodes
 
 
-def get_instances_for(
-        node_types: Dict[NodeType, NodeTypeConfigDict],
-        existing_instances: Dict[NodeType, int], max_to_add: int,
-        resources: List[ResourceDict]) -> List[Tuple[NodeType, int]]:
-    """Determine instances to add given resource demands and constraints.
+def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
+                  existing_nodes: Dict[NodeType, int], max_to_add: int,
+                  resources: List[ResourceDict]) -> List[Tuple[NodeType, int]]:
+    """Determine nodes to add given resource demands and constraints.
 
     Args:
-        node_types: instance types config.
-        existing_instances: counts of existing instances already launched.
-            This sets constraints on the number of new instances to add.
-        max_to_add: global constraint on instances to add.
+        node_types: node types config.
+        existing_nodes: counts of existing nodes already launched.
+            This sets constraints on the number of new nodes to add.
+        max_to_add: global constraint on nodes to add.
         resources: resource demands to fulfill.
 
     Returns:
-        List of instances types and count to add.
+        List of nodes types and count to add.
     """
-    instances_to_add = collections.defaultdict(int)
+    nodes_to_add = collections.defaultdict(int)
     allocated_resources = []
 
-    while resources and sum(instances_to_add.values()) < max_to_add:
+    while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
         for node_type in node_types:
-            if (existing_instances.get(node_type, 0) + instances_to_add.get(
+            if (existing_nodes.get(node_type, 0) + nodes_to_add.get(
                     node_type, 0) >= node_types[node_type]["max_workers"]):
                 continue
             node_resources = node_types[node_type]["resources"]
@@ -138,18 +136,19 @@ def get_instances_for(
 
         # Give up, no feasible node.
         if not utilization_scores:
-            logger.info("No feasible instance to add for {}".format(resources))
+            logger.info(
+                "No feasible node type to add for {}".format(resources))
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)
         best_node_type = utilization_scores[0][1]
-        instances_to_add[best_node_type] += 1
+        nodes_to_add[best_node_type] += 1
         allocated_resources.append(node_types[best_node_type]["resources"])
         residual = get_bin_pack_residual(allocated_resources[-1:], resources)
         assert len(residual) < len(resources), (resources, residual)
         resources = residual
 
-    return list(instances_to_add.items())
+    return list(nodes_to_add.items())
 
 
 def _utilization_score(node_resources: ResourceDict,

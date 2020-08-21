@@ -11,7 +11,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.aws.config import bootstrap_aws
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_INSTANCE_TYPE
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
@@ -218,10 +218,10 @@ class AWSNodeProvider(NodeProvider):
                 },
             ]
             # This tag may not always be present.
-            if TAG_RAY_INSTANCE_TYPE in tags:
+            if TAG_RAY_USER_NODE_TYPE in tags:
                 filters.append({
-                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
-                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
+                    "Name": "tag:{}".format(TAG_RAY_USER_NODE_TYPE),
+                    "Values": [tags[TAG_RAY_USER_NODE_TYPE]],
                 })
 
             reuse_nodes = list(

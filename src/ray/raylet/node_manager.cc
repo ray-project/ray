@@ -506,6 +506,18 @@ void NodeManager::DoLocalGC() {
   }
 }
 
+void NodeManager::HandleRequestObjectSpillage(
+    const rpc::RequestObjectSpillageRequest &request,
+    rpc::RequestObjectSpillageReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  SpillObjects({ObjectID::FromBinary(request.object_id())},
+               [reply, send_reply_callback](const ray::Status &status) {
+                 if (status.ok()) {
+                   reply->set_success(true);
+                 }
+                 send_reply_callback(Status::OK(), nullptr, nullptr);
+               });
+}
+
 void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
                                std::function<void(const ray::Status &)> callback) {
   std::vector<ObjectID> objects_ids;
@@ -514,6 +526,15 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
     if (spilled_objects_.count(id) == 0) {
       objects_ids.push_back(id);
     }
+    // We should not spill an object that we are not the primary copy for.
+    // TODO(swang): We should really return an error here but right now there
+    // is a race condition where the raylet receives the owner's request to
+    // spill an object before it receives the message to pin the objects from
+    // the local worker.
+    if (pinned_objects_.count(id) == 0) {
+      RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
+                          "the primary copy";
+    }
   }
   if (objects_ids.empty()) {
     if (callback) {
@@ -521,42 +542,43 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
     }
     return;
   }
-  worker_pool_.PopIOWorker(
-      [this, objects_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
-        RAY_LOG(DEBUG) << "Sending object spilling request";
-        rpc::SpillObjectsRequest request;
-        for (const auto &object_id : objects_ids) {
-          request.add_object_ids_to_spill(object_id.Binary());
-        }
-        io_worker->rpc_client()->SpillObjects(
-            request, [this, objects_ids, callback, io_worker](
-                         const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              worker_pool_.PushIOWorker(io_worker);
-              if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to send object spilling request: "
-                               << status.ToString();
+  worker_pool_.PopIOWorker([this, objects_ids,
+                            callback](std::shared_ptr<WorkerInterface> io_worker) {
+    rpc::SpillObjectsRequest request;
+    for (const auto &object_id : objects_ids) {
+      RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+      request.add_object_ids_to_spill(object_id.Binary());
+    }
+    io_worker->rpc_client()->SpillObjects(
+        request, [this, objects_ids, callback, io_worker](
+                     const ray::Status &status, const rpc::SpillObjectsReply &r) {
+          worker_pool_.PushIOWorker(io_worker);
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send object spilling request: "
+                           << status.ToString();
+          } else {
+            RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
+                      objects_ids.size());
+            for (size_t i = 0; i < objects_ids.size(); ++i) {
+              const ObjectID &object_id = objects_ids[i];
+              const std::string &object_url = r.spilled_objects_url(i);
+              RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
+              // TODO(suquark): write to object directory.
+              spilled_objects_[object_id] = object_url;
+              auto search = pinned_objects_.find(object_id);
+              if (search != pinned_objects_.end()) {
+                pinned_objects_.erase(search);
               } else {
-                RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
-                          objects_ids.size());
-                for (size_t i = 0; i < objects_ids.size(); ++i) {
-                  const ObjectID &object_id = objects_ids[i];
-                  const std::string &object_url = r.spilled_objects_url(i);
-                  // TODO(suquark): write to object directory.
-                  spilled_objects_[object_id] = object_url;
-                  auto search = pinned_objects_.find(object_id);
-                  if (search != pinned_objects_.end()) {
-                    pinned_objects_.erase(search);
-                  } else {
-                    RAY_LOG(ERROR)
-                        << "The spilled object " << object_id.Hex() << " is not pinned.";
-                  }
-                }
+                RAY_LOG(ERROR) << "The spilled object " << object_id.Hex()
+                               << " is not pinned.";
               }
-              if (callback) {
-                callback(status);
-              }
-            });
-      });
+            }
+          }
+          if (callback) {
+            callback(status);
+          }
+        });
+  });
 }
 
 void NodeManager::RestoreSpilledObjects(
@@ -565,6 +587,10 @@ void NodeManager::RestoreSpilledObjects(
   std::vector<std::string> object_urls;
   object_urls.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {
+    if (spilled_objects_.count(object_id) == 0) {
+      callback(Status::Invalid("No object URL recorded"));
+      return;
+    }
     object_urls.push_back(spilled_objects_[object_id]);
   }
   worker_pool_.PopIOWorker([this, object_urls,
@@ -1225,23 +1251,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
-  } break;
-  case protocol::MessageType::ForceSpillObjectsRequest: {
-    auto message = flatbuffers::GetRoot<protocol::ForceSpillObjectsRequest>(message_data);
-    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
-    SpillObjects(object_ids, [this, client](const ray::Status &status) {
-      flatbuffers::FlatBufferBuilder fbb;
-      flatbuffers::Offset<protocol::ForceSpillObjectsReply> reply =
-          protocol::CreateForceSpillObjectsReply(fbb);
-      fbb.Finish(reply);
-      auto reply_status = client->WriteMessage(
-          static_cast<int64_t>(protocol::MessageType::ForceSpillObjectsReply),
-          fbb.GetSize(), fbb.GetBufferPointer());
-      if (!reply_status.ok()) {
-        // We failed to write to the client, so disconnect the client.
-        ProcessDisconnectClientMessage(client);
-      }
-    });
   } break;
   case protocol::MessageType::ForceRestoreSpilledObjectsRequest: {
     auto message =

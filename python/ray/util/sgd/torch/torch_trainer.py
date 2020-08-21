@@ -245,7 +245,7 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
-        logger.debug("Using {} as backend.".format(backend))
+        logger.debug(f"Using {backend} as backend.")
         self.backend = backend
         self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
@@ -659,12 +659,12 @@ class TorchTrainer:
                     "Failed to shutdown gracefully, forcing a shutdown.")
 
                 for worker in self.remote_workers:
-                    logger.warning("Killing worker {}.".format(worker))
+                    logger.warning(f"Killing worker {worker}.")
                     ray.kill(worker)
         else:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
-                logger.debug("Killing worker {}.".format(worker))
+                logger.debug(f"Killing worker {worker}.")
                 ray.kill(worker)
 
         self.local_worker = DeactivatedRunner()
@@ -674,7 +674,7 @@ class TorchTrainer:
         """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
-            logger.debug("Killing worker {}.".format(worker))
+            logger.debug(f"Killing worker {worker}.")
             ray.kill(worker)
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []

@@ -208,7 +208,7 @@ if __name__ == "__main__":
         # Trains num epochs
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
+        print(f"iter {i}:", train_stats1)
 
     dt = (time.time() - training_start) / 3
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")

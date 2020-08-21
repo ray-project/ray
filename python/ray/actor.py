@@ -331,7 +331,7 @@ class ActorClass:
         class DerivedActorClass(cls, modified_class):
             pass
 
-        name = "ActorClass({})".format(modified_class.__name__)
+        name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
@@ -480,8 +480,8 @@ class ActorClass:
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError("name must be None or a string, "
-                                "got: '{}'.".format(type(name)))
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -744,9 +744,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        "Actor method {} is not supported by cross language."
-                        .format(item))
+                    logger.warning(f"Actor method {item} is not "
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 
