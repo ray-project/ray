@@ -20,7 +20,6 @@ from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf2")
-parser.add_argument("--eager", action="store_true")
 
 if __name__ == "__main__":
     ray.init()
@@ -36,7 +35,6 @@ if __name__ == "__main__":
         },
         config={
             "framework": args.framework,
-            "eager": args.eager,
             "env": SimpleRPG,
             "rollout_fragment_length": 1,
             "train_batch_size": 2,
