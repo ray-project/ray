@@ -23,7 +23,7 @@ parser.add_argument(
 parser.add_argument("--eager", action="store_true")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
     args = parser.parse_args()
     if args.framework == "torch":
         ModelCatalog.register_custom_model("my_model", CustomTorchRPGModel)
