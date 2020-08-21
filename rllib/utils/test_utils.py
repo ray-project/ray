@@ -1,6 +1,7 @@
 import gym
 import logging
 import numpy as np
+import os
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -15,6 +16,8 @@ if tf1:
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
+
+NUM_GPUS = int(os.environ.get("RAY_FORCE_NUM_GPUS", 0)) or None
 
 
 def framework_iterator(config=None,

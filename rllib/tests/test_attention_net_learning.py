@@ -5,6 +5,7 @@ from ray import tune
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
+from ray.rllib.utils.test_utils import NUM_GPUS
 
 
 class TestAttentionNetLearning(unittest.TestCase):
@@ -23,7 +24,7 @@ class TestAttentionNetLearning(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=5, ignore_reinit_error=True)
+        ray.init(num_cpus=5, num_gpus=NUM_GPUS, ignore_reinit_error=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -33,6 +34,7 @@ class TestAttentionNetLearning(unittest.TestCase):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         config = dict(
             self.config, **{
+                "num_gpus": NUM_GPUS,
                 "num_workers": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
@@ -56,8 +58,8 @@ class TestAttentionNetLearning(unittest.TestCase):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         config = dict(
             self.config, **{
+                "num_gpus": NUM_GPUS,
                 "num_workers": 4,
-                "num_gpus": 0,
                 "entropy_coeff": 0.01,
                 "vf_loss_coeff": 0.001,
                 "lr": 0.0008,
