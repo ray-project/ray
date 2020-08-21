@@ -1,5 +1,6 @@
 import functools
 import gym
+import logging
 import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
@@ -23,6 +24,7 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
 torch, _ = try_import_torch()
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -105,6 +107,7 @@ class TorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
         if torch.cuda.is_available() and ray.get_gpu_ids():
+            print("TorchPolicy running on GPU.")
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
