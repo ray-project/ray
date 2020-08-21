@@ -248,9 +248,9 @@ class WandbLogger(Logger):
         config = self.config.copy()
 
         try:
-            if "logger_config" in config:
+            if config.get("logger_config", {}).get("wandb"):
                 logger_config = config.pop("logger_config")
-                wandb_config = logger_config.get("wandb")
+                wandb_config = logger_config.get("wandb").copy()
             else:
                 wandb_config = config.pop("wandb").copy()
         except KeyError:
