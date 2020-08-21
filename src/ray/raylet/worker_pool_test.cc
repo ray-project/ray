@@ -119,7 +119,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
-        WorkerID::FromRandom(), language, "127.0.0.1", client, client_call_manager_);
+        WorkerID::FromRandom(), language, rpc::WorkerType::WORKER, "127.0.0.1", client,
+        client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     worker->AssignJobId(job_id);
@@ -155,7 +156,7 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
                 static_cast<int>(desired_initial_worker_process_count));
     Process last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
-      worker_pool_->StartWorkerProcess(language, JOB_ID);
+      worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER, JOB_ID);
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
@@ -233,7 +234,8 @@ TEST_P(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
-  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID);
+  Process proc =
+      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(CreateWorker(Process(), Language::JAVA));
@@ -361,7 +363,7 @@ TEST_P(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA, JOB_ID,
       ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
-  worker_pool_->StartWorkerProcess(Language::JAVA, JOB_ID,
+  worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID,
                                    task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());

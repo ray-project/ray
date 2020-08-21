@@ -1,5 +1,4 @@
-from collections import deque
-import time
+import asyncio
 
 import ray
 
@@ -16,11 +15,10 @@ class Queue:
     """Queue implementation on Ray.
 
     Args:
-        maxsize (int): maximum size of the queue. If zero, size is unboundend.
+        maxsize (int): maximum size of the queue. If zero, size is unbounded.
     """
 
     def __init__(self, maxsize=0):
-        self.maxsize = maxsize
         self.actor = _QueueActor.remote(maxsize)
 
     def __len__(self):
@@ -45,70 +43,49 @@ class Queue:
     def put(self, item, block=True, timeout=None):
         """Adds an item to the queue.
 
-        Uses polling if block=True, so there is no guarantee of order if
-        multiple producers put to the same full queue.
+        There is no guarantee of order if multiple producers put to the same
+        full queue.
 
         Raises:
             Full if the queue is full and blocking is False.
+            Full if the queue is full, blocking is True, and it timed out.
+            ValueError if timeout is negative.
         """
-        if self.maxsize <= 0:
-            self.actor.put.remote(item)
-        elif not block:
-            if not ray.get(self.actor.put.remote(item)):
+        if not block:
+            try:
+                ray.get(self.actor.put_nowait.remote(item))
+            except asyncio.QueueFull:
                 raise Full
-        elif timeout is None:
-            # Polling
-            # Use a not_full condition variable or promise?
-            while not ray.get(self.actor.put.remote(item)):
-                # Consider adding time.sleep here
-                pass
-        elif timeout < 0:
-            raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
-            # Polling
-            # Use a condition variable or switch to promise?
-            success = False
-            while not success and time.time() < endtime:
-                success = ray.get(self.actor.put.remote(item))
-            if not success:
-                raise Full
+            if timeout is not None and timeout < 0:
+                raise ValueError("'timeout' must be a non-negative number")
+            else:
+                ray.get(self.actor.put.remote(item, timeout))
 
     def get(self, block=True, timeout=None):
         """Gets an item from the queue.
 
-        Uses polling if block=True, so there is no guarantee of order if
-        multiple consumers get from the same empty queue.
+        There is no guarantee of order if multiple consumers get from the
+        same empty queue.
 
         Returns:
             The next item in the queue.
 
         Raises:
             Empty if the queue is empty and blocking is False.
+            Empty if the queue is empty, blocking is True, and it timed out.
+            ValueError if timeout is negative.
         """
         if not block:
-            success, item = ray.get(self.actor.get.remote())
-            if not success:
+            try:
+                return ray.get(self.actor.get_nowait.remote())
+            except asyncio.QueueEmpty:
                 raise Empty
-        elif timeout is None:
-            # Polling
-            # Use a not_empty condition variable or return a promise?
-            success, item = ray.get(self.actor.get.remote())
-            while not success:
-                # Consider adding time.sleep here
-                success, item = ray.get(self.actor.get.remote())
-        elif timeout < 0:
-            raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
-            # Polling
-            # Use a not_full condition variable or return a promise?
-            success = False
-            while not success and time.time() < endtime:
-                success, item = ray.get(self.actor.get.remote())
-            if not success:
-                raise Empty
-        return item
+            if timeout is not None and timeout < 0:
+                raise ValueError("'timeout' must be a non-negative number")
+            else:
+                return ray.get(self.actor.get.remote(timeout))
 
     def put_nowait(self, item):
         """Equivalent to put(item, block=False).
@@ -119,7 +96,7 @@ class Queue:
         return self.put(item, block=False)
 
     def get_nowait(self):
-        """Equivalent to get(item, block=False).
+        """Equivalent to get(block=False).
 
         Raises:
             Empty if the queue is empty.
@@ -130,38 +107,31 @@ class Queue:
 @ray.remote
 class _QueueActor:
     def __init__(self, maxsize):
-        self.maxsize = maxsize
-        self._init(maxsize)
+        self.queue = asyncio.Queue(maxsize)
 
     def qsize(self):
-        return self._qsize()
+        return self.queue.qsize()
 
     def empty(self):
-        return not self._qsize()
+        return self.queue.empty()
 
     def full(self):
-        return 0 < self.maxsize <= self._qsize()
+        return self.queue.full()
 
-    def put(self, item):
-        if self.maxsize > 0 and self._qsize() >= self.maxsize:
-            return False
-        self._put(item)
-        return True
+    async def put(self, item, timeout=None):
+        try:
+            await asyncio.wait_for(self.queue.put(item), timeout)
+        except asyncio.TimeoutError:
+            raise Full
 
-    def get(self):
-        if not self._qsize():
-            return False, None
-        return True, self._get()
+    async def get(self, timeout=None):
+        try:
+            return await asyncio.wait_for(self.queue.get(), timeout)
+        except asyncio.TimeoutError:
+            raise Empty
 
-    # Override these for different queue implementations
-    def _init(self, maxsize):
-        self.queue = deque()
+    def put_nowait(self, item):
+        self.queue.put_nowait(item)
 
-    def _qsize(self):
-        return len(self.queue)
-
-    def _put(self, item):
-        self.queue.append(item)
-
-    def _get(self):
-        return self.queue.popleft()
+    def get_nowait(self):
+        return self.queue.get_nowait()

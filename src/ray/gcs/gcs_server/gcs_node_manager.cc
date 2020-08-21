@@ -231,6 +231,10 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
   ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
+
+  // Update node realtime resources.
+  UpdateNodeRealtimeResources(node_id, *heartbeat_data);
+
   // Note: To avoid heartbeats being delayed by main thread, make sure heartbeat is always
   // handled by its own IO service.
   node_failure_detector_service_.post([this, node_id, heartbeat_data] {
@@ -391,6 +395,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
     cluster_resources_.erase(node_id);
+    // Remove from cluster realtime resources.
+    cluster_realtime_resources_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -449,6 +455,18 @@ void GcsNodeManager::StartNodeFailureDetector() {
   // Note: To avoid heartbeats being delayed by main thread, make sure detector start is
   // always handled by its own IO service.
   node_failure_detector_service_.post([this] { node_failure_detector_->Start(); });
+}
+
+void GcsNodeManager::UpdateNodeRealtimeResources(
+    const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
+  auto resources_available = MapFromProtobuf(heartbeat.resources_available());
+  cluster_realtime_resources_[node_id] =
+      std::make_shared<ResourceSet>(resources_available);
+}
+
+const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
+    &GcsNodeManager::GetClusterRealtimeResources() const {
+  return cluster_realtime_resources_;
 }
 
 }  // namespace gcs

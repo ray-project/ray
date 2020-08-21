@@ -37,7 +37,8 @@ bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
   return local_objects_.count(object_id) == 1;
 }
 
-bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const {
+bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id,
+                                                rpc::Address *owner_address) const {
   const TaskID task_id = object_id.TaskId();
   auto task_entry = required_tasks_.find(task_id);
   // If there are no subscribed tasks that are dependent on the object, then do
@@ -58,25 +59,29 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id) const
   if (pending_tasks_.count(task_id) == 1) {
     return false;
   }
+  if (owner_address != nullptr) {
+    *owner_address = task_entry->second.at(object_id).owner_address;
+  }
   return true;
 }
 
 void TaskDependencyManager::HandleRemoteDependencyRequired(const ObjectID &object_id) {
-  bool required = CheckObjectRequired(object_id);
+  rpc::Address owner_address;
+  bool required = CheckObjectRequired(object_id, &owner_address);
   // If the object is required, then try to make the object available locally.
   if (required) {
     auto inserted = required_objects_.insert(object_id);
     if (inserted.second) {
       // If we haven't already, request the object manager to pull it from a
       // remote node.
-      RAY_CHECK_OK(object_manager_.Pull(object_id));
-      reconstruction_policy_.ListenAndMaybeReconstruct(object_id);
+      RAY_CHECK_OK(object_manager_.Pull(object_id, owner_address));
+      reconstruction_policy_.ListenAndMaybeReconstruct(object_id, owner_address);
     }
   }
 }
 
 void TaskDependencyManager::HandleRemoteDependencyCanceled(const ObjectID &object_id) {
-  bool required = CheckObjectRequired(object_id);
+  bool required = CheckObjectRequired(object_id, nullptr);
   // If the object is no longer required, then cancel the object.
   if (!required) {
     auto it = required_objects_.find(object_id);

@@ -14,7 +14,8 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
-from ray.rllib.utils.types import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, \
+    TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -199,8 +200,7 @@ class DynamicTFPolicy(TFPolicy):
                 action_space=action_space,
                 num_outputs=logit_dim,
                 model_config=self.config["model"],
-                framework="tf",
-                **self.config["model"].get("custom_model_config", {}))
+                framework="tf")
 
         # Create the Exploration object to use for this Policy.
         self.exploration = self._create_exploration()

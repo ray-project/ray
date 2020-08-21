@@ -158,6 +158,8 @@ class CoreWorkerTest : public ::testing::Test {
           nullptr,                        // task_execution_callback
           nullptr,                        // check_signals
           nullptr,                        // gc_collect
+          nullptr,                        // spill_objects
+          nullptr,                        // restore_spilled_objects
           nullptr,                        // get_lang_stack
           nullptr,                        // kill_main
           true,                           // ref_counting_enabled
@@ -544,7 +546,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, resources, resources);
+                              RandomTaskId(), address, num_returns, resources, resources,
+                              PlacementGroupID::Nil());
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);

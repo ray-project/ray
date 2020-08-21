@@ -68,7 +68,7 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = []
+optional_ray_files = ["ray/nightly-wheels.yaml"]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -110,7 +110,7 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "blist", "requests"],
+    "serve": ["uvicorn", "flask", "requests"],
     "tune": ["tabulate", "tensorboardX", "pandas"]
 }
 
@@ -119,7 +119,7 @@ extras["rllib"] = extras["tune"] + [
     "dm_tree",
     "gym[atari]",
     "lz4",
-    "opencv-python-headless",
+    "opencv-python-headless<=4.3.0.36",
     "pyyaml",
     "scipy",
 ]

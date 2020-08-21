@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import click
 import hashlib
 import logging
@@ -66,6 +66,35 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
+def _with_environment_variables(cmd: str,
+                                environment_variables: Dict[str, object]):
+    """Prepend environment variables to a shell command.
+
+    Args:
+        cmd (str): The base command.
+        environment_variables (Dict[str, object]): The set of environment
+            variables. If an environment variable value is a dict, it will
+            automatically be converted to a one line yaml string.
+    """
+
+    def dict_as_one_line_yaml(d):
+        items = []
+        for key, val in d.items():
+            item_str = "{}: {}".format(quote(str(key)), quote(str(val)))
+            items.append(item_str)
+
+        return "{" + ",".join(items) + "}"
+
+    as_strings = []
+    for key, val in environment_variables.items():
+        if isinstance(val, dict):
+            val = dict_as_one_line_yaml(val)
+        s = "export {}={};".format(key, quote(val))
+        as_strings.append(s)
+    all_vars = "".join(as_strings)
+    return all_vars + cmd
+
+
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
@@ -78,14 +107,21 @@ class CommandRunnerInterface:
 
     Command runner instances are returned by provider.get_command_runner()."""
 
-    def run(self,
+    def run(
+            self,
             cmd: str = None,
             timeout: int = 120,
             exit_on_fail: bool = False,
             port_forward: List[Tuple[int, int]] = None,
             with_output: bool = False,
-            **kwargs) -> str:
+            environment_variables: Dict[str, object] = None,
+            run_env: str = "auto",
+            ssh_options_override_ssh_key: str = "",
+    ) -> str:
         """Run the given command on the cluster node and optionally get output.
+
+        WARNING: the cloudgateway needs arguments of "run" function to be json
+            dumpable to send them over HTTP requests.
 
         Args:
             cmd (str): The command to run.
@@ -94,6 +130,12 @@ class CommandRunnerInterface:
             port_forward (list): List of (local, remote) ports to forward, or
                 a single tuple.
             with_output (bool): Whether to return output.
+            environment_variables (Dict[str, str | int | Dict[str, str]):
+                Environment variables that `cmd` should be run with.
+            run_env (str): Options: docker/host/auto. Used in
+                DockerCommandRunner to determine the run environment.
+            ssh_options_override_ssh_key (str): if provided, overwrites
+                SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
         """
         raise NotImplementedError
 
@@ -130,13 +172,17 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
 
-    def run(self,
+    def run(
+            self,
             cmd=None,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            **kwargs):
+            environment_variables: Dict[str, object] = None,
+            run_env="auto",  # Unused argument.
+            ssh_options_override_ssh_key="",  # Unused argument.
+    ):
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -167,6 +213,9 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 self.node_id,
                 "--",
             ]
+            cmd = _with_interactive(cmd)
+            if environment_variables:
+                cmd = _with_environment_variables(cmd, environment_variables)
             final_cmd += _with_interactive(cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
@@ -202,10 +251,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.warning(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
-            self.process_runner.check_call(self.kubectl + [
-                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
-                                                target)
-            ])
+            self.run_cp_up(source, target)
+
+    def run_cp_up(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                            target)
+        ])
 
     def run_rsync_down(self, source, target):
         if target.startswith("~"):
@@ -222,10 +277,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.warning(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
-            self.process_runner.check_call(self.kubectl + [
-                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
-                target
-            ])
+            self.run_cp_down(source, target)
+
+    def run_cp_down(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+            target
+        ])
 
     def remote_shell_command_str(self):
         return "{} exec -it {} bash".format(" ".join(self.kubectl),
@@ -370,7 +431,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
         """
-
         try:
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
@@ -402,15 +462,22 @@ class SSHCommandRunner(CommandRunnerInterface):
                     "SSH command Failed. See above for the output from the"
                     " failure.") from None
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            ssh_options_override=None,
-            **kwargs):
-        ssh_options = ssh_options_override or self.ssh_options
+            environment_variables: Dict[str, object] = None,
+            run_env="auto",  # Unused argument.
+            ssh_options_override_ssh_key="",
+    ):
+
+        if ssh_options_override_ssh_key:
+            ssh_options = SSHOptions(ssh_options_override_ssh_key)
+        else:
+            ssh_options = self.ssh_options
 
         assert isinstance(
             ssh_options, SSHOptions
@@ -441,6 +508,8 @@ class SSHCommandRunner(CommandRunnerInterface):
             "{}@{}".format(self.ssh_user, self.ssh_ip)
         ]
         if cmd:
+            if environment_variables:
+                cmd = _with_environment_variables(cmd, environment_variables)
             if is_using_login_shells():
                 final_cmd += _with_interactive(cmd)
             else:
@@ -450,7 +519,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append(quote("while true; do sleep 86400; done"))
+            final_cmd.append("while true; do sleep 86400; done")
 
         cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():
@@ -506,17 +575,22 @@ class DockerCommandRunner(SSHCommandRunner):
         self._check_docker_installed()
         self.shutdown = False
 
-    def run(self,
+    def run(
+            self,
             cmd,
             timeout=120,
             exit_on_fail=False,
             port_forward=None,
             with_output=False,
-            run_env=True,
-            ssh_options_override=None,
-            **kwargs):
+            environment_variables: Dict[str, object] = None,
+            run_env="auto",
+            ssh_options_override_ssh_key="",
+    ):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
+
+        if environment_variables:
+            cmd = _with_environment_variables(cmd, environment_variables)
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
@@ -533,14 +607,15 @@ class DockerCommandRunner(SSHCommandRunner):
             exit_on_fail=exit_on_fail,
             port_forward=port_forward,
             with_output=with_output,
-            ssh_options_override=ssh_options_override)
+            ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target):
+        # TODO(ilr) Expose this to before NodeUpdater::sync_file_mounts
         protected_path = target
         if target.find("/root") == 0:
             target = target.replace("/root", "/tmp/root")
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(target.rstrip('/'))}", run_env="host")
+            f"mkdir -p {os.path.dirname(target.rstrip('/'))}")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
@@ -552,7 +627,7 @@ class DockerCommandRunner(SSHCommandRunner):
         if source.find("/root") == 0:
             source = source.replace("/root", "/tmp/root")
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(source.rstrip('/'))}", run_env="host")
+            f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
             self.docker_name, self._docker_expand_user(protected_path),
             source))

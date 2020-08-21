@@ -10,13 +10,13 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, SSHOptions, \
-    ProcessRunnerError
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
+from ray import ray_constants
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
+                 node_resources=None,
                  cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
@@ -62,6 +63,7 @@ class NodeUpdater:
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
+        self.node_resources = node_resources
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
         self.cluster_synced_files = cluster_synced_files
@@ -146,8 +148,9 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run("mkdir -p {}".format(
-                    os.path.dirname(remote_path)))
+                self.cmd_runner.run(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    run_env="host")
                 sync_cmd(local_path, remote_path)
 
                 if remote_path not in nolog_paths:
@@ -189,7 +192,7 @@ class NodeUpdater:
                                              "{}Waiting for remote shell...",
                                              self.log_prefix)
 
-                        self.cmd_runner.run("uptime")
+                        self.cmd_runner.run("uptime", run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
@@ -279,11 +282,15 @@ class NodeUpdater:
                                 show_status=True):
                             for cmd in self.initialization_commands:
                                 try:
+                                    # Overriding the existing SSHOptions class
+                                    # with a new SSHOptions class that uses
+                                    # this ssh_private_key as its only __init__
+                                    # argument.
                                     self.cmd_runner.run(
                                         cmd,
-                                        ssh_options_override=SSHOptions(
-                                            self.auth_config.get(
-                                                "ssh_private_key")))
+                                        ssh_options_override_ssh_key=self.
+                                        auth_config.get("ssh_private_key"),
+                                        run_env="host")
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")
@@ -337,9 +344,17 @@ class NodeUpdater:
             with LogTimer(
                     self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
+                    if self.node_resources:
+                        env_vars = {
+                            ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: self.
+                            node_resources
+                        }
+                    else:
+                        env_vars = {}
                     try:
-                        cmd_output_util.set_output_redirected(False)
-                        self.cmd_runner.run(cmd)
+                        cmd_output_util.set_output_redirected(True)
+                        self.cmd_runner.run(
+                            cmd, environment_variables=env_vars)
                         cmd_output_util.set_output_redirected(True)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":

@@ -1,5 +1,5 @@
 import gym
-from typing import Optional
+from typing import List, Optional, Union
 
 from ray.rllib.utils.framework import try_import_torch
 
@@ -21,7 +21,7 @@ class ViewRequirement:
 
     Examples:
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].inference_view_requirements()
+        >>> req = [ModelV2].inference_view_requirements
         >>> print(req)
         {"obs": ViewRequirement(shift=0)}
     """
@@ -29,7 +29,7 @@ class ViewRequirement:
     def __init__(self,
                  data_col: Optional[str] = None,
                  space: gym.Space = None,
-                 shift: int = 0):
+                 shift: Union[int, List[int]] = 0):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -39,7 +39,7 @@ class ViewRequirement:
             space (gym.Space): The gym Space used in case we need to pad data
                 in inaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.
-            shift (Union[List[int], int]): Single shift value of list of
+            shift (Union[int, List[int]]): Single shift value of list of
                 shift values to use relative to the underlying `data_col`.
                 Example: For a view column "prev_actions", you can set
                 `data_col="actions"` and `shift=-1`.
