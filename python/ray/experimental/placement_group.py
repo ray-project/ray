@@ -1,8 +1,6 @@
 from typing import (List, Dict)
 
 import ray
-from ray._raylet import (
-    PlacementGroupID, )
 
 
 class PlacementGroup:

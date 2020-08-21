@@ -329,7 +329,8 @@ def test_remove_placement_group(ray_start_cluster):
         time.sleep(50)
 
     # Schedule a long running task and actor.
-    task_ref = long_running_task.options(placement_group=placement_group).remote()
+    task_ref = long_running_task.options(
+        placement_group=placement_group).remote()
     a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
