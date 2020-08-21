@@ -445,28 +445,46 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
     std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-  Task task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply reply;
 
   bool callback_called = false;
   bool *callback_called_ptr = &callback_called;
   auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
 
-  ASSERT_FALSE(task_manager_.CancelTask(task.TaskId()));
+  // Task not queued so we can't cancel it.
+  ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+
+  task_manager_.QueueTask(task, &reply, callback);
+
+  // Task is now queued so cancellation works.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Task will not execute.
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
 
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
 
+  // We can still cancel the task if it's on the dispatch queue.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  // Task will not execute.
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
 
-
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
-  // ASSERT_FALSE(callback_called);
-  // ASSERT_EQ(leased_workers_.size(), 0);
-  // // Worker is unused.
-  // ASSERT_EQ(pool_.workers.size(), 1);
-  // ASSERT_EQ(fulfills_dependencies_calls_, 0);
-  // ASSERT_EQ(node_info_calls_, 0);
+  // Task is now running so we can't cancel it.
+  ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  // Task will not execute.
+  ASSERT_TRUE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
 }
 
 }  // namespace raylet
