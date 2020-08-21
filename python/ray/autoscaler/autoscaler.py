@@ -390,8 +390,8 @@ class StandardAutoscaler:
     def _get_commands(self, node_id : str, commands_key : str):
         node_tags = self.provider.node_tags(node_id)
         node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
-        assert node_type in self.available_node_types, "Unknown instance type tag: {}.".format(instance_type)
-        node_specific_config = self.available_node_types[instance_type]
+        assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
+        node_specific_config = self.available_node_types[node_type]
         if commands_key in node_specific_config:
             commands = node_specific_config[commands_key]
         else:
