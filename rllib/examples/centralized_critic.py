@@ -90,7 +90,7 @@ def centralized_critic_postprocessing(policy,
                     sample_batch[OPPONENT_OBS], policy.device),
                 convert_to_torch_tensor(
                     sample_batch[OPPONENT_ACTION], policy.device)) \
-                .detach().numpy()
+                .cpu().detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
@@ -244,7 +244,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop)
+    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
