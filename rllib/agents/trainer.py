@@ -372,7 +372,8 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Logger ===
     # Define logger-specific configuration to be used inside Logger
-    "logger_config": {},
+    # Default value None allows overwriting with nested dicts
+    "logger_config": None,
 
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may

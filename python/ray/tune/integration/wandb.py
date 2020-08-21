@@ -164,6 +164,10 @@ class WandbLogger(Logger):
     Wandb configuration is done by passing a ``wandb`` key to
     the ``config`` parameter of ``tune.run()`` (see example below).
 
+    The ``wandb`` config key can be optionally included in the
+    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    trainables (see second example below).
+
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
     are used to configure the WandbLogger itself:
@@ -206,6 +210,27 @@ class WandbLogger(Logger):
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
 
+    Example for RLLib:
+
+    .. code-block :: python
+
+        from ray import tune
+        from ray.tune.integration.wandb import WandbLogger
+
+        tune.run(
+            "PPO",
+            config={
+                "env": "CartPole-v0",
+                "logger_config": {
+                    "wandb": {
+                        "project": "PPO",
+                        "api_key_file": "~/.wandb_api_key"
+                    }
+                }
+            },
+            loggers=[WandbLogger])
+
+
     """
 
     # Do not log these result keys
@@ -223,7 +248,11 @@ class WandbLogger(Logger):
         config = self.config.copy()
 
         try:
-            wandb_config = config.pop("wandb").copy()
+            if "logger_config" in config:
+                logger_config = config.pop("logger_config")
+                wandb_config = logger_config.get("wandb")
+            else:
+                wandb_config = config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb logger specified but no configuration has been passed. "
