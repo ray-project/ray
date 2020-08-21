@@ -446,10 +446,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
     SetCurrentTaskId(task_id);
   }
-  auto client_factory = [this](const rpc::Address &addr) {
-    return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr, *client_call_manager_));
-  };
+
+  core_worker_client_pool_ =
+      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
@@ -461,22 +461,24 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_shared<DefaultActorCreator>(gcs_client_);
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+      new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          rpc_address_, local_raylet_client_, client_factory, raylet_client_factory,
-          memory_store_, task_manager_, local_raylet_id,
+          rpc_address_, local_raylet_client_, core_worker_client_pool_,
+          raylet_client_factory, memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds(),
           std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
           boost::asio::steady_timer(io_service_)));
-  future_resolver_.reset(new FutureResolver(memory_store_, client_factory, rpc_address_));
+  future_resolver_.reset(
+      new FutureResolver(memory_store_, core_worker_client_pool_, rpc_address_));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
-    direct_task_receiver_->Init(client_factory, rpc_address_, task_argument_waiter_);
+    direct_task_receiver_->Init(core_worker_client_pool_, rpc_address_,
+                                task_argument_waiter_);
   }
 
   actor_manager_ = std::unique_ptr<ActorManager>(

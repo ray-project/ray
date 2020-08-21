@@ -147,7 +147,7 @@ def data_creator(config):
         if args.tokenizer_name else args.model_name_or_path,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
-    logger.info("tokenizer instantiation time: {}".format(time.time() - start))
+    logger.info(f"tokenizer instantiation time: {time.time() - start}")
 
     train_dataset = load_and_cache_examples(
         args, args.task_name, tokenizer, evaluate=False)
@@ -322,7 +322,7 @@ def main():
     # Prepare GLUE task
     args.task_name = args.task_name.lower()
     if args.task_name not in processors:
-        raise ValueError("Task not found: %s" % (args.task_name))
+        raise ValueError(f"Task not found: {args.task_name}")
     args.output_mode = output_modes[args.task_name]
 
     logging.basicConfig(

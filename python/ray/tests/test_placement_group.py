@@ -11,6 +11,7 @@ import ray
 from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
+from ray.experimental.placement_group import PlacementGroup
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -28,17 +29,17 @@ def test_placement_group_pack(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name", strategy="PACK", bundles=[{
             "CPU": 2
         }, {
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
     print(ray.get(actor_1.value.remote()))
@@ -73,17 +74,17 @@ def test_placement_group_strict_pack(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name", strategy="STRICT_PACK", bundles=[{
             "CPU": 2
         }, {
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
     print(ray.get(actor_1.value.remote()))
@@ -118,17 +119,17 @@ def test_placement_group_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name", strategy="SPREAD", bundles=[{
             "CPU": 2
         }, {
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
     print(ray.get(actor_1.value.remote()))
@@ -163,7 +164,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name",
         strategy="STRICT_SPREAD",
         bundles=[{
@@ -174,13 +175,13 @@ def test_placement_group_strict_spread(ray_start_cluster):
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1).remote()
     actor_3 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=2).remote()
 
     print(ray.get(actor_1.value.remote()))
@@ -218,7 +219,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster):
     ray.init(address=cluster.address)
 
     g1 = ray.experimental.placement_group([{"CPU": 2}])
-    a1 = F.options(placement_group_id=g1).remote()
+    a1 = F.options(placement_group=g1).remote()
     resources = ray.get(a1.f.remote())
     assert len(resources) == 1, resources
     assert "CPU_group_" in list(resources.keys())[0], resources
@@ -236,15 +237,14 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
     ray.init(address=cluster.address)
 
     g1 = ray.experimental.placement_group([{"CPU": 2}])
-    o1 = f.options(placement_group_id=g1).remote()
+    o1 = f.options(placement_group=g1).remote()
     resources = ray.get(o1)
     assert len(resources) == 1, resources
     assert "CPU_group_" in list(resources.keys())[0], resources
     assert "CPU_group_0_" not in list(resources.keys())[0], resources
 
     # Now retry with a bundle index constraint.
-    o1 = f.options(
-        placement_group_id=g1, placement_group_bundle_index=0).remote()
+    o1 = f.options(placement_group=g1, placement_group_bundle_index=0).remote()
     resources = ray.get(o1)
     assert len(resources) == 2, resources
     keys = list(resources.keys())
@@ -270,7 +270,7 @@ def test_placement_group_hang(ray_start_cluster):
     g1 = ray.experimental.placement_group([{"CPU": 2}])
     # This will start out infeasible. The placement group will then be created
     # and it transitions to feasible.
-    o1 = f.options(placement_group_id=g1).remote()
+    o1 = f.options(placement_group=g1).remote()
 
     resources = ray.get(o1)
     assert len(resources) == 1, resources
@@ -283,17 +283,22 @@ def test_remove_placement_group(ray_start_cluster):
     ray.init(address=cluster.address)
     # First try to remove a placement group that doesn't
     # exist. This should not do anything.
-    random_placement_group_id = PlacementGroupID.from_random()
+    random_group_id = PlacementGroupID.from_random()
+    random_placement_group = PlacementGroup(random_group_id, -1)
     for _ in range(3):
-        ray.experimental.remove_placement_group(random_placement_group_id)
+        ray.experimental.remove_placement_group(random_placement_group)
 
     # Creating a placement group as soon as it is
     # created should work.
-    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
-    ray.experimental.remove_placement_group(pid)
+    placement_group = ray.experimental.placement_group([{
+        "CPU": 2
+    }, {
+        "CPU": 2
+    }])
+    ray.experimental.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
-        table = ray.experimental.placement_group_table(pid)
+        table = ray.experimental.placement_group_table(placement_group)
         if "state" not in table:
             return False
         return table["state"] == "REMOVED"
@@ -301,7 +306,11 @@ def test_remove_placement_group(ray_start_cluster):
     wait_for_condition(is_placement_group_removed)
 
     # # Now let's create a placement group.
-    pid = ray.experimental.placement_group([{"CPU": 2}, {"CPU": 2}])
+    placement_group = ray.experimental.placement_group([{
+        "CPU": 2
+    }, {
+        "CPU": 2
+    }])
 
     # Create an actor that occupies resources.
     @ray.remote(num_cpus=2)
@@ -320,14 +329,15 @@ def test_remove_placement_group(ray_start_cluster):
         time.sleep(50)
 
     # Schedule a long running task and actor.
-    task_ref = long_running_task.options(placement_group_id=pid).remote()
-    a = A.options(placement_group_id=pid).remote()
+    task_ref = long_running_task.options(
+        placement_group=placement_group).remote()
+    a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
-    ray.experimental.remove_placement_group(pid)
+    ray.experimental.remove_placement_group(placement_group)
     # Subsequent remove request shouldn't do anything.
     for _ in range(3):
-        ray.experimental.remove_placement_group(pid)
+        ray.experimental.remove_placement_group(placement_group)
 
     # Make sure placement group resources are
     # released and we can schedule this task.
@@ -350,8 +360,12 @@ def test_remove_pending_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     # Create a placement group that cannot be scheduled now.
-    pid = ray.experimental.placement_group([{"GPU": 2}, {"CPU": 2}])
-    ray.experimental.remove_placement_group(pid)
+    placement_group = ray.experimental.placement_group([{
+        "GPU": 2
+    }, {
+        "CPU": 2
+    }])
+    ray.experimental.remove_placement_group(placement_group)
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -381,9 +395,9 @@ def test_placement_group_table(ray_start_cluster):
     name = "name"
     strategy = "PACK"
     bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name=name, strategy=strategy, bundles=bundles)
-    result = ray.experimental.placement_group_table(placement_group_id)
+    result = ray.experimental.placement_group_table(placement_group)
     assert result["name"] == name
     assert result["strategy"] == strategy
     for i in range(len(bundles)):
@@ -394,11 +408,11 @@ def test_placement_group_table(ray_start_cluster):
     cluster.add_node(num_cpus=5, num_gpus=1)
     cluster.wait_for_nodes()
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0).remote()
     ray.get(actor_1.value.remote())
 
-    result = ray.experimental.placement_group_table(placement_group_id)
+    result = ray.experimental.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
 
 
@@ -414,7 +428,7 @@ def test_cuda_visible_devices(ray_start_cluster):
     ray.init(address=cluster.address)
 
     g1 = ray.experimental.placement_group([{"CPU": 1, "GPU": 1}])
-    o1 = f.options(placement_group_id=g1).remote()
+    o1 = f.options(placement_group=g1).remote()
 
     devices = ray.get(o1)
     assert devices == "0", devices
@@ -441,7 +455,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     assert len(nodes) == 3
     assert nodes[0]["alive"] and nodes[1]["alive"] and nodes[2]["alive"]
 
-    placement_group_id = ray.experimental.placement_group(
+    placement_group = ray.experimental.placement_group(
         name="name",
         strategy="SPREAD",
         bundles=[{
@@ -452,15 +466,15 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
             "CPU": 2
         }])
     actor_1 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0,
         detached=True).remote()
     actor_2 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1,
         detached=True).remote()
     actor_3 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=2,
         detached=True).remote()
     print(ray.get(actor_1.value.remote()))
@@ -471,21 +485,65 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     cluster.wait_for_nodes()
 
     actor_4 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=0,
         detached=True).remote()
     actor_5 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=1,
         detached=True).remote()
     actor_6 = Actor.options(
-        placement_group_id=placement_group_id,
+        placement_group=placement_group,
         placement_group_bundle_index=2,
         detached=True).remote()
     print(ray.get(actor_4.value.remote()))
     print(ray.get(actor_5.value.remote()))
     print(ray.get(actor_6.value.remote()))
     ray.shutdown()
+
+
+def test_check_bundle_index(ray_start_cluster):
+    @ray.remote(num_cpus=2)
+    class Actor(object):
+        def __init__(self):
+            self.n = 0
+
+        def value(self):
+            return self.n
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.experimental.placement_group(
+        name="name", strategy="SPREAD", bundles=[{
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }])
+
+    error_count = 0
+    try:
+        Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=3).remote()
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 1
+
+    try:
+        Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=-2).remote()
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 2
+
+    try:
+        Actor.options(placement_group_bundle_index=0).remote()
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 3
 
 
 if __name__ == "__main__":

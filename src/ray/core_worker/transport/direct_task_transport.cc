@@ -94,7 +94,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
 void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
-  client_cache_.GetOrConnect(addr.ToProto());
+  client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0);
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
@@ -126,7 +126,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     }
 
   } else {
-    auto &client = *client_cache_.GetOrConnect(addr.ToProto());
+    auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
     while (!queue_entry->second.empty() &&
            lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
@@ -370,7 +370,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
-    auto maybe_client = client_cache_.GetByID(rpc_client->second.worker_id);
+    auto maybe_client = client_cache_->GetByID(rpc_client->second.worker_id);
     if (!maybe_client.has_value()) {
       // If we don't have a connection to that worker, we can't cancel it.
       // This case is reached for tasks that have unresolved dependencies.
@@ -409,7 +409,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
 Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill) {
-  auto maybe_client = client_cache_.GetByID(rpc::WorkerAddress(worker_addr).worker_id);
+  auto maybe_client = client_cache_->GetByID(rpc::WorkerAddress(worker_addr).worker_id);
 
   if (!maybe_client.has_value()) {
     return Status::Invalid("No remote worker found");

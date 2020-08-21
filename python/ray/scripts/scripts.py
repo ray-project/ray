@@ -32,7 +32,7 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
     # The client table prefix must be kept in sync with the file
     # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
     REDIS_CLIENT_TABLE_PREFIX = "CL:"
-    client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
+    client_keys = redis_client.keys(f"{REDIS_CLIENT_TABLE_PREFIX}*")
     # Filter to clients on the same node and do some basic checking.
     for key in client_keys:
         info = redis_client.hgetall(key)
@@ -56,9 +56,10 @@ logging_options = [
     click.option(
         "--log-new-style/--log-old-style",
         is_flag=True,
-        default=False,
+        default=True,
         envvar="RAY_LOG_NEWSTYLE",
         help=("Whether to use the old or the new CLI UX. "
+              "You can also toggle this via the env var RAY_LOG_NEWSTYLE. "
               "The new UX supports colored, formatted output and was "
               "designed to display only the most important information for "
               "human users. The old UX uses the standard `logging` module. "
@@ -580,7 +581,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                 "To connect to this Ray runtime from another node, run")
             cli_logger.print(
                 cf.bold("  ray start --address='{}'{}"), redis_address,
-                " --redis-password='{}'".format(redis_password)
+                f" --redis-password='{redis_password}'"
                 if redis_password else "")
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
@@ -958,13 +959,13 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
                 "Could not download remote cluster configuration file.")
             cli_logger.old_info(logger, "Error downloading file: ", e)
     create_or_update_cluster(
-        cluster_config_file,
-        min_workers,
-        max_workers,
-        no_restart,
-        restart_only,
-        yes,
-        cluster_name,
+        config_file=cluster_config_file,
+        override_min_workers=min_workers,
+        override_max_workers=max_workers,
+        no_restart=no_restart,
+        restart_only=restart_only,
+        yes=yes,
+        override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
         redirect_command_output=redirect_command_output,
         use_login_shells=use_login_shells)
@@ -1440,14 +1441,14 @@ def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
+    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(ray.utils.get_user_temp_dir(),
-                            "ray-timeline-{}.json".format(time))
+                            f"ray-timeline-{time}.json")
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
-    logger.info("Trace file written to {} ({} bytes).".format(filename, size))
+    logger.info(f"Trace file written to {filename} ({size} bytes).")
     logger.info(
         "You can open this with chrome://tracing in the Chrome browser.")
 
@@ -1462,7 +1463,7 @@ def statistics(address):
     """Get the current metrics protobuf from a Ray cluster (developer tool)."""
     if not address:
         address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
+    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
 
     import grpc
@@ -1472,7 +1473,7 @@ def statistics(address):
     for raylet in ray.nodes():
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         ray.nodes()[0]["NodeManagerPort"])
-        logger.info("Querying raylet {}".format(raylet_address))
+        logger.info(f"Querying raylet {raylet_address}")
 
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1498,7 +1499,7 @@ def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
+    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
@@ -1513,7 +1514,7 @@ def status(address):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
+    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     print(debug_status())
 
@@ -1528,7 +1529,7 @@ def globalgc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
         address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(address))
+    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
@@ -1625,8 +1626,7 @@ try:
     from ray.serve.scripts import serve_cli
     cli.add_command(serve_cli)
 except Exception as e:
-    logger.debug(
-        "Integrating ray serve command line tool failed with {}".format(e))
+    logger.debug(f"Integrating ray serve command line tool failed with {e}")
 
 
 def main():

@@ -102,7 +102,7 @@ if __name__ == "__main__":
     num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
     from ray.util.sgd.torch.examples.train_example import LinearDataset
 
-    print("Model: %s" % args.model)
+    print(f"Model: {args.model}")
     print("Batch size: %d" % args.batch_size)
     print("Number of %ss: %d" % (device, num_workers))
 
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     # Results
     img_sec_mean = np.mean(img_secs)
     img_sec_conf = 1.96 * np.std(img_secs)
-    print("Img/sec per %s: %.1f +-%.1f" % (device, img_sec_mean, img_sec_conf))
+    print(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
     print("Total img/sec on %d %s(s): %.1f +-%.1f" %
           (num_workers, device, num_workers * img_sec_mean,
            num_workers * img_sec_conf))

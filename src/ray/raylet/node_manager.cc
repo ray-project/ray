@@ -1911,10 +1911,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       if (new_scheduler_enabled_) {
-        new_resource_scheduler_->SubtractCPUResourceInstances(
-            worker->GetBorrowedCPUInstances());
-        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
-        worker->ClearAllocatedInstances();
+        cluster_task_manager_->HandleTaskFinished(worker);
       }
       HandleWorkerAvailable(worker);
     }
@@ -1955,22 +1952,37 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   Task removed_task;
   TaskState removed_task_state;
-  const auto canceled =
-      local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
-  if (!canceled) {
-    // We do not have the task. This could be because we haven't received the
-    // lease request yet, or because we already granted the lease request and
-    // it has already been returned.
-  } else {
-    if (removed_task.OnDispatch()) {
+  bool canceled;
+  if (new_scheduler_enabled_) {
+    canceled = cluster_task_manager_->CancelTask(task_id);
+    if (canceled) {
       // We have not yet granted the worker lease. Cancel it now.
-      removed_task.OnCancellation()();
       task_dependency_manager_.TaskCanceled(task_id);
       task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     } else {
-      // We already granted the worker lease and sent the reply. Re-queue the
-      // task and wait for the requester to return the leased worker.
-      local_queues_.QueueTasks({removed_task}, removed_task_state);
+      // There are 2 cases here.
+      // 1. We haven't received the lease request yet. It's the caller's job to
+      //    retry the cancellation once we've received the request.
+      // 2. We have already granted the lease. The caller is now responsible
+      //    for returning the lease, not cancelling it.
+    }
+  } else {
+    canceled = local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+    if (!canceled) {
+      // We do not have the task. This could be because we haven't received the
+      // lease request yet, or because we already granted the lease request and
+      // it has already been returned.
+    } else {
+      if (removed_task.OnDispatch()) {
+        // We have not yet granted the worker lease. Cancel it now.
+        removed_task.OnCancellation()();
+        task_dependency_manager_.TaskCanceled(task_id);
+        task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+      } else {
+        // We already granted the worker lease and sent the reply. Re-queue the
+        // task and wait for the requester to return the leased worker.
+        local_queues_.QueueTasks({removed_task}, removed_task_state);
+      }
     }
   }
   // The task cancellation failed if we did not have the task queued, since

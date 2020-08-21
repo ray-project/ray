@@ -82,7 +82,7 @@ class TorchRunner:
                 return loaders
             else:
                 raise ValueError(
-                    "Number of loaders must be <= 2. Got {}".format(loaders))
+                    f"Number of loaders must be <= 2. Got {loaders}")
         # No great way of checking type otherwise
         return loaders, None
 
@@ -146,7 +146,7 @@ class TorchRunner:
         if not isinstance(self.models, Iterable):
             self.models = [self.models]
         assert all(isinstance(model, nn.Module) for model in self.models), (
-            "All models must be PyTorch models: {}.".format(self.models))
+            f"All models must be PyTorch models: {self.models}.")
         if self.use_gpu and torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
@@ -189,7 +189,7 @@ class TorchRunner:
                     info=None,
                     iterator=None):
         """Runs a training epoch and updates the model parameters."""
-        logger.debug("Begin Training Step {}".format(self.epochs + 1))
+        logger.debug(f"Begin Training Step {self.epochs + 1}")
         info = info or {}
         self._toggle_profiling(profile=profile)
 
