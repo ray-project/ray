@@ -225,11 +225,11 @@ def _run_and_process_output(cmd,
     """
 
     stdin_overwrite = subprocess.PIPE
+    # This already should be validated in a higher place of the stack.
     assert not (does_allow_interactive() and is_output_redirected()), (
         "Cannot redirect output while in interactive mode.")
     if does_allow_interactive() and not is_output_redirected():
         stdin_overwrite = None
-
 
     # See implementation note #1
 
