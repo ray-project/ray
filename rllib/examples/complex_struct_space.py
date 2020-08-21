@@ -19,7 +19,7 @@ from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--framework", choices=["tf", "tfe", "torch"], default="tf")
+    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf2")
 parser.add_argument("--eager", action="store_true")
 
 if __name__ == "__main__":
