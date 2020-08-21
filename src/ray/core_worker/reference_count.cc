@@ -539,12 +539,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                            bool *pinned) const {
+                                            ClientID *pinned_at) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
-      *pinned = it->second.pinned_at_raylet_id.has_value();
+      *pinned_at = it->second.pinned_at_raylet_id.value_or(ClientID::Nil());
       return true;
     }
   }
@@ -887,6 +887,36 @@ void ReferenceCounter::SetReleaseLineageCallback(
     const LineageReleasedCallback &callback) {
   RAY_CHECK(on_lineage_released_ == nullptr);
   on_lineage_released_ = callback;
+}
+
+void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
+                                         const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  if (it == object_id_locations_.end()) {
+    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<ClientID>()).first;
+  }
+  it->second.insert(node_id);
+}
+
+void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
+                                            const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
+  it->second.erase(node_id);
+}
+
+std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(
+    const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
+  std::unordered_set<ClientID> locations;
+  for (const auto &location : it->second) {
+    locations.insert(location);
+  }
+  return locations;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

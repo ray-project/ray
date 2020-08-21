@@ -33,11 +33,16 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AddObjectLocationOwner)         \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RemoveObjectLocationOwner)      \
+  RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectLocationsOwner)        \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor)                      \
   RPC_SERVICE_HANDLER(CoreWorkerService, CancelTask)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoteCancelTask)               \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats)             \
   RPC_SERVICE_HANDLER(CoreWorkerService, LocalGC)                        \
+  RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects)                   \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
@@ -47,11 +52,16 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocationOwner)         \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocationOwner)      \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectLocationsOwner)        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.

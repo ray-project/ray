@@ -1,8 +1,5 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-.. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
-    :target: https://travis-ci.com/ray-project/ray
-
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://docs.ray.io/en/latest/?badge=latest
 
@@ -69,7 +66,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------
