@@ -117,7 +117,7 @@ const MemoryInfo: React.FC<{}> = () => {
 
   if (!memoryTable) {
     return (
-      <Typography variant="h3" align="center">
+      <Typography variant="h5" align="center">
         Loading memory information
       </Typography>
     );
