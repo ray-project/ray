@@ -66,8 +66,8 @@ class _PerfStats:
             # Waiting for environment (during poll).
             "mean_env_wait_ms": self.env_wait_time * factor,
             # Raw observation preprocessing.
-            "mean_raw_obs_processing_ms":
-                self.raw_obs_processing_time * factor,
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time *
+            factor,
             # Computing actions through policy.
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
