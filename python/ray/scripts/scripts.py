@@ -988,15 +988,9 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     is_flag=True,
     default=False,
     help="Retain the minimal amount of workers specified in the config.")
-@click.option(
-    "--skip-ray-stop",
-    is_flag=True,
-    default=False,
-    help="Do not attempt to shut down the Ray runtime before stopping "
-    "or terminating nodes.")
 @add_click_options(logging_options)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers, skip_ray_stop, log_new_style, log_color, verbose):
+         keep_min_workers, log_new_style, log_color, verbose):
     """Tear down a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -1008,8 +1002,7 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
         yes,
         workers_only,
         cluster_name,
-        keep_min_workers,
-        skip_ray_stop=skip_ray_stop)
+        keep_min_workers)
 
 
 @cli.command()
