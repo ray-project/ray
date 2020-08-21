@@ -4,7 +4,6 @@ from multiprocessing import Process, Queue
 from numbers import Number
 
 from ray import logger
-from ray.rllib.agents import Trainer
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
@@ -324,13 +323,9 @@ class WandbTrainableMixin:
                 "class inherits from both. For example: "
                 "`class YourTrainable(WandbTrainableMixin)`.")
 
-        _config = config.copy()
-
-        # Remove extra config field for rllib Trainer init
-        if isinstance(self, Trainer):
-            config.pop("wandb")
-
         super().__init__(config, *args, **kwargs)
+
+        _config = config.copy()
 
         try:
             wandb_config = _config.pop("wandb").copy()
