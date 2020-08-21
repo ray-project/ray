@@ -44,6 +44,8 @@ import ray.scripts.scripts as scripts
 @pytest.fixture
 def configure_aws():
     """Mocked AWS Credentials for moto."""
+    os.environ["LC_ALL"] = "C.UTF-8"
+    os.environ["LANG"] = "C.UTF-8"
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
