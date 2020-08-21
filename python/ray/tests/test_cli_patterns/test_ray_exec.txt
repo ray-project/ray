@@ -1,4 +1,3 @@
-Loaded cached provider configuration
-If you experience issues with the cloud provider, try re-running the command with --no-config-cache\.
+Bootstraping AWS config
 Fetched IP: .+
 This is a test!

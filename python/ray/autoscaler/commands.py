@@ -103,7 +103,7 @@ def create_or_update_cluster(config_file: str,
                              restart_only: bool,
                              yes: bool,
                              override_cluster_name: Optional[str],
-                             no_config_cache: bool,
+                             no_config_cache: bool = False,
                              dump_command_output: bool = True,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
@@ -193,7 +193,7 @@ def create_or_update_cluster(config_file: str,
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
     cli_logger.newline()
-    config = _bootstrap_config(config, no_config_cache)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
 
@@ -271,12 +271,9 @@ def _bootstrap_config(config: Dict[str, Any],
     return resolved_config
 
 
-def teardown_cluster(config_file: str,
-                     yes: bool,
-                     workers_only: bool,
+def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool,
-                     skip_ray_stop: bool = False):
+                     keep_min_workers: bool):
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -287,7 +284,7 @@ def teardown_cluster(config_file: str,
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
     cli_logger.old_confirm("This will destroy your cluster", yes)
 
-    if not workers_only and not skip_ray_stop:
+    if not workers_only:
         try:
             exec_cluster(
                 config_file,
@@ -312,10 +309,6 @@ def teardown_cluster(config_file: str,
 
             cli_logger.old_exception(
                 logger, "Ignoring error attempting a clean shutdown.")
-
-    if skip_ray_stop:
-        cli_logger.print("Skipped stopping the Ray runtime "
-                         "before bringing down the cluster.")
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -774,6 +767,7 @@ def exec_cluster(config_file: str,
                  stop: bool = False,
                  start: bool = False,
                  override_cluster_name: Optional[str] = None,
+                 no_config_cache: bool = False,
                  port_forward: Any = None,
                  with_output: bool = False):
     """Runs a command on the specified cluster.
@@ -799,7 +793,7 @@ def exec_cluster(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
@@ -896,6 +890,7 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
+          no_config_cache: bool = False,
           all_nodes: bool = False):
     """Rsyncs files.
 
@@ -917,7 +912,7 @@ def rsync(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:

@@ -353,7 +353,7 @@ class NodeUpdater:
                         env_vars = {}
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()
-                        cmd_output_util.set_output_redirected(True)
+                        cmd_output_util.set_output_redirected(False)
                         self.cmd_runner.run(
                             cmd, environment_variables=env_vars)
                         cmd_output_util.set_output_redirected(old_redirected)

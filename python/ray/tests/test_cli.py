@@ -20,15 +20,15 @@ Note: config cache does not work with AWS mocks since the AWS resource ids are
 Note: while not strictly necessary for setup commands e.g. ray up,
       --log-new-style produces much cleaner output if the test fails.
 """
-
+import glob
 import sys
+import tempfile
 import re
 import os
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from unittest.mock import patch
 
 import moto
 from moto import mock_ec2, mock_iam
@@ -41,9 +41,34 @@ import ray.autoscaler.aws.config as aws_config
 import ray.scripts.scripts as scripts
 
 
+@pytest.fixture
+def configure_aws():
+    """Mocked AWS Credentials for moto."""
+    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_SECURITY_TOKEN"] = "testing"
+    os.environ["AWS_SESSION_TOKEN"] = "testing"
+
+    # moto (boto3 mock) only allows a hardcoded set of AMIs
+    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
+        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
+    aws_config.DEFAULT_AMI["us-west-2"] = dlami
+
+
+@pytest.fixture(scope="function")
+def _unlink_test_ssh_key():
+    """Use this to remove the keys spawned by ray up."""
+    yield
+    try:
+        for path in glob.glob(os.path.expanduser("~/.ssh/__test-cli_key*")):
+            os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def _debug_die(result):
     print("!!!!")
-    print(repr(result.output))
+    print(result.output)
     print("!!!!")
     assert False
 
@@ -64,30 +89,20 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            continue
+            break
 
         exp = expected_lines[i]
         matched = re.fullmatch(exp + r" *", out) is not None
         if not matched:
-            print("!!!!!!! Expected (regex):")
-            print(repr(exp))
+            print(f"!!!!!!! Expected (regex): {repr(exp)}")
         i += 1
-    while i < len(expected_lines):
-        i += 1
+    if i < len(expected_lines):
         print("!!!!!!! Expected (regex):")
-        print(repr(expected_lines[i]))
+        for line in expected_lines[i:]:
+
+            print(repr(line))
 
     assert False
-
-
-@pytest.fixture(scope="function")
-def _unlink_test_ssh_key():
-    """Use this to remove the keys spawned by ray up."""
-    yield
-    try:
-        Path("~", ".ssh", "__test-cli_key").unlink()
-    except FileNotFoundError:
-        pass
 
 
 @contextmanager
@@ -136,7 +151,7 @@ def test_ray_start():
 
 @mock_ec2
 @mock_iam
-def test_ray_up(configure_aws, _unlink_test_ssh_key):
+def test_ray_up(_unlink_test_ssh_key, configure_aws):
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -197,12 +212,12 @@ def test_ray_exec(configure_aws, _unlink_test_ssh_key):
         runner = CliRunner()
         result = runner.invoke(scripts.up, [
             DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
-            "--log-new-style"
+            "--log-new-style", "--log-color", "False"
         ])
         _die_on_error(result)
 
         result = runner.invoke(scripts.exec, [
-            DEFAULT_TEST_CONFIG_PATH, "--log-new-style",
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "--log-new-style",
             "\"echo This is a test!\""
         ])
 
@@ -223,17 +238,20 @@ def test_ray_submit(configure_aws, _unlink_test_ssh_key):
         runner = CliRunner()
         result = runner.invoke(scripts.up, [
             DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
-            "--log-new-style"
+            "--log-new-style", "--log-color", "False"
         ])
         _die_on_error(result)
 
-        with tempfile.NamedTemporaryFile(suffix="test.py") as f:
+        with tempfile.NamedTemporaryFile(suffix="test.py", mode="w") as f:
             f.write("print('This is a test!')\n")
             result = runner.invoke(
                 scripts.submit,
                 [
                     DEFAULT_TEST_CONFIG_PATH,
+                    "--no-config-cache",
                     "--log-new-style",
+                    "--log-color",
+                    "False",
                     # this is somewhat misleading, since the file
                     # actually never gets run
                     # TODO(maximsmol): make this work properly one day?
@@ -241,20 +259,6 @@ def test_ray_submit(configure_aws, _unlink_test_ssh_key):
                 ])
 
             _check_output_via_pattern("test_ray_submit.txt", result)
-
-
-@pytest.fixture(scope="function")
-def configure_aws():
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-
-    # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = moto.ec2.ec2_backends["us-west-2"].describe_images(
-        filters={"name": "Deep Learning AMI Ubuntu*"})[0].id
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
 
 
 if __name__ == "__main__":

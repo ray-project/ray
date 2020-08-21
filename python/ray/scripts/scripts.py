@@ -1186,6 +1186,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--port-forward",
     "-p",
     required=False,
@@ -1201,8 +1206,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
 @click.argument("script_args", nargs=-1)
 @add_click_options(logging_options)
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, args, script_args, log_new_style, log_color,
-           verbose):
+           no_config_cache, port_forward, script, args, script_args,
+           log_new_style, log_color, verbose):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1252,12 +1257,18 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             restart_only=False,
             yes=True,
             override_cluster_name=cluster_name,
-            no_config_cache=False,
+            no_config_cache=no_config_cache,
             dump_command_output=True,
             use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
-    rsync(cluster_config_file, script, target, cluster_name, down=False)
+    rsync(
+        cluster_config_file,
+        script,
+        target,
+        cluster_name,
+        no_config_cache=no_config_cache,
+        down=False)
 
     command_parts = ["python", target]
     if script_args:
@@ -1276,6 +1287,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
         stop=stop,
         start=False,
         override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
         port_forward=port_forward)
 
 
@@ -1313,6 +1325,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--port-forward",
     "-p",
     required=False,
@@ -1321,7 +1338,8 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, port_forward, log_new_style, log_color, verbose):
+         cluster_name, no_config_cache, port_forward, log_new_style, log_color,
+         verbose):
     """Execute a command via SSH on a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -1339,6 +1357,7 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         stop=stop,
         start=start,
         override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
         port_forward=port_forward)
 
 
