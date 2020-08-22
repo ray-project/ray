@@ -99,8 +99,8 @@ class GlobalState:
                 continue
             num_redis_shards = int(num_redis_shards)
             assert num_redis_shards >= 1, (
-                "Expected at least one Redis "
-                "shard, found {}.".format(num_redis_shards))
+                f"Expected at least one Redis shard, found {num_redis_shards}."
+            )
 
             # Attempt to get all of the Redis shards.
             redis_shard_addresses = self.redis_client.lrange(
@@ -377,7 +377,6 @@ class GlobalState:
 
         return dict(result)
 
-    # SANG-TODO Add functions.
     def placement_group_table(self, placement_group_id=None):
         self._check_connected()
 

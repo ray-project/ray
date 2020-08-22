@@ -117,10 +117,9 @@ class LogMonitor:
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
         # output of user code is written here
-        log_file_paths = glob.glob("{}/worker*[.out|.err]".format(
-            self.logs_dir))
+        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
-        raylet_err_paths = glob.glob("{}/raylet*.err".format(self.logs_dir))
+        raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         for file_path in log_file_paths + raylet_err_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
@@ -142,7 +141,7 @@ class LogMonitor:
                         is_err_file=is_err_file,
                         job_id=job_id))
                 log_filename = os.path.basename(file_path)
-                logger.info("Beginning to track file {}".format(log_filename))
+                logger.info(f"Beginning to track file {log_filename}")
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.

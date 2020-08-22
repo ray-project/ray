@@ -4,11 +4,10 @@ import requests
 
 import ray
 import ray.serve as serve
-from ray.serve.metric import PrometheusExporter
 
 # initialize ray serve system.
 ray.init(num_cpus=10)
-serve.init(metric_exporter=PrometheusExporter)
+serve.init()
 
 
 # a backend can be a function or class.
@@ -52,6 +51,3 @@ for _ in range(10):
 # You can also change number of replicas for each backend independently.
 serve.update_backend_config("echo:v1", {"num_replicas": 2})
 serve.update_backend_config("echo:v2", {"num_replicas": 2})
-
-# As well as retrieving relevant system metrics
-print(serve.stat().decode())

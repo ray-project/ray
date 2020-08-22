@@ -89,13 +89,13 @@ class RandomEndpointPolicy(EndpointPolicy):
                 rstate.random())
 
             assigned_backends.add(chosen_backend)
-            backend_queues[chosen_backend].add(query)
+            backend_queues[chosen_backend].appendleft(query)
             if len(shadow_backends) > 0:
                 shadow_query = copy.copy(query)
                 shadow_query.async_future = None
                 shadow_query.is_shadow_query = True
                 for shadow_backend in shadow_backends:
                     assigned_backends.add(shadow_backend)
-                    backend_queues[shadow_backend].add(shadow_query)
+                    backend_queues[shadow_backend].appendleft(shadow_query)
 
         return assigned_backends

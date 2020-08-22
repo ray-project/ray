@@ -1,5 +1,6 @@
-import time
 import asyncio
+from collections import defaultdict
+import time
 
 import pytest
 import requests
@@ -597,8 +598,7 @@ def test_shutdown(serve_instance):
 
     def check_dead():
         for actor_name in [
-                constants.SERVE_CONTROLLER_NAME, constants.SERVE_PROXY_NAME,
-                constants.SERVE_METRIC_SINK_NAME
+                constants.SERVE_CONTROLLER_NAME, constants.SERVE_PROXY_NAME
         ]:
             try:
                 ray.get_actor(format_actor_name(actor_name, instance_name))
@@ -611,16 +611,39 @@ def test_shutdown(serve_instance):
 
 
 def test_shadow_traffic(serve_instance):
+    @ray.remote
+    class RequestCounter:
+        def __init__(self):
+            self.requests = defaultdict(int)
+
+        def record(self, backend):
+            self.requests[backend] += 1
+
+        def get(self, backend):
+            return self.requests[backend]
+
+    counter = RequestCounter.remote()
+
     def f():
+        ray.get(counter.record.remote("backend1"))
         return "hello"
 
-    def f_shadow():
+    def f_shadow_1():
+        ray.get(counter.record.remote("backend2"))
+        return "oops"
+
+    def f_shadow_2():
+        ray.get(counter.record.remote("backend3"))
+        return "oops"
+
+    def f_shadow_3():
+        ray.get(counter.record.remote("backend4"))
         return "oops"
 
     serve.create_backend("backend1", f)
-    serve.create_backend("backend2", f_shadow)
-    serve.create_backend("backend3", f_shadow)
-    serve.create_backend("backend4", f_shadow)
+    serve.create_backend("backend2", f_shadow_1)
+    serve.create_backend("backend3", f_shadow_2)
+    serve.create_backend("backend4", f_shadow_3)
 
     serve.create_endpoint("endpoint", backend="backend1", route="/api")
     serve.shadow_traffic("endpoint", "backend2", 1.0)
@@ -634,12 +657,7 @@ def test_shadow_traffic(serve_instance):
     print("Finished 100 requests in {}s.".format(time.time() - start))
 
     def requests_to_backend(backend):
-        for entry in serve.stat():
-            if entry["info"]["name"] == "backend_request_counter":
-                if entry["info"]["backend"] == backend:
-                    return entry["value"]
-
-        return 0
+        return ray.get(counter.get.remote(backend))
 
     def check_requests():
         return all([

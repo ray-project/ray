@@ -197,7 +197,7 @@ Distributed Checkpointing
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods. 
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -225,7 +225,7 @@ You often will want to compute a large object (e.g., training data, model weight
     # X_id can be referenced in closures
     X_id = pin_in_object_store(np.random.random(size=100000000))
 
-    def f(config, reporter):
+    def f(config):
         X = get_pinned_object(X_id)
         # use X
 

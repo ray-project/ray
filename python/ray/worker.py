@@ -1787,7 +1787,7 @@ def make_decorator(num_return_vals=None,
                    max_restarts=None,
                    max_task_retries=None,
                    worker=None,
-                   placement_group_id=None,
+                   placement_group=None,
                    placement_group_bundle_index=-1):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
@@ -1803,7 +1803,7 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries, placement_group_id,
+                max_calls, max_retries, placement_group,
                 placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
@@ -1875,7 +1875,7 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
-    * **placement_group_id**: the placement group this task belongs to,
+    * **placement_group**: the placement group this task belongs to,
         or None if it doesn't belong to any group.
     * **placement_group_bundle_index**: the index of the bundle
         if the task belongs to a placement group, which may be -1 to indicate
@@ -1944,7 +1944,7 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "placement_group_id",
+            "placement_group",
             "placement_group_bundle_index",
         ], error_string
 

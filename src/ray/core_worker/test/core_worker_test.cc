@@ -546,7 +546,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, resources, resources);
+                              RandomTaskId(), address, num_returns, resources, resources,
+                              PlacementGroupID::Nil());
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);

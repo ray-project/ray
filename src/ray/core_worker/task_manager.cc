@@ -185,10 +185,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
+        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       } else {
         RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
                       << " in plasma on a dead node, attempting to recover";
