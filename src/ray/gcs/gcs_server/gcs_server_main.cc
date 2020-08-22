@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
@@ -46,19 +47,44 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
-  std::unordered_map<std::string, std::string> config_map;
+  auto promise =
+      std::make_shared<std::promise<std::unordered_map<std::string, std::string>>>();
+  std::thread([=] {
+    boost::asio::io_service service;
+    ray::gcs::GcsClientOptions options(redis_address, redis_port, redis_password);
+    auto client = std::make_shared<ray::gcs::RedisGcsClient>(options);
+    RAY_CHECK_OK(client->Connect(service));
+    auto store =
+        std::make_shared<ray::gcs::RedisGcsTableStorage>(client->GetRedisClient());
 
-  // Parse the configuration list.
-  std::istringstream config_string(config_list);
-  std::string config_name;
-  std::string config_value;
+    // Parse the configuration list.
+    std::unordered_map<std::string, std::string> config;
 
-  while (std::getline(config_string, config_name, ',')) {
-    RAY_CHECK(std::getline(config_string, config_value, ';'));
-    config_map[config_name] = config_value;
-  }
+    std::istringstream config_string(config_list);
+    std::string config_name;
+    std::string config_value;
 
-  RayConfig::instance().initialize(config_map);
+    while (std::getline(config_string, config_name, ',')) {
+      RAY_CHECK(std::getline(config_string, config_value, ','));
+      config[config_name] = config_value;
+    }
+
+    // The internal_config is only set on the gcs--other nodes get it from GCS.
+    ray::rpc::SetInternalConfigRequest request;
+    request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
+
+    auto on_done = [promise, &service, &config](const ray::Status &status) {
+      promise->set_value(config);
+      service.stop();
+    };
+    RAY_CHECK_OK(
+      store->InternalConfigTable().Put(ray::UniqueID::Nil(), request.config(), on_done));
+    boost::asio::io_service::work work(service);
+    service.run();
+  }).detach();
+  auto config = promise->get_future().get();
+
+  RayConfig::instance().initialize(config);
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
       {ray::stats::VersionKey, "1.2.0.dev0"},

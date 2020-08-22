@@ -42,7 +42,6 @@ DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
-DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
@@ -90,7 +89,6 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const bool head_node = FLAGS_head_node;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -116,21 +114,6 @@ int main(int argc, char *argv[]) {
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-
-  // The system_config is only set on the head node--other nodes get it from GCS.
-  if (head_node) {
-    // Parse the configuration list.
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ';'));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      raylet_config[config_name] = config_value;
-    }
-    RAY_CHECK_OK(gcs_client->Nodes().AsyncSetInternalConfig(raylet_config));
-  }
 
   std::unique_ptr<ray::raylet::Raylet> server(nullptr);
 
