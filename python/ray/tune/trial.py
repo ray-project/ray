@@ -24,7 +24,6 @@ from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
-from ray.util.debug import log_once
 
 DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
@@ -133,10 +132,10 @@ def create_logdir(dirname, local_dir):
     local_dir = os.path.expanduser(local_dir)
     logdir = os.path.join(local_dir, dirname)
     if os.path.exists(logdir):
-        if log_once(f"unique_logdir:{dirname}"):
-            logger.warning(
-                f"Creating a new dirname because {dirname} already exists.")
-        dirname += "_" + uuid.uuid4.hex()[:5]
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
         logdir = os.path.join(local_dir, dirname)
     os.makedirs(logdir, exist_ok=True)
     return logdir
@@ -300,6 +299,9 @@ class Trial:
 
         if trial_dirname_creator:
             self.custom_dirname = trial_dirname_creator(self)
+            if "/" in self.custom_dirname:
+                raise ValueError(f"Trial dirname must not contain '/'. "
+                                 "Got {self.custom_dirname}")
 
     @property
     def node_ip(self):
