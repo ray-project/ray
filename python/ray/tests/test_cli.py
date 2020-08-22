@@ -43,9 +43,13 @@ import ray.scripts.scripts as scripts
 
 @pytest.fixture
 def configure_lang():
-    """Configure output for travis."""
+    """Configure output for travis + click."""
     os.environ["LC_ALL"] = "C.UTF-8"
     os.environ["LANG"] = "C.UTF-8"
+
+    if sys.platform == "darwin":
+        os.environ["LC_ALL"] ="en_US.utf-8"
+        os.environ["LANG"] ="en_US.utf-8"
 
 
 @pytest.fixture
