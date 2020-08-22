@@ -577,22 +577,6 @@ def test_pending_placement_group_wait(ray_start_cluster):
     table = ray.experimental.placement_group_table(placement_group)
     assert table["state"] == "PENDING"
 
-    # Wait on placement group that cannot be created.
-    placement_group2 = ray.experimental.placement_group(
-        name="name", strategy="SPREAD", bundles=[
-            {
-                "CPU": 2
-            },
-            {
-                "CPU": 2
-            },
-        ])
-    ready, unready = ray.wait([placement_group2.ready()])
-    assert len(unready) == 0
-    assert len(ready) == 1
-    table = ray.experimental.placement_group_table(placement_group2)
-    assert table["state"] == "CREATED"
-
 
 def test_placement_group_wait(ray_start_cluster):
     cluster = ray_start_cluster
