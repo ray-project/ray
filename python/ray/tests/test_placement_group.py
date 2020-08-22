@@ -571,11 +571,13 @@ def test_pending_placement_group_wait(ray_start_cluster):
                 "GPU": 2
             },
         ])
-    # ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
-    # assert len(unready) == 1
-    # assert len(ready) == 0
+    ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
+    assert len(unready) == 1
+    assert len(ready) == 0
     table = ray.experimental.placement_group_table(placement_group)
     assert table["state"] == "PENDING"
+    with pytest.raises(ray.exceptions.RayTimeoutError):
+        ray.get(placement_group.ready(), timeout=0.1)
 
 
 def test_placement_group_wait(ray_start_cluster):
