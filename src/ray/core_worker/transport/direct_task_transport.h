@@ -208,20 +208,24 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request_ = std::make_pair(nullptr, TaskID::Nil());
+    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request_ =
+        std::make_pair(nullptr, TaskID::Nil());
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue_ = std::deque<TaskSpecification>();
-    // Keep track of the active workers, so that we can quickly check if one of them has room for more tasks in flight
-    absl::flat_hash_set<rpc::WorkerAddress> active_workers_ = absl::flat_hash_set<rpc::WorkerAddress>();
+    // Keep track of the active workers, so that we can quickly check if one of them has
+    // room for more tasks in flight
+    absl::flat_hash_set<rpc::WorkerAddress> active_workers_ =
+        absl::flat_hash_set<rpc::WorkerAddress>();
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
-    uint32_t tot_tasks_in_flight=0;
+    uint32_t tot_tasks_in_flight = 0;
   };
 
-  // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct with
-  // the queue of tasks belonging to that SchedulingKey, together with the other fields that are
-  // needed to orchestrate the execution of those tasks by the workers.
-  absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_ GUARDED_BY(mu_);
+  // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct
+  // with the queue of tasks belonging to that SchedulingKey, together with the other
+  // fields that are needed to orchestrate the execution of those tasks by the workers.
+  absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_
+      GUARDED_BY(mu_);
 
   // Tasks that were cancelled while being resolved.
   absl::flat_hash_set<TaskID> cancelled_tasks_ GUARDED_BY(mu_);

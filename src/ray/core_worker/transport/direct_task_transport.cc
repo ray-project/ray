@@ -107,7 +107,6 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
-  
   auto &lease_entry = worker_to_lease_entry_[addr];
   if (!lease_entry.lease_client_) {
     return;
@@ -121,13 +120,12 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || current_queue.empty() ||
       current_time_ms() > lease_entry.lease_expiration_time_) {
-    
     RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
-    
+
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight_ == 0) {
       // Decrement the number of active workers consuming tasks from the queue associated
-      // with the current scheduling_key  
+      // with the current scheduling_key
       scheduling_key_entry.active_workers_.erase(addr);
       if (scheduling_key_entry.active_workers_.size() == 0) {
         RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight == 0);
@@ -142,7 +140,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
         RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
       }
       worker_to_lease_entry_.erase(addr);
-      
     }
 
   } else {
@@ -156,7 +153,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
-      
+
       RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
       scheduling_key_entry.tot_tasks_in_flight++;
 
@@ -177,7 +174,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
 void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
-  
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue_;
   if (!task_queue.empty()) {
@@ -236,10 +232,9 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
-  
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &pending_lease_request = scheduling_key_entry.pending_lease_request_;
-  
+
   if (pending_lease_request.first) {
     // There's already an outstanding lease request for this type of task.
     return;
@@ -251,10 +246,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-
-  // If pipelining is enabled, check whether we really need a new worer or whether we have enough room in an existing worker's pipeline to send the new tasks
+  // If pipelining is enabled, check whether we really need a new worer or whether we have
+  // enough room in an existing worker's pipeline to send the new tasks
   if (max_tasks_in_flight_per_worker_ > 1) {
-    if (scheduling_key_entry.tot_tasks_in_flight < scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
+    if (scheduling_key_entry.tot_tasks_in_flight <
+        scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
       // The pipelines to the current workers are not full yet, so we don't need more
       // workers.
 
@@ -262,10 +258,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
       // that worker
       for (auto active_worker_addr : scheduling_key_entry.active_workers_) {
-        RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) != worker_to_lease_entry_.end());
+        RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
+                  worker_to_lease_entry_.end());
         auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
         if (lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
-          OnWorkerIdle(active_worker_addr, scheduling_key, false, lease_entry.assigned_resources_);
+          OnWorkerIdle(active_worker_addr, scheduling_key, false,
+                       lease_entry.assigned_resources_);
           break;
         }
       }
@@ -290,7 +288,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         const auto task_id = pending_lease_request.second;
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
         RAY_CHECK(lease_client);
-        
+
         if (status.ok()) {
           if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
@@ -330,7 +328,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       });
   pending_lease_request = std::make_pair(lease_client, task_id);
   RAY_CHECK(pending_lease_request.first);
-  
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -416,8 +413,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
     if (!scheduled_tasks.empty()) {
-      for (auto spec = scheduled_tasks.begin();
-           spec != scheduled_tasks.end(); spec++) {
+      for (auto spec = scheduled_tasks.begin(); spec != scheduled_tasks.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks.erase(spec);
 
@@ -481,7 +477,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           scheduling_key_entry.active_workers_.erase(rpc::WorkerAddress(client_addr));
           if (scheduling_key_entry.active_workers_.size() == 0) {
             RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight == 0);
-            if (scheduling_key_entry.task_queue_.empty() && !scheduling_key_entry.pending_lease_request_.first) {
+            if (scheduling_key_entry.task_queue_.empty() &&
+                !scheduling_key_entry.pending_lease_request_.first) {
               scheduling_key_entries_.erase(scheduling_key);
             }
           }
