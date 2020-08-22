@@ -159,12 +159,12 @@ def test_ray_start(configure_lang):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
+     and "_bazel_travis" in os.environ.get("PATH", "")),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
-    print(os.environ)
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -189,12 +189,12 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
+     and "_bazel_travis" in os.environ.get("PATH", "")),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
-    print(os.environ)
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -218,12 +218,12 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
+     and "_bazel_travis" in os.environ.get("PATH", "")),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
-    print(os.environ)
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -246,8 +246,13 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_exec.txt", result)
 
 
+# Try to check if we are running in travis. Bazel overrides and controls
+# env vars, so the typical travis env-vars don't help.
+# Unfortunately it will not be nice if your username is travis
+# and you're running on a Mac.
 @pytest.mark.skipif(
-    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
+     and "_bazel_travis" in os.environ.get("PATH", "")),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
