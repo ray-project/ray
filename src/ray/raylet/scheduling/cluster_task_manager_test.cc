@@ -199,9 +199,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  void ClearAllocatedInstances() {
-    allocated_instances_ = nullptr;
-  }
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
@@ -218,9 +216,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  std::vector<double> &GetBorrowedCPUInstances() {
-    return borrowed_cpu_instances_;
-  }
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
 
   void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
 
@@ -292,15 +288,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependencies_fulfilled_(true),
         node_info_calls_(0),
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
-        task_manager_(id_, single_node_resource_scheduler_,
-                      [this](const Task &_task) {
-                        fulfills_dependencies_calls_++;
-                        return dependencies_fulfilled_;
-                      },
-                      [this](const ClientID &node_id) {
-                        node_info_calls_++;
-                        return node_info_;
-                      }) {}
+        task_manager_(
+            id_, single_node_resource_scheduler_,
+            [this](const Task &_task) {
+              fulfills_dependencies_calls_++;
+              return dependencies_fulfilled_;
+            },
+            [this](const ClientID &node_id) {
+              node_info_calls_++;
+              return node_info_;
+            }) {}
 
   void SetUp() {}
 
@@ -442,7 +439,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
@@ -483,11 +480,11 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
   ASSERT_TRUE(callback_called);
-  ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
 }
 
-}  // namespace raylet
+TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
+  std::shared_ptr<MockWorker> worker =
 
 }  // namespace ray
 
