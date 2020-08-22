@@ -150,6 +150,9 @@ DEFAULT_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
 def test_ray_start(configure_lang):
     runner = CliRunner()
     result = runner.invoke(
