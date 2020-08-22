@@ -288,15 +288,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependencies_fulfilled_(true),
         node_info_calls_(0),
         node_info_(boost::optional<rpc::GcsNodeInfo>{}),
-        task_manager_(id_, single_node_resource_scheduler_,
-                      [this](const Task &_task) {
-                        fulfills_dependencies_calls_++;
-                        return dependencies_fulfilled_;
-                      },
-                      [this](const ClientID &node_id) {
-                        node_info_calls_++;
-                        return node_info_;
-                      }) {}
+        task_manager_(
+            id_, single_node_resource_scheduler_,
+            [this](const Task &_task) {
+              fulfills_dependencies_calls_++;
+              return dependencies_fulfilled_;
+            },
+            [this](const ClientID &node_id) {
+              node_info_calls_++;
+              return node_info_;
+            }) {}
 
   void SetUp() {}
 
@@ -480,9 +481,13 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   // Task will not execute.
   ASSERT_TRUE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1);
 }
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+}  // namespace raylet
+}  // namespace ray
