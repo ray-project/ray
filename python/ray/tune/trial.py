@@ -9,7 +9,6 @@ import platform
 import shutil
 import uuid
 import time
-import tempfile
 import os
 from numbers import Number
 from ray.tune import TuneError
@@ -606,9 +605,9 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
-            generated_dirname = f"{str(self)}_{self.experiment_tag}"
+            generated_dirname = f"{self.trainable_name}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
-            generated_dirname += f"_{date_str()}_{uuid.uuid4().hex[:6]}"
+            generated_dirname += f"_{date_str()}{uuid.uuid4().hex[:8]}"
         return generated_dirname.replace("/", "_")
 
     def __getstate__(self):
