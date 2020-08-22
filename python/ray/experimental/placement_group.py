@@ -12,15 +12,6 @@ class PlacementGroup:
         self.bundle_count = bundle_count
 
 
-class PlacementGroup:
-    """A handle to a placement group.
-    """
-
-    def __init__(self, id, bundle_count):
-        self.id = id
-        self.bundle_count = bundle_count
-
-
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
                     name: str = "unnamed_group"):
