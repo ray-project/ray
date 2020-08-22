@@ -108,7 +108,7 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
-        rerun_failed (bool): Resets and reruns failed trials, assuming
+        run_errored_only (bool): Resets and reruns failed trials, assuming
             the provided Trainable is the same. Previous trial artifacts
             will be left untouched. Only to be used with
             `resume` enabled. Raises ValueError otherwise.
@@ -134,7 +134,7 @@ class TrialRunner:
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  fail_fast=False,
-                 rerun_failed=False,
+                 run_errored_only=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
@@ -186,7 +186,7 @@ class TrialRunner:
 
         if self._validate_resume(resume_type=resume):
             try:
-                self.resume(rerun_failed=rerun_failed)
+                self.resume(run_errored_only=run_errored_only)
                 self._resumed = True
             except Exception as e:
                 if self._verbose:
@@ -196,10 +196,11 @@ class TrialRunner:
                     raise
                 logger.info("Restarting experiment.")
         else:
-            if rerun_failed:
+            if run_errored_only:
                 raise ValueError(
-                    "'rerun_failed' should only be used with 'resume'. "
-                    f"Got: resume={resume}, rerun_failed={rerun_failed}")
+                    "'run_errored_only' should only be used with 'resume'. "
+                    f"Got: resume={resume}, "
+                    f"run_errored_only={run_errored_only}")
             logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
@@ -315,7 +316,7 @@ class TrialRunner:
             self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
-    def resume(self, rerun_failed=False):
+    def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -343,7 +344,7 @@ class TrialRunner:
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            if rerun_failed and trial.status == Trial.ERROR:
+            if run_errored_only and trial.status == Trial.ERROR:
                 new_trial = trial.reset()
                 self.add_trial(new_trial)
             else:
