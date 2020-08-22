@@ -93,7 +93,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
     const SchedulingKey &scheduling_key) {
-  client_cache_.GetOrConnect(addr.ToProto());
+  client_cache_->GetOrConnect(addr.ToProto());
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   LeaseEntry new_lease_entry = LeaseEntry(std::move(lease_client), expiration, 0,
                                           assigned_resources, scheduling_key);

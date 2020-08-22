@@ -1239,12 +1239,15 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
+
+
 TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
 
@@ -1252,9 +1255,9 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
   // parameter to the CoreWorkerDirectTaskSubmitter.
   uint32_t max_tasks_in_flight_per_worker = 10;
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout,
-                                          actor_creator, max_tasks_in_flight_per_worker);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, store, task_finisher, ClientID::Nil(),
+      kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // prepare 30 tasks and save them in a vector
   std::unordered_map<std::string, double> empty_resources;
