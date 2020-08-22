@@ -47,10 +47,6 @@ def configure_lang():
     os.environ["LC_ALL"] = "C.UTF-8"
     os.environ["LANG"] = "C.UTF-8"
 
-    if sys.platform == "darwin":
-        os.environ["LC_ALL"] ="en_US.utf-8"
-        os.environ["LANG"] ="en_US.utf-8"
-
 
 @pytest.fixture
 def configure_aws():
@@ -162,6 +158,9 @@ def test_ray_start(configure_lang):
     _check_output_via_pattern("test_ray_start.txt", result)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
@@ -188,6 +187,9 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
         _check_output_via_pattern("test_ray_up.txt", result)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -213,6 +215,9 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_attach.txt", result)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
@@ -238,6 +243,9 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         _check_output_via_pattern("test_ray_exec.txt", result)
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "TRAVIS" in os.environ,
+    reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
