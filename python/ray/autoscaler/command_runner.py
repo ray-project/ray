@@ -12,8 +12,8 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
-                                                  ProcessRunnerError
+from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
+                                                   ProcessRunnerError)
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -473,7 +473,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
     ):
-
         if ssh_options_override_ssh_key:
             ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
