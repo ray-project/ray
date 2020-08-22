@@ -522,13 +522,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_LOG(DEBUG) << "Lease granted " << task_id;
               rpc::WorkerAddress addr(reply.worker_address());
 
-              struct timespec lease_granted_time_;
+              /*struct timespec lease_granted_time_;
               clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
               long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
               initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
 
               initial_time_.tv_nsec) / (long double) 1000000000.0); 
-              RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " " << time_elapsed;
+              RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " " << time_elapsed;*/
 
               AddWorkerLeaseClient(addr, std::move(lease_client), scheduling_key);
               auto resources_copy = reply.resource_mapping();
