@@ -245,8 +245,8 @@ def run(run_or_experiment,
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.
         run_errored_only (bool): Only to be used with `resume` enabled.
-            Resets and reruns ERRORED trials upon resume, assuming the
-            provided Trainable. Experiment location is determined
+            Resets and reruns ERRORED trials upon resume.
+            Experiment location is determined
             by `name` and `local_dir`. Previous trial artifacts will
             be left untouched.
         queue_trials (bool): Whether to queue trials when the cluster does
