@@ -390,7 +390,7 @@ class TrialRunnerTest3(unittest.TestCase):
             resume=True,
             local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR in {t.status for t in new_runner.get_trials()}
+        assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
     def testTrialErrorResumeTrue(self):
         ray.init(num_cpus=3, local_mode=True, include_dashboard=False)
@@ -422,7 +422,7 @@ class TrialRunnerTest3(unittest.TestCase):
             resume=True,
             local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
-        assert Trial.ERROR not in {t.status for t in new_runner.get_trials()}
+        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
         disable_error = False
         for t in new_runner.get_trials():
@@ -433,7 +433,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         while not new_runner.is_finished():
             new_runner.step()
-        assert Trial.ERROR not in {t.status for t in new_runner.get_trials()}
+        assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
 
     def testTrialSaveRestore(self):
         """Creates different trials to test runner.checkpoint/restore."""
