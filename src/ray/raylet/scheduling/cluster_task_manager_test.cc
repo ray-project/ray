@@ -483,11 +483,6 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 }
 
-TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
-  std::shared_ptr<MockWorker> worker =
-
-}  // namespace ray
-
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
