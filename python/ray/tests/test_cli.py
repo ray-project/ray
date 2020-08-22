@@ -42,6 +42,13 @@ import ray.scripts.scripts as scripts
 
 
 @pytest.fixture
+def configure_lang():
+    """Configure output for travis."""
+    os.environ["LC_ALL"] = "C.UTF-8"
+    os.environ["LANG"] = "C.UTF-8"
+
+
+@pytest.fixture
 def configure_aws():
     """Mocked AWS Credentials for moto."""
     os.environ["LC_ALL"] = "C.UTF-8"
@@ -142,7 +149,7 @@ DEFAULT_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_config.yaml")
 
 
-def test_ray_start():
+def test_ray_start(configure_lang):
     runner = CliRunner()
     result = runner.invoke(
         scripts.start, ["--head", "--log-new-style", "--log-color", "False"])
@@ -153,7 +160,7 @@ def test_ray_start():
 
 @mock_ec2
 @mock_iam
-def test_ray_up(_unlink_test_ssh_key, configure_aws):
+def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -179,7 +186,7 @@ def test_ray_up(_unlink_test_ssh_key, configure_aws):
 
 @mock_ec2
 @mock_iam
-def test_ray_attach(configure_aws, _unlink_test_ssh_key):
+def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -204,7 +211,7 @@ def test_ray_attach(configure_aws, _unlink_test_ssh_key):
 
 @mock_ec2
 @mock_iam
-def test_ray_exec(configure_aws, _unlink_test_ssh_key):
+def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -229,7 +236,7 @@ def test_ray_exec(configure_aws, _unlink_test_ssh_key):
 
 @mock_ec2
 @mock_iam
-def test_ray_submit(configure_aws, _unlink_test_ssh_key):
+def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
