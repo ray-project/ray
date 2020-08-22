@@ -164,6 +164,7 @@ def test_ray_start(configure_lang):
 @mock_ec2
 @mock_iam
 def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
+    print(os.environ)
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -193,6 +194,7 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 @mock_ec2
 @mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
+    print(os.environ)
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
@@ -221,6 +223,7 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
 @mock_ec2
 @mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
+    print(os.environ)
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
