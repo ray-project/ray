@@ -117,14 +117,15 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
   clock_gettime(CLOCK_REALTIME, &return_worker_time);
   long double time_elapsed = (long double)(return_worker_time.tv_sec -
   initial_time_.tv_sec) + (long double)((return_worker_time.tv_nsec -
-  initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) << "RETURN_WORKER
-  placeholder" << " " << time_elapsed;*/
+  initial_time_.tv_nsec) / (long double) 1000000000.0); 
+  RAY_LOG(INFO) << "RETURN_WORKER " << addr.worker_id << " " <<  time_elapsed;*/
 
   auto &lease_entry = worker_to_lease_entry_[addr];
-  if (!lease_entry.lease_client_) {
-    return;
-  }
   RAY_CHECK(lease_entry.lease_client_);
+
+  RAY_CHECK(lease_entry.tasks_in_flight_ == 0);
+  RAY_CHECK(lease_entry.stealable_tasks_.size() == 0);
+
   auto status =
       lease_entry.lease_client_->ReturnWorker(addr.port, addr.worker_id, was_error);
   if (!status.ok()) {
@@ -141,14 +142,20 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
   bool work_stealing_and_eager_workers_requesting_enabled =
       RayConfig::instance().work_stealing_and_eager_workers_requesting_enabled();
 
+  auto &thief_entry = worker_to_lease_entry_[thief_addr];
+  RAY_CHECK(thief_entry.lease_client_);
+  RAY_CHECK(thief_entry.tasks_in_flight_ == 0);
+  RAY_CHECK(thief_entry.stealable_tasks_.size() == 0);
+
   if (!work_stealing_enabled && !work_stealing_and_eager_workers_requesting_enabled) {
-    RAY_LOG(INFO) << "Work stealing is not enabled, so we return the worker "
+    RAY_LOG(DEBUG) << "Work stealing is not enabled, so we return the worker "
                   << thief_addr.worker_id << " without stealing";
     ReturnWorker(thief_addr, was_error);
     return;
   }
 
-  RAY_LOG(INFO) << "Stealing work now! Thief is worker: " << thief_addr.worker_id;
+
+  RAY_LOG(DEBUG) << "Stealing work now! Thief is worker: " << thief_addr.worker_id;
 
   // Look for a suitable victim
   absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry>::iterator victim =
@@ -176,7 +183,9 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
   // Check that the victim is a suitable one
   if (victim->second.current_scheduling_key_ != scheduling_key ||
       victim->first.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "Could not find a suitable victim for stealing! Returning worker "
+
+    RAY_LOG(DEBUG) << "Could not find a suitable victim for stealing! Returning worker "
+
                   << thief_addr.worker_id;
 
     ReturnWorker(thief_addr, was_error);
@@ -196,8 +205,8 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
   RAY_CHECK(victim->second.tasks_in_flight_ >= victim->second.stealable_tasks_.size());
 
   if (victim->second.stealable_tasks_.size() <= 1) {
-    RAY_LOG(DEBUG)
-        << "The designated victim had <= 1 tasks in flight, so we don't steal.";
+    RAY_LOG(DEBUG) << "The designated victim had <= 1 tasks in flight, so we don't steal. Returning thief " << thief_addr.worker_id;
+
 
     ReturnWorker(thief_addr, was_error);
     return;
@@ -219,9 +228,11 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
        assigned_resources](Status status, const rpc::StealWorkReply &reply) {
         absl::MutexLock lock(&mu_);
 
-        auto &victim_entry = worker_to_lease_entry_[victim_addr];
-
         auto &lease_entry = worker_to_lease_entry_[thief_addr];
+        RAY_CHECK(lease_entry.lease_client_) << "dying #1.1 because of thief " << thief_addr.worker_id;
+          RAY_CHECK(lease_entry.tasks_in_flight_ == 0) << "dying #1.2 because of thief " << thief_addr.worker_id;
+          RAY_CHECK(lease_entry.stealable_tasks_.size() == 0) << "dying #1.3 because of thief " << thief_addr.worker_id;
+
         int number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
 
@@ -246,9 +257,18 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
           RAY_CHECK(scheduling_key_check == scheduling_key);
 
           executing_tasks_.erase(task_spec.TaskId());
-          victim_entry.stealable_tasks_.erase(task_spec.TaskId());
+
+          if (worker_to_lease_entry_.find(victim_addr) != worker_to_lease_entry_.end()) {
+            auto &victim_entry = worker_to_lease_entry_[victim_addr];
+            RAY_CHECK(victim_entry.lease_client_) << "dying because of victim " << victim_addr.worker_id;
+            victim_entry.stealable_tasks_.erase(task_spec.TaskId());
+          }
 
           auto &client = *client_cache_.GetOrConnect(thief_addr.ToProto());
+          RAY_CHECK(lease_entry.lease_client_) << "dying #1.1 because of thief " << thief_addr.worker_id;
+          RAY_CHECK(lease_entry.tasks_in_flight_ == (unsigned int) i) << "dying #1.2 because of thief " << thief_addr.worker_id;
+          RAY_CHECK(lease_entry.stealable_tasks_.size() == (unsigned int) i) << "dying #1.3 because of thief " << thief_addr.worker_id;
+
           lease_entry.tasks_in_flight_++;  // Increment the number of tasks in flight to
                                            // the worker
           auto res = lease_entry.stealable_tasks_.insert(task_spec.TaskId());
@@ -259,6 +279,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         }
 
         if (number_of_tasks_stolen == 0) {
+          RAY_LOG(DEBUG) << "No tasks actually stolen, returning thief " << thief_addr.worker_id; 
           ReturnWorker(thief_addr, was_error);
         }
       }));
@@ -422,8 +443,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     TaskSpecification candidate_task_spec;
     if (it == task_queues_.end()) {
       if (!work_stealing_and_eager_workers_requesting_enabled) {
-        RAY_LOG(INFO) << "eager_workers_requesting NOT enabled, returning without "
-                         "requesting new workers.";
+
+        RAY_LOG(DEBUG) << "eager_workers_requesting NOT enabled, returning without requesting new workers.";
         return;
       }
 
@@ -458,8 +479,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     auto lease_client = GetOrConnectLeaseClient(raylet_address);
     TaskSpecification &resource_spec = candidate_task_spec;
     TaskID task_id = resource_spec.TaskId();
-    RAY_LOG(DEBUG) << "Lease requested " << task_id;
-    // RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id;
+
+    //RAY_LOG(DEBUG) << "Lease requested " << task_id;
+    /*struct timespec lease_requested_time;
+    clock_gettime(CLOCK_REALTIME, &lease_requested_time);
+    long double time_elapsed = (long double)(lease_requested_time.tv_sec -
+    initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
+    initial_time_.tv_nsec) / (long double) 1000000000.0); 
+    RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;*/
+
 
     auto submitted_task_entry = submissible_tasks_.find(scheduling_key);
     RAY_CHECK(submitted_task_entry != submissible_tasks_.end());
@@ -494,12 +522,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               RAY_LOG(DEBUG) << "Lease granted " << task_id;
               rpc::WorkerAddress addr(reply.worker_address());
 
-              /*struct timespec lease_granted_time_;
+              struct timespec lease_granted_time_;
               clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
               long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
               initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
-              initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) <<
-              "LEASE_GRANTED " << addr.worker_id << " " << time_elapsed;*/
+
+              initial_time_.tv_nsec) / (long double) 1000000000.0); 
+              RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " " << time_elapsed;
 
               AddWorkerLeaseClient(addr, std::move(lease_client), scheduling_key);
               auto resources_copy = reply.resource_mapping();
@@ -584,6 +613,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     if (reply.worker_exiting()) {
       // The worker is draining and will shutdown after it is done. Don't return
       // it to the Raylet since that will kill it early.
+      RAY_LOG(DEBUG) << "tricky erasure for " << addr.worker_id;
       worker_to_lease_entry_.erase(addr);
     } else if (!status.ok() || !is_actor_creation) {
       // Successful actor creation leases the worker indefinitely from the raylet.

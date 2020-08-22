@@ -71,9 +71,11 @@ class CoreWorkerDirectTaskSubmitter {
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         cancel_retry_timer_(std::move(cancel_timer)) {
     // RAY_LOG(DEBUG) << "max_tasks_in_flight_per_worker_ set to: " <<
+
     // max_tasks_in_flight_per_worker_; memset(&initial_time_, 0, sizeof(struct timespec));
     // clock_gettime(CLOCK_REALTIME, &initial_time_);
     // RAY_CHECK((initial_time_.tv_sec || initial_time_.tv_nsec));
+
   }
 
   /// Schedule a task for direct submission to a worker.
@@ -250,6 +252,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 
   // struct timespec initial_time_;
+
 };
 
 };  // namespace ray
