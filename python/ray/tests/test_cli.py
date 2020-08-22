@@ -44,8 +44,9 @@ import ray.scripts.scripts as scripts
 @pytest.fixture
 def configure_lang():
     """Configure output for travis + click."""
-    os.environ["LC_ALL"] = "C.UTF-8"
-    os.environ["LANG"] = "C.UTF-8"
+    if sys.platform != "darwin":
+        os.environ["LC_ALL"] = "C.UTF-8"
+        os.environ["LANG"] = "C.UTF-8"
 
 
 @pytest.fixture
@@ -159,8 +160,7 @@ def test_ray_start(configure_lang):
 
 
 @pytest.mark.skipif(
-    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
-     and "_bazel_travis" in os.environ.get("PATH", "")),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -189,8 +189,7 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 
 
 @pytest.mark.skipif(
-    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
-     and "_bazel_travis" in os.environ.get("PATH", "")),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -218,8 +217,7 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 @pytest.mark.skipif(
-    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
-     and "_bazel_travis" in os.environ.get("PATH", "")),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -251,8 +249,7 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
 # Unfortunately it will not be nice if your username is travis
 # and you're running on a Mac.
 @pytest.mark.skipif(
-    (sys.platform == "darwin" and "travis" in os.environ.get("USER", "")
-     and "_bazel_travis" in os.environ.get("PATH", "")),
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
