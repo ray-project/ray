@@ -29,13 +29,18 @@ To contribute a patch:
 PR Review Process
 -----------------
 
-### For contributors who are in the ray-project organization
+For contributors who are in the ray-project organization:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 - When you first create a PR, add an reviewer to the `assignee` section.
 - Assignees will review your PR and add `@author-action-required` label if further actions are required.
 - Address their comments and remove `@author-action-required` label from the PR.
 - Repeat this process until assignees approve your PR.
 - Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add `test-ok` label if the build succeeds.
-- Committers will merge the PRs.
+- Committers will merge the PRs if the build success is confirmed.
 
-### For contributos who are out of the ray-project organization
+For contributos who are out of the ray-project organization:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 - Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
+- Please actively ping assignees after you address your comments! 
