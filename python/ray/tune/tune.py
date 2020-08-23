@@ -167,10 +167,12 @@ def run(run_or_experiment,
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket`` or ``gs://bucket``).
-        trial_name_creator (func): Optional function for generating
-            the trial string representation.
-        trial_dirname_creator (func): Optional function for generating
-            the trial dirname. Note that this should not be an absolute path.
+        trial_name_creator (Callable[[Trial], str]): Optional function
+            for generating the trial string representation.
+        trial_dirname_creator (Callable[[Trial], str]): Function
+            for generating the trial dirname. This function should take
+            in a Trial object and return a string representing the
+            name of the directory. The return value cannot be a path.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
