@@ -1,3 +1,4 @@
+import random
 from typing import (List, Dict)
 
 import ray
@@ -17,7 +18,6 @@ class PlacementGroup:
         return PlacementGroup(PlacementGroupID.nil(), [])
 
     def __init__(self, id: PlacementGroupID, bundles: List[Dict[str, float]]):
-        assert isinstance(bundles, list)
         self.id = id
         self.bundles = bundles
 
@@ -30,25 +30,30 @@ class PlacementGroup:
         def bundle_reservation_check(placement_group):
             return placement_group
 
-        for bundle_index, bundle in enumerate(self.bundles):
-            resource_name, value = self._get_none_zero_resource(bundle)
-            num_cpus = 0
-            num_gpus = 0
-            resources = None
-            if resource_name == "CPU":
-                num_cpus = value
-            elif resource_name == "GPU":
-                num_gpus = value
-            else:
-                resources[resource_name] = value
+        assert len(self.bundles) != 0, (
+            "ready() cannot be called on placement group object with a "
+            f"bundle length == 0, current bundle length: {len(self.bundles)}")
 
-            return bundle_reservation_check.options(
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                placement_group=self,
-                placement_group_bundle_index=bundle_index,
-                resources=resources).remote(self)
-        assert False, "This code should be unreachable."
+        bundle_index = random.randint(0, len(self.bundles) - 1)
+        bundle = self.bundles[bundle_index]
+
+        resource_name, value = self._get_none_zero_resource(bundle)
+        num_cpus = 0
+        num_gpus = 0
+        resources = None
+        if resource_name == "CPU":
+            num_cpus = value
+        elif resource_name == "GPU":
+            num_gpus = value
+        else:
+            resources[resource_name] = value
+
+        return bundle_reservation_check.options(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            placement_group=self,
+            placement_group_bundle_index=bundle_index,
+            resources=resources).remote(self)
 
     @property
     def bundle_count(self):
@@ -59,6 +64,7 @@ class PlacementGroup:
             if value > 0:
                 value = min(value, 0.001)
                 return key, value
+        assert False, "This code should be unreachable."
 
 
 def placement_group(bundles: List[Dict[str, float]],
