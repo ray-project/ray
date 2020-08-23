@@ -102,36 +102,52 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
-  auto node_resources = context->node_manager_.GetClusterRealtimeResources();
-  if (node_resources.empty()) {
+  const auto &candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+  if (candidate_nodes.empty()) {
     return schedule_map;
   }
 
-  auto candidate_nodes = node_resources;
   auto iter = candidate_nodes.begin();
   auto iter_begin = iter;
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
+    // Traverse all nodes from `iter_begin` to `candidate_nodes.end()` to find a node that
+    // meets the resource requirements. `iter_begin` is the next node of the last selected
+    // node.
     for (; iter != candidate_nodes.end(); ++iter) {
       if (required_resources.IsSubset(*iter->second)) {
-        node_resources[iter->first]->SubtractResourcesStrict(required_resources);
+        iter->second->SubtractResourcesStrict(required_resources);
         schedule_map[bundle->BundleId()] = iter->first;
         break;
       }
     }
 
-    if (iter == candidate_nodes.end() && iter_begin != candidate_nodes.begin()) {
-      for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
-        if (required_resources.IsSubset(*iter->second)) {
-          node_resources[iter->first]->SubtractResourcesStrict(required_resources);
-          schedule_map[bundle->BundleId()] = iter->first;
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
+    // haven't found one that meets the requirements.
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
+    // satisfied, we will return directly. Otherwise, we will traverse the nodes from
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
+    // requirements.
+    if (iter == candidate_nodes.end()) {
+      if (iter_begin != candidate_nodes.begin()) {
+        // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
+        for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
+          if (required_resources.IsSubset(*iter->second)) {
+            iter->second->SubtractResourcesStrict(required_resources);
+            schedule_map[bundle->BundleId()] = iter->first;
+            break;
+          }
+        }
+        if (iter == iter_begin) {
+          // We have traversed all the nodes, so return directly.
           break;
         }
-      }
-      if (iter == iter_begin) {
+      } else {
+        // We have traversed all the nodes, so return directly.
         break;
       }
     }
+    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
     iter_begin = ++iter;
   }
 
@@ -258,7 +274,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   }
   placement_group_to_bundle_locations_.erase(it);
 
-  // Remove bundles from node_to_leased_bundles_ because bundels are removed now.
+  // Remove bundles from node_to_leased_bundles_ because bundles are removed now.
   for (const auto &bundle_location : *bundle_locations) {
     const auto &bundle_id = bundle_location.first;
     const auto &node_id = bundle_location.second.first;
@@ -394,7 +410,6 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
 
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     const PlacementGroupID &placement_group_id) {
-  // TODO(ffbin): We will add listener to the GCS node manager to handle node deletion.
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &iter : alive_nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {

@@ -546,5 +546,30 @@ def test_check_bundle_index(ray_start_cluster):
     assert error_count == 3
 
 
+def test_schedule_placement_group_when_node_add(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    # Creating a placement group that cannot be satisfied yet.
+    placement_group = ray.experimental.placement_group([{
+        "GPU": 2
+    }, {
+        "CPU": 2
+    }])
+
+    def is_placement_group_created():
+        table = ray.experimental.placement_group_table(placement_group)
+        if "state" not in table:
+            return False
+        return table["state"] == "CREATED"
+
+    # Add a node that has GPU.
+    cluster.add_node(num_cpus=4, num_gpus=4)
+
+    # Make sure the placement group is created.
+    wait_for_condition(is_placement_group_created)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
