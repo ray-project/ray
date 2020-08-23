@@ -100,11 +100,10 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append(
-                    f"{colorama.Fore.CYAN}"
-                    f"{self.proctitle}"
-                    f"{colorama.Fore.RESET} "
-                    f"(pid={self.pid}, ip={self.ip})")
+                out.append(f"{colorama.Fore.CYAN}"
+                           f"{self.proctitle}"
+                           f"{colorama.Fore.RESET} "
+                           f"(pid={self.pid}, ip={self.ip})")
             elif in_worker:
                 in_worker = False
             elif "ray/worker.py" in line or "ray/function_manager.py" in line:

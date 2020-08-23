@@ -296,8 +296,8 @@ class Worker:
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
-                    "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectRef.".format(object_ref))
+                    f"Attempting to call `get` on the value {object_ref}, "
+                    "which is not an ray.ObjectRef.")
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
@@ -465,13 +465,12 @@ def print_failed_task(task_status):
         task_status (Dict): A dictionary containing the name, operationid, and
             error message for a failed task.
     """
-    logger.error("""
+    logger.error(f"""
       Error: Task failed
-        Function Name: {}
-        Task ID: {}
-        Error Message: \n{}
-    """.format(task_status["function_name"], task_status["operationid"],
-               task_status["error_message"]))
+        Function Name: {task_status["function_name"]}
+        Task ID: {task_status["operationid"]}
+        Error Message: \n{task_status["error_message"]}
+    """)
 
 
 def init(address=None,
@@ -1062,7 +1061,7 @@ def print_logs(redis_client, threads_stopped, job_id):
                         file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("print_logs: {}".format(e))
+        logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1097,10 +1096,9 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             if threads_stopped.is_set():
                 break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-            logger.debug("Suppressing error from worker: {}".format(error))
+            logger.debug(f"Suppressing error from worker: {error}")
         else:
-            logger.error(
-                "Possible unhandled error from worker: {}".format(error))
+            logger.error(f"Possible unhandled error from worker: {error}")
 
 
 def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
@@ -1156,7 +1154,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("listen_error_messages_raylet: {}".format(e))
+        logger.error(f"listen_error_messages_raylet: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1314,7 +1312,7 @@ def connect(node,
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
-            "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
+            f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -1480,8 +1478,8 @@ def show_in_webui(message, key="", dtype="text"):
     worker.check_connected()
 
     acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
-        acceptable_dtypes)
+    assert dtype in acceptable_dtypes, (
+        f"dtype accepts only: {acceptable_dtypes}")
 
     message_wrapped = {"message": message, "dtype": dtype}
     message_encoded = json.dumps(message_wrapped).encode()
@@ -1649,18 +1647,17 @@ def wait(object_refs, num_returns=1, timeout=None):
             "ray.ObjectRef")
 
     if not isinstance(object_refs, list):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got {}".format(
-                type(object_refs)))
+        raise TypeError("wait() expected a list of ray.ObjectRef, "
+                        f"got {type(object_refs)}")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
-                         "Received {}".format(timeout))
+                         f"Received {timeout}")
 
     for object_ref in object_refs:
         if not isinstance(object_ref, ObjectRef):
             raise TypeError("wait() expected a list of ray.ObjectRef, "
-                            "got list containing {}".format(type(object_ref)))
+                            f"got list containing {type(object_ref)}")
 
     worker.check_connected()
     # TODO(swang): Check main thread.
@@ -1727,7 +1724,7 @@ def kill(actor, no_restart=True):
     """
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
-                         "Got: {}.".format(type(actor)))
+                         f"Got: {type(actor)}.")
     worker = ray.worker.global_worker
     worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
@@ -1761,7 +1758,7 @@ def cancel(object_ref, force=False):
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            "Got: {}.".format(type(object_ref)))
+            f"Got: {type(object_ref)}.")
     return worker.core_worker.cancel_task(object_ref, force)
 
 
@@ -1953,8 +1950,7 @@ def remote(*args, **kwargs):
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
-                        "dictionary, but received type {}.".format(
-                            type(resources)))
+                        f"dictionary, but received type {type(resources)}.")
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."

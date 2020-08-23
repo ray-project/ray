@@ -284,13 +284,14 @@ class ActorClass:
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError(f"Attempted to define subclass '{name}' of actor "
-                                f"class '{base.__ray_metadata__.class_name}'. "
-                                "Inheriting from actor classes is "
-                                "not currently supported. You can instead "
-                                "inherit from a non-actor base class and make "
-                                "the derived class an actor class (with "
-                                "@ray.remote).")
+                raise TypeError(
+                    f"Attempted to define subclass '{name}' of actor "
+                    f"class '{base.__ray_metadata__.class_name}'. "
+                    "Inheriting from actor classes is "
+                    "not currently supported. You can instead "
+                    "inherit from a non-actor base class and make "
+                    "the derived class an actor class (with "
+                    "@ray.remote).")
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -730,9 +731,8 @@ class ActorHandle:
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError(
-                f"'{type(self).__name__}' object has "
-                f"no attribute '{item}'")
+            raise AttributeError(f"'{type(self).__name__}' object has "
+                                 f"no attribute '{item}'")
         if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
@@ -762,10 +762,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return (
-            f"Actor("
-            f"{self._ray_actor_creation_function_descriptor.class_name},"
-            f"{self._actor_id.hex()})")
+        return (f"Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name},"
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):
