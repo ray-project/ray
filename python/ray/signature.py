@@ -113,8 +113,8 @@ def flatten_args(signature_parameters, args, kwargs):
         parameters=signature_parameters)
     try:
         reconstructed_signature.bind(*args, **kwargs)
-    except TypeError as exc:
-        raise TypeError(str(exc))
+    except TypeError as exc:  # capture a friendlier stacktrace
+        raise TypeError(str(exc)) from None
     list_args = []
     for arg in args:
         list_args += [DUMMY_TYPE, arg]
