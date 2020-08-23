@@ -19,8 +19,8 @@ import ray.utils
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# First group is worker id. Second group is job id.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)")
+# The groups are worker id, job id, and pid.
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)-(\d+)")
 
 
 class LogFileInfo:
@@ -29,6 +29,7 @@ class LogFileInfo:
                  size_when_last_opened=None,
                  file_position=None,
                  file_handle=None,
+                 is_err_file=False,
                  job_id=None):
         assert (filename is not None and size_when_last_opened is not None
                 and file_position is not None)
@@ -36,6 +37,7 @@ class LogFileInfo:
         self.size_when_last_opened = size_when_last_opened
         self.file_position = file_position
         self.file_handle = file_handle
+        self.is_err_file = is_err_file
         self.job_id = job_id
         self.worker_pid = None
 
@@ -115,10 +117,9 @@ class LogMonitor:
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
         # output of user code is written here
-        log_file_paths = glob.glob("{}/worker*[.out|.err]".format(
-            self.logs_dir))
+        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]")
         # segfaults and other serious errors are logged here
-        raylet_err_paths = glob.glob("{}/raylet*.err".format(self.logs_dir))
+        raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
         for file_path in log_file_paths + raylet_err_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
@@ -128,6 +129,8 @@ class LogMonitor:
                 else:
                     job_id = None
 
+                is_err_file = file_path.endswith("err")
+
                 self.log_filenames.add(file_path)
                 self.closed_file_infos.append(
                     LogFileInfo(
@@ -135,9 +138,10 @@ class LogMonitor:
                         size_when_last_opened=0,
                         file_position=0,
                         file_handle=None,
+                        is_err_file=is_err_file,
                         job_id=job_id))
                 log_filename = os.path.basename(file_path)
-                logger.info("Beginning to track file {}".format(log_filename))
+                logger.info(f"Beginning to track file {log_filename}")
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -245,6 +249,7 @@ class LogMonitor:
                         "ip": self.ip,
                         "pid": file_info.worker_pid,
                         "job": file_info.job_id,
+                        "is_err": file_info.is_err_file,
                         "lines": lines_to_publish
                     }))
                 anything_published = True

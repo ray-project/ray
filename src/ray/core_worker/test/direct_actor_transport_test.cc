@@ -59,12 +59,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   const rpc::Address &Addr() const override { return addr; }
 
-  ray::Status PushActorTask(
-      std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request, bool skip_queue,
+                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK()) {
@@ -104,10 +102,10 @@ class DirectActorSubmitterTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_(
-            [&](const rpc::Address &addr) {
+            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
-            },
+            }),
             store_, task_finisher_) {}
 
   int num_clients_connected_ = 0;
@@ -366,6 +364,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
 
   // We receive the RESTART message late. Nothing happens.
   submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
@@ -430,7 +429,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
-    receiver_->Init([&](const rpc::Address &addr) { return worker_client_; },
+    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
+                        [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
   }
 

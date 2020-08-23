@@ -32,8 +32,8 @@ public class MetricId {
     }
     MetricId metricId = (MetricId) o;
     return type == metricId.type &&
-      Objects.equals(name, metricId.name) &&
-      Objects.equals(tags, metricId.tags);
+        Objects.equals(name, metricId.name) &&
+        Objects.equals(tags, metricId.tags);
   }
 
   @Override
@@ -44,10 +44,10 @@ public class MetricId {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("type", type)
-      .add("name", name)
-      .add("tags", tags)
-      .toString();
+        .add("type", type)
+        .add("name", name)
+        .add("tags", tags)
+        .toString();
   }
 
   public MetricType getType() {

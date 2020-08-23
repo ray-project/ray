@@ -2,8 +2,9 @@ import atexit
 import collections
 import datetime
 import errno
-import os
+import json
 import logging
+import os
 import random
 import signal
 import socket
@@ -103,12 +104,18 @@ class Node:
                     head), "LRU Evict can only be passed into the head node."
 
         self._raylet_ip_address = raylet_ip_address
+        self.metrics_agent_port = (ray_params.metrics_agent_port
+                                   or self._get_unused_port()[0])
+        self._metrics_export_port = ray_params.metrics_export_port
+        if self._metrics_export_port is None:
+            self._metrics_export_port = self._get_unused_port()[0]
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
             temp_dir=ray.utils.get_ray_temp_dir(),
-            metrics_agent_port=self._get_unused_port()[0],
+            metrics_agent_port=self.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port,
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -128,8 +135,7 @@ class Node:
             # date including microsecond
             date_str = datetime.datetime.today().strftime(
                 "%Y-%m-%d_%H-%M-%S_%f")
-            self.session_name = "session_{date_str}_{pid}".format(
-                pid=os.getpid(), date_str=date_str)
+            self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             redis_client = self.create_redis_client()
             self.session_name = ray.utils.decode(
@@ -249,12 +255,33 @@ class Node:
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
+
+        def merge_resources(env_dict, params_dict):
+            """Merge two dictionaries, picking from the second in the event of a conflict.
+            Also emit a warning on every conflict.
+            """
+            result = params_dict.copy()
+            result.update(env_dict)
+
+            for key in set(env_dict.keys()).intersection(
+                    set(params_dict.keys())):
+                logger.warning("Autoscaler is overriding your resource:"
+                               "{}: {} with {}.".format(
+                                   key, params_dict[key], env_dict[key]))
+            return result
+
+        env_resources = {}
+        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
+        if env_string:
+            env_resources = json.loads(env_string)
+
         if not self._resource_spec:
+            resources = merge_resources(env_resources,
+                                        self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
-                self._ray_params.resources,
-                self._ray_params.redis_max_memory).resolve(
+                resources, self._ray_params.redis_max_memory).resolve(
                     is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
 
@@ -300,8 +327,7 @@ class Node:
     @property
     def unique_id(self):
         """Get a unique identifier for this node."""
-        return "{}:{}".format(self.node_ip_address,
-                              self._plasma_store_socket_name)
+        return f"{self.node_ip_address}:{self._plasma_store_socket_name}"
 
     @property
     def webui_url(self):
@@ -317,6 +343,11 @@ class Node:
     def node_manager_port(self):
         """Get the node manager's port."""
         return self._ray_params.node_manager_port
+
+    @property
+    def metrics_export_port(self):
+        """Get the port that exposes metrics"""
+        return self._metrics_export_port
 
     @property
     def socket(self):
@@ -337,6 +368,7 @@ class Node:
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
             "session_dir": self._session_dir,
+            "metrics_export_port": self._metrics_export_port
         }
 
     def create_redis_client(self):
@@ -438,8 +470,8 @@ class Node:
             log_stderr = self._make_inc_temp(
                 suffix=".err", prefix=name, directory_name=self._logs_dir)
         else:
-            log_stdout = os.path.join(self._logs_dir, "{}.out".format(name))
-            log_stderr = os.path.join(self._logs_dir, "{}.err".format(name))
+            log_stdout = os.path.join(self._logs_dir, f"{name}.out")
+            log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
     def _get_unused_port(self, close_on_exit=True):
@@ -472,7 +504,8 @@ class Node:
 
         This method helps to prepare a socket file.
         1. Make the directory if the directory does not exist.
-        2. If the socket file exists, raise exception.
+        2. If the socket file exists, do nothing (this just means we aren't the
+           first worker on the node).
 
         Args:
             socket_path (string): the socket file to prepare.
@@ -481,16 +514,13 @@ class Node:
         is_mac = sys.platform.startswith("darwin")
         if sys.platform == "win32":
             if socket_path is None:
-                result = "tcp://{}:{}".format(self._localhost,
-                                              self._get_unused_port()[0])
+                result = (f"tcp://{self._localhost}"
+                          f":{self._get_unused_port()[0]}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
                     prefix=default_prefix, directory_name=self._sockets_dir)
             else:
-                if os.path.exists(socket_path):
-                    raise RuntimeError(
-                        "Socket file {} exists!".format(socket_path))
                 try_to_create_directory(os.path.dirname(socket_path))
 
             # Check socket path length to make sure it's short enough
@@ -522,8 +552,7 @@ class Node:
         redis_log_files = [self.get_log_file_handles("redis", unique=True)]
         for i in range(self._ray_params.num_redis_shards):
             redis_log_files.append(
-                self.get_log_file_handles(
-                    "redis-shard_{}".format(i), unique=True))
+                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray.services.start_redis(
@@ -563,9 +592,11 @@ class Node:
         """Start the reporter."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "reporter", unique=True)
+
         process_info = ray.services.start_reporter(
             self.redis_address,
             self._ray_params.metrics_agent_port,
+            self._metrics_export_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -669,6 +700,7 @@ class Node:
             self._ray_params.object_manager_port,
             self._ray_params.redis_password,
             self._ray_params.metrics_agent_port,
+            self._metrics_export_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
@@ -681,7 +713,10 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head)
+            head_node=self.head,
+            start_initial_python_workers_for_first_job=self._ray_params.
+            start_initial_python_workers_for_first_job,
+            object_spilling_config=self._ray_params.object_spilling_config)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -710,11 +745,11 @@ class Node:
             return None, None
 
         if job_id is not None:
-            name = "worker-{}-{}".format(
+            name = "worker-{}-{}-{}".format(
                 ray.utils.binary_to_hex(worker_id),
-                ray.utils.binary_to_hex(job_id))
+                ray.utils.binary_to_hex(job_id), os.getpid())
         else:
-            name = "worker-{}".format(ray.utils.binary_to_hex(worker_id))
+            name = f"worker-{ray.utils.binary_to_hex(worker_id)}-{os.getpid()}"
 
         worker_stdout_file, worker_stderr_file = self._get_log_file_names(
             name, unique=False)
@@ -740,9 +775,8 @@ class Node:
 
     def start_head_processes(self):
         """Start head processes on the node."""
-        logger.debug(
-            "Process STDOUT and STDERR is being redirected to {}.".format(
-                self._logs_dir))
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
         assert self._redis_address is None
         # If this is the head node, start the relevant head node processes.
         self.start_redis()
@@ -758,9 +792,8 @@ class Node:
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
-        logger.debug(
-            "Process STDOUT and STDERR is being redirected to {}.".format(
-                self._logs_dir))
+        logger.debug(f"Process STDOUT and STDERR is being "
+                     f"redirected to {self._logs_dir}.")
 
         self.start_plasma_store()
         self.start_raylet()

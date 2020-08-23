@@ -33,7 +33,7 @@ public class GcsClientTest extends BaseTest {
     Assert.assertEquals(allNodeInfo.size(), 1);
     Assert.assertEquals(allNodeInfo.get(0).nodeAddress, config.nodeIp);
     Assert.assertTrue(allNodeInfo.get(0).isAlive);
-    Assert.assertEquals(allNodeInfo.get(0).resources.get("A"), 8.0);
+    Assert.assertEquals((double) allNodeInfo.get(0).resources.get("A"), 8.0);
   }
 
   @Test

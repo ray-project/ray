@@ -1,20 +1,11 @@
 import copy
+import glob
 import logging
+import os
 
-from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.search import SearchAlgorithm
-from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
-from ray.tune.trial import Trial
-from ray.tune.utils import merge_dicts, flatten_dict
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-
-def _warn_on_repeater(searcher, total_samples):
-    from ray.tune.suggest.repeater import _warn_num_samples
-    _warn_num_samples(searcher, total_samples)
 
 
 class Searcher:
@@ -58,6 +49,7 @@ class Searcher:
 
     """
     FINISHED = "FINISHED"
+    CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
                  metric="episode_reward_mean",
@@ -130,13 +122,122 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def save(self, checkpoint_dir):
-        """Save function for this object."""
+    def save(self, checkpoint_path):
+        """Save state to path for this search algorithm.
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be used later when
+                restoring from file.
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg = Searcher(...)
+
+            analysis = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                name=self.experiment_name,
+                local_dir=self.tmpdir)
+
+            search_alg.save("./my_favorite_path.pkl")
+
+        .. versionchanged:: 0.8.7
+            Save is automatically called by `tune.run`. You can use
+            `restore_from_dir` to restore from an experiment directory
+            such as `~/ray_results/trainable`.
+
+        """
         raise NotImplementedError
 
-    def restore(self, checkpoint_dir):
-        """Restore function for this object."""
+    def restore(self, checkpoint_path):
+        """Restore state for this search algorithm
+
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be the same
+                as the one provided to "save".
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg.save("./my_favorite_path.pkl")
+
+            search_alg2 = Searcher(...)
+            search_alg2 = ConcurrencyLimiter(search_alg2, 1)
+            search_alg2.restore(checkpoint_path)
+            tune.run(cost, num_samples=5, search_alg=search_alg2)
+
+        """
         raise NotImplementedError
+
+    def get_state(self):
+        raise NotImplementedError
+
+    def set_state(self, state):
+        raise NotImplementedError
+
+    def save_to_dir(self, checkpoint_dir, session_str="default"):
+        """Automatically saves the given searcher to the checkpoint_dir.
+
+        This is automatically used by tune.run during a Tune job.
+
+        Args:
+            checkpoint_dir (str): Filepath to experiment dir.
+            session_str (str): Unique identifier of the current run
+                session.
+        """
+        tmp_search_ckpt_path = os.path.join(checkpoint_dir,
+                                            ".tmp_searcher_ckpt")
+        success = True
+        try:
+            self.save(tmp_search_ckpt_path)
+        except NotImplementedError:
+            if log_once("suggest:save_to_dir"):
+                logger.warning(
+                    "save not implemented for Searcher. Skipping save.")
+            success = False
+
+        if success and os.path.exists(tmp_search_ckpt_path):
+            os.rename(
+                tmp_search_ckpt_path,
+                os.path.join(checkpoint_dir,
+                             self.CKPT_FILE_TMPL.format(session_str)))
+
+    def restore_from_dir(self, checkpoint_dir):
+        """Restores the state of a searcher from a given checkpoint_dir.
+
+        Typically, you should use this function to restore from an
+        experiment directory such as `~/ray_results/trainable`.
+
+        .. code-block:: python
+
+            experiment_1 = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                verbose=0,
+                name=self.experiment_name,
+                local_dir="~/my_results")
+
+            search_alg2 = Searcher()
+            search_alg2.restore_from_dir(
+                os.path.join("~/my_results", self.experiment_name)
+        """
+
+        pattern = self.CKPT_FILE_TMPL.format("*")
+        full_paths = glob.glob(os.path.join(checkpoint_dir, pattern))
+        if not full_paths:
+            raise RuntimeError(
+                "Searcher unable to find checkpoint in {}".format(
+                    checkpoint_dir))  # TODO
+        most_recent_checkpoint = max(full_paths)
+        self.restore(most_recent_checkpoint)
 
     @property
     def metric(self):
@@ -175,7 +276,13 @@ class ConcurrencyLimiter(Searcher):
             metric=self.searcher.metric, mode=self.searcher.mode)
 
     def suggest(self, trial_id):
+        assert trial_id not in self.live_trials, (
+            f"Trial ID {trial_id} must be unique: already found in set.")
         if len(self.live_trials) >= self.max_concurrent:
+            logger.debug(
+                f"Not providing a suggestion for {trial_id} due to "
+                "concurrency limit: %s/%s.", len(self.live_trials),
+                self.max_concurrent)
             return
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
@@ -190,153 +297,10 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
 
-    def save(self, checkpoint_dir):
-        self.searcher.save(checkpoint_dir)
+    def get_state(self):
+        state = self.__dict__.copy()
+        del state["searcher"]
+        return copy.deepcopy(state)
 
-    def restore(self, checkpoint_dir):
-        self.searcher.restore(checkpoint_dir)
-
-
-class SearchGenerator(SearchAlgorithm):
-    """Generates trials to be passed to the TrialRunner.
-
-    Uses the provided ``searcher`` object to generate trials. This class
-    transparently handles repeating trials with score aggregation
-    without embedding logic into the Searcher.
-
-    Args:
-        searcher: Search object that subclasses the Searcher base class. This
-            is then used for generating new hyperparameter samples.
-    """
-
-    def __init__(self, searcher):
-        assert issubclass(
-            type(searcher),
-            Searcher), ("Searcher should be subclassing Searcher.")
-        self.searcher = searcher
-        self._parser = make_parser()
-        self._experiment = None
-        self._counter = 0  # Keeps track of number of trials created.
-        self._total_samples = 0  # int: total samples to evaluate.
-        self._finished = False
-
-    def add_configurations(self, experiments):
-        """Registers experiment specifications.
-
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
-        """
-        logger.debug("added configurations")
-        experiment_list = convert_to_experiment_list(experiments)
-        assert len(experiment_list) == 1, (
-            "SearchAlgorithms can only support 1 experiment at a time.")
-        self._experiment = experiment_list[0]
-        experiment_spec = self._experiment.spec
-        self._total_samples = experiment_spec.get("num_samples", 1)
-
-        _warn_on_repeater(self.searcher, self._total_samples)
-
-        if "run" not in experiment_spec:
-            raise TuneError("Must specify `run` in {}".format(experiment_spec))
-
-    def next_trials(self):
-        """Provides a batch of Trial objects to be queued into the TrialRunner.
-
-        Returns:
-            List[Trial]: A list of trials for the Runner to consume.
-        """
-        trials = []
-        while not self.is_finished():
-            trial = self.create_trial_if_possible(self._experiment.spec,
-                                                  self._experiment.name)
-            if trial is None:
-                break
-            trials.append(trial)
-        return trials
-
-    def create_trial_if_possible(self, experiment_spec, output_path):
-        logger.debug("creating trial")
-        trial_id = Trial.generate_id()
-        suggested_config = self.searcher.suggest(trial_id)
-        if suggested_config == Searcher.FINISHED:
-            self._finished = True
-            logger.debug("Searcher has finished.")
-            return
-
-        if suggested_config is None:
-            return
-        spec = copy.deepcopy(experiment_spec)
-        spec["config"] = merge_dicts(spec["config"],
-                                     copy.deepcopy(suggested_config))
-
-        # Create a new trial_id if duplicate trial is created
-        flattened_config = resolve_nested_dict(spec["config"])
-        self._counter += 1
-        tag = "{0}_{1}".format(
-            str(self._counter), format_vars(flattened_config))
-        trial = create_trial_from_spec(
-            spec,
-            output_path,
-            self._parser,
-            evaluated_params=flatten_dict(suggested_config),
-            experiment_tag=tag,
-            trial_id=trial_id)
-        return trial
-
-    def on_trial_result(self, trial_id, result):
-        """Notifies the underlying searcher."""
-        self.searcher.on_trial_result(trial_id, result)
-
-    def on_trial_complete(self, trial_id, result=None, error=False):
-        self.searcher.on_trial_complete(
-            trial_id=trial_id, result=result, error=error)
-
-    def is_finished(self):
-        return self._counter >= self._total_samples or self._finished
-
-
-class _MockSearcher(Searcher):
-    def __init__(self, **kwargs):
-        self.live_trials = {}
-        self.counter = {"result": 0, "complete": 0}
-        self.final_results = []
-        self.stall = False
-        self.results = []
-        super(_MockSearcher, self).__init__(**kwargs)
-
-    def suggest(self, trial_id):
-        if not self.stall:
-            self.live_trials[trial_id] = 1
-            return {"test_variable": 2}
-        return None
-
-    def on_trial_result(self, trial_id, result):
-        self.counter["result"] += 1
-        self.results += [result]
-
-    def on_trial_complete(self, trial_id, result=None, error=False):
-        self.counter["complete"] += 1
-        if result:
-            self._process_result(result)
-        if trial_id in self.live_trials:
-            del self.live_trials[trial_id]
-
-    def _process_result(self, result):
-        self.final_results += [result]
-
-
-class _MockSuggestionAlgorithm(SearchGenerator):
-    def __init__(self, max_concurrent=None, **kwargs):
-        self.searcher = _MockSearcher(**kwargs)
-        if max_concurrent:
-            self.searcher = ConcurrencyLimiter(
-                self.searcher, max_concurrent=max_concurrent)
-        super(_MockSuggestionAlgorithm, self).__init__(self.searcher)
-
-    @property
-    def live_trials(self):
-        return self.searcher.live_trials
-
-    @property
-    def results(self):
-        return self.searcher.results
+    def set_state(self, state):
+        self.__dict__.update(state)

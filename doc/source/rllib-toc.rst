@@ -156,7 +156,7 @@ Concepts and Custom Algorithms
    -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Execution Plans <rllib-concepts.html#execution-plans>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples
@@ -194,8 +194,6 @@ If you encounter errors like
 `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
-
-If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
 
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, ``ray timeline`` to dump

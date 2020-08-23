@@ -15,6 +15,9 @@
 #pragma once
 
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -27,6 +30,8 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
@@ -35,6 +40,7 @@
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
@@ -88,7 +94,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id) = 0;
+  virtual ray::Status Pull(const ObjectID &object_id,
+                           const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
@@ -133,11 +140,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const ClientID &client_id, uint64_t data_size,
                               uint64_t metadata_size, uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
@@ -146,13 +155,15 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param client_id Client id of remote object manager which sends this chunk
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
   ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
-                                 uint64_t data_size, uint64_t metadata_size,
-                                 uint64_t chunk_index, const std::string &data);
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index,
+                                 const std::string &data);
 
   /// Send pull request
   ///
@@ -216,7 +227,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id) override;
+  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -250,8 +261,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                   uint64_t num_required_objects, bool wait_local,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids,
+                   const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+                   int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
   /// Free a list of objects from object store.
@@ -303,6 +315,8 @@ class ObjectManager : public ObjectManagerInterface,
     WaitCallback callback;
     /// Ordered input object_ids.
     std::vector<ObjectID> object_id_order;
+    /// Objects' owners.
+    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found. Note that if wait_local is true, then
@@ -315,10 +329,11 @@ class ObjectManager : public ObjectManagerInterface,
   };
 
   /// Creates a wait request and adds it to active_wait_requests_.
-  ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                             uint64_t num_required_objects, bool wait_local,
-                             const WaitCallback &callback);
+  ray::Status AddWaitRequest(
+      const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
+      const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+      int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
+      const WaitCallback &callback);
 
   /// Lookup any remaining objects that are not local. This is invoked after
   /// the wait request is created and local objects are identified.

@@ -73,6 +73,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// the pool.
   ///
   /// \param num_workers The number of workers to start, per language.
+  /// \param num_initial_python_workers_for_first_job The number of initial Python
+  /// workers for the first job.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
@@ -86,6 +88,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
+             int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
@@ -95,24 +98,42 @@ class WorkerPool : public WorkerPoolInterface {
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
 
+  /// Handles the event that a job is started.
+  ///
+  /// \param job_id ID of the started job.
+  /// \param job_config The config of the started job.
+  /// \return Void
+  void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config);
+
+  /// Handles the event that a job is finished.
+  ///
+  /// \param job_id ID of the finished job.
+  /// \return Void.
+  void HandleJobFinished(const JobID &job_id);
+
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
-  /// \param[out] port The port that this worker's gRPC server should listen on.
+  /// \param[in] send_reply_callback The callback to invoke after registration is
+  /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        int *port);
+                        std::function<void(int)> send_reply_callback);
 
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
-  /// \param[out] port The port that this driver's gRPC server should listen on.
-  /// Returns 0 if the driver should bind on a random port.
+  /// \param[in] job_id The job ID of the driver.
+  /// \param[in] job_config The config of the job.
+  /// \param[in] send_reply_callback The callback to invoke after registration is
+  /// finished/failed.
   /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker, int *port);
+  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                        const JobID &job_id, const rpc::JobConfig &job_config,
+                        std::function<void(int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
   ///
@@ -140,6 +161,19 @@ class WorkerPool : public WorkerPoolInterface {
   ///
   /// \param The driver to disconnect. The driver must be registered.
   void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver);
+
+  /// Add an idle I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  /// Pop an idle I/O worker from the pool and trigger a callback when
+  /// an I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available I/O worker.
+  void PopIOWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///
@@ -208,19 +242,25 @@ class WorkerPool : public WorkerPoolInterface {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
+  /// \param worker_type The type of the worker.
+  /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language,
-                             const std::vector<std::string> &dynamic_options = {});
+  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
+                             const JobID &job_id,
+                             std::vector<std::string> dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
   /// unless the caller manually detaches the process after the call.
   ///
   /// \param worker_command_args The command arguments of new worker process.
+  /// \param[in] env Additional environment variables to be set on this process besides
+  /// the environment variables of the parent process.
   /// \return An object representing the started worker process.
-  virtual Process StartProcess(const std::vector<std::string> &worker_command_args);
+  virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
+                               const std::map<std::string, std::string> &env);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -238,6 +278,15 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
+    /// The pool of idle I/O workers.
+    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    /// The queue of pending I/O tasks.
+    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
+    /// All I/O workers that have registered and are still connected, including both
+    /// idle and executing.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    /// Number of starting I/O workers.
+    int num_starting_io_workers = 0;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
@@ -251,6 +300,8 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    /// A map for looking up the owner JobId by the pid of worker.
+    std::unordered_map<pid_t, JobID> worker_pids_to_assigned_jobs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -279,7 +330,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `starting_worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc, const Language &language);
+  void MonitorStartingWorkerProcess(const Process &proc, const Language &language,
+                                    const rpc::WorkerType worker_type);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't
   /// configured, returns 0.
@@ -292,6 +344,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// Mark this port as free to be used by another worker.
   /// \param[in] port The port to mark as free.
   void MarkPortAsFree(int port);
+
+  /// Try start all I/O workers waiting to be started.
+  /// \param language The language of the I/O worker. Currently only Python I/O
+  /// workers are effective.
+  /// \param state The state including the number of I/O workers waiting to be
+  /// started.
+  void TryStartIOWorkers(const Language &language, State &state);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
@@ -307,6 +366,25 @@ class WorkerPool : public WorkerPoolInterface {
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
+
+  /// The Job ID of the firstly received job.
+  JobID first_job_;
+
+  /// The callback to send RegisterClientReply to the driver of the first job.
+  std::function<void()> first_job_send_register_client_reply_to_driver_;
+
+  /// The number of registered workers of the first job.
+  int first_job_registered_python_worker_count_;
+
+  /// The umber of initial Python workers to wait for the first job before the driver
+  /// receives RegisterClientReply.
+  int first_job_driver_wait_num_python_workers_;
+
+  /// The number of initial Python workers for the first job.
+  int num_initial_python_workers_for_first_job_;
+
+  /// This map tracks the latest infos of unfinished jobs.
+  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
 };
 
 }  // namespace raylet

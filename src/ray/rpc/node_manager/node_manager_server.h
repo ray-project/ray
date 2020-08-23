@@ -28,13 +28,13 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)            \
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
-  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -76,10 +76,6 @@ class NodeManagerServiceHandler {
       rpc::CancelResourceReserveReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleForwardTask(const ForwardTaskRequest &request,
-                                 ForwardTaskReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
                                   PinObjectIDsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -94,6 +90,10 @@ class NodeManagerServiceHandler {
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestObjectSpillage(const RequestObjectSpillageRequest &request,
+                                           RequestObjectSpillageReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

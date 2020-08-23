@@ -155,6 +155,7 @@ test_python() {
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_projects
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
+      -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_webui
@@ -166,14 +167,14 @@ test_python() {
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    bazel test -k --config=ci --test_timeout=600 --build_tests_only \
+    bazel test --config=ci --build_tests_only \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
       "${args[@]}";
   fi
 }
 
 test_cpp() {
-  bazel test --config=ci //cpp:all --build_tests_only --test_output=streamed
+  bazel test --config=ci //cpp:all --build_tests_only
 }
 
 test_wheels() {
@@ -256,7 +257,7 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build -k "${target}"
+  bazel build "${target}"
 }
 
 install_ray() {
@@ -281,12 +282,13 @@ build_wheels() {
         -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}"
         -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}"
         -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}"
+        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}"
+        -e CI="${CI}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
       suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" \
         rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
       ;;
     darwin*)
@@ -310,13 +312,8 @@ lint_readme() {
   fi
 }
 
-lint_python() {
-  # ignore dict vs {} (C408), others are defaults
-  command -V python
-  python -m flake8 --inline-quotes '"' --no-avoid-escape \
-    --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files \
-    --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-  "${ROOT_DIR}"/format.sh --all
+lint_scripts() {
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all
 }
 
 lint_bazel() {
@@ -361,8 +358,8 @@ _lint() {
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
-  # Run Python linting
-  lint_python
+  # Run script linting
+  lint_scripts
 
   # Make sure that the README is formatted properly.
   lint_readme

@@ -1,46 +1,19 @@
 from ray.core.generated.gcs_pb2 import (
-    ActorCheckpointIdData,
-    ActorTableData,
-    GcsNodeInfo,
-    JobTableData,
-    ErrorTableData,
-    ErrorType,
-    GcsEntry,
-    HeartbeatBatchTableData,
-    HeartbeatTableData,
-    ObjectTableData,
-    ProfileTableData,
-    TablePrefix,
-    TablePubsub,
-    TaskTableData,
-    ResourceMap,
-    ResourceTableData,
-    ObjectLocationInfo,
-    PubSubMessage,
-    WorkerTableData,
-)
+    ActorCheckpointIdData, ActorTableData, GcsNodeInfo, JobTableData,
+    JobConfig, ErrorTableData, ErrorType, GcsEntry, HeartbeatBatchTableData,
+    HeartbeatTableData, ObjectTableData, ProfileTableData, TablePrefix,
+    TablePubsub, TaskTableData, ResourceMap, ResourceTableData,
+    ObjectLocationInfo, PubSubMessage, WorkerTableData,
+    PlacementGroupTableData)
 
 __all__ = [
-    "ActorCheckpointIdData",
-    "ActorTableData",
-    "GcsNodeInfo",
-    "JobTableData",
-    "ErrorTableData",
-    "ErrorType",
-    "GcsEntry",
-    "HeartbeatBatchTableData",
-    "HeartbeatTableData",
-    "ObjectTableData",
-    "ProfileTableData",
-    "TablePrefix",
-    "TablePubsub",
-    "TaskTableData",
-    "ResourceMap",
-    "ResourceTableData",
-    "construct_error_message",
-    "ObjectLocationInfo",
-    "PubSubMessage",
-    "WorkerTableData",
+    "ActorCheckpointIdData", "ActorTableData", "GcsNodeInfo", "JobTableData",
+    "JobConfig", "ErrorTableData", "ErrorType", "GcsEntry",
+    "HeartbeatBatchTableData", "HeartbeatTableData", "ObjectTableData",
+    "ProfileTableData", "TablePrefix", "TablePubsub", "TaskTableData",
+    "ResourceMap", "ResourceTableData", "construct_error_message",
+    "ObjectLocationInfo", "PubSubMessage", "WorkerTableData",
+    "PlacementGroupTableData"
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
@@ -60,13 +33,14 @@ RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
 # Reporter pub/sub updates
 RAY_REPORTER_PUBSUB_PATTERN = "RAY_REPORTER.*".encode("ascii")
 
+RAY_ERROR_PUBSUB_PATTERN = "ERROR_INFO:*".encode("ascii")
+
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.
 # TODO(rkn): We should use scoped enums, in which case we should be able to
 # just access the flatbuffer generated values.
 TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
-TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 TablePrefix_JOB_string = "JOB"
 TablePrefix_ACTOR_string = "ACTOR"

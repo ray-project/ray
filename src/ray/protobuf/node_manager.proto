@@ -89,17 +89,6 @@ message CancelWorkerLeaseReply {
   bool success = 1;
 }
 
-message ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  bytes task_id = 1;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  repeated Task uncommitted_tasks = 2;
-}
-
-message ForwardTaskReply {
-}
-
 message PinObjectIDsRequest {
   // Address of the owner to ask when to unpin the objects.
   Address owner_address = 1;
@@ -150,6 +139,16 @@ message FormatGlobalMemoryInfoReply {
   string memory_summary = 1;
 }
 
+message RequestObjectSpillageRequest {
+  // ObjectID to spill.
+  bytes object_id = 1;
+}
+
+message RequestObjectSpillageReply {
+  // Whether the object spilling was successful or not.
+  bool success = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -171,8 +170,6 @@ service NodeManagerService {
   // Cancel a pending lease request. This only returns success if the
   // lease request was not yet granted.
   rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
-  // Forward a task and its uncommitted lineage to the remote node manager.
-  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Pin the provided object IDs.
   rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
   // Get the current node stats.
@@ -182,4 +179,7 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
+  // Ask the raylet to spill an object to external storage.
+  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
+      returns (RequestObjectSpillageReply);
 }

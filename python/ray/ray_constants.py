@@ -37,6 +37,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 DEFAULT_PORT = 6379
 
 DEFAULT_DASHBOARD_PORT = 8265
+PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -127,6 +128,11 @@ DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
+# Used in gpu detection
+RESOURCE_CONSTRAINT_PREFIX = "GPUType:"
+
+RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
 AUTOSCALER_MAX_NUM_FAILURES = env_integer("AUTOSCALER_MAX_NUM_FAILURES", 5)
@@ -158,7 +164,7 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
-LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
+LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"

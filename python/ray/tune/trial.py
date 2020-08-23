@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import ray.cloudpickle as cloudpickle
 from collections import deque
 import copy
@@ -175,6 +177,7 @@ class Trial:
                  restore_path=None,
                  trial_name_creator=None,
                  loggers=None,
+                 log_to_file=None,
                  sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -208,6 +211,13 @@ class Trial:
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
+
+        self.log_to_file = log_to_file
+        # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
+        if not self.log_to_file or not isinstance(self.log_to_file, Sequence) \
+           or not len(self.log_to_file) == 2:
+            self.log_to_file = (None, None)
+
         self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
@@ -233,6 +243,7 @@ class Trial:
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
+        self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
 
         # Checkpointing fields
@@ -243,6 +254,8 @@ class Trial:
             self.remote_checkpoint_dir_prefix = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
@@ -308,6 +321,31 @@ class Trial:
         return tempfile.mkdtemp(
             prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
+
+    def reset(self):
+        return Trial(
+            self.trainable_name,
+            config=self.config,
+            trial_id=None,
+            local_dir=self.local_dir,
+            evaluated_params=self.evaluated_params,
+            experiment_tag=self.experiment_tag,
+            resources=self.resources,
+            stopping_criterion=self.stopping_criterion,
+            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            checkpoint_freq=self.checkpoint_freq,
+            checkpoint_at_end=self.checkpoint_at_end,
+            sync_on_checkpoint=self.sync_on_checkpoint,
+            keep_checkpoints_num=self.keep_checkpoints_num,
+            checkpoint_score_attr=self.checkpoint_score_attr,
+            export_formats=self.export_formats,
+            restore_path=self.restore_path,
+            trial_name_creator=self.trial_name_creator,
+            loggers=self.loggers,
+            log_to_file=self.log_to_file,
+            sync_to_driver_fn=self.sync_to_driver_fn,
+            max_failures=self.max_failures,
+        )
 
     def init_logger(self):
         """Init logger."""
@@ -569,6 +607,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
+        state["location"] = Location()
         state["result_logger"] = None
         # Avoid waiting for events that will never occur on resume.
         state["resuming_from"] = None

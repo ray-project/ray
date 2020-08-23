@@ -1,10 +1,9 @@
+#include <gflags/gflags.h>
 #include <signal.h>
 
 #include <chrono>
 #include <iostream>
 #include <thread>
-
-#include <gflags/gflags.h>
 
 #include "ray/object_manager/plasma/store_runner.h"
 
