@@ -15,7 +15,6 @@ from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_nodes_for
-from ray.autoscaler.util import prepare_config
 
 from time import sleep
 

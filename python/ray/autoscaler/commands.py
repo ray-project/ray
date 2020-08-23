@@ -456,7 +456,6 @@ def warn_about_bad_start_command(start_commands):
 
 
 def _get_head_commands(config, commands_key):
-    print("Getting head node cmd:", commands_key)
     commands = config[commands_key]
     node_type = config.get("head_node_type")
     if node_type:
@@ -464,9 +463,7 @@ def _get_head_commands(config, commands_key):
         assert node_type in config["available_node_types"], "Unknown node type tag: {}.".format(node_type)
         node_specific_config = config["available_node_types"][node_type]
         if commands_key in node_specific_config:
-            print("Found more specific version")
             commands = node_specific_config[commands_key]
-    print("Value was:", commands)
     return commands
 
 
