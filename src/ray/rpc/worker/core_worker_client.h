@@ -104,16 +104,6 @@ class CoreWorkerClientInterface {
     return empty_addr_;
   }
 
-  /// This is called by the Raylet to assign a task to the worker.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
-  virtual ray::Status AssignTask(const AssignTaskRequest &request,
-                                 const ClientCallback<AssignTaskReply> &callback) {
-    return Status::NotImplemented("");
-  }
-
   /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
@@ -121,89 +111,79 @@ class CoreWorkerClientInterface {
   /// task for execution immediately.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
-                                    bool skip_queue,
-                                    const ClientCallback<PushTaskReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
+                             const ClientCallback<PushTaskReply> &callback) {}
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
-  virtual ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                                     const ClientCallback<PushTaskReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+                              const ClientCallback<PushTaskReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual ray::Status DirectActorCallArgWaitComplete(
+  virtual void DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {}
 
   /// Ask the owner of an object about the object's current status.
-  virtual ray::Status GetObjectStatus(
-      const GetObjectStatusRequest &request,
-      const ClientCallback<GetObjectStatusReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void GetObjectStatus(const GetObjectStatusRequest &request,
+                               const ClientCallback<GetObjectStatusReply> &callback) {}
 
   /// Ask the actor's owner to reply when the actor has gone out of scope.
-  virtual ray::Status WaitForActorOutOfScope(
+  virtual void WaitForActorOutOfScope(
       const WaitForActorOutOfScopeRequest &request,
-      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
 
   /// Notify the owner of an object that the object has been pinned.
-  virtual ray::Status WaitForObjectEviction(
+  virtual void WaitForObjectEviction(
       const WaitForObjectEvictionRequest &request,
-      const ClientCallback<WaitForObjectEvictionReply> &callback) {
-    return Status::NotImplemented("");
-  }
+      const ClientCallback<WaitForObjectEvictionReply> &callback) {}
+
+  virtual void AddObjectLocationOwner(
+      const AddObjectLocationOwnerRequest &request,
+      const ClientCallback<AddObjectLocationOwnerReply> &callback) {}
+
+  virtual void RemoveObjectLocationOwner(
+      const RemoveObjectLocationOwnerRequest &request,
+      const ClientCallback<RemoveObjectLocationOwnerReply> &callback) {}
+
+  virtual void GetObjectLocationsOwner(
+      const GetObjectLocationsOwnerRequest &request,
+      const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
   /// Tell this actor to exit immediately.
-  virtual ray::Status KillActor(const KillActorRequest &request,
-                                const ClientCallback<KillActorReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void KillActor(const KillActorRequest &request,
+                         const ClientCallback<KillActorReply> &callback) {}
 
-  virtual ray::Status CancelTask(const CancelTaskRequest &request,
-                                 const ClientCallback<CancelTaskReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void CancelTask(const CancelTaskRequest &request,
+                          const ClientCallback<CancelTaskReply> &callback) {}
 
-  virtual ray::Status RemoteCancelTask(
-      const RemoteCancelTaskRequest &request,
-      const ClientCallback<RemoteCancelTaskReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void RemoteCancelTask(const RemoteCancelTaskRequest &request,
+                                const ClientCallback<RemoteCancelTaskReply> &callback) {}
 
-  virtual ray::Status GetCoreWorkerStats(
+  virtual void GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
-      const ClientCallback<GetCoreWorkerStatsReply> &callback) {
-    return Status::NotImplemented("");
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) {}
+
+  virtual void LocalGC(const LocalGCRequest &request,
+                       const ClientCallback<LocalGCReply> &callback) {}
+
+  virtual void WaitForRefRemoved(const WaitForRefRemovedRequest &request,
+                                 const ClientCallback<WaitForRefRemovedReply> &callback) {
   }
 
-  virtual ray::Status LocalGC(const LocalGCRequest &request,
-                              const ClientCallback<LocalGCReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void SpillObjects(const SpillObjectsRequest &request,
+                            const ClientCallback<SpillObjectsReply> &callback) {}
 
-  virtual ray::Status WaitForRefRemoved(
-      const WaitForRefRemovedRequest &request,
-      const ClientCallback<WaitForRefRemovedReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual void RestoreSpilledObjects(
+      const RestoreSpilledObjectsRequest &request,
+      const ClientCallback<RestoreSpilledObjectsReply> &callback) {}
 
-  virtual ray::Status PlasmaObjectReady(
-      const PlasmaObjectReadyRequest &request,
-      const ClientCallback<PlasmaObjectReadyReply> &callback) {
-    return Status::NotImplemented("");
+  virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
+                                 const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
 
   virtual ~CoreWorkerClientInterface(){};
@@ -227,40 +207,52 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   const rpc::Address &Addr() const override { return addr_; }
 
-  RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, grpc_client_,
+                         override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, grpc_client_,
-                    override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, CancelTask, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, RemoteCancelTask, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_,
+                         override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, WaitForActorOutOfScope, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddObjectLocationOwner, grpc_client_,
+                         override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RemoveObjectLocationOwner, grpc_client_,
+                         override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetObjectLocationsOwner, grpc_client_,
+                         override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, LocalGC, grpc_client_, override)
 
-  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
-                            const ClientCallback<PushTaskReply> &callback) override {
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, SpillObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RestoreSpilledObjects, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
+
+  void PushActorTask(std::unique_ptr<PushTaskRequest> request, bool skip_queue,
+                     const ClientCallback<PushTaskReply> &callback) override {
     if (skip_queue) {
       // Set this value so that the actor does not skip any tasks when
       // processing this request. We could also set it to max_finished_seq_no_,
       // but we just set it to the default of -1 to avoid taking the lock.
       request->set_client_processed_up_to(-1);
-      return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback,
-                             grpc_client_);
+      INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
+      return;
     }
 
     {
@@ -268,14 +260,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
-    return ray::Status::OK();
   }
 
-  ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                             const ClientCallback<PushTaskReply> &callback) override {
+  void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+                      const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
-    return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
+    INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.

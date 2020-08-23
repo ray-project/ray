@@ -1,11 +1,13 @@
 
+#include "local_mode_task_submitter.h"
+
+#include <ray/api/ray_exception.h>
+
 #include <boost/asio/post.hpp>
 #include <memory>
 
-#include <ray/api/ray_exception.h>
 #include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
-#include "local_mode_task_submitter.h"
 
 namespace ray {
 namespace api {
@@ -32,7 +34,8 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
                             local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
-                            required_resources, required_placement_resources);
+                            required_resources, required_placement_resources,
+                            PlacementGroupID::Nil());
   if (type == TaskType::NORMAL_TASK) {
   } else if (type == TaskType::ACTOR_CREATION_TASK) {
     builder.SetActorCreationTaskSpec(invocation.actor_id);

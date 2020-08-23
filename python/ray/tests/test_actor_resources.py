@@ -83,6 +83,7 @@ def test_actor_class_methods(ray_start_regular):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -95,10 +96,10 @@ def test_actor_gpus(ray_start_cluster):
     @ray.remote(num_gpus=1)
     class Actor1:
         def __init__(self):
-            self.gpu_ids = ray.get_gpu_ids()
+            self.gpu_ids = ray.get_gpu_ids(as_str=True)
 
         def get_location_and_ids(self):
-            assert ray.get_gpu_ids() == self.gpu_ids
+            assert ray.get_gpu_ids(as_str=True) == self.gpu_ids
             return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 

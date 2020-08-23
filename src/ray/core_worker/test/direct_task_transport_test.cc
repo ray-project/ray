@@ -31,11 +31,9 @@ int64_t kLongTimeout = 1024 * 1024 * 1024;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status PushNormalTask(
-      std::unique_ptr<rpc::PushTaskRequest> request,
-      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+  void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
+                      const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
   bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
@@ -52,11 +50,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  ray::Status CancelTask(
-      const rpc::CancelTaskRequest &request,
-      const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
+  void CancelTask(const rpc::CancelTaskRequest &request,
+                  const rpc::ClientCallback<rpc::CancelTaskReply> &callback) override {
     kill_requests.push_front(request);
-    return Status::OK();
   }
 
   std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
@@ -104,26 +100,22 @@ class MockRayletClient : public WorkerLeaseInterface {
     return Status::OK();
   }
 
-  ray::Status RequestWorkerLease(
+  void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
-    return Status::OK();
   }
 
-  ray::Status ReleaseUnusedWorkers(
+  void ReleaseUnusedWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
-    return Status::NotImplemented("ReleaseUnusedWorkers is not supported.");
-  }
+      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {}
 
-  ray::Status CancelWorkerLease(
+  void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
-    return Status::OK();
   }
 
   // Trigger reply to RequestWorkerLease.
@@ -172,6 +164,22 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_leases_canceled = 0;
   std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
   std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+};
+
+class MockActorCreator : public ActorCreatorInterface {
+ public:
+  MockActorCreator() {}
+
+  Status RegisterActor(const TaskSpecification &task_spec) override {
+    return Status::OK();
+  };
+
+  Status AsyncCreateActor(const TaskSpecification &task_spec,
+                          const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
+  ~MockActorCreator() {}
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
@@ -318,7 +326,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   rpc::Address empty_address;
   builder.SetCommonTaskSpec(TaskID::Nil(), Language::PYTHON, function_descriptor,
                             JobID::Nil(), TaskID::Nil(), 0, TaskID::Nil(), empty_address,
-                            1, resources, resources);
+                            1, resources, resources, PlacementGroupID::Nil());
   return builder.Build();
 }
 
@@ -327,10 +335,13 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
 
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
@@ -361,10 +372,13 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -388,10 +402,13 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -436,10 +453,13 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -491,10 +511,13 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -544,10 +567,13 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -594,10 +620,13 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -635,10 +664,13 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -666,7 +698,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
 
   std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
@@ -677,9 +710,10 @@ TEST(DirectTaskTransportTest, TestSpillback) {
     return client;
   };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory,
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool,
                                           lease_client_factory, store, task_finisher,
-                                          ClientID::Nil(), kLongTimeout);
+                                          ClientID::Nil(), kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -722,7 +756,8 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
 
   std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const std::string &ip, int port) {
@@ -734,9 +769,10 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto local_raylet_id = ClientID::FromRandom();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory,
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool,
                                           lease_client_factory, store, task_finisher,
-                                          local_raylet_id, kLongTimeout);
+                                          local_raylet_id, kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -787,10 +823,13 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -897,11 +936,13 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(),
-                                          /*lease_timeout_ms=*/5);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          /*lease_timeout_ms=*/5, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -949,10 +990,14 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -994,10 +1039,13 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -1020,10 +1068,13 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
+                                          store, task_finisher, ClientID::Nil(),
+                                          kLongTimeout, actor_creator);
   std::unordered_map<std::string, double> empty_resources;
   ray::FunctionDescriptor empty_descriptor =
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
@@ -1048,16 +1099,18 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
 
   // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
   // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
   // parameter to the CoreWorkerDirectTaskSubmitter.
   uint32_t max_tasks_in_flight_per_worker = 10;
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout,
-                                          max_tasks_in_flight_per_worker);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, store, task_finisher, ClientID::Nil(),
+      kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // Prepare 20 tasks and save them in a vector.
   std::unordered_map<std::string, double> empty_resources;
@@ -1116,16 +1169,18 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::Address &addr) { return worker_client; };
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
 
   // Set max_tasks_in_flight_per_worker to a value larger than 1 to enable the pipelining
   // of task submissions. This is done by passing a max_tasks_in_flight_per_worker
   // parameter to the CoreWorkerDirectTaskSubmitter.
   uint32_t max_tasks_in_flight_per_worker = 10;
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
-                                          task_finisher, ClientID::Nil(), kLongTimeout,
-                                          max_tasks_in_flight_per_worker);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, store, task_finisher, ClientID::Nil(),
+      kLongTimeout, actor_creator, max_tasks_in_flight_per_worker);
 
   // prepare 30 tasks and save them in a vector
   std::unordered_map<std::string, double> empty_resources;

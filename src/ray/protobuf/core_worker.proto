@@ -55,24 +55,6 @@ message ActorHandle {
   int64 max_task_retries = 9;
 }
 
-message AssignTaskRequest {
-  // The ID of the worker this message is intended for. This is used to
-  // ensure that workers don't try to execute tasks assigned to workers
-  // that used to be bound to the same port.
-  bytes intended_worker_id = 1;
-
-  // The task to be pushed.
-  Task task = 2;
-
-  // A list of the resources reserved for this worker.
-  // TODO(zhijunfu): `resource_ids` is represented as
-  // flatbutters-serialized bytes, will be moved to protobuf later.
-  bytes resource_ids = 3;
-}
-
-message AssignTaskReply {
-}
-
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
@@ -177,6 +159,33 @@ message WaitForObjectEvictionRequest {
 }
 
 message WaitForObjectEvictionReply {
+}
+
+message AddObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message AddObjectLocationOwnerReply {
+}
+
+message RemoveObjectLocationOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+  bytes client_id = 3;
+}
+
+message RemoveObjectLocationOwnerReply {
+}
+
+message GetObjectLocationsOwnerRequest {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+message GetObjectLocationsOwnerReply {
+  repeated bytes client_ids = 1;
 }
 
 message KillActorRequest {
@@ -285,9 +294,25 @@ message PlasmaObjectReadyRequest {
 message PlasmaObjectReadyReply {
 }
 
+message SpillObjectsRequest {
+  // The IDs of objects to be spilled.
+  repeated bytes object_ids_to_spill = 1;
+}
+
+message SpillObjectsReply {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message RestoreSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message RestoreSpilledObjectsReply {
+}
+
 service CoreWorkerService {
-  // Push a task to a worker from the raylet.
-  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Reply from raylet that wait for direct actor call args has completed.
@@ -304,6 +329,15 @@ service CoreWorkerService {
   // to this message indicates that the raylet should unpin the object.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
       returns (WaitForObjectEvictionReply);
+  // Add object location to the ownership-based object directory.
+  rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
+      returns (AddObjectLocationOwnerReply);
+  // Remove object location from the ownership-based object directory.
+  rpc RemoveObjectLocationOwner(RemoveObjectLocationOwnerRequest)
+      returns (RemoveObjectLocationOwnerReply);
+  // Get object locations from the ownership-based object directory.
+  rpc GetObjectLocationsOwner(GetObjectLocationsOwnerRequest)
+      returns (GetObjectLocationsOwnerReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
@@ -316,6 +350,11 @@ service CoreWorkerService {
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
   // Trigger local GC on the worker.
   rpc LocalGC(LocalGCRequest) returns (LocalGCReply);
+  // Spill objects to external storage. Caller: raylet; callee: I/O worker.
+  rpc SpillObjects(SpillObjectsRequest) returns (SpillObjectsReply);
+  // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
+      returns (RestoreSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
 }

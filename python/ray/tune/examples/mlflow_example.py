@@ -41,7 +41,9 @@ if __name__ == "__main__":
         num_samples=5,
         loggers=DEFAULT_LOGGERS + (MLFLowLogger, ),
         config={
-            "mlflow_experiment_id": experiment_id,
+            "logger_config": {
+                "mlflow_experiment_id": experiment_id,
+            },
             "width": tune.sample_from(
                 lambda spec: 10 + int(90 * random.random())),
             "height": tune.sample_from(lambda spec: int(100 * random.random()))

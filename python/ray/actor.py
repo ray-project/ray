@@ -8,8 +8,11 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
+
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -331,7 +334,7 @@ class ActorClass:
         class DerivedActorClass(cls, modified_class):
             pass
 
-        name = "ActorClass({})".format(modified_class.__name__)
+        name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
@@ -411,7 +414,9 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False):
+                detached=False,
+                placement_group=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,6 +441,11 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -446,7 +456,6 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is not None and not is_direct_call:
             raise ValueError("Non-direct call actors are no longer supported.")
-
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(
@@ -474,8 +483,8 @@ class ActorClass:
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError("name must be None or a string, "
-                                "got: '{}'.".format(type(name)))
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -497,6 +506,12 @@ class ActorClass:
             detached = True
         else:
             detached = False
+
+        if placement_group is None:
+            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -568,6 +583,8 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
+            placement_group.id,
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 
@@ -581,9 +598,6 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
-
-        if name is not None and not gcs_actor_service_enabled():
-            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -738,9 +752,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        "Actor method {} is not supported by cross language."
-                        .format(item))
+                    logger.warning(f"Actor method {item} is not "
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 

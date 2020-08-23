@@ -26,10 +26,8 @@ public class SingleProcessModeTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(groups = {"singleProcess"})
   public void testActorTasksInOneThread() {
-    TestUtils.skipTestUnderClusterMode();
-
     List<ActorHandle<MyActor>> actors = new ArrayList<>();
     Map<ActorId, Long> actorThreadIds = new HashMap<>();
     for (int i = 0; i < NUM_ACTOR_INSTANCE; ++i) {

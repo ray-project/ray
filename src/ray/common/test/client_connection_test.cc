@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/common/client_connection.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <list>
@@ -19,13 +21,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#if !defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-#include <sys/socket.h>
-#include <sys/types.h>
-#endif
-
-#include "ray/common/client_connection.h"
 
 namespace ray {
 namespace raylet {
@@ -40,11 +35,12 @@ class ClientConnectionTest : public ::testing::Test {
     in_ = std::move(input);
     out_ = std::move(output);
 #else
-    boost::asio::detail::socket_type pair[2] = {boost::asio::detail::invalid_socket,
-                                                boost::asio::detail::invalid_socket};
-    RAY_CHECK(socketpair(boost::asio::ip::tcp::v4().family(), SOCK_STREAM, 0, pair) == 0);
-    in_.assign(boost::asio::ip::tcp::v4(), pair[0]);
-    out_.assign(boost::asio::ip::tcp::v4(), pair[1]);
+    // Choose a free port.
+    auto endpoint = ParseUrlEndpoint("tcp://127.0.0.1:65437");
+    boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor(io_service_,
+                                                                       endpoint);
+    out_.connect(endpoint);
+    acceptor.accept(in_);
 #endif
   }
 

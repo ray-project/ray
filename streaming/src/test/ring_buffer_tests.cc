@@ -1,11 +1,10 @@
-#include "gtest/gtest.h"
-#include "ray/util/logging.h"
-
-#include <unistd.h>
 #include <iostream>
 #include <set>
 #include <thread>
+
+#include "gtest/gtest.h"
 #include "message/message.h"
+#include "ray/util/logging.h"
 #include "ring_buffer.h"
 
 using namespace ray;

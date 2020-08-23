@@ -14,14 +14,13 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <list>
 #include <memory>
 #include <mutex>
 #include <vector>
-
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -101,6 +100,7 @@ class ObjectBufferPool {
   /// SealChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
+  /// \param owner_address The address of the object's owner.
   /// \param data_size The sum of the object size and metadata size.
   /// \param metadata_size The size of the metadata.
   /// \param chunk_index The index of the chunk.
@@ -109,8 +109,8 @@ class ObjectBufferPool {
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> CreateChunk(
-      const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
-      uint64_t chunk_index);
+      const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
+      uint64_t metadata_size, uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
   /// This method will fail if it's invoked on a chunk_index on which

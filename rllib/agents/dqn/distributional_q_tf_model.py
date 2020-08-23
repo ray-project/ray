@@ -49,12 +49,12 @@ class DistributionalQTFModel(TFModelV2):
                 for DDQN. If True, Q-values are calculated as:
                 Q = (A - mean[A]) + V. If False, raw NN output is interpreted
                 as Q-values.
-            num_atoms (int): if >1, enables distributional DQN
-            use_noisy (bool): use noisy nets
-            v_min (float): min value support for distributional DQN
-            v_max (float): max value support for distributional DQN
-            sigma0 (float): initial value of noisy nets
-            add_layer_norm (bool): Add a LayerNorm after each layer..
+            num_atoms (int): If >1, enables distributional DQN.
+            use_noisy (bool): Use noisy nets.
+            v_min (float): Min value support for distributional DQN.
+            v_max (float): Max value support for distributional DQN.
+            sigma0 (float): Initial value of noisy layers.
+            add_layer_norm (bool): Enable layer norm (for param noise).
 
         Note that the core layers for forward() are not defined here, this
         only defines the layers for the Q head. Those layers for forward()
@@ -74,8 +74,7 @@ class DistributionalQTFModel(TFModelV2):
                 for i in range(len(q_hiddens)):
                     if use_noisy:
                         action_out = NoisyLayer(
-                            "{}hidden_{}".format(prefix, i),
-                            q_hiddens[i],
+                            "{}hidden_{}".format(prefix, i), q_hiddens[i],
                             sigma0)(action_out)
                     elif add_layer_norm:
                         action_out = tf.keras.layers.Dense(
@@ -135,8 +134,7 @@ class DistributionalQTFModel(TFModelV2):
             for i in range(len(q_hiddens)):
                 if use_noisy:
                     state_out = NoisyLayer(
-                        "{}dueling_hidden_{}".format(prefix, i),
-                        q_hiddens[i],
+                        "{}dueling_hidden_{}".format(prefix, i), q_hiddens[i],
                         sigma0)(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
@@ -160,8 +158,8 @@ class DistributionalQTFModel(TFModelV2):
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score(
-                name + "/state_value/", self.model_out)
+            state_out = build_state_score(name + "/state_value/",
+                                          self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 

@@ -18,7 +18,7 @@ cdef class TagKey:
     def __init__(self, name):
         self.name = name.encode("ascii")
         CTagKey.Register(self.name)
-    
+
     def name(self):
         return self.name
 
@@ -34,8 +34,9 @@ cdef class Metric:
 
     def __init__(self, tag_keys):
         for tag_key in tag_keys:
-            self.c_tag_keys.push_back(CTagKey.Register(tag_key.encode("ascii")))
-    
+            self.c_tag_keys.push_back(
+                CTagKey.Register(tag_key.encode("ascii")))
+
     def record(self, value, tags=None):
         """Record a measurement of metric.
 
@@ -61,7 +62,19 @@ cdef class Metric:
 cdef class Gauge(Metric):
     """Cython wrapper class of C++ `ray::stats::Gauge`.
 
-       Gauge: Keeps the last recorded value, drops everything before.
+        Gauge: Keeps the last recorded value, drops everything before.
+
+        Example:
+
+        >>> gauge = Gauge(
+                "ray.worker.metric",
+                "description",
+                "unit",
+                ["tagk1", "tagk2"]).
+            value = 5
+            key1= "key1"
+            key2 = "key2"
+            gauge.record(value, {"tagk1": key1, "tagk2": key2})
     """
     def __init__(self, name, description, unit, tag_keys):
         """Create a gauge metric
@@ -86,6 +99,19 @@ cdef class Gauge(Metric):
 
 cdef class Count(Metric):
     """Cython wrapper class of C++ `ray::stats::Count`.
+
+        Example:
+
+        >>> count = Count(
+                "ray.worker.metric",
+                "description",
+                "unit",
+                ["tagk1", "tagk2"]).
+            value = 5
+            key1= "key1"
+            key2 = "key2"
+
+            count.record(value, {"tagk1": key1, "tagk2": key2})
 
        Count: The count of the number of metric points.
     """
@@ -113,6 +139,19 @@ cdef class Count(Metric):
 cdef class Sum(Metric):
     """Cython wrapper class of C++ `ray::stats::Sum`.
 
+        Example:
+
+        >>> metric_sum = Sum(
+                "ray.worker.metric",
+                "description",
+                "unit",
+                ["tagk1", "tagk2"]).
+            value = 5
+            key1= "key1"
+            key2 = "key2"
+
+            metric_sum.record(value, {"tagk1": key1, "tagk2": key2})
+
        Sum: A sum up of the metric points.
     """
     def __init__(self, name, description, unit, tag_keys):
@@ -139,6 +178,19 @@ cdef class Sum(Metric):
 
 cdef class Histogram(Metric):
     """Cython wrapper class of C++ `ray::stats::Histogram`.
+
+        Example:
+
+        >>> histogram = Histogram(
+                "ray.worker.histogram1",
+                "desciprtion",
+                "unit",
+                [1.0, 2.0], # boundaries.
+                ["tagk1"])
+            value = 5
+            key1= "key1"
+
+            histogram.record(value, {"tagk1": key1})
 
        Histogram: Histogram distribution of metric points.
     """

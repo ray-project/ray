@@ -493,7 +493,12 @@ bool ReferenceCounter::SetDeleteCallback(
     return false;
   }
 
-  RAY_CHECK(!it->second.on_delete) << object_id;
+  // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
+  // than once, causing the delete callback to be set repeatedly.
+  // 1.If actors have not been registered successfully before GCS restarts, gcs client
+  // will resend the registration request after GCS restarts.
+  // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
+  // again.
   it->second.on_delete = callback;
   return true;
 }
@@ -534,12 +539,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                            bool *pinned) const {
+                                            ClientID *pinned_at) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
-      *pinned = it->second.pinned_at_raylet_id.has_value();
+      *pinned_at = it->second.pinned_at_raylet_id.value_or(ClientID::Nil());
       return true;
     }
   }
@@ -727,17 +732,13 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   request.set_contained_in_id(contained_in_id.Binary());
   request.set_intended_worker_id(addr.worker_id.Binary());
 
-  auto it = borrower_cache_.find(addr);
-  if (it == borrower_cache_.end()) {
-    RAY_CHECK(client_factory_ != nullptr);
-    it = borrower_cache_.emplace(addr, client_factory_(addr.ToProto())).first;
-  }
+  auto conn = borrower_pool_.GetOrConnect(addr.ToProto());
 
   RAY_LOG(DEBUG) << "Sending WaitForRefRemoved to borrower " << addr.ip_address << ":"
                  << addr.port << " for object " << object_id;
   // Send the borrower a message about this object. The borrower responds once
   // it is no longer using the object ID.
-  RAY_CHECK_OK(it->second->WaitForRefRemoved(
+  conn->WaitForRefRemoved(
       request, [this, object_id, addr](const Status &status,
                                        const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
@@ -754,7 +755,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_CHECK(it != object_id_refs_.end());
         RAY_CHECK(it->second.borrowers.erase(addr));
         DeleteReferenceInternal(it, nullptr);
-      }));
+      });
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
@@ -886,6 +887,36 @@ void ReferenceCounter::SetReleaseLineageCallback(
     const LineageReleasedCallback &callback) {
   RAY_CHECK(on_lineage_released_ == nullptr);
   on_lineage_released_ = callback;
+}
+
+void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
+                                         const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  if (it == object_id_locations_.end()) {
+    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<ClientID>()).first;
+  }
+  it->second.insert(node_id);
+}
+
+void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
+                                            const ClientID &node_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
+  it->second.erase(node_id);
+}
+
+std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(
+    const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_locations_.find(object_id);
+  RAY_CHECK(it != object_id_locations_.end());
+  std::unordered_set<ClientID> locations;
+  for (const auto &location : it->second) {
+    locations.insert(location);
+  }
+  return locations;
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
