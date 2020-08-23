@@ -507,9 +507,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
   bundle_on_dead_node->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
-  // TODO(ffbin): Currently when the placement group is rescheduled, the scheduling of
-  // other bundles that have been placed is not considered. It will be implemented in the
-  // next pr.
+  // TODO(ffbin): We need to see which node the other bundles that have been placed are
+  // deployed on, and spread them as far as possible. It will be implemented in the next
+  // pr.
   raylet_client_->GrantResourceReserve();
   raylet_client1_->GrantResourceReserve();
   WaitPendingDone(success_placement_groups_, 2);

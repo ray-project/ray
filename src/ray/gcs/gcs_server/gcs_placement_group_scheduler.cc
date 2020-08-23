@@ -102,7 +102,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   // bundles will be deployed to the previous nodes. So we start with the next node of the
   // last selected node.
   ScheduleMap schedule_map;
-  auto candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+  const auto &candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
   if (candidate_nodes.empty()) {
     return schedule_map;
   }
@@ -111,6 +111,9 @@ ScheduleMap GcsSpreadStrategy::Schedule(
   auto iter_begin = iter;
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
+    // Traverse all nodes from `iter_begin` to `candidate_nodes.end()` to find a node that
+    // meets the resource requirements. `iter_begin` is the next node of the last selected
+    // node.
     for (; iter != candidate_nodes.end(); ++iter) {
       if (required_resources.IsSubset(*iter->second)) {
         iter->second->SubtractResourcesStrict(required_resources);
@@ -119,11 +122,15 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       }
     }
 
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
+    // haven't found one that meets the requirements.
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
+    // satisfied, we will return directly. Otherwise, we will traverse the nodes from
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
+    // requirements.
     if (iter == candidate_nodes.end()) {
       if (iter_begin != candidate_nodes.begin()) {
-        // We have traversed all the nodes from `iter_begin` to `candidate_nodes.end()`.
-        // Now we will traversed all the nodes from `candidate_nodes.begin()` to
-        // `iter_begin`.
+        // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
         for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
           if (required_resources.IsSubset(*iter->second)) {
             iter->second->SubtractResourcesStrict(required_resources);
