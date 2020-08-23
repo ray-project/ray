@@ -455,7 +455,7 @@ class FunctionActorManager:
             pass
 
         def temporary_actor_method(*args, **kwargs):
-            raise RuntimeError("The actor with name {actor_class_name} "
+            raise RuntimeError(f"The actor with name {actor_class_name} "
                                "failed to be imported, "
                                "and so cannot execute this method.")
 
