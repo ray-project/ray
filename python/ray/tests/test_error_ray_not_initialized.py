@@ -32,11 +32,22 @@ def test_errors_before_initializing_ray():
         lambda: ray.wait([])
     ]
 
-    for api_method in api_methods:
-        with pytest.raises(
-                ray.exceptions.RayConnectionError,
-                match="Ray has not been started yet."):
-            api_method()
+    def test_exceptions_raised():
+        for api_method in api_methods:
+            print(api_method)
+            with pytest.raises(
+                    ray.exceptions.RayConnectionError,
+                    match="Ray has not been started yet."):
+                api_method()
+
+    test_exceptions_raised()
+
+    # Make sure that the exceptions are still raised after Ray has been
+    # started and shutdown.
+    ray.init(num_cpus=0)
+    ray.shutdown()
+
+    test_exceptions_raised()
 
 
 if __name__ == "__main__":
