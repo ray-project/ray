@@ -5,13 +5,10 @@ from typing import Dict, Optional, Tuple
 from ray import tune
 
 import transformers
-from transformers.file_utils import is_torch_tpu_available
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 
 import torch
 from torch.utils.data import Dataset
-
-import wandb
 
 logger = logging.getLogger(__name__)
 """A Trainer class integrated with Tune.

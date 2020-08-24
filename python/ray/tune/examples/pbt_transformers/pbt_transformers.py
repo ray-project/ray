@@ -16,11 +16,13 @@ from transformers import (AutoConfig, AutoModelForSequenceClassification,
                           Trainer, TrainingArguments)
 
 
-def get_trainer(model_name_or_path,
-                train_dataset,
-                eval_dataset,
-                task_name,
-                training_args,):
+def get_trainer(
+        model_name_or_path,
+        train_dataset,
+        eval_dataset,
+        task_name,
+        training_args
+):
     try:
         num_labels = glue_tasks_num_labels[task_name]
     except KeyError:
@@ -29,7 +31,7 @@ def get_trainer(model_name_or_path,
     config = AutoConfig.from_pretrained(
         model_name_or_path,
         num_labels=num_labels,
-        finetuning_task=task_name,
+        finetuning_task=task_name
     )
 
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -41,7 +43,8 @@ def get_trainer(model_name_or_path,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(task_name),)
+        compute_metrics=build_compute_metrics_fn(task_name)
+    )
 
     return tune_trainer
 
@@ -101,7 +104,8 @@ def train_transformer(config, checkpoint_dir=None):
         train_dataset,
         eval_dataset,
         config["task_name"],
-        training_args,)
+        training_args
+    )
     tune_trainer.train(
         recover_checkpoint(checkpoint_dir, config["model_name"]))
 
