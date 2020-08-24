@@ -176,6 +176,13 @@ class PopulationBasedTraining(FIFOScheduler):
         require_attrs (bool): Whether to require time_attr and metric to appear
             in result for every iteration. If True, error will be raised
             if these values are not present in trial result.
+        synch (bool): If False, will use asynchronous implementation of
+            PBT. Trial perturbations occur every perturbation_interval for each
+            trial independently. If True, will use synchronous implementation
+            of PBT. Perturbations will occur only after all trials are
+            synced at the same time_attr every perturbation_interval.
+            Defaults to False. See Appendix A.1 here
+            https://arxiv.org/pdf/1711.09846.pdf.
 
     .. code-block:: python
 
