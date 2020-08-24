@@ -116,9 +116,10 @@ class GlobalState:
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
             raise TimeoutError("Timed out while attempting to initialize the "
-                               "global state. num_redis_shards = {}, "
-                               "redis_shard_addresses = {}".format(
-                                   num_redis_shards, redis_shard_addresses))
+                               "global state. "
+                               f"num_redis_shards = {num_redis_shards}, "
+                               "redis_shard_addresses = "
+                               f"{redis_shard_addresses}")
 
         # Get the rest of the information.
         self.redis_clients = []

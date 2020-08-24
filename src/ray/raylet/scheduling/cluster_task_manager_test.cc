@@ -199,12 +199,12 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  void ClearAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
   void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    RAY_CHECK(false) << "Method unused";
+    borrowed_cpu_instances_ = cpu_instances;
   }
 
   const PlacementGroupID &GetPlacementGroupId() const {
@@ -216,11 +216,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  std::vector<double> &GetBorrowedCPUInstances() {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new std::vector<double>();
-    return *t;
-  }
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
 
   void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
 
@@ -246,6 +242,7 @@ class MockWorker : public WorkerInterface {
   rpc::Address address_;
   std::shared_ptr<TaskResourceInstances> allocated_instances_;
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
+  std::vector<double> borrowed_cpu_instances_;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
@@ -428,10 +425,8 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   /* Second task finishes, making space for the original task */
-  single_node_resource_scheduler_->FreeLocalTaskResources(
-      worker->GetAllocatedInstances());
-  // single_node_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
   leased_workers_.clear();
+  task_manager_.HandleTaskFinished(worker);
 
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
@@ -441,11 +436,57 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 0);
 }
 
-}  // namespace raylet
+TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
-}  // namespace ray
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+  // Task not queued so we can't cancel it.
+  ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+
+  task_manager_.QueueTask(task, &reply, callback);
+
+  // Task is now queued so cancellation works.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Task will not execute.
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+
+  // We can still cancel the task if it's on the dispatch queue.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  // Task will not execute.
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  // Task is now running so we can't cancel it.
+  ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  // Task will not execute.
+  ASSERT_TRUE(callback_called);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1);
+}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+}  // namespace raylet
+}  // namespace ray
