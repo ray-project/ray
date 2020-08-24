@@ -171,7 +171,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         # For each worker, choose a random model to choose trajectories from
         worker_index = get_global_worker().worker_index
-        self.sample_index = int((worker_index-1)/self.num_models)
+        self.sample_index = int((worker_index - 1) / self.num_models)
         self.global_itr = 0
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))

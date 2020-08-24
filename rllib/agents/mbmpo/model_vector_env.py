@@ -95,7 +95,8 @@ class _VectorizedModelGymEnv(VectorEnv):
 
         self.cur_obs = next_obs_batch
 
-        return list(next_obs_batch), list(rew_batch), list(dones_batch), info_batch
+        return list(next_obs_batch), list(rew_batch), list(
+            dones_batch), info_batch
 
     @override(VectorEnv)
     def get_unwrapped(self):

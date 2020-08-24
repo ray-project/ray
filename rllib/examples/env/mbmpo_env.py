@@ -1,6 +1,5 @@
 import numpy as np
 from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
-import inspect
 
 
 class HalfCheetahWrapper(HalfCheetahEnv):
@@ -43,7 +42,7 @@ class HopperWrapper(HopperEnv):
         assert obs.shape == obs_next.shape and action.shape[0] == obs.shape[0]
         vel = obs_next[:, 5]
         ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
-        reward =  vel + alive_bonus - ctrl_cost
+        reward = vel + alive_bonus - ctrl_cost
         return np.minimum(np.maximum(-1000.0, reward), 1000.0)
 
 

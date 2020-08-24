@@ -1,7 +1,6 @@
 import logging
 
 import ray
-import numpy as np
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -230,10 +229,12 @@ class MAMLLoss(object):
         self.mean_entropy = entropy_loss
 
         self.inner_kl_loss = torch.mean(
-            torch.stack(
-                [a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)]))
+            torch.stack([
+                a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)
+            ]))
         self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
-        print("Meta-Loss: ", self.loss.item(), ", Inner KL:", self.inner_kl_loss.item())
+        print("Meta-Loss: ", self.loss.item(), ", Inner KL:",
+              self.inner_kl_loss.item())
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
@@ -388,8 +389,9 @@ def maml_stats(policy, train_batch):
 
 class KLCoeffMixin:
     def __init__(self, config):
-        self.kl_coeff_val = [config["kl_coeff"]
-                             ] * config["inner_adaptation_steps"] * config["num_workers"]
+        self.kl_coeff_val = [
+            config["kl_coeff"]
+        ] * config["inner_adaptation_steps"] * config["num_workers"]
         self.kl_target = self.config["kl_target"]
 
     def update_kls(self, sampled_kls):

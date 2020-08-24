@@ -1,5 +1,16 @@
 import numpy as np
 import scipy
+from typing import Union
+
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
+
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class LinearFeatureBaseline():
@@ -68,21 +79,6 @@ def discount_cumsum(x, discount):
         [1], [1, float(-discount)], x[::-1], axis=0)[::-1]
 
 
-import tree
-from typing import Union
-
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-
-tf1, tf, tfv = try_import_tf()
-torch, _ = try_import_torch()
-from ray.rllib.evaluation.rollout_worker import get_global_worker
-
 class MBMPOExploration(Exploration):
     """An exploration that simply samples from a distribution.
 
@@ -102,7 +98,7 @@ class MBMPOExploration(Exploration):
         """
         assert framework is not None
         self.timestep = 0
-        self.worker_index = kwargs['worker_index']
+        self.worker_index = kwargs["worker_index"]
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
@@ -113,8 +109,7 @@ class MBMPOExploration(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         assert self.framework == "torch"
-        return self._get_torch_exploration_action(action_distribution,
-                                                      explore)
+        return self._get_torch_exploration_action(action_distribution, explore)
 
     def _get_torch_exploration_action(self, action_dist, explore):
         action = action_dist.sample()
@@ -123,10 +118,9 @@ class MBMPOExploration(Exploration):
         batch_size = action.size()[0]
 
         # Initial Random Exploration for Real Env Interaction
-        if self.worker_index==0 and self.timestep < 8000:
+        if self.worker_index == 0 and self.timestep < 8000:
             print("Using Random")
             action = [self.action_space.sample() for _ in range(batch_size)]
             logp = [0.0 for _ in range(batch_size)]
         self.timestep += batch_size
         return action, logp
-
