@@ -128,7 +128,7 @@ class RayParams:
                  worker_path=None,
                  huge_pages=False,
                  include_dashboard=None,
-                 dashboard_host="127.0.0.1",
+                 dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
