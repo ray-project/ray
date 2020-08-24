@@ -170,13 +170,7 @@ class TorchTrainer:
 
     def __init__(
             self,
-            *,
-            model_creator,
-            data_creator,
-            optimizer_creator,
-            loss_creator=None,
-            scheduler_creator=None,
-            training_operator_cls=None,
+            training_operator_cls,
             initialization_hook=None,
             config=None,
             num_workers=1,
@@ -202,9 +196,9 @@ class TorchTrainer:
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        if not (callable(model_creator) and callable(optimizer_creator)):
-            raise ValueError(
-                "Must provide a callable model_creator and optimizer_creator.")
+        # if not (callable(model_creator) and callable(optimizer_creator)):
+        #     raise ValueError(
+        #         "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -224,16 +218,16 @@ class TorchTrainer:
                 "automatically set a DistributedSampler if a DataLoader is "
                 "returned and num_workers > 1.")
 
-        self.model_creator = model_creator
-        self.optimizer_creator = optimizer_creator
-        self.loss_creator = loss_creator
-        self.data_creator = data_creator
-        self.scheduler_creator = scheduler_creator
+        # self.model_creator = model_creator
+        # self.optimizer_creator = optimizer_creator
+        # self.loss_creator = loss_creator
+        # self.data_creator = data_creator
+        # self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
 
-        if not training_operator_cls and not loss_creator:
-            raise ValueError("If a loss_creator is not provided, you must "
-                             "provide a custom training operator.")
+        # if not training_operator_cls and not loss_creator:
+        #     raise ValueError("If a loss_creator is not provided, you must "
+        #                      "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -269,8 +263,8 @@ class TorchTrainer:
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
-        if scheduler_creator:
-            _validate_scheduler_step_freq(scheduler_step_freq)
+        # if scheduler_creator:
+        #     _validate_scheduler_step_freq(scheduler_step_freq)
 
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -309,11 +303,6 @@ class TorchTrainer:
             worker_config[BATCH_SIZE] = batch_size_per_worker
 
         params = dict(
-            model_creator=self.model_creator,
-            data_creator=self.data_creator,
-            optimizer_creator=self.optimizer_creator,
-            loss_creator=self.loss_creator,
-            scheduler_creator=self.scheduler_creator,
             training_operator_cls=self.training_operator_cls,
             config=worker_config,
             serialize_data_creation=self.serialize_data_creation,
@@ -356,13 +345,13 @@ class TorchTrainer:
             address = setup_address()
 
             # Runs the creator functions.
-            remote_component_setup = [
-                worker.setup_components.remote()
-                for i, worker in enumerate(self.remote_workers)
-            ]
-            self.local_worker.setup_components()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_component_setup)
+            # remote_component_setup = [
+            #     worker.setup_components.remote()
+            #     for i, worker in enumerate(self.remote_workers)
+            # ]
+            # self.local_worker.setup_components()
+            # # Get setup tasks in order to throw errors on failure
+            # ray.get(remote_component_setup)
 
             # Setup the process group among all workers.
             remote_pgroup_setups = [

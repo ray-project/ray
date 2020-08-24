@@ -1,10 +1,16 @@
+import itertools
+import logging
 import torch
+import torch.nn as nn
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
+from torch.nn.parallel.distributed import DistributedDataParallel
+from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
+logger = logging.getLogger(__name__)
 amp = None
 
 try:
@@ -18,6 +24,7 @@ except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
+    logger.debug("apex is not installed.")
     pass
 
 tqdm = None
@@ -57,33 +64,37 @@ class TrainingOperator:
 
     def __init__(self,
                  config,
-                 models,
-                 optimizers,
-                 train_loader,
-                 validation_loader,
+                 # models,
+                 # optimizers,
+                 # train_loader,
+                 # validation_loader,
                  world_rank,
-                 criterion=None,
-                 schedulers=None,
+                 # criterion=None,
+                 # schedulers=None,
                  device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
-                 use_tqdm=False):
+                 use_tqdm=False,
+                 apex_args=None,
+                 wrap_ddp=False,
+                 wrap_distributed_sampler=False,
+                 add_dist_sampler=False):
         # You are not expected to override this method.
-        self._models = models  # List of models
-        assert isinstance(
-            models,
-            Iterable), (f"Components need to be iterable. Got: {type(models)}")
-        self._optimizers = optimizers  # List of optimizers
-        assert isinstance(optimizers, Iterable), (
-            f"Components need to be iterable. Got: {type(optimizers)}")
-        self._train_loader = train_loader
-        self._validation_loader = validation_loader
+        # self._models = models  # List of models
+        # assert isinstance(
+        #     models,
+        #     Iterable), (f"Components need to be iterable. Got: {type(models)}")
+        # self._optimizers = optimizers  # List of optimizers
+        # assert isinstance(optimizers, Iterable), (
+        #     f"Components need to be iterable. Got: {type(optimizers)}")
+        # self._train_loader = train_loader
+        # self._validation_loader = validation_loader
         self._world_rank = world_rank
-        self._criterion = criterion
-        self._schedulers = schedulers
-        if schedulers:
-            assert isinstance(schedulers, Iterable), (
-                f"Components need to be iterable. Got: {type(schedulers)}")
+        # self._criterion = criterion
+        # self._schedulers = schedulers
+        # if schedulers:
+        #     assert isinstance(schedulers, Iterable), (
+        #         f"Components need to be iterable. Got: {type(schedulers)}")
         self._config = config
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
@@ -93,14 +104,18 @@ class TrainingOperator:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
+        self._apex_args = apex_args if apex_args else {}
+        self._wrap_ddp = wrap_ddp
+        self._wrap_distributed_sampler = wrap_distributed_sampler
+        self._add_dist_sampler = add_dist_sampler
 
-        if type(self) is TrainingOperator:
-            for component in (models, schedulers, optimizers):
-                if _is_multiple(component):
-                    raise ValueError(
-                        "Need to provide a custom operator subclassing "
-                        "TrainingOperator if using multi-scheduler, "
-                        "multi-model or multi-optimizer training/validation.")
+        # if type(self) is TrainingOperator:
+        #     for component in (models, schedulers, optimizers):
+        #         if _is_multiple(component):
+        #             raise ValueError(
+        #                 "Need to provide a custom operator subclassing "
+        #                 "TrainingOperator if using multi-scheduler, "
+        #                 "multi-model or multi-optimizer training/validation.")
         self.timers = TimerCollection()
         self.setup(config)
 
@@ -115,9 +130,91 @@ class TrainingOperator:
             config (dict): Custom configuration value to be passed to
                 all creator and operator constructors. Same as ``self.config``.
         """
-        pass
+        raise NotImplementedError
 
-    def train_epoch(self, iterator, info):
+    def register(self, *, models, optimizers, train_loader, validation_loader,
+                 loss=None, schedulers=None):
+        logger.debug("Registering models.")
+        self._models = models
+        if not isinstance(self._models, Iterable):
+            self._models = [self._models]
+        assert all(isinstance(model, nn.Module) for model in self._models), (
+            f"All models must be PyTorch models: {self._models}.")
+        if self.use_gpu and torch.cuda.is_available():
+            self._models = [model.cuda() for model in self._models]
+
+        logger.debug("Registering optimizers.")
+        self._optimizers = optimizers
+        if not isinstance(self._optimizers, Iterable):
+            self._optimizers = [self._optimizers]
+
+
+        logger.debug("Registering data loaders..")
+        self._train_loader = train_loader
+        self._validation_loader = validation_loader
+
+        if self._wrap_distributed_sampler:
+            logging.debug("Wrapping data loaders with DistributedSampler.")
+            def with_sampler(loader):
+                # Automatically set the DistributedSampler
+                data_loader_args = {
+                    "dataset": loader.dataset,
+                    "batch_size": loader.batch_size,
+                    "shuffle": False,
+                    "num_workers": loader.num_workers,
+                    "collate_fn": loader.collate_fn,
+                    "pin_memory": loader.pin_memory,
+                    "drop_last": loader.drop_last,
+                    "timeout": loader.timeout,
+                    "worker_init_fn": loader.worker_init_fn,
+                    "sampler": DistributedSampler(loader.dataset)
+                }
+                return DataLoader(**data_loader_args)
+
+            def should_wrap_dataloader(loader):
+                return (isinstance(loader, DataLoader)
+                        and not isinstance(loader.dataset, IterableDataset))
+
+            if should_wrap_dataloader(self.train_loader):
+                if self._add_dist_sampler:
+                    self._train_loader = with_sampler(self._train_loader)
+
+            if self._validation_loader is not None and should_wrap_dataloader(
+                self._validation_loader):
+                if self._add_dist_sampler:
+                    self._validation_loader = with_sampler(
+                        self._validation_loader)
+
+
+        if schedulers:
+            logger.debug("Registering scheduler.")
+            self._schedulers = schedulers
+            if not isinstance(self._schedulers, Iterable):
+                self._schedulers = [self._schedulers]
+        else:
+            self._schedulers = [None]
+
+        if loss:
+            logger.debug("Registering loss.")
+            self._criterion = loss
+            if self.use_gpu and torch.cuda.is_available():
+                if hasattr(self._criterion, "cuda"):
+                    self._criterion = self._criterion.cuda()
+        else:
+            self._criterion = None
+
+        logger.debug("Setting up Apex.")
+        if self.use_fp16 and amp:
+            self._models, self._optimizers = amp.initialize(
+                self._models, self._optimizers, **self._apex_args)
+
+
+        if self._wrap_ddp:
+            logging.debug("Setting up DDP for models.")
+            self._models = [DistributedDataParallel(model,
+                                                    device_ids=self.device_ids) for model in self._models]
+
+    def train_epoch(self, info, num_steps=None):
         """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
@@ -156,6 +253,9 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
+        iterator = iter(self.train_loader)
+        if num_steps:
+            iterator = itertools.islice(iterator, num_steps)
         if self.use_tqdm and self.world_rank == 0:
             desc = ""
             if info is not None and "epoch_idx" in info:
@@ -261,7 +361,7 @@ class TrainingOperator:
 
         return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
-    def validate(self, val_iterator, info):
+    def validate(self, info, num_steps=None):
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
@@ -284,6 +384,11 @@ class TrainingOperator:
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
         """
+        if self._validation_loader is None:
+            raise ValueError("No validation dataloader provided.")
+        val_iterator = iter(self._validation_loader)
+        if num_steps:
+            val_iterator = itertools.islice(val_iterator, num_steps)
         metric_meters = AverageMeterCollection()
 
         # switch to evaluate mode
@@ -347,14 +452,39 @@ class TrainingOperator:
 
         Returns:
             dict: The state dict of the operator."""
-        pass
+        state = {
+            "models": [model.state_dict() for model in self._models],
+            "optimizers": [opt.state_dict() for opt in self._optimizers],
+        }
+
+        if self._schedulers:
+            state.update({
+                "schedulers": [scheduler.state_dict() for scheduler in
+                               self._schedulers]
+            })
+
+        # Check if fp16 is True and if NVIDIA Apex is imported.
+        if self.use_fp16 and amp:
+            state.update({"amp": amp.state_dict()})
+
+        return state
 
     def load_state_dict(self, state_dict):
         """Override this to load the representation of the operator state.
 
         Args:
             state_dict (dict): State dict as returned by the operator. """
-        pass
+        for model, model_state_dict in zip(self._models, state_dict["models"]):
+            model.load_state_dict(model_state_dict)
+        for optimizer, opt_state_dict in zip(self._optimizers, state_dict[
+            "optimizers"]):
+            optimizer.load_state_dict(opt_state_dict)
+        if self._schedulers:
+            for scheduler, sched_state_dict in zip(self._schedulers,
+                                                   state_dict["schedulers"]):
+                scheduler.load_state_dict(sched_state_dict)
+        if self.use_fp16 and "amp" in state_dict and amp:
+            amp.load_state_dict(state_dict["amp"])
 
     @property
     def device(self):

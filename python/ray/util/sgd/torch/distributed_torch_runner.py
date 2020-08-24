@@ -71,28 +71,41 @@ class DistributedTorchRunner(TorchRunner):
             device_ids = self.get_device_ids()
 
         # Wrap dataloaders
-        self._wrap_dataloaders()
+        #self._wrap_dataloaders()
 
-        training_models = self.models
-        if self.wrap_ddp:
-            # This needs to happen after apex
-            training_models = [
-                DistributedDataParallel(model, device_ids=device_ids)
-                for model in self.models
-            ]
+        #training_models = self.models
+        # if self.wrap_ddp:
+        #     # This needs to happen after apex
+        #     training_models = [
+        #         DistributedDataParallel(model, device_ids=device_ids)
+        #         for model in self.models
+        #     ]
+        # self.training_operator = self.training_operator_cls(
+        #     self.config,
+        #     models=training_models,
+        #     optimizers=self.optimizers,
+        #     criterion=self.criterion,
+        #     train_loader=self.train_loader,
+        #     validation_loader=self.validation_loader,
+        #     world_rank=self.world_rank,
+        #     schedulers=self.schedulers,
+        #     device_ids=device_ids,
+        #     use_gpu=self.use_gpu,
+        #     use_fp16=self.use_fp16,
+        #     use_tqdm=self.use_tqdm)
+
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=training_models,
-            optimizers=self.optimizers,
-            criterion=self.criterion,
-            train_loader=self.train_loader,
-            validation_loader=self.validation_loader,
             world_rank=self.world_rank,
-            schedulers=self.schedulers,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
-            use_tqdm=self.use_tqdm)
+            use_tqdm=self.use_tqdm,
+            apex_args=self.apex_args,
+            wrap_ddp=self.wrap_ddp,
+            wrap_distributed_sampler=True,
+            add_dist_sampler=self.add_dist_sampler
+        )
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
