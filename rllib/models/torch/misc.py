@@ -68,26 +68,20 @@ class SlimConv2d(nn.Module):
             bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
-        # Padding layer.
         if padding:
             layers.append(nn.ZeroPad2d(padding))
-        # Actual Conv2D layer (including correct initialization logic).
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             if initializer == "default":
                 initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
+
         layers.append(conv)
-        # Activation function (if any; default=ReLu).
-        if isinstance(activation_fn, str):
+        if activation_fn:
             if activation_fn == "default":
                 activation_fn = nn.ReLU
-            else:
-                activation_fn = get_activation_fn(activation_fn, "torch")
-        if activation_fn is not None:
             layers.append(activation_fn())
-        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -106,19 +100,16 @@ class SlimFC(nn.Module):
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
-        # Actual Conv2D layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
         if use_bias is True:
             nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
-        # Activation function (if any; default=None (linear)).
         if isinstance(activation_fn, str):
             activation_fn = get_activation_fn(activation_fn, "torch")
         if activation_fn is not None:
             layers.append(activation_fn())
-        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -128,13 +119,15 @@ class SlimFC(nn.Module):
 class AppendBiasLayer(nn.Module):
     """Simple bias appending layer for free_log_std."""
 
-    def __init__(self, num_bias_vars):
+    def __init__(self, num_bias_vars, min_std=1e-6):
         super().__init__()
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * num_bias_vars))
         self.register_parameter("log_std", self.log_std)
+        self.min_log_std = np.log(min_std)
 
     def forward(self, x):
+        log_std = torch.clamp(self.log_std, min=self.min_log_std)
         out = torch.cat(
-            [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
+            [x, log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
         return out

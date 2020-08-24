@@ -2,7 +2,7 @@ import functools
 import gym
 import numpy as np
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.rllib.models.modelv2 import ModelV2
@@ -47,21 +47,15 @@ class TorchPolicy(Policy):
             config: TrainerConfigDict,
             *,
             model: ModelV2,
-            loss: Callable[[
-                Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-            ], Union[TensorType, List[TensorType]]],
-            action_distribution_class: Type[TorchDistributionWrapper],
-            action_sampler_fn: Optional[Callable[[
-                TensorType, List[TensorType]
-            ], Tuple[TensorType, TensorType]]] = None,
+            loss: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+            action_distribution_class: TorchDistributionWrapper,
+            action_sampler_fn: Callable[[TensorType, List[TensorType]], Tuple[
+                TensorType, TensorType]] = None,
             action_distribution_fn: Optional[Callable[[
                 Policy, ModelV2, TensorType, TensorType, TensorType
-            ], Tuple[TensorType, Type[TorchDistributionWrapper], List[
-                TensorType]]]] = None,
+            ], Tuple[TensorType, type, List[TensorType]]]] = None,
             max_seq_len: int = 20,
-            get_batch_divisibility_req: Optional[Callable[[Policy],
-                                                          int]] = None,
-    ):
+            get_batch_divisibility_req: Optional[int] = None):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -75,11 +69,11 @@ class TorchPolicy(Policy):
             model (ModelV2): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
-            loss (Callable[[Policy, ModelV2, Type[TorchDistributionWrapper],
-                SampleBatch], Union[TensorType, List[TensorType]]]): Callable
-                that returns a single scalar loss or a list of loss terms.
-            action_distribution_class (Type[TorchDistributionWrapper]): Class
-                for a torch action distribution.
+            loss (Callable[[Policy, ModelV2, type, SampleBatch], TensorType]):
+                Function that takes (policy, model, dist_class, train_batch)
+                and returns a single scalar loss.
+            action_distribution_class (TorchDistributionWrapper): Class for
+                a torch action distribution.
             action_sampler_fn (Callable[[TensorType, List[TensorType]],
                 Tuple[TensorType, TensorType]]): A callable returning a
                 sampled action and its log-likelihood given Policy, ModelV2,
@@ -104,7 +98,7 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids(as_str=True):
+        if torch.cuda.is_available(): #and ray.get_gpu_ids(as_str=True):
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
@@ -229,11 +223,12 @@ class TorchPolicy(Policy):
         """
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            state_out = []
-            actions, logp = self.action_sampler_fn(
+            state_out = state_batches
+            actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
-                input_dict[SampleBatch.CUR_OBS],
+                input_dict,
+                state_out,
                 explore=explore,
                 timestep=timestep)
         else:
@@ -343,27 +338,22 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-
-        # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
-
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
             loss_out = self.model.custom_loss(loss_out, train_batch)
-
-        # Give Exploration component that chance to modify the loss (or add
-        # its own terms).
+        # Modifies the loss as specified by the Exploration strategy.
         if hasattr(self, "exploration"):
             loss_out = self.exploration.get_exploration_loss(
                 loss_out, train_batch)
-
         assert len(loss_out) == len(self._optimizers)
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
+
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -395,7 +385,8 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-            # Step the optimizer.
+        # Step the optimizer
+        for i,opt in enumerate(self._optimizers):
             opt.step()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
