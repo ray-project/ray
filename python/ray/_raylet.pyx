@@ -651,33 +651,32 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         except ValueError:  # overhead of exception handling is about 20us
             stack_out[0] = "".encode("ascii")
             return
-        msg = ""
-        while frame:
+        msg_frames = []
+        while frame and len(msg_frames) < 4:
             filename = frame.f_code.co_filename
             # Decode Ray internal frames to add annotations.
             if filename.endswith("ray/worker.py"):
                 if frame.f_code.co_name == "put":
-                    msg = "(put object) "
+                    msg_frames = ["(put object) "]
             elif filename.endswith("ray/workers/default_worker.py"):
                 pass
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
                 # arguments. This can only be done in the core worker.
-                msg = "(task call) "
+                msg_frames = ["(task call) "]
             elif filename.endswith("ray/actor.py"):
                 # TODO(ekl) distinguish between actor return objects and
                 # arguments. This can only be done in the core worker.
-                msg = "(actor call) "
+                msg_frames = ["(actor call) "]
             elif filename.endswith("ray/serialization.py"):
                 if frame.f_code.co_name == "id_deserializer":
-                    msg = "(deserialize task arg) "
+                    msg_frames = ["(deserialize task arg) "]
             else:
-                msg += "{}:{}:{}".format(
+                msg_frames.append("{}:{}:{}".format(
                     frame.f_code.co_filename, frame.f_code.co_name,
-                    frame.f_lineno)
-                break
+                    frame.f_lineno))
             frame = frame.f_back
-        stack_out[0] = msg.encode("ascii")
+        stack_out[0] = " | ".join(msg_frames).encode("ascii")
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata

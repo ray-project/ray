@@ -203,8 +203,8 @@ class Cluster:
                 return
             else:
                 logger.debug(
-                    "{} nodes are currently registered, but we are expecting "
-                    "{}".format(len(live_clients), expected))
+                    f"{len(live_clients)} nodes are currently registered, "
+                    f"but we are expecting {expected}")
                 time.sleep(0.1)
         raise TimeoutError("Timed out while waiting for nodes to join.")
 
