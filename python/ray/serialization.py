@@ -437,7 +437,7 @@ class SerializationContext:
                 except Exception:
                     raise ValueError(
                         "Failed to use pickle in generating a unique id"
-                        "for '{}'. Provide a unique class_id.".format(cls))
+                        f"for '{cls}'. Provide a unique class_id.")
             else:
                 # In this case, the class ID only needs to be meaningful on
                 # this worker and not across workers.
