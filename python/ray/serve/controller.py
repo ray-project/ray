@@ -16,7 +16,7 @@ from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
-from typing import Dict, Union, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 
 import numpy as np
 

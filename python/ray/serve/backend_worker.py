@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import traceback
 import inspect
@@ -5,7 +7,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
-from typing import Union
+from typing import Union, List, Any, Callable, Type
 import time
 
 import ray
@@ -21,7 +23,6 @@ from ray.experimental import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
 from ray.exceptions import RayTaskError
-from typing import Dict, Union, List, Any, Optional, Tuple, Callable, Type
 
 logger = _get_logger()
 
@@ -91,8 +92,7 @@ class BatchQueue:
         return batch
 
 
-def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]
-                          ) -> 'Type[RayServeWrappedWorker]':
+def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
     """Creates a worker class wrapping the provided function or class."""
 
     if inspect.isfunction(func_or_class):
