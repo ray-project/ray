@@ -33,7 +33,7 @@ class LogUrlParser(html.parser.HTMLParser):
         return self._urls
 
 
-def test_log(ray_start_with_dashboard):
+def test_log(disable_test_module, ray_start_with_dashboard):
     @ray.remote
     def write_log(s):
         print(s)

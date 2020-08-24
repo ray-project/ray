@@ -12,7 +12,11 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import wait_for_condition, wait_until_server_available
+from ray.test_utils import (
+    wait_for_condition,
+    wait_until_server_available,
+    run_string_as_driver,
+)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
@@ -56,7 +60,7 @@ cleanup_test_files()
         })
     }],
     indirect=True)
-def test_basic(ray_start_with_dashboard):
+def test_basic(disable_test_module, ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
@@ -140,7 +144,7 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
-def test_nodes_update(ray_start_with_dashboard):
+def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -187,7 +191,7 @@ def test_nodes_update(ray_start_with_dashboard):
                     "Timed out while waiting for dashboard to start.")
 
 
-def test_http_get(ray_start_with_dashboard):
+def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -233,7 +237,7 @@ def test_http_get(ray_start_with_dashboard):
                     "Timed out while waiting for dashboard to start.")
 
 
-def test_class_method_route_table():
+def test_class_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
@@ -318,7 +322,7 @@ def test_class_method_route_table():
     assert "Traceback" in resp["msg"]
 
 
-def test_async_loop_forever():
+def test_async_loop_forever(disable_test_module):
     counter = [0]
 
     @dashboard_utils.async_loop_forever(interval_seconds=1)
@@ -331,3 +335,30 @@ def test_async_loop_forever():
     loop.call_later(4, loop.stop)
     loop.run_forever()
     assert counter[0] > 2
+
+
+def test_dashboard_module_decorator(enable_test_module):
+    head_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardHeadModule)
+    agent_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardAgentModule)
+
+    assert any(cls.__name__ == "TestHead" for cls in head_cls_list)
+    assert any(cls.__name__ == "TestAgent" for cls in agent_cls_list)
+
+    test_code = """
+import os
+import ray.new_dashboard.utils as dashboard_utils
+
+os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
+head_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardHeadModule)
+agent_cls_list = dashboard_utils.get_all_modules(
+        dashboard_utils.DashboardAgentModule)
+print(head_cls_list)
+print(agent_cls_list)
+assert all(cls.__name__ != "TestHead" for cls in head_cls_list)
+assert all(cls.__name__ != "TestAgent" for cls in agent_cls_list)
+print("success")
+"""
+    run_string_as_driver(test_code)

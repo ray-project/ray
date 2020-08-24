@@ -14,7 +14,7 @@ os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 logger = logging.getLogger(__name__)
 
 
-def test_node_info(ray_start_with_dashboard):
+def test_node_info(disable_test_module, ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def getpid(self):

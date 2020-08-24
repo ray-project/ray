@@ -174,6 +174,16 @@ class ClassMethodRouteTable:
                 h.__func__.__route_path__].instance = instance
 
 
+def dashboard_module(enable):
+    """A decorator for dashboard module."""
+
+    def _cls_wrapper(cls):
+        cls.__ray_dashboard_module_enable__ = enable
+        return cls
+
+    return _cls_wrapper
+
+
 def get_all_modules(module_type):
     logger.info("Get all modules by type: {}".format(module_type.__name__))
     import ray.new_dashboard.modules
@@ -182,7 +192,10 @@ def get_all_modules(module_type):
             ray.new_dashboard.modules.__path__,
             ray.new_dashboard.modules.__name__ + "."):
         importlib.import_module(name)
-    return module_type.__subclasses__()
+    return [
+        m for m in module_type.__subclasses__()
+        if getattr(m, "__ray_dashboard_module_enable__", True)
+    ]
 
 
 def to_posix_time(dt):

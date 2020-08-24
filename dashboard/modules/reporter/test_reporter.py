@@ -16,7 +16,7 @@ os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 logger = logging.getLogger(__name__)
 
 
-def test_profiling(shutdown_only):
+def test_profiling(disable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=6)
 
     @ray.remote(num_cpus=2)
@@ -53,7 +53,7 @@ def test_profiling(shutdown_only):
     logger.info(profiling_info)
 
 
-def test_node_physical_stats(shutdown_only):
+def test_node_physical_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=6)
 
     @ray.remote(num_cpus=1)
