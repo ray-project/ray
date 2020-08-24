@@ -196,7 +196,9 @@ class AutoscalingTest(unittest.TestCase):
 
     def testGetOrCreateMultiNodeType(self):
         config = MULTI_WORKER_CLUSTER.copy()
-        config["available_node_types"]["m4.large"]["head_setup_commands"] = ["new head setup cmd"]
+        config["available_node_types"]["m4.large"]["head_setup_commands"] = [
+            "new head setup cmd"
+        ]
         # Commenting out this line causes the test case to fail?!?!
         config["min_workers"] = 0
         config_path = self.write_config(config)
@@ -313,7 +315,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testCommandPassing(self):
         config = MULTI_WORKER_CLUSTER.copy()
-        config["available_node_types"]["p2.8xlarge"]["worker_setup_commands"] = ["echo hello world"]
+        config["available_node_types"]["p2.8xlarge"][
+            "worker_setup_commands"] = ["echo hello world"]
         # Commenting out this line causes the test case to fail?!?!
         config["min_workers"] = 0
         config_path = self.write_config(config)
@@ -338,7 +341,8 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
         autoscaler.update()
         sleep(0.1)
-        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip, "echo hello world")
+        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
+                               "echo hello world")
 
 
 if __name__ == "__main__":

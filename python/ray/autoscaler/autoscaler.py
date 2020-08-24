@@ -381,8 +381,7 @@ class StandardAutoscaler:
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
-                self._get_commands(node_id, "worker_start_ray_commands")
-            ),
+                self._get_commands(node_id, "worker_start_ray_commands")),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
@@ -391,12 +390,14 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
-    def _get_commands(self, node_id : str, commands_key : str):
+    def _get_commands(self, node_id: str, commands_key: str):
         commands = self.config[commands_key]
         node_tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in node_tags:
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
-            assert node_type in self.available_node_types, "Unknown node type tag: {}.".format(node_type)
+            assert node_type in self.available_node_types,\
+                "Unknown node type tag: {}.".format(
+                    node_type)
             node_specific_config = self.available_node_types[node_type]
             if commands_key in node_specific_config:
                 commands = node_specific_config[commands_key]
@@ -413,13 +414,17 @@ class StandardAutoscaler:
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
             init_commands = []
-            ray_commands = self._get_commands(node_id, "worker_start_ray_commands")
+            ray_commands = self._get_commands(node_id,
+                                              "worker_start_ray_commands")
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_commands(node_id, "worker_setup_commands")
+            init_commands = self._get_commands(node_id,
+                                               "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self._get_commands(node_id, "worker_setup_commands")
-            ray_commands = self._get_commands(node_id, "worker_start_ray_commands")
+            init_commands = self._get_commands(node_id,
+                                               "worker_setup_commands")
+            ray_commands = self._get_commands(node_id,
+                                              "worker_start_ray_commands")
 
         return (node_id, init_commands, ray_commands)
 
@@ -433,8 +438,7 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self._get_commands(node_id, "initialization_commands")
-            ),
+                self._get_commands(node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,

@@ -460,7 +460,9 @@ def _get_head_commands(config, commands_key):
     node_type = config.get("head_node_type")
     if node_type:
         assert "available_node_types" in config
-        assert node_type in config["available_node_types"], "Unknown node type tag: {}.".format(node_type)
+        assert node_type in config[
+            "available_node_types"], "Unknown node type tag: {}.".format(
+                node_type)
         node_specific_config = config["available_node_types"][node_type]
         if commands_key in node_specific_config:
             commands = node_specific_config[commands_key]
@@ -640,13 +642,17 @@ def get_or_create_head_node(config,
 
             if restart_only:
                 init_commands = []
-                ray_start_commands = _get_head_commands(config, "head_start_ray_commands")
+                ray_start_commands = _get_head_commands(
+                    config, "head_start_ray_commands")
             elif no_restart:
-                init_commands = _get_head_commands(config, "head_setup_commands")
+                init_commands = _get_head_commands(config,
+                                                   "head_setup_commands")
                 ray_start_commands = []
             else:
-                init_commands = _get_head_commands(config, "head_setup_commands")
-                ray_start_commands = _get_head_commands(config, "head_start_ray_commands")
+                init_commands = _get_head_commands(config,
+                                                   "head_setup_commands")
+                ray_start_commands = _get_head_commands(
+                    config, "head_start_ray_commands")
 
             if not no_restart:
                 warn_about_bad_start_command(ray_start_commands)
@@ -658,7 +664,8 @@ def get_or_create_head_node(config,
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
-                initialization_commands=_get_head_commands(config, "initialization_commands"),
+                initialization_commands=_get_head_commands(
+                    config, "initialization_commands"),
                 setup_commands=init_commands,
                 ray_start_commands=ray_start_commands,
                 process_runner=_runner,
