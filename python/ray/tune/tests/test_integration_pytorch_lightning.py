@@ -9,8 +9,8 @@ from ray.tune.result import TRAINING_ITERATION
 from torch.utils.data import DataLoader, Dataset
 
 from ray import tune
-from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback, \
-    TuneReportCallback
+from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
+    TuneReportCheckpointCallback, TuneCheckpointCallback
 
 
 class _MockDataset(Dataset):
@@ -109,6 +109,33 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         ]
         # 10 checkpoints after each batch, 1 checkpoint at end
         self.assertEqual(len(checkpoints), 11)
+
+    def testReportCheckpointCallback(self):
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmpdir))
+
+        def train(config):
+            module = _MockModule(10, 20)
+            trainer = pl.Trainer(
+                max_epochs=1,
+                callbacks=[
+                    TuneReportCheckpointCallback(
+                        ["avg_val_loss"], "trainer.ckpt", on="validation_end")
+                ])
+            trainer.fit(module)
+
+        analysis = tune.run(
+            train,
+            stop={TRAINING_ITERATION: 10},
+            keep_checkpoints_num=100,
+            local_dir=tmpdir)
+
+        checkpoints = [
+            dir for dir in os.listdir(analysis.trials[0].logdir)
+            if dir.startswith("checkpoint")
+        ]
+        # 1 checkpoint after the validation step
+        self.assertEqual(len(checkpoints), 1)
 
 
 if __name__ == "__main__":

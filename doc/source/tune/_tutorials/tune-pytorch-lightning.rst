@@ -288,12 +288,17 @@ Adding checkpoints to the PyTorch Lightning module
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, we need to introduce
-another callback to save model checkpoints:
+another callback to save model checkpoints. Since Tune requires a call to
+``tune.report()`` after creating a new checkpoint to register it, we will use
+a combined reporting and checkpointing callback:
 
 .. code-block:: python
 
-    from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback
-    callback = TuneCheckpointCallback(filename="checkpoint", on="validation_end")
+    from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
+    callback = TuneReportCheckpointCallback(
+        metrics={"loss": "val_loss", "mean_accuracy": "val_accuracy"},
+        filename="checkpoint",
+        on="validation_end")
 
 The ``checkpoint`` value is the name of the checkpoint file within the
 checkpoint directory.

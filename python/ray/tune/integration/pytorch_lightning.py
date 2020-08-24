@@ -178,6 +178,10 @@ class TuneCheckpointCallback(TuneCallback):
 
     Saves checkpoints after each validation step.
 
+    Checkpoint are currently not registered if no ``tune.report()`` call
+    is made afterwards. Consider using ``TuneReportCheckpointCallback``
+    instead.
+
     Args:
         filename (str): Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
@@ -212,3 +216,52 @@ class TuneCheckpointCallback(TuneCallback):
         with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
             trainer.save_checkpoint(
                 os.path.join(checkpoint_dir, self._filename))
+
+
+class TuneReportCheckpointCallback(TuneCallback):
+    """PyTorch Lightning checkpoint callback
+
+    Saves checkpoints after each validation step. Also reports metrics to Tune,
+    which is needed for checkpoint registration.
+
+    Args:
+        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+            each item describes the metric key reported to PyTorch Lightning,
+            and it will reported under the same name to Tune. If this is a
+            dict, each key will be the name reported to Tune and the respective
+            value will be the metric key reported to PyTorch Lightning.
+        filename (str): Filename of the checkpoint within the checkpoint
+            directory. Defaults to "checkpoint".
+        on (str|list): When to trigger checkpoint creations. Must be one of
+            the PyTorch Lightning event hooks (less the "on_"), e.g.
+            "batch_start", or "train_end". Defaults to "validation_end".
+
+
+    Example:
+
+    .. code-block:: python
+
+        import pytorch_lightning as pl
+        from ray.tune.integration.pytorch_lightning import \
+            TuneReportCheckpointCallback
+
+        # Save checkpoint after each training batch and after each
+        # validation epoch.
+        trainer = pl.Trainer(callbacks=[TuneReportCheckpointCallback(
+            metrics={"loss": "val_loss", "mean_accuracy": "val_acc"},
+            filename="trainer.ckpt", on="validation_end")])
+
+
+    """
+
+    def __init__(self,
+                 metrics: Union[str, List[str], Dict[str, str]],
+                 filename: str = "checkpoint",
+                 on: Union[str, List[str]] = "validation_end"):
+        super(TuneReportCheckpointCallback, self).__init__(on)
+        self._checkpoint = TuneCheckpointCallback(filename, on)
+        self._report = TuneReportCallback(metrics, on)
+
+    def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        self._checkpoint._handle(trainer, pl_module)
+        self._report._handle(trainer, pl_module)

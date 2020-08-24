@@ -20,8 +20,8 @@ from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
-from ray.tune.integration.pytorch_lightning import TuneCheckpointCallback, \
-    TuneReportCallback
+from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
+    TuneReportCheckpointCallback
 # __import_tune_end__
 
 
@@ -94,8 +94,8 @@ class LightningMNISTClassifier(pl.LightningModule):
         logs = {"ptl/val_loss": avg_loss, "ptl/val_accuracy": avg_acc}
 
         return {
-            "avg_val_loss": avg_loss,
-            "avg_val_accuracy": avg_acc,
+            "val_loss": avg_loss,
+            "val_accuracy": avg_acc,
             "log": logs
         }
 
@@ -141,34 +141,40 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[TuneReportCallback({
-            "loss": "avg_val_loss",
-            "mean_accuracy": "avg_val_accuracy"
-        }, on="validation_end")])
+        callbacks=[
+            TuneReportCallback(
+                {
+                    "loss": "val_loss",
+                    "mean_accuracy": "val_accuracy"
+                },
+                on="validation_end")
+        ])
 
     trainer.fit(model)
 # __tune_train_end__
 
 
 # __tune_train_checkpoint_begin__
-def train_mnist_tune_checkpoint(
-    config,
-    checkpoint_dir=None,
-    data_dir=None,
-    num_epochs=10,
-    num_gpus=0):
+def train_mnist_tune_checkpoint(config,
+                                checkpoint_dir=None,
+                                data_dir=None,
+                                num_epochs=10,
+                                num_gpus=0):
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         gpus=num_gpus,
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[TuneCheckpointCallback(
-            filename="checkpoint", on="validation_end"),
-                   TuneReportCallback({
-                       "loss": "avg_val_loss",
-                       "mean_accuracy": "avg_val_accuracy"
-                   }, on="validation_end")])
+        callbacks=[
+            TuneReportCheckpointCallback(
+                metrics={
+                    "loss": "val_loss",
+                    "mean_accuracy": "val_accuracy"
+                },
+                filename="checkpoint",
+                on="validation_end")
+        ])
     if checkpoint_dir:
         # Currently, this leads to errors:
         # model = LightningMNISTClassifier.load_from_checkpoint(
@@ -180,8 +186,7 @@ def train_mnist_tune_checkpoint(
         model = LightningMNISTClassifier._load_model_state(ckpt, config=config)
         trainer.current_epoch = ckpt["epoch"]
     else:
-        model = LightningMNISTClassifier(
-            config=config, data_dir=data_dir)
+        model = LightningMNISTClassifier(config=config, data_dir=data_dir)
 
     trainer.fit(model)
 # __tune_train_checkpoint_end__
@@ -216,7 +221,10 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
             data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": gpus_per_trial
+        },
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
@@ -259,7 +267,10 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
             data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": gpus_per_trial
+        },
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
