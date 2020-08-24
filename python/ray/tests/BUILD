@@ -53,7 +53,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "medium_size_python_tests"],
   deps = ["//:ray_lib"],
 )
 
