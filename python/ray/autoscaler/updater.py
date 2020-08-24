@@ -334,14 +334,12 @@ class NodeUpdater:
                                     raise click.ClickException(
                                         "Initialization command failed."
                                     ) from None
-                            if isinstance(self.cmd_runner,
-                                          DockerCommandRunner):
-                                self.cmd_runner.run_init(self.is_head_node)
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
-
+                if isinstance(self.cmd_runner, DockerCommandRunner):
+                    self.cmd_runner.run_init(self.is_head_node)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",

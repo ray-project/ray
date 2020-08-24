@@ -225,6 +225,7 @@
                 "worker_docker_start": {
                   "type": "string",
                   "description": "analogous to head_docker_start"
+                }
             }
         },
         "head_node_type": {

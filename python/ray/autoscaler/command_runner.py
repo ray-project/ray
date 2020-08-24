@@ -571,7 +571,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 class DockerCommandRunner(CommandRunnerInterface):
     def __init__(self, docker_config, **common_args):
         self.ssh_command_runner = SSHCommandRunner(**common_args)
-        self.docker_name = docker_config["container_name"]
+        self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
         self.shutdown = False
@@ -598,7 +598,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             cmd = self._docker_expand_user(cmd, any_char=True)
             cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
-                [cmd], container_name=self.docker_name,
+                [cmd],
+                container_name=self.container_name,
                 with_interactive=True)[0]
 
         if self.shutdown:
@@ -621,7 +622,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.ssh_command_runner.run_rsync_up(source, target)
         if self.initialized:
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                target, self.docker_name,
+                target, self.container_name,
                 self._docker_expand_user(protected_path)))
 
     def run_rsync_down(self, source, target):
@@ -631,7 +632,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.docker_name, self._docker_expand_user(protected_path),
+            self.container_name, self._docker_expand_user(protected_path),
             source))
         self.ssh_command_runner.run_rsync_down(source, target)
 
@@ -639,7 +640,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
             "ssh", "ssh -tt", 1).strip("\n")
         return inner_str + " docker exec -it {} /bin/bash\n".format(
-            self.docker_name)
+            self.container_name)
 
     def _check_docker_installed(self):
         try:
@@ -663,7 +664,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.initialized:
             return True
         output = self.ssh_command_runner.run(
-            check_docker_running_cmd(self.docker_name),
+            check_docker_running_cmd(self.container_name),
             with_output=True).decode("utf-8").strip()
         # Checks for the false positive where "true" is in the container name
         return ("true" in output.lower()
@@ -675,7 +676,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
                     "docker exec {} env | grep HOME | cut -d'=' -f2".format(
-                        self.docker_name),
+                        self.container_name),
                     with_output=True).decode("utf-8").strip()
 
             if any_char:
@@ -706,17 +707,17 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.run(start_command, run_env="host")
         else:
             running_image = self.run(
-                check_docker_image(self.docker_name),
+                check_docker_image(self.container_name),
                 with_output=True,
                 run_env="host").decode("utf-8").strip()
             if running_image != image:
                 logger.error(
-                    "A container with name {} ".format(self.docker_name) +
+                    "A container with name {} ".format(self.container_name) +
                     "is running image {} instead ".format(running_image) +
                     "of {} (which was provided in the YAML".format(image))
 
         # Copy bootstrap config & key over
         if as_head:
-            for copy_cmd in docker_autoscaler_setup(self.docker_name):
+            for copy_cmd in docker_autoscaler_setup(self.container_name):
                 self.run(copy_cmd, run_env="host")
         self.initialized = True
