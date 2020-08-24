@@ -78,7 +78,7 @@ const MemoryTable: React.FC<MemoryTableProps> = ({ tableEntries }) => {
   const tableRows = sortedTableEntries.map((tableEntry) => (
     <MemoryTableRow memoryTableEntry={tableEntry} key={tableEntry.object_ref} />
   ));
-  // Todo add in sorting code
+  // Todo(max) add in sorting code
   return (
     <Paper className={classes.container} elevation={2}>
       <Table>
