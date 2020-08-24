@@ -196,7 +196,9 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
+            if log_once("tbx-install"):
+                logger.info(
+                    "pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -329,8 +331,9 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
-                logger.warning("Could not instantiate %s: %s.", cls.__name__,
-                               str(exc))
+                if log_once(f"instantiate:{cls.__name__}"):
+                    logger.warning("Could not instantiate %s: %s.",
+                                   cls.__name__, str(exc))
         self._log_syncer = get_node_syncer(
             self.logdir,
             remote_dir=self.logdir,

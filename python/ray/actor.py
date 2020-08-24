@@ -96,9 +96,8 @@ class ActorMethod:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
-                        "of running 'object.{}()', try "
-                        "'object.{}.remote()'.".format(self._method_name,
-                                                       self._method_name))
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
@@ -158,9 +157,9 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise TypeError("{} can not be constructed directly, "
-                        "instead of running '{}()', try '{}.create()'".format(
-                            class_name, class_name, class_name))
+        raise TypeError(f"{class_name} can not be constructed directly, "
+                        f"instead of running '{class_name}()', "
+                        f"try '{class_name}.create()'")
 
     @classmethod
     def reset_cache(cls):
@@ -288,13 +287,14 @@ class ActorClass:
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError("Attempted to define subclass '{}' of actor "
-                                "class '{}'. Inheriting from actor classes is "
-                                "not currently supported. You can instead "
-                                "inherit from a non-actor base class and make "
-                                "the derived class an actor class (with "
-                                "@ray.remote).".format(
-                                    name, base.__ray_metadata__.class_name))
+                raise TypeError(
+                    f"Attempted to define subclass '{name}' of actor "
+                    f"class '{base.__ray_metadata__.class_name}'. "
+                    "Inheriting from actor classes is "
+                    "not currently supported. You can instead "
+                    "inherit from a non-actor base class and make "
+                    "the derived class an actor class (with "
+                    "@ray.remote).")
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -312,9 +312,8 @@ class ActorClass:
             Exception: Always.
         """
         raise TypeError("Actors cannot be instantiated directly. "
-                        "Instead of '{}()', use '{}.remote()'.".format(
-                            self.__ray_metadata__.class_name,
-                            self.__ray_metadata__.class_name))
+                        f"Instead of '{self.__ray_metadata__.class_name}()', "
+                        f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
@@ -325,9 +324,9 @@ class ActorClass:
                 "_ray_from_function_descriptor"
         ]:
             if hasattr(modified_class, attribute):
-                logger.warning("Creating an actor from class {} overwrites "
-                               "attribute {} of that class".format(
-                                   modified_class.__name__, attribute))
+                logger.warning("Creating an actor from class "
+                               f"{modified_class.__name__} overwrites "
+                               f"attribute {attribute} of that class")
 
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
@@ -500,9 +499,9 @@ class ActorClass:
                 pass
             else:
                 raise ValueError(
-                    "The name {name} is already taken. Please use "
+                    f"The name {name} is already taken. Please use "
                     "a different name or get the existing actor using "
-                    "ray.get_actor('{name}')".format(name=name))
+                    f"ray.get_actor('{name}')")
             detached = True
         else:
             detached = False
@@ -740,8 +739,8 @@ class ActorHandle:
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, item))
+            raise AttributeError(f"'{type(self).__name__}' object has "
+                                 f"no attribute '{item}'")
         if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
@@ -771,9 +770,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return "Actor({}, {})".format(
-            self._ray_actor_creation_function_descriptor.class_name,
-            self._actor_id.hex())
+        return (f"Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name},"
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):

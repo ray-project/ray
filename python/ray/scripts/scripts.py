@@ -22,7 +22,6 @@ import ray.ray_constants as ray_constants
 import ray.utils
 from ray.projects.scripts import project_cli, session_cli
 
-from ray.autoscaler.subprocess_output_util import set_output_redirected
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
@@ -402,6 +401,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     if gcs_server_port and not head:
         raise ValueError(
@@ -768,6 +768,7 @@ def stop(force, verbose, log_new_style, log_color):
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
@@ -919,8 +920,7 @@ def stop(force, verbose, log_new_style, log_color):
     "--redirect-command-output",
     is_flag=True,
     default=False,
-    help=("Redirect command output to a file instead "
-          "of straight to the terminal."))
+    help="Whether to redirect command output to a file.")
 @click.option(
     "--use-login-shells/--use-normal-shells",
     is_flag=True,
@@ -936,6 +936,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     if restart_only or no_restart:
         cli_logger.doassert(restart_only != no_restart,
@@ -1001,6 +1002,7 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
@@ -1053,6 +1055,7 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
@@ -1075,6 +1078,11 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
 @click.option(
     "--port-forward",
@@ -1084,16 +1092,25 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     type=int,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
-def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
-           port_forward, log_new_style, log_color, verbose):
+def attach(cluster_config_file, start, screen, tmux, cluster_name,
+           no_config_cache, new, port_forward, log_new_style, log_color,
+           verbose):
     """Create or attach to a SSH session to a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     port_forward = [(port, port) for port in list(port_forward)]
-    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
-                   port_forward)
+    attach_cluster(
+        cluster_config_file,
+        start,
+        screen,
+        tmux,
+        cluster_name,
+        no_config_cache=no_config_cache,
+        new=new,
+        port_forward=port_forward)
 
 
 @cli.command()
@@ -1113,6 +1130,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
@@ -1140,6 +1158,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
+    cli_logger.detect_colors()
 
     rsync(
         cluster_config_file,
@@ -1176,6 +1195,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--port-forward",
     "-p",
     required=False,
@@ -1191,8 +1215,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
 @click.argument("script_args", nargs=-1)
 @add_click_options(logging_options)
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           port_forward, script, args, script_args, log_new_style, log_color,
-           verbose):
+           no_config_cache, port_forward, script, args, script_args,
+           log_new_style, log_color, verbose):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1205,8 +1229,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
-
-    set_output_redirected(False)
+    cli_logger.detect_colors()
 
     cli_logger.doassert(not (screen and tmux),
                         "`{}` and `{}` are incompatible.", cf.bold("--screen"),
@@ -1243,12 +1266,18 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
             restart_only=False,
             yes=True,
             override_cluster_name=cluster_name,
-            no_config_cache=False,
+            no_config_cache=no_config_cache,
             redirect_command_output=False,
             use_login_shells=True)
     target = os.path.basename(script)
     target = os.path.join("~", target)
-    rsync(cluster_config_file, script, target, cluster_name, down=False)
+    rsync(
+        cluster_config_file,
+        script,
+        target,
+        cluster_name,
+        no_config_cache=no_config_cache,
+        down=False)
 
     command_parts = ["python", target]
     if script_args:
@@ -1267,6 +1296,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
         stop=stop,
         start=False,
         override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
         port_forward=port_forward)
 
 
@@ -1304,6 +1334,11 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+@click.option(
     "--port-forward",
     "-p",
     required=False,
@@ -1312,13 +1347,13 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, port_forward, log_new_style, log_color, verbose):
+         cluster_name, no_config_cache, port_forward, log_new_style, log_color,
+         verbose):
     """Execute a command via SSH on a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
-
-    set_output_redirected(False)
+    cli_logger.detect_colors()
 
     port_forward = [(port, port) for port in list(port_forward)]
 
@@ -1331,6 +1366,7 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         stop=stop,
         start=start,
         override_cluster_name=cluster_name,
+        no_config_cache=no_config_cache,
         port_forward=port_forward)
 
 
