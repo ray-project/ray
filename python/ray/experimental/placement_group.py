@@ -34,6 +34,9 @@ class PlacementGroup:
             "ready() cannot be called on placement group object with a "
             f"bundle length == 0, current bundle length: {len(self.bundles)}")
 
+        # Select a random bundle to schedule a dummy task.
+        # Since the placement group creation will be atomic, it is sufficient
+        # to schedule a single task.
         bundle_index = random.randint(0, len(self.bundles) - 1)
         bundle = self.bundles[bundle_index]
 
