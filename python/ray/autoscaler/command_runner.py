@@ -216,7 +216,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             cmd = _with_interactive(cmd)
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
-            final_cmd += _with_interactive(cmd)
+            final_cmd += cmd
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
