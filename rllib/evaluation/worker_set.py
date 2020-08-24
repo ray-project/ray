@@ -73,7 +73,6 @@ class WorkerSet:
                                                    self._policy_class, 0,
                                                    self._local_config)
 
-
     def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""
         return self._local_worker
