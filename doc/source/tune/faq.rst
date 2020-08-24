@@ -74,6 +74,63 @@ For **discount factors** in reinforcement learning we suggest sampling uniformly
 between 0.9 and 1.0. Depending on the problem, a much stricter range above 0.97
 or oeven above 0.99 can make sense (e.g. for Atari).
 
+How can I used nested/conditional search spaces?
+------------------------------------------------
+Sometimes you might need to define parameters whose value depend on the value
+of other parameters. Ray Tune offers some methods to define these.
+
+Nested spaces
+~~~~~~~~~~~~~
+You can nest hyperparameter definition in sub dictionaries:
+
+.. code-block:: python
+
+    config = {
+        "a": {
+            "x": tune.uniform(0, 10)
+        },
+        "b": tune.choice([1, 2, 3])
+    }
+
+The trial config will be nested exactly like the input config.
+
+Conditional spaces
+~~~~~~~~~~~~~~~~~~
+:ref:`Custom and conditional search spaces are explained in detail here <tune_custom-search>`.
+In short, you can pass custom functions to ``tune.sample_from()`` that can
+return values that depend on other values:
+
+.. code-block:: python
+
+    config = {
+        "a": tune.randint(5, 10)
+        "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a))
+    }
+
+Conditional grid search
+~~~~~~~~~~~~~~~~~~~~~~~
+If you would like to grid search over two parameters that depend on each other,
+this might not work out of the box. For instance say that *a* should be a value
+between 5 and 10 and *b* should be a value between 0 and a. In this case, we
+cannot use ``tune.sample_from`` because it doesn't support grid searching.
+
+The solution here is to create a list of valid *tuples* with the help of a
+helper function, like this:
+
+.. code-block:: python
+
+    def _iter():
+        for a in range(5, 10):
+            for b in range(a):
+                yield a, b
+
+    config = {
+        "ab": tune.grid_search(list(_iter())),
+    }
+
+Your trainable then can do something like ``a, b = config["ab"]`` to split
+the a and b variables and use them afterwards.
+
 How does early termination (e.g. Hyperband/ASHA) work?
 ------------------------------------------------------
 Early termination algorithms look at the intermediately reported values,
