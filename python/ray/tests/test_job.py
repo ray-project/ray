@@ -72,6 +72,7 @@ ray.get(_.value.remote())
 """.format(address)
 
     p = run_string_as_driver_nonblocking(driver)
+
     # Wait for actor to be created
     def actor_is_created():
         actor_table = ray.actors()
@@ -80,6 +81,7 @@ ray.get(_.value.remote())
             if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
                 return True
         return False
+
     wait_for_condition(actor_is_created)
 
     actor_table = ray.actors()
