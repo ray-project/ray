@@ -275,7 +275,9 @@ class MemoryTable:
         return self.__repr__()
 
 
-def construct_memory_table(workers_info_by_node: dict, group_by: GroupByType=GroupByType.NODE_ADDRESS, sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
+def construct_memory_table(workers_info_by_node: dict,
+                           group_by: GroupByType = GroupByType.NODE_ADDRESS,
+                           sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
     memory_table_entries = []
     for node_id, worker_infos in workers_info_by_node.items():
         for worker_info in worker_infos:
@@ -293,5 +295,6 @@ def construct_memory_table(workers_info_by_node: dict, group_by: GroupByType=Gro
                     pid=pid)
                 if memory_table_entry.is_valid():
                     memory_table_entries.append(memory_table_entry)
-    memory_table = MemoryTable(memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
+    memory_table = MemoryTable(
+        memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
     return memory_table
