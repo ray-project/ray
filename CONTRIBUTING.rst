@@ -37,10 +37,10 @@ For contributors who are in the ray-project organization:
 - Address their comments and remove `@author-action-required` label from the PR.
 - Repeat this process until assignees approve your PR.
 - Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add `test-ok` label if the build succeeds.
-- Committers will merge the PRs if the build success is confirmed.
+- Committers will merge the PR once the build is passing.
 
-For contributos who are out of the ray-project organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For contributors who are not in the ray-project organization:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
 - Please actively ping assignees after you address your comments! 
