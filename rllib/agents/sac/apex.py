@@ -21,7 +21,7 @@ APEX_SAC_DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
         "rollout_fragment_length": 50,
         "target_network_update_freq": 0,
         "timesteps_per_iteration": 1000,
-        "exploration_config": {"type": "PerWorkerEpsilonGreedy"},
+        "exploration_config": {"type": "StochasticSampling"},
         "worker_side_prioritization": True,
         "min_iter_time_s": 10,
         "prioritized_replay": True,
