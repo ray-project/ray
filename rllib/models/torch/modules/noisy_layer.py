@@ -1,7 +1,6 @@
 import numpy as np
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_torch
-from ray.rllib.utils.framework import get_variable
 
 torch, nn = try_import_torch()
 
@@ -34,37 +33,21 @@ class NoisyLayer(nn.Module):
         if self.activation is not None:
             self.activation = self.activation()
 
-        self.sigma_w = get_variable(
-            np.random.uniform(
-                low=-1.0 / np.sqrt(float(self.in_size)),
-                high=1.0 / np.sqrt(float(self.in_size)),
-                size=[self.in_size, out_size]),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.sigma_b = get_variable(
-            np.full(
-                shape=[out_size],
-                fill_value=sigma0 / np.sqrt(float(self.in_size))),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.w = get_variable(
-            np.full(
-                shape=[self.in_size, self.out_size],
-                fill_value=6 / np.sqrt(float(in_size) + float(out_size))),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
-        self.b = get_variable(
-            np.zeros([out_size]),
-            framework="torch",
-            dtype=torch.float32,
-            torch_tensor=True,
-            trainable=True)
+        self.sigma_w = nn.Parameter(
+            torch.from_numpy(
+                np.random.uniform(
+                    low=-1.0 / np.sqrt(float(self.in_size)),
+                    high=1.0 / np.sqrt(float(self.in_size)),
+                    size=[self.in_size, out_size])).float())
+        self.sigma_b = nn.Parameter(
+            torch.full(
+                size=[out_size],
+                fill_value=sigma0 / np.sqrt(float(self.in_size))))
+        self.w = nn.Parameter(
+            torch.full(
+                size=[self.in_size, self.out_size],
+                fill_value=6 / np.sqrt(float(in_size) + float(out_size))))
+        self.b = nn.Parameter(torch.zeros([out_size]))
 
     def forward(self, inputs):
         epsilon_in = self._f_epsilon(
@@ -77,12 +60,12 @@ class NoisyLayer(nn.Module):
                 std=torch.ones([self.out_size])))
         epsilon_w = torch.matmul(
             torch.unsqueeze(epsilon_in, -1),
-            other=torch.unsqueeze(epsilon_out, 0))
-        epsilon_b = epsilon_out
+            other=torch.unsqueeze(epsilon_out, 0)).to(inputs.device)
+        epsilon_b = epsilon_out.to(inputs.device)
 
-        action_activation = torch.matmul(
-            inputs, self.w +
-            self.sigma_w * epsilon_w) + self.b + self.sigma_b * epsilon_b
+        action_activation = (
+            torch.matmul(inputs, self.w + self.sigma_w * epsilon_w) + self.b +
+            self.sigma_b * epsilon_b)
 
         if self.activation is not None:
             action_activation = self.activation(action_activation)
