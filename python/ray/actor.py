@@ -8,6 +8,9 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
+
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
@@ -93,9 +96,8 @@ class ActorMethod:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
-                        "of running 'object.{}()', try "
-                        "'object.{}.remote()'.".format(self._method_name,
-                                                       self._method_name))
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
@@ -155,9 +157,9 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise TypeError("{} can not be constructed directly, "
-                        "instead of running '{}()', try '{}.create()'".format(
-                            class_name, class_name, class_name))
+        raise TypeError(f"{class_name} can not be constructed directly, "
+                        f"instead of running '{class_name}()', "
+                        f"try '{class_name}.create()'")
 
     @classmethod
     def reset_cache(cls):
@@ -285,13 +287,14 @@ class ActorClass:
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError("Attempted to define subclass '{}' of actor "
-                                "class '{}'. Inheriting from actor classes is "
-                                "not currently supported. You can instead "
-                                "inherit from a non-actor base class and make "
-                                "the derived class an actor class (with "
-                                "@ray.remote).".format(
-                                    name, base.__ray_metadata__.class_name))
+                raise TypeError(
+                    f"Attempted to define subclass '{name}' of actor "
+                    f"class '{base.__ray_metadata__.class_name}'. "
+                    "Inheriting from actor classes is "
+                    "not currently supported. You can instead "
+                    "inherit from a non-actor base class and make "
+                    "the derived class an actor class (with "
+                    "@ray.remote).")
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -309,9 +312,8 @@ class ActorClass:
             Exception: Always.
         """
         raise TypeError("Actors cannot be instantiated directly. "
-                        "Instead of '{}()', use '{}.remote()'.".format(
-                            self.__ray_metadata__.class_name,
-                            self.__ray_metadata__.class_name))
+                        f"Instead of '{self.__ray_metadata__.class_name}()', "
+                        f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
@@ -322,16 +324,16 @@ class ActorClass:
                 "_ray_from_function_descriptor"
         ]:
             if hasattr(modified_class, attribute):
-                logger.warning("Creating an actor from class {} overwrites "
-                               "attribute {} of that class".format(
-                                   modified_class.__name__, attribute))
+                logger.warning("Creating an actor from class "
+                               f"{modified_class.__name__} overwrites "
+                               f"attribute {attribute} of that class")
 
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
             pass
 
-        name = "ActorClass({})".format(modified_class.__name__)
+        name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
@@ -412,7 +414,7 @@ class ActorClass:
                 max_task_retries=None,
                 name=None,
                 detached=False,
-                placement_group_id=None,
+                placement_group=None,
                 placement_group_bundle_index=-1):
         """Create an actor.
 
@@ -438,7 +440,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
-            placement_group_id: the placement group this actor belongs to,
+            placement_group: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
@@ -480,8 +482,8 @@ class ActorClass:
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError("name must be None or a string, "
-                                "got: '{}'.".format(type(name)))
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -497,12 +499,18 @@ class ActorClass:
                 pass
             else:
                 raise ValueError(
-                    "The name {name} is already taken. Please use "
+                    f"The name {name} is already taken. Please use "
                     "a different name or get the existing actor using "
-                    "ray.get_actor('{name}')".format(name=name))
+                    f"ray.get_actor('{name}')")
             detached = True
         else:
             detached = False
+
+        if placement_group is None:
+            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -574,8 +582,7 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
-            placement_group_id
-            if placement_group_id is not None else ray.PlacementGroupID.nil(),
+            placement_group.id,
             placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
@@ -732,8 +739,8 @@ class ActorHandle:
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, item))
+            raise AttributeError(f"'{type(self).__name__}' object has "
+                                 f"no attribute '{item}'")
         if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
@@ -744,9 +751,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        "Actor method {} is not supported by cross language."
-                        .format(item))
+                    logger.warning(f"Actor method {item} is not "
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 
@@ -764,9 +770,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return "Actor({}, {})".format(
-            self._ray_actor_creation_function_descriptor.class_name,
-            self._actor_id.hex())
+        return (f"Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name},"
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):

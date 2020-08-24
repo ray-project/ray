@@ -67,7 +67,7 @@ def flatten_to_single_ndarray(input_):
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
     Args:
-        input_ (Union[List[np.ndarray],np.ndarray]): The list of ndarrays or
+        input_ (Union[List[np.ndarray], np.ndarray]): The list of ndarrays or
             a single ndarray.
 
     Returns:
