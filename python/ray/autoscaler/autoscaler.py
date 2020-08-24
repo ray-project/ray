@@ -487,8 +487,9 @@ class StandardAutoscaler:
             resources: Either a list of resource bundles or a single resource
                 demand dictionary.
         """
-        logger.info(
-            "StandardAutoscaler: resource_requests={}".format(resources))
+        if resources:
+            logger.info(
+                "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:
