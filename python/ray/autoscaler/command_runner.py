@@ -12,8 +12,8 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
-                                                  ProcessRunnerError
+from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
+                                                   ProcessRunnerError)
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -473,7 +473,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
     ):
-
         if ssh_options_override_ssh_key:
             ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
@@ -618,6 +617,10 @@ class DockerCommandRunner(SSHCommandRunner):
             f"mkdir -p {os.path.dirname(target.rstrip('/'))}")
         self.ssh_command_runner.run_rsync_up(source, target)
         if self._check_container_status():
+            if os.path.isdir(source):
+                # Adding a "." means that docker copies the *contents*
+                # Without it, docker copies the source *into* the target
+                target += "/."
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
                 target, self.docker_name,
                 self._docker_expand_user(protected_path)))
@@ -628,6 +631,10 @@ class DockerCommandRunner(SSHCommandRunner):
             source = source.replace("/root", "/tmp/root")
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
+        if protected_path[-1] == "/":
+            protected_path += "."
+            # Adding a "." means that docker copies the *contents*
+            # Without it, docker copies the source *into* the target
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
             self.docker_name, self._docker_expand_user(protected_path),
             source))

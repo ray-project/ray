@@ -166,8 +166,10 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
     return ray::rpc::PACK;
   case 1:
     return ray::rpc::SPREAD;
-  default:
+  case 2:
     return ray::rpc::STRICT_PACK;
+  default:
+    return ray::rpc::STRICT_SPREAD;
   }
 }
 

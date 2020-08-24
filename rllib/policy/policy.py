@@ -70,6 +70,11 @@ class Policy(metaclass=ABCMeta):
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
         self.dist_class = None
+        # View requirements dict for a `learn_on_batch()` call.
+        # Child classes need to add their specific requirements here (usually
+        # a combination of a Model's inference_view_- and the
+        # Policy's loss function-requirements.
+        self.training_view_requirements = {}
 
     @abstractmethod
     @DeveloperAPI
@@ -282,25 +287,6 @@ class Policy(metaclass=ABCMeta):
                 [BATCH_SIZE].
         """
         raise NotImplementedError
-
-    @DeveloperAPI
-    def training_view_requirements(self):
-        """Returns a dict of view requirements for operating on this Policy.
-
-        Note: This is an experimental API method.
-
-        The view requirements dict is used to generate input_dicts and
-        SampleBatches for 1) action computations, 2) postprocessing, and 3)
-        generating training batches.
-        The Policy may ask its Model(s) as well for possible additional
-        requirements (e.g. prev-action/reward in an LSTM).
-
-        Returns:
-            Dict[str, ViewRequirement]: The view requirements dict, mapping
-                each view key (which will be available in input_dicts) to
-                an underlying requirement (actual data, timestep shift, etc..).
-        """
-        return {}
 
     @DeveloperAPI
     def postprocess_trajectory(
