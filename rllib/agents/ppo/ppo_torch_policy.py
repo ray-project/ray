@@ -74,9 +74,7 @@ class PPOLoss:
                 return torch.sum(t[valid_mask]) / num_valid
 
         else:
-
-            def reduce_mean_valid(t):
-                return torch.mean(t)
+            reduce_mean_valid = torch.mean
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -119,7 +117,10 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     mask = None
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
-        mask = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = sequence_mask(
+            train_batch["seq_lens"],
+            max_seq_len,
+            time_major=model.is_time_major())
         mask = torch.reshape(mask, [-1])
 
     policy.loss_obj = PPOLoss(
@@ -223,6 +224,12 @@ def training_view_requirements_fn(policy):
         SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
         # VF preds are needed for the loss.
         SampleBatch.VF_PREDS: ViewRequirement(shift=0),
+        # Needed for postprocessing.
+        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
+        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
+        # Created during postprocessing.
+        Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
+        Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
     }
 
 

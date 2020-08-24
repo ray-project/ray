@@ -82,9 +82,6 @@ enum MessageType:int {
   SetResourceRequest,
   // Subscribe to Plasma updates
   SubscribePlasmaReady,
-  // Manually spill objects to external storage.
-  ForceSpillObjectsRequest,
-  ForceSpillObjectsReply,
   // Manually restore objects from external storage.
   ForceRestoreSpilledObjectsRequest,
   ForceRestoreSpilledObjectsReply,

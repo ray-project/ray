@@ -12,8 +12,8 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import run_cmd_redirected,\
-                                                  ProcessRunnerError
+from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
+                                                   ProcessRunnerError)
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -431,7 +431,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
         """
-
         try:
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
@@ -474,7 +473,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
     ):
-
         if ssh_options_override_ssh_key:
             ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
@@ -520,7 +518,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.
-            final_cmd.append(quote("while true; do sleep 86400; done"))
+            final_cmd.append("while true; do sleep 86400; done")
 
         cli_logger.verbose("Running `{}`", cf.bold(cmd))
         with cli_logger.indented():

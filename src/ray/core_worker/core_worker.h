@@ -586,10 +586,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SetResource(const std::string &resource_name, const double capacity,
                      const ClientID &client_id);
 
-  /// Force spilling objects to external storage.
+  /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
-  /// \return Status
-  Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+  /// \return Status. Returns Status::Invalid if any of the objects are not
+  /// eligible for spilling (they have gone out of scope or we do not own the
+  /// object). Otherwise, the return status is ok and we will use best effort
+  /// to spill the object.
+  Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Restore objects from external storage.
   /// \param[in] object_ids The objects to be restored.
@@ -627,12 +630,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] function The remote function that generates the placement group object.
   /// \param[in] placement_group_creation_options Options for this placement group
-  /// creation task. \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node \return Status error if placement group
+  /// creation task.
+  /// \param[out] placement_group_id ID of the created placement group.
+  /// This can be used to shedule actor in node
+  /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
+
+  /// Remove a placement group. Note that this operation is synchronous.
+  ///
+  /// \param[in] placement_group_id The id of a placement group to remove.
+  /// \return Status OK if succeed. TimedOut if request to GCS server times out.
+  /// NotFound if placement group is already removed or doesn't exist.
+  Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Submit an actor task.
   ///
@@ -987,6 +999,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Handler if a raylet node is removed from the cluster.
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
+  /// Request the spillage of an object that we own from the primary that hosts
+  /// the primary copy to spill.
+  void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
+                        std::function<void()> callback);
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1022,6 +1039,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  /// Shared core worker client pool.
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// Timer used to periodically check if the raylet has died.
   boost::asio::steady_timer death_check_timer_;

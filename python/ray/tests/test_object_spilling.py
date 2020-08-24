@@ -107,6 +107,53 @@ def test_spill_objects_manually_with_workers(shutdown_only):
         assert np.array_equal(restored, arr)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+        "object_spilling_config": {
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        },
+        "_internal_config": json.dumps({
+            "object_store_full_max_retries": 0,
+            "max_io_workers": 4,
+        }),
+    }],
+    indirect=True)
+def test_spill_remote_object(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(
+        object_store_memory=75 * 1024 * 1024,
+        object_spilling_config={
+            "type": "filesystem",
+            "params": {
+                "directory_path": "/tmp"
+            }
+        })
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    # Create 2 objects. Only 1 should fit.
+    ref = put.remote()
+    ray.get(ref)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(put.remote())
+    time.sleep(1)
+    # Spill 1 object. The second should now fit.
+    ray.experimental.force_spill_objects([ref])
+    ray.get(put.remote())
+
+    # TODO(swang): Restoring from the object directory is not yet supported.
+    # ray.experimental.force_restore_spilled_objects([ref])
+    # sample = ray.get(ref)
+    # assert np.array_equal(sample, copy)
+
+
 @pytest.mark.skip(reason="have not been fully implemented")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
