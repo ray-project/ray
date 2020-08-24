@@ -121,7 +121,9 @@ class MBMPOExploration(Exploration):
         logp = action_dist.sampled_action_logp()
 
         batch_size = action.size()[0]
-        if self.worker_index==0 and self.timestep < 10000:
+
+        # Initial Random Exploration for Real Env Interaction
+        if self.worker_index==0 and self.timestep < 8000:
             print("Using Random")
             action = [self.action_space.sample() for _ in range(batch_size)]
             logp = [0.0 for _ in range(batch_size)]

@@ -196,8 +196,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
         new_samples = local_worker.sample()
+        # Initial Exploration of 8000 timesteps
         if not self.global_itr:
-            extra = local_worker.sample().slice(start=0, end=1000)
+            extra = local_worker.sample()
             new_samples.concat(extra)
 
         # Process Samples
