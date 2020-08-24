@@ -10,6 +10,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
+
 class MockParam(object):
     def __init__(self, params):
         self._params = params
@@ -59,8 +60,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             perturbation_interval=1,
             log_config=True,
             hyperparam_mutations={"c": lambda: 1},
-            synch=synch
-        )
+            synch=synch)
 
         param_a = MockParam([10, 20, 30])
 
@@ -87,6 +87,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
+
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
     def setUp(self):
@@ -144,6 +145,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         fix was not applied.
         See issues #9036, #9036
         """
+
         class MockTrainable(tune.Trainable):
             def setup(self, config):
                 self.iter = 0

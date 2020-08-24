@@ -27,8 +27,8 @@ class PBTTrialState:
         self.last_score = None
         self.last_checkpoint = None
         self.last_perturbation_time = 0
-        self.last_train_time = 0 # Used for synchronous mode.
-        self.last_result = None # Used for synchronous mode.
+        self.last_train_time = 0  # Used for synchronous mode.
+        self.last_result = None  # Used for synchronous mode.
 
     def __repr__(self):
         return str((self.last_score, self.last_checkpoint,
@@ -244,8 +244,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if perturbation_interval <= 0:
             raise ValueError(
                 "perturbation_interval must be a positive number greater "
-                "than 0. Current value: '{}'".format(perturbation_interval)
-            )
+                "than 0. Current value: '{}'".format(perturbation_interval))
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -344,7 +343,8 @@ class PopulationBasedTraining(FIFOScheduler):
         if not self._synch:
             state.last_perturbation_time = time
             lower_quantile, upper_quantile = self._quantiles()
-            self._perturb_trial(trial, trial_runner, upper_quantile, lower_quantile)
+            self._perturb_trial(trial, trial_runner, upper_quantile,
+                                lower_quantile)
             for trial in trial_runner.get_trials():
                 if trial.status in [Trial.PENDING, Trial.PAUSED]:
                     return TrialScheduler.PAUSE  # yield time to other trials
@@ -352,9 +352,9 @@ class PopulationBasedTraining(FIFOScheduler):
             return TrialScheduler.CONTINUE
         else:
             # Synchronous mode.
-            if any([self._trial_state[t].last_train_time <
-                    self._next_perturbation_sync and t != trial for t in
-                    trial_runner.get_trials()]):
+            if any(self._trial_state[t].last_train_time <
+                   self._next_perturbation_sync and t != trial
+                   for t in trial_runner.get_trials()):
                 logger.debug("Pausing trial {}".format(trial))
             else:
                 # All trials are synced at the same timestep.
@@ -371,14 +371,17 @@ class PopulationBasedTraining(FIFOScheduler):
                 for t in all_trials:
                     logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
-                    self._perturb_trial(t, trial_runner, upper_quantile, lower_quantile)
+                    self._perturb_trial(t, trial_runner, upper_quantile,
+                                        lower_quantile)
 
-                all_train_times = [self._trial_state[
-                                               trial].last_train_time for
-                                           trial in trial_runner.get_trials()]
+                all_train_times = [
+                    self._trial_state[trial].last_train_time
+                    for trial in trial_runner.get_trials()
+                ]
                 max_last_train_time = max(all_train_times)
                 self._next_perturbation_sync = max(
-                    self._next_perturbation_sync+self._perturbation_interval, max_last_train_time)
+                    self._next_perturbation_sync + self._perturbation_interval,
+                    max_last_train_time)
             return TrialScheduler.PAUSE
 
     def _perturb_trial(self, trial, trial_runner, upper_quantile,
@@ -404,9 +407,7 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
-            self._exploit(trial_runner.trial_executor, trial,
-                          trial_to_clone)
-
+            self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
 
     def _log_config_on_step(self, trial_state, new_state, trial,
                             trial_to_clone, new_config):
@@ -483,8 +484,8 @@ class PopulationBasedTraining(FIFOScheduler):
             trial.experiment_tag = new_tag
             trial.on_checkpoint(new_state.last_checkpoint)
         else:
-            reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                          new_tag)
+            reset_successful = trial_executor.reset_trial(
+                trial, new_config, new_tag)
             # TODO(ujvl): Refactor Scheduler abstraction to abstract
             #  mechanism for trial restart away. We block on restore
             #  and suppress train on start as a stop-gap fix to
@@ -541,7 +542,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \
-                    self._next_perturbation_sync:
+                        self._next_perturbation_sync:
                     candidates.append(trial)
         candidates.sort(
             key=lambda trial: self._trial_state[trial].last_train_time)
