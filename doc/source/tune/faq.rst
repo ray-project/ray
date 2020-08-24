@@ -92,7 +92,7 @@ Why are all my trials returning "1" iteration?
 Ray Tune counts iterations internally every time ``tune.report()`` is
 called. If you only call ``tune.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
-the counter is increased after calling ``_train()``.
+the counter is increased after calling ``step()``.
 
 Note that it might make sense to report metrics more often than once. For
 instance, if you train your algorithm for 1000 timesteps, consider reporting
