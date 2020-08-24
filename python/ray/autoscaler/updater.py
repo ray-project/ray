@@ -73,6 +73,16 @@ class NodeUpdater:
         cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
                             self.runtime_hash)
 
+        if cmd_output_util.does_allow_interactive(
+        ) and cmd_output_util.is_output_redirected():
+            # this is most probably a bug since the user has no control
+            # over these settings
+            msg = ("Output was redirected for an interactive command. "
+                   "Either do not pass `--redirect-command-output` "
+                   "or also pass in `--use-normal-shells`.")
+            cli_logger.abort(msg)
+            raise click.ClickException(msg)
+
         try:
             with LogTimer(self.log_prefix +
                           "Applied config {}".format(self.runtime_hash)):
@@ -298,7 +308,8 @@ class NodeUpdater:
                                             "See above for stderr.")
 
                                     raise click.ClickException(
-                                        "Initialization command failed.")
+                                        "Initialization command failed."
+                                    ) from None
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
@@ -352,10 +363,11 @@ class NodeUpdater:
                     else:
                         env_vars = {}
                     try:
-                        cmd_output_util.set_output_redirected(True)
+                        old_redirected = cmd_output_util.is_output_redirected()
+                        cmd_output_util.set_output_redirected(False)
                         self.cmd_runner.run(
                             cmd, environment_variables=env_vars)
-                        cmd_output_util.set_output_redirected(True)
+                        cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
                             cli_logger.error("Failed.")

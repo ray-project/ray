@@ -121,7 +121,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process {} to exit.".format(pid))
+        f"Timed out while waiting for process {pid} to exit.")
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):

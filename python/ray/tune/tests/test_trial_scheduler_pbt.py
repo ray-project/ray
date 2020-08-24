@@ -88,6 +88,47 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         analysis = self.synchSetup(True)
         self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
 
+class PopulationBasedTrainingConfigTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testNoConfig(self):
+        def MockTrainingFunc(config):
+            a = config["a"]
+            b = config["b"]
+            c1 = config["c"]["c1"]
+            c2 = config["c"]["c2"]
+
+            while True:
+                tune.report(mean_accuracy=a * b * (c1 + c2))
+
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="mean_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations={
+                "a": tune.uniform(0, 0.3),
+                "b": [1, 2, 3],
+                "c": {
+                    "c1": lambda: np.random.uniform(0.5),
+                    "c2": tune.choice([2, 3, 4])
+                }
+            },
+        )
+
+        tune.run(
+            MockTrainingFunc,
+            fail_fast=True,
+            num_samples=4,
+            scheduler=scheduler,
+            name="testNoConfig",
+            stop={"training_iteration": 3})
+
+
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
         ray.init()

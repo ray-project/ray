@@ -43,6 +43,10 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
+const PlacementGroupID TaskSpecification::PlacementGroupId() const {
+  return PlacementGroupID::FromBinary(message_->placement_group_id());
+}
+
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_->required_resources());
   auto required_placement_resources =
