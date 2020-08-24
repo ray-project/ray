@@ -92,8 +92,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actors = self.node_stats.get_actors(workers_info_by_node,
-                                            infeasible_tasks, ready_tasks)
+        actor_groups = self.node_stats.get_actors(workers_info_by_node,
+                                                  infeasible_tasks, ready_tasks)
 
         for address, data in D.items():
             # process view data
@@ -132,6 +132,7 @@ class DashboardController(BaseDashboardController):
                         stats_name, stats_value))
                 data["extraInfo"] += ", ".join(extra_info_strings)
                 # process actor info
+                actors = [chain.from_iterable(actor_groups.values())]
                 actors_str = json.dumps(actors, indent=2, sort_keys=True)
                 lines = actors_str.split("\n")
                 max_line_length = max(map(len, lines))
@@ -139,7 +140,7 @@ class DashboardController(BaseDashboardController):
                 for line in lines:
                     to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
-        return {"nodes": D, "actors": actors}
+        return {"nodes": D, "actor_groups": actor_groups}
 
     def get_ray_config(self):
         try:

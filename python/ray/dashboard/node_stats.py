@@ -16,6 +16,22 @@ from operator import itemgetter
 
 logger = logging.getLogger(__name__)
 
+PYCLASSNAME_RE = re.compile(r"(.+)\(")
+def group_actors_by_python_class(actors):
+    groups = defaultdict(list)
+    for actor in actors:
+        if not actor.get("actorTitle"):
+            groups["Unknown Class"].append(actor)
+        else:
+            match = PYCLASSNAME_RE.search(actor["actorTitle"])
+            if match:
+                class_name = match.groups()[1]
+                groups[class_name].append(actor)
+            else:
+                groups["Unknown Class"].append(actor)
+    return groups
+
+
 
 class NodeStats(threading.Thread):
     def __init__(self, redis_address, redis_password=None):
@@ -137,69 +153,13 @@ class NodeStats(threading.Thread):
             for ready_task in ready_tasks:
                 _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
                                          "pendingActor")
-
+        actor_groups = group_actors_by_python_class(actors)
+        stats_by_group = get_aggregate_actor_stats(actor_groups)
+        api_data = {}
+        for group_name, actors in actor_groups.keys():
+            api_data[group_name] = {"entries": actors,
+                                    "summary": stats_by_group[group_name]}
         return actors
-
-    # Gets actors in a nested structure showing parent child relationships
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
-                       ready_tasks):
-        now = time.time()
-        # construct flattened actor tree
-        flattened_tree = {"root": {"children": {}}}
-        child_to_parent = {}
-        with self._node_stats_lock:
-            for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
-                flattened_tree[actor_id].update(
-                    self._addr_to_extra_info_dict[addr])
-                parent_id = self._addr_to_actor_id.get(
-                    self._addr_to_owner_addr[addr], "root")
-                child_to_parent[actor_id] = parent_id
-
-            for node_id, workers_info in workers_info_by_node.items():
-                for worker_info in workers_info:
-                    if "coreWorkerStats" in worker_info:
-                        core_worker_stats = worker_info["coreWorkerStats"]
-                        addr = (core_worker_stats["ipAddress"],
-                                str(core_worker_stats["port"]))
-                        if addr in self._addr_to_actor_id:
-                            actor_info = flattened_tree[self._addr_to_actor_id[
-                                addr]]
-                            format_reply_id(core_worker_stats)
-                            actor_info.update(core_worker_stats)
-                            actor_info["averageTaskExecutionSpeed"] = round(
-                                actor_info["numExecutedTasks"] /
-                                (now - actor_info["timestamp"] / 1000), 2)
-                            actor_info["nodeId"] = node_id
-                            actor_info["pid"] = worker_info["pid"]
-
-            def _update_flatten_tree(task, task_spec_type, invalid_state_type):
-                actor_id = ray.utils.binary_to_hex(
-                    b64decode(task[task_spec_type]["actorId"]))
-                caller_addr = (task["callerAddress"]["ipAddress"],
-                               str(task["callerAddress"]["port"]))
-                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
-                child_to_parent[actor_id] = caller_id
-                task["state"] = -1
-                task["invalidStateType"] = invalid_state_type
-                task["actorTitle"] = task["functionDescriptor"][
-                    "pythonFunctionDescriptor"]["className"]
-                format_reply_id(task)
-                flattened_tree[actor_id] = task
-
-            for infeasible_task in infeasible_tasks:
-                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
-                                     "infeasibleActor")
-
-            for ready_task in ready_tasks:
-                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
-                                     "pendingActor")
-
-        # construct actor tree
-        actor_tree = flattened_tree
-        for actor_id, parent_id in child_to_parent.items():
-            actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
-        return actor_tree["root"]["children"]
 
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]
