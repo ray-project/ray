@@ -14,22 +14,22 @@ from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags, node_config, instance_type):
+    def __init__(self, node_id, tags, node_config, node_type):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
         self.node_config = node_config
-        self.instance_type = instance_type
+        self.node_type = node_type
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -152,7 +152,7 @@ class MockProvider(NodeProvider):
         for _ in range(count):
             self.mock_nodes[self.next_id] = MockNode(
                 self.next_id, tags.copy(), node_config,
-                tags.get(TAG_RAY_INSTANCE_TYPE))
+                tags.get(TAG_RAY_USER_NODE_TYPE))
             self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
@@ -388,7 +388,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].instance_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -443,7 +443,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -527,9 +527,9 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
         head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
         runner = MockProcessRunner()
 
         lm = LoadMetrics()
@@ -552,7 +552,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Connect the head and workers to end the bringup phase
         addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
             lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})

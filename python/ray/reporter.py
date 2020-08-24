@@ -42,7 +42,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         pid = request.pid
         duration = request.duration
         profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           "{}_profiling.txt".format(pid))
+                                           f"{pid}_profiling.txt")
         process = subprocess.Popen(
             "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
             .format(profiling_file_path, pid, duration),
@@ -121,8 +121,7 @@ class Reporter:
 
         _ = psutil.cpu_percent()  # For initialization
 
-        self.redis_key = "{}.{}".format(ray.gcs_utils.REPORTER_CHANNEL,
-                                        self.hostname)
+        self.redis_key = f"{ray.gcs_utils.REPORTER_CHANNEL}.{self.hostname}"
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -141,8 +140,7 @@ class Reporter:
         try:
             gpus = gpustat.new_query().gpus
         except Exception as e:
-            logger.debug(
-                "gpustat failed to retrieve GPU information: {}".format(e))
+            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -243,11 +241,11 @@ class Reporter:
         server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
             self.reporter_grpc_server, server)
-        port = server.add_insecure_port("[::]:{}".format(self.port))
+        port = server.add_insecure_port(f"[::]:{self.port}")
 
         server.start()
         # Publish the port.
-        self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
+        self.redis_client.set(f"REPORTER_PORT:{self.ip}", port)
         """Run the reporter."""
         while True:
             try:

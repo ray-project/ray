@@ -1,3 +1,4 @@
+import colorful as cf
 import copy
 import hashlib
 import json
@@ -25,8 +26,8 @@ from ray.autoscaler.util import validate_config, hash_runtime_conf, \
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
     PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
     try_reload_log_state
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD, TAG_RAY_INSTANCE_TYPE
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
+    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
@@ -35,11 +36,11 @@ from ray.autoscaler.command_runner import set_using_login_shells, \
 from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
+from ray.util.debug import log_once
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
 from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def request_resources(num_cpus=None, bundles=None):
     Args:
         num_cpus: int -- the number of CPU cores to request
         bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_instance_types`
+            only has an effect if you've configured `available_node_types`
             if your cluster config.
     """
     r = _redis()
@@ -102,12 +103,18 @@ def create_or_update_cluster(config_file: str,
                              restart_only: bool,
                              yes: bool,
                              override_cluster_name: Optional[str],
-                             no_config_cache: bool,
-                             dump_command_output: bool = True,
+                             no_config_cache: bool = False,
+                             redirect_command_output: bool = False,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
-    cmd_output_util.set_output_redirected(not dump_command_output)
+    if not use_login_shells:
+        cmd_output_util.set_allow_interactive(False)
+    if redirect_command_output is None:
+        # Do not redirect by default.
+        cmd_output_util.set_output_redirected(False)
+    else:
+        cmd_output_util.set_output_redirected(redirect_command_output)
 
     if use_login_shells:
         cli_logger.warning(
@@ -119,8 +126,6 @@ def create_or_update_cluster(config_file: str,
             "Consider using {}, {}.", cf.bold("--use-normal-shells"),
             cf.underlined("if you tested your workflow and it is compatible"))
         cli_logger.newline()
-
-    cli_logger.detect_colors()
 
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid\n")
@@ -189,7 +194,7 @@ def create_or_update_cluster(config_file: str,
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
     cli_logger.newline()
-    config = _bootstrap_config(config, no_config_cache)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = False
 
@@ -222,15 +227,16 @@ def _bootstrap_config(config: Dict[str, Any],
             try_reload_log_state(config_cache["config"]["provider"],
                                  config_cache.get("provider_log_info"))
 
-            cli_logger.verbose_warning(
-                "Loaded cached provider configuration "
-                "from " + cf.bold("{}"), cache_key)
-            if cli_logger.verbosity == 0:
-                cli_logger.warning("Loaded cached provider configuration")
-            cli_logger.warning(
-                "If you experience issues with "
-                "the cloud provider, try re-running "
-                "the command with {}.", cf.bold("--no-config-cache"))
+            if log_once("_printed_cached_config_warning"):
+                cli_logger.verbose_warning(
+                    "Loaded cached provider configuration "
+                    "from " + cf.bold("{}"), cache_key)
+                if cli_logger.verbosity == 0:
+                    cli_logger.warning("Loaded cached provider configuration")
+                cli_logger.warning(
+                    "If you experience issues with "
+                    "the cloud provider, try re-running "
+                    "the command with {}.", cf.bold("--no-config-cache"))
 
             return config_cache["config"]
         else:
@@ -309,9 +315,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     try:
 
         def remaining_nodes():
-
             workers = provider.non_terminated_nodes({
-                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
             })
 
             if keep_min_workers:
@@ -336,7 +341,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 return workers
 
             head = provider.non_terminated_nodes({
-                TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             })
 
             return head + workers
@@ -361,6 +366,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 A = remaining_nodes()
                 cli_logger.print("{} nodes remaining after 1 second.",
                                  cf.bold(len(A)))
+            cli_logger.success("No nodes remaining.")
     finally:
         provider.cleanup()
 
@@ -379,7 +385,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
         node = random.choice(nodes)
         cli_logger.print("Shutdown " + cf.bold("{}"), node)
@@ -472,7 +478,7 @@ def get_or_create_head_node(config,
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
         if len(nodes) > 0:
@@ -520,7 +526,7 @@ def get_or_create_head_node(config,
         # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
         head_node_config = copy.deepcopy(config["head_node"])
         if "head_node_type" in config:
-            head_node_tags[TAG_RAY_INSTANCE_TYPE] = config["head_node_type"]
+            head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
             head_node_config.update(config["available_node_types"][config[
                 "head_node_type"]]["node_config"])
 
@@ -710,9 +716,14 @@ def get_or_create_head_node(config,
         provider.cleanup()
 
 
-def attach_cluster(config_file: str, start: bool, use_screen: bool,
-                   use_tmux: bool, override_cluster_name: Optional[str],
-                   new: bool, port_forward: Any):
+def attach_cluster(config_file: str,
+                   start: bool,
+                   use_screen: bool,
+                   use_tmux: bool,
+                   override_cluster_name: Optional[str],
+                   no_config_cache: bool = False,
+                   new: bool = False,
+                   port_forward: Any = None):
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -750,7 +761,9 @@ def attach_cluster(config_file: str, start: bool, use_screen: bool,
         stop=False,
         start=start,
         override_cluster_name=override_cluster_name,
-        port_forward=port_forward)
+        no_config_cache=no_config_cache,
+        port_forward=port_forward,
+    )
 
 
 def exec_cluster(config_file: str,
@@ -762,6 +775,7 @@ def exec_cluster(config_file: str,
                  stop: bool = False,
                  start: bool = False,
                  override_cluster_name: Optional[str] = None,
+                 no_config_cache: bool = False,
                  port_forward: Any = None,
                  with_output: bool = False):
     """Runs a command on the specified cluster.
@@ -781,10 +795,15 @@ def exec_cluster(config_file: str,
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
         RUN_ENV_TYPES)
+    # TODO(rliaw): We default this to True to maintain backwards-compat.
+    # In the future we would want to support disabling login-shells
+    # and interactivity.
+    cmd_output_util.set_allow_interactive(True)
+
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
@@ -881,6 +900,7 @@ def rsync(config_file: str,
           target: Optional[str],
           override_cluster_name: Optional[str],
           down: bool,
+          no_config_cache: bool = False,
           all_nodes: bool = False):
     """Rsyncs files.
 
@@ -902,7 +922,7 @@ def rsync(config_file: str,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = _bootstrap_config(config)
+    config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
@@ -985,7 +1005,7 @@ def get_worker_node_ips(config_file: str,
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
@@ -1005,7 +1025,7 @@ def _get_worker_nodes(config, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         return provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         })
     finally:
         provider.cleanup()
@@ -1018,7 +1038,7 @@ def _get_head_node(config: Dict[str, Any],
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
     finally:

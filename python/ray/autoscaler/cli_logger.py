@@ -20,7 +20,7 @@ import click
 import colorama
 from colorful.core import ColorfulString
 import colorful as cf
-colorama.init()
+colorama.init(strip=False)
 
 
 def _patched_makeRecord(self,
@@ -187,12 +187,6 @@ class _CliLogger():
             Output verbosity.
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
-        dump_command_output (bool):
-            Determines whether the old behavior of dumping command output
-            to console will be used, or the new behavior of redirecting to
-            a file.
-
-            ! Currently unused.
     """
     strip: bool
     old_style: bool
@@ -201,22 +195,19 @@ class _CliLogger():
     indent_level: int
     verbosity: int
 
-    dump_command_output: bool
     _autodetected_cf_colormode: int
 
     def __init__(self):
-        self.strip = False
         self.old_style = True
         self.color_mode = "auto"
         self.indent_level = 0
-        self.verbosity = 0
 
-        self.dump_command_output = False
+        self.verbosity = 0
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
-        self._autodetected_cf_colormode = cf.colormode
+        self._autodetected_cf_colormode = cf.colorful.colormode
 
     def detect_colors(self):
         """Update color output settings.
@@ -225,7 +216,7 @@ class _CliLogger():
         color output
         (8-color ANSI if no terminal detected to be safe) in colorful.
         """
-
+        self.color_mode = self.color_mode.lower()
         if self.color_mode == "true":
             if self._autodetected_cf_colormode != cf.NO_COLORS:
                 cf.colormode = self._autodetected_cf_colormode
@@ -236,7 +227,6 @@ class _CliLogger():
             cf.disable()
             return
         if self.color_mode == "auto":
-            self.strip = not sys.stdout.isatty()
             # colorful autodetects tty settings
             return
 

@@ -195,9 +195,10 @@ class FunctionActorManager:
                 push_error_to_driver(
                     self._worker,
                     ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function '{}' with "
-                    "function ID {}. Traceback:\n{}".format(
-                        function_name, function_id.hex(), traceback_str),
+                    "Failed to unpickle the remote function "
+                    f"'{function_name}' with "
+                    f"function ID {function_id.hex()}. "
+                    f"Traceback:\n{traceback_str}",
                     job_id=job_id)
             else:
                 # The below line is necessary. Because in the driver process,
@@ -272,11 +273,10 @@ class FunctionActorManager:
                     max_calls=0,
                 ))
             self._num_task_executions[job_id][function_id] = 0
-        except Exception:
-            logger.exception("Failed to load function %s.", function_name)
-            raise RuntimeError(
-                "Function {} failed to be loaded from local code.".format(
-                    function_descriptor))
+        except Exception as e:
+            raise RuntimeError(f"Function {function_descriptor} failed "
+                               "to be loaded from local code. "
+                               f"Error message: {str(e)}")
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -445,20 +445,19 @@ class FunctionActorManager:
                 return actor_class.__ray_metadata__.modified_class
             else:
                 return actor_class
-        except Exception:
-            logger.exception("Failed to load actor_class %s.", class_name)
+        except Exception as e:
             raise RuntimeError(
-                "Actor {} failed to be imported from local code.".format(
-                    class_name))
+                f"Actor {class_name} failed to be imported from local code."
+                f"Error Message: {str(e)}")
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
         class TemporaryActor:
             pass
 
         def temporary_actor_method(*args, **kwargs):
-            raise RuntimeError(
-                "The actor with name {} failed to be imported, "
-                "and so cannot execute this method.".format(actor_class_name))
+            raise RuntimeError(f"The actor with name {actor_class_name} "
+                               "failed to be imported, "
+                               "and so cannot execute this method.")
 
         for method in actor_method_names:
             setattr(TemporaryActor, method, temporary_actor_method)
@@ -507,9 +506,9 @@ class FunctionActorManager:
             push_error_to_driver(
                 self._worker,
                 ray_constants.REGISTER_ACTOR_PUSH_ERROR,
-                "Failed to unpickle actor class '{}' for actor ID {}. "
-                "Traceback:\n{}".format(
-                    class_name, self._worker.actor_id.hex(), traceback_str),
+                f"Failed to unpickle actor class '{class_name}' "
+                f"for actor ID {self._worker.actor_id.hex()}. "
+                f"Traceback:\n{traceback_str}",
                 job_id=job_id)
             # TODO(rkn): In the future, it might make sense to have the worker
             # exit here. However, currently that would lead to hanging if
