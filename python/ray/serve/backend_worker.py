@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
-from typing import Union, List, Any, Callable, Type
+from typing import Union, List, Any, Callable, Type, Optional, Coroutine
 import time
 
 import ray
@@ -141,7 +141,7 @@ def wrap_to_ray_error(exception: Exception) -> RayTaskError:
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
 
 
-def ensure_async(func: AsyncCallable) -> AsyncCallable:
+def ensure_async(func: Callable) -> Coroutine:
     if inspect.iscoroutinefunction(func):
         return func
     else:
