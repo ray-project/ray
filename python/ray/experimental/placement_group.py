@@ -1,8 +1,7 @@
-import random
 from typing import (List, Dict)
 
 import ray
-from ray._raylet import PlacementGroupID
+from ray._raylet import PlacementGroupID, ObjectRef
 
 
 class PlacementGroup:
@@ -21,7 +20,7 @@ class PlacementGroup:
         self.id = id
         self.bundles = bundles
 
-    def ready(self):
+    def ready(self) -> ObjectRef:
         """Returns an object ID to check ready status."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -34,10 +33,10 @@ class PlacementGroup:
             "ready() cannot be called on placement group object with a "
             f"bundle length == 0, current bundle length: {len(self.bundles)}")
 
-        # Select a random bundle to schedule a dummy task.
+        # Select the first bundle to schedule a dummy task.
         # Since the placement group creation will be atomic, it is sufficient
         # to schedule a single task.
-        bundle_index = random.randint(0, len(self.bundles) - 1)
+        bundle_index = 0
         bundle = self.bundles[bundle_index]
 
         resource_name, value = self._get_none_zero_resource(bundle)
