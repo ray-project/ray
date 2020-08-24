@@ -137,7 +137,8 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        RAY_UNUSED(new_env_block.c_str());  // Ensure there's a final terminator for Windows
+        RAY_UNUSED(
+            new_env_block.c_str());  // Ensure there's a final terminator for Windows
         char *const envp = &new_env_block[0];
         if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
