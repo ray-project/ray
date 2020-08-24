@@ -37,11 +37,15 @@ class TuneCallback(Callback):
         if "init_end" in self._on:
             self._handle(trainer, None)
 
-    def on_fit_start(self, trainer: Trainer):
+    def on_fit_start(self,
+                     trainer: Trainer,
+                     pl_module: Optional[LightningModule] = None):
         if "fit_start" in self._on:
             self._handle(trainer, None)
 
-    def on_fit_end(self, trainer: Trainer):
+    def on_fit_end(self,
+                   trainer: Trainer,
+                   pl_module: Optional[LightningModule] = None):
         if "fit_end" in self._on:
             self._handle(trainer, None)
 
