@@ -40,7 +40,8 @@ class QLoss:
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
-            z = torch.range(0.0, num_atoms - 1, dtype=torch.float32)
+            z = torch.range(
+                0.0, num_atoms - 1, dtype=torch.float32, device=rewards.device)
             z = v_min + z * (v_max - v_min) / float(num_atoms - 1)
 
             # (batch_size, 1) * (1, num_atoms) = (batch_size, num_atoms)
