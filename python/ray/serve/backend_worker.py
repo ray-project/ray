@@ -106,7 +106,7 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
                      replica_tag: str,
                      init_args: Iterable,
                      backend_config: BackendConfig,
-                     instance_name: str = None):
+                     instance_name: Optional[str] = None):
             serve.init(name=instance_name)
 
             if is_function:
@@ -141,7 +141,7 @@ def wrap_to_ray_error(exception: Exception) -> RayTaskError:
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
 
 
-def ensure_async(func: Callable) -> Callable:
+def ensure_async(func: AsyncCallable) -> AsyncCallable:
     if inspect.iscoroutinefunction(func):
         return func
     else:
