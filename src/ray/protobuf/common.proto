@@ -116,8 +116,7 @@ enum ErrorType {
   // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
   // 1) A object that was put by the driver.
   // 2) The object's creating task is already cleaned up from GCS (this
-  // currently
-  //    crashes raylet).
+  // currently crashes raylet).
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
