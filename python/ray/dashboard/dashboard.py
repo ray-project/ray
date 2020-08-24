@@ -31,7 +31,8 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.interface import BaseDashboardController
 from ray.dashboard.interface import BaseDashboardRouteHandler
-from ray.dashboard.memory import construct_memory_table, MemoryTable
+from ray.dashboard.memory import construct_memory_table, MemoryTable, \
+     GroupByType, SortingType
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
@@ -175,7 +176,9 @@ class DashboardController(BaseDashboardController):
     def get_raylet_info(self):
         return self._construct_raylet_info()
 
-    def get_memory_table_info(self) -> MemoryTable:
+    def get_memory_table_info(self,
+                              group_by=GroupByType.NODE_ADDRESS,
+                              sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
         # Collecting memory info adds big overhead to the cluster.
         # This must be collected only when it is necessary.
         self.raylet_stats.include_memory_info = True
@@ -184,7 +187,8 @@ class DashboardController(BaseDashboardController):
             data["nodeId"]: data.get("workersStats")
             for data in D.values()
         }
-        self.memory_table = construct_memory_table(workers_info_by_node)
+        self.memory_table = construct_memory_table(
+            workers_info_by_node, group_by=group_by, sort_by=sort_by)
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
@@ -280,7 +284,19 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         return await json_response(self.is_dev, result=result)
 
     async def memory_table_info(self, req) -> aiohttp.web.Response:
-        memory_table = self.dashboard_controller.get_memory_table_info()
+        group_by = req.query.get("group_by")
+        sort_by = req.query.get("sort_by")
+        kwargs = {}
+        try:
+            if group_by:
+                kwargs["group_by"] = GroupByType(group_by)
+            if sort_by:
+                kwargs["sort_by"] = SortingType(sort_by)
+        except ValueError as e:
+            return aiohttp.web.HTTPBadRequest(reason=str(e))
+
+        memory_table = self.dashboard_controller.get_memory_table_info(
+            **kwargs)
         return await json_response(self.is_dev, result=memory_table.__dict__())
 
     async def stop_collecting_memory_table_info(self,
