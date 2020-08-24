@@ -187,6 +187,8 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
 /// Python analog: None (would be shlex.split(s, posix=False), but it doesn't unquote)
 static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
+  // The if statement below may be incorrect. See:
+  // https://github.com/ray-project/ray/pull/10131#discussion_r473871563
   if (s.empty()) {
     return {};
   }
