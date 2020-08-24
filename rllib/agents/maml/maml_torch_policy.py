@@ -71,8 +71,8 @@ def PPOLoss(dist_class,
         vf_loss(value_fn, value_targets, vf_preds, vf_clip_param))
     entropy_loss = torch.mean(entropy_loss(pi_new_dist))
 
-    total_loss = -surr_loss # + cur_kl_coeff * kl_loss
-    #total_loss += vf_loss_coeff * vf_loss
+    total_loss = -surr_loss + cur_kl_coeff * kl_loss
+    total_loss += vf_loss_coeff * vf_loss
     total_loss -= entropy_coeff * entropy_loss
     return total_loss, surr_loss, kl_loss, vf_loss, entropy_loss
 
@@ -202,8 +202,7 @@ class MAMLLoss(object):
                 inner_ppo_loss.append(ppo_loss)
             inner_kls.extend(kls)
 
-        #mean_inner_kl = [torch.mean(torch.stack(kls)) for kls in inner_kls]
-        self.mean_inner_kl = inner_kls #mean_inner_kl
+        self.mean_inner_kl = inner_kls
 
         ppo_obj = []
         for i in range(self.num_tasks):
@@ -234,7 +233,7 @@ class MAMLLoss(object):
             torch.stack(
                 [a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)]))
         self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
-        print("Meta-Loss: ", self.loss.item(), ", Inner KL:", self.inner_kl_loss.item(), self.mean_inner_kl)
+        print("Meta-Loss: ", self.loss.item(), ", Inner KL:", self.inner_kl_loss.item())
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights
@@ -285,7 +284,6 @@ class MAMLLoss(object):
                                    output_nonlinearity, policy_config,
                                    "hidden_layers", "logits")
         if log_std is not None:
-            log_std = torch.clamp(log_std, min=np.log(1e-6))
             pi_new_logits = torch.cat(
                 [
                     pi_new_logits,
