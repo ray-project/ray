@@ -1,8 +1,5 @@
-.. _tune-faq:
-
-==========================
 Frequently asked questions
-==========================
+--------------------------
 
 Here we try to answer questions that come up often. If you still have questions
 after reading this, let us know!
@@ -12,7 +9,7 @@ after reading this, let us know!
     :depth: 1
 
 Which search algorithm/scheduler should I choose?
--------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`
 and :ref:`schedulers <tune-schedulers>`.
 Deciding on which to use mostly depends on your problem:
@@ -50,7 +47,7 @@ and :ref:`Population Based Training <tune-scheduler-pbt>` for **larger problems*
 if a learning schedule is acceptable.
 
 How do I choose hyperparameter ranges?
---------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 A good start is to look at the papers that introduced the algorithms, and also
 to see what other people are using.
 
@@ -75,12 +72,12 @@ between 0.9 and 1.0. Depending on the problem, a much stricter range above 0.97
 or oeven above 0.99 can make sense (e.g. for Atari).
 
 How can I used nested/conditional search spaces?
-------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might need to define parameters whose value depend on the value
 of other parameters. Ray Tune offers some methods to define these.
 
 Nested spaces
-~~~~~~~~~~~~~
+'''''''''''''
 You can nest hyperparameter definition in sub dictionaries:
 
 .. code-block:: python
@@ -95,7 +92,7 @@ You can nest hyperparameter definition in sub dictionaries:
 The trial config will be nested exactly like the input config.
 
 Conditional spaces
-~~~~~~~~~~~~~~~~~~
+''''''''''''''''''
 :ref:`Custom and conditional search spaces are explained in detail here <tune_custom-search>`.
 In short, you can pass custom functions to ``tune.sample_from()`` that can
 return values that depend on other values:
@@ -108,7 +105,7 @@ return values that depend on other values:
     }
 
 Conditional grid search
-~~~~~~~~~~~~~~~~~~~~~~~
+'''''''''''''''''''''''
 If you would like to grid search over two parameters that depend on each other,
 this might not work out of the box. For instance say that *a* should be a value
 between 5 and 10 and *b* should be a value between 0 and a. In this case, we
@@ -132,7 +129,7 @@ Your trainable then can do something like ``a, b = config["ab"]`` to split
 the a and b variables and use them afterwards.
 
 How does early termination (e.g. Hyperband/ASHA) work?
-------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Early termination algorithms look at the intermediately reported values,
 e.g. what is reported to them via ``tune.report()`` after each training
 epoch. After a certain number of steps, they then remove the worst
@@ -146,7 +143,7 @@ time they are reduced. With ``grace_period=n`` you can force ASHA to
 train each trial at least for ``n`` epochs.
 
 Why are all my trials returning "1" iteration?
-----------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune counts iterations internally every time ``tune.report()`` is
 called. If you only call ``tune.report()`` once at the end of the training,
 the counter has only been incremented once. If you're using the class API,
@@ -158,7 +155,7 @@ intermediate performance values every 100 steps. That way, schedulers
 like Hyperband/ASHA can terminate bad performing trials early.
 
 What are all these extra outputs?
----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You'll notice that Ray Tune not only reports hyperparameters (from the
 ``config``) or metrics (passed to ``tune.report()``), but also some other
 outputs. The ``Trial.last_result`` dictionary contains the following
@@ -187,7 +184,7 @@ additional outputs:
 * ``trial_id``: Unique trial ID
 
 How do I set resources?
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
 ``resources_per_trial`` parameter of ``tune.run()``:
 
@@ -214,6 +211,14 @@ The example above showcases three things:
    is useful if your trainable starts another process that requires resources.
    This is for instance the case in some distributed computing settings,
    including when using RaySGD.
+
+One important thing to keep in mind is that each Ray worker (and thus each
+Ray Tune Trial) will only be scheduled on **one machine**. That means if
+you for instance request 2 GPUs for your trial, but your cluster consists
+of 4 machines with 1 GPU each, the trial will never be scheduled.
+
+In other words, you will have to make sure that your Ray cluster
+has machines that can actually fulfill your resource requests.
 
 
 Further Questions or Issues?
