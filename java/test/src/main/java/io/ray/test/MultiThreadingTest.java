@@ -121,15 +121,15 @@ public class MultiThreadingTest extends BaseTest {
     testMultiThreading();
   }
 
+  // Single-process mode doesn't have real workers.
+  @Test(groups = {"cluster"})
   public void testInWorker() {
-    // Single-process mode doesn't have real workers.
-    TestUtils.skipTestUnderSingleProcess();
     ObjectRef<String> obj = Ray.task(MultiThreadingTest::testMultiThreading).remote();
     Assert.assertEquals("ok", obj.get());
   }
 
+  @Test(groups = {"cluster"})
   public void testGetCurrentActorId() {
-    TestUtils.skipTestUnderSingleProcess();
     ActorHandle<ActorIdTester> actorIdTester = Ray.actor(ActorIdTester::new).remote();
     ActorId actorId = actorIdTester.task(ActorIdTester::getCurrentActorId).remote().get();
     Assert.assertEquals(actorId, actorIdTester.getId());
@@ -143,7 +143,7 @@ public class MultiThreadingTest extends BaseTest {
     final ActorHandle<Echo> fooActor = Ray.actor(Echo::new).remote();
     return new Runnable[]{
         () -> Ray.put(1),
-        () -> Ray.get(fooObject.getId(), fooObject.getType()),
+        () -> Ray.get(ImmutableList.of(fooObject)),
         fooObject::get,
         () -> Ray.wait(ImmutableList.of(fooObject)),
         Ray::getRuntimeContext,

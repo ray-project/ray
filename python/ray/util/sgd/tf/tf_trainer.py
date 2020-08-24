@@ -85,10 +85,7 @@ class TFTrainer:
             ports = ray.get(
                 [worker.find_free_port.remote() for worker in self.workers])
 
-            urls = [
-                "{ip}:{port}".format(ip=ips[i], port=ports[i])
-                for i in range(len(self.workers))
-            ]
+            urls = [f"{ips[i]}:{ports[i]}" for i in range(len(self.workers))]
 
             # Get setup tasks in order to throw errors on failure
             ray.get([
@@ -171,7 +168,7 @@ class TFTrainable(Trainable):
             extra_cpu=config["num_replicas"],
             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
-    def _setup(self, config):
+    def setup(self, config):
         self._trainer = TFTrainer(
             model_creator=config["model_creator"],
             data_creator=config["data_creator"],
@@ -180,7 +177,7 @@ class TFTrainable(Trainable):
             use_gpu=config["use_gpu"],
             num_cpus_per_worker=config.get("num_cpus_per_worker", 1))
 
-    def _train(self):
+    def step(self):
 
         train_stats = self._trainer.train()
         validation_stats = self._trainer.validate()
@@ -189,11 +186,11 @@ class TFTrainable(Trainable):
 
         return train_stats
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         return self._trainer.save(os.path.join(checkpoint_dir, "model"))
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         return self._trainer.restore(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         self._trainer.shutdown()

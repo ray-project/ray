@@ -1,7 +1,11 @@
+.. _serialization-guide:
+
 Serialization
 =============
 
 Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/docs/python/plasma.html>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
+
+.. _plasma-store:
 
 Plasma Object Store
 -------------------
@@ -45,7 +49,7 @@ Serialization notes
     l.append(l)
 
     # Try to put this list that recursively contains itself in the object store.
-    ray.put(l)  # ok 
+    ray.put(l)  # ok
 
 - For non-native objects, Ray will always keep a single copy even it is referred multiple times in an object:
 
@@ -63,12 +67,7 @@ Serialization notes
 Last resort: Custom Serialization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If none of these options work, you can try registering a custom serializer.
-
-.. autofunction:: ray.register_custom_serializer
-  :noindex:
-
-Below is an example of using ``ray.register_custom_serializer``:
+If none of these options work, you can try registering a custom serializer with ``ray.register_custom_serializer`` (:ref:`docstring <ray-register_custom_serializer-ref>`):
 
 .. code-block:: python
 
@@ -91,8 +90,8 @@ Below is an example of using ``ray.register_custom_serializer``:
       ray.register_custom_serializer(
           Foo, serializer=custom_serializer, deserializer=custom_deserializer)
 
-      object_id = ray.put(Foo(100))
-      assert ray.get(object_id).value == 100
+      object_ref = ray.put(Foo(100))
+      assert ray.get(object_ref).value == 100
 
 
 If you find cases where Ray serialization doesn't work or does something unexpected, please `let us know`_ so we can fix it.

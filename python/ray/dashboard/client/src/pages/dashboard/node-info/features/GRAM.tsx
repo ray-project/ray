@@ -1,15 +1,22 @@
-import { Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
 import { GPUStats } from "../../../../api";
-import { MiBRatio } from "../../../../common/formatUtils";
+import { RightPaddedTypography } from "../../../../common/CustomTypography";
+import { MiBRatioNoPercent } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
 import {
-  ClusterFeatureComponent,
+  ClusterFeatureRenderFn,
   Node,
-  NodeFeatureComponent,
-  WorkerFeatureComponent,
+  NodeFeatureData,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureData,
+  WorkerFeatureRenderFn,
 } from "./types";
+
+const GRAM_COL_WIDTH = 120;
 
 const nodeGRAMUtilization = (node: Node) => {
   const utilization = (gpu: GPUStats) => gpu.memory_used / gpu.memory_total;
@@ -20,6 +27,11 @@ const nodeGRAMUtilization = (node: Node) => {
   const avgUtilization = utilizationSum / node.gpus.length;
   // Convert to a percent before returning
   return avgUtilization * 100;
+};
+
+const nodeGRAMAccessor: Accessor<NodeFeatureData> = ({ node }) => {
+  const nodeGRAMUtil = nodeGRAMUtilization(node);
+  return isNaN(nodeGRAMUtil) ? -1 : nodeGRAMUtil;
 };
 
 const clusterGRAMUtilization = (nodes: Array<Node>) => {
@@ -35,7 +47,7 @@ const clusterGRAMUtilization = (nodes: Array<Node>) => {
   return getWeightedAverage(utils);
 };
 
-export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterGRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   const clusterAverageUtilization = clusterGRAMUtilization(nodes);
   return (
     <div style={{ minWidth: 60 }}>
@@ -53,22 +65,83 @@ export const ClusterGRAM: ClusterFeatureComponent = ({ nodes }) => {
   );
 };
 
-export const NodeGRAM: NodeFeatureComponent = ({ node }) => {
-  const gramUtil = nodeGRAMUtilization(node);
+export const NodeGRAM: NodeFeatureRenderFn = ({ node }) => {
+  const nodeGRAMEntries = node.gpus.map((gpu, i) => {
+    const props = {
+      gpuName: gpu.name,
+      utilization: gpu.memory_used,
+      total: gpu.memory_total,
+      slot: i,
+    };
+    return <GRAMEntry {...props} />;
+  });
   return (
     <div style={{ minWidth: 60 }}>
-      {isNaN(gramUtil) ? (
+      {nodeGRAMEntries.length === 0 ? (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
         </Typography>
       ) : (
-        <UsageBar percent={gramUtil} text={`${gramUtil.toFixed(1)}%`} />
+        <div style={{ minWidth: GRAM_COL_WIDTH }}>{nodeGRAMEntries}</div>
       )}
     </div>
   );
 };
 
-export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
+type GRAMEntryProps = {
+  gpuName: string;
+  slot: number;
+  utilization: number;
+  total: number;
+};
+
+const GRAMEntry: React.FC<GRAMEntryProps> = ({
+  gpuName,
+  slot,
+  utilization,
+  total,
+}) => {
+  const ratioStr = MiBRatioNoPercent(utilization, total);
+  return (
+    <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
+      <Tooltip title={gpuName}>
+        <RightPaddedTypography variant="body1">
+          [{slot}]: {ratioStr}
+        </RightPaddedTypography>
+      </Tooltip>
+    </Box>
+  );
+};
+
+export const WorkerGRAM: WorkerFeatureRenderFn = ({ worker, node }) => {
+  const workerGRAMEntries = node.gpus
+    .map((gpu, i) => {
+      const process = gpu.processes.find(
+        (process) => process.pid === worker.pid,
+      );
+      if (!process) {
+        return undefined;
+      }
+      const props = {
+        gpuName: gpu.name,
+        total: gpu.memory_total,
+        utilization: process.gpu_memory_usage,
+        slot: i,
+      };
+      return <GRAMEntry {...props} />;
+    })
+    .filter((entry) => entry !== undefined);
+
+  return workerGRAMEntries.length === 0 ? (
+    <Typography color="textSecondary" component="span" variant="inherit">
+      N/A
+    </Typography>
+  ) : (
+    <div style={{ minWidth: GRAM_COL_WIDTH }}>{workerGRAMEntries}</div>
+  );
+};
+
+const workerGRAMUtilization = (worker: any, node: Node) => {
   const workerProcessPerGPU = node.gpus
     .map((gpu) => gpu.processes)
     .map((processes) =>
@@ -77,20 +150,23 @@ export const WorkerGRAM: WorkerFeatureComponent = ({ worker, node }) => {
   const workerUtilPerGPU = workerProcessPerGPU.map(
     (proc) => proc?.gpu_memory_usage || 0,
   );
-  const totalNodeGRAM = sum(node.gpus.map((gpu) => gpu.memory_total));
-  const usedGRAM = sum(workerUtilPerGPU);
-  return (
-    <div style={{ minWidth: 60 }}>
-      {node.gpus.length === 0 ? (
-        <Typography color="textSecondary" component="span" variant="inherit">
-          N/A
-        </Typography>
-      ) : (
-        <UsageBar
-          percent={100 * (usedGRAM / totalNodeGRAM)}
-          text={MiBRatio(usedGRAM, totalNodeGRAM)}
-        />
-      )}
-    </div>
-  );
+  return sum(workerUtilPerGPU);
 };
+
+const workerGRAMAccessor: Accessor<WorkerFeatureData> = ({ worker, node }) => {
+  if (node.gpus.length === 0) {
+    return -1;
+  }
+  return workerGRAMUtilization(worker, node);
+};
+
+const gramFeature: NodeInfoFeature = {
+  id: "gram",
+  ClusterFeatureRenderFn: ClusterGRAM,
+  NodeFeatureRenderFn: NodeGRAM,
+  WorkerFeatureRenderFn: WorkerGRAM,
+  nodeAccessor: nodeGRAMAccessor,
+  workerAccessor: workerGRAMAccessor,
+};
+
+export default gramFeature;

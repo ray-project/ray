@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union
+from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
@@ -18,7 +18,6 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
@@ -26,7 +25,7 @@ from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.types import TrainerConfigDict, \
+from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -45,7 +44,7 @@ MAX_WORKER_FAILURE_RETRIES = 3
 
 # yapf: disable
 # __sphinx_doc_begin__
-COMMON_CONFIG = {
+COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
     # Number of rollout worker actors to create for parallel sampling. Setting
     # this to 0 will force rollouts to be done in the trainer actor.
@@ -113,12 +112,16 @@ COMMON_CONFIG = {
     "env": None,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
-    # Whether to clip rewards prior to experience postprocessing. Setting to
-    # None means clip for Atari only.
+    # Whether to clip rewards during Policy's postprocessing.
+    # None (default): Clip for Atari only (r=sign(r)).
+    # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
+    # False: Never clip.
+    # [float value]: Clip at -value and + value.
+    # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
-    # Whether to np.clip() actions to the action space low/high range spec.
+    # Whether to clip actions to the action space's low/high range spec.
     "clip_actions": True,
-    # Whether to use rllib or deepmind preprocessors by default
+    # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
     # The default learning rate.
     "lr": 0.0001,
@@ -214,6 +217,13 @@ COMMON_CONFIG = {
     # Use a background thread for sampling (slightly off-policy, usually not
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
+
+    # Experimental flag to speed up sampling and use "trajectory views" as
+    # generic ModelV2 `input_dicts` that can be requested by the model to
+    # contain different information on the ongoing episode.
+    # NOTE: Only supported for PyTorch so far.
+    "_use_trajectory_view_api": False,
+
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
     # Whether to synchronize the statistics of remote filters.
@@ -360,6 +370,11 @@ COMMON_CONFIG = {
         "replay_mode": "independent",
     },
 
+    # === Logger ===
+    # Define logger-specific configuration to be used inside Logger
+    # Default value None allows overwriting with nested dicts
+    "logger_config": None,
+
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
@@ -376,19 +391,18 @@ COMMON_CONFIG = {
 @DeveloperAPI
 def with_common_config(
         extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with common agent confs."""
+    """Returns the given config dict merged with common agent confs.
 
-    return with_base_config(COMMON_CONFIG, extra_config)
+    Args:
+        extra_config (PartialTrainerConfigDict): A user defined partial config
+            which will get merged with COMMON_CONFIG and returned.
 
-
-def with_base_config(
-        base_config: TrainerConfigDict,
-        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with a base agent conf."""
-
-    config = copy.deepcopy(base_config)
-    config.update(extra_config)
-    return config
+    Returns:
+        TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
+            plus `extra_config`.
+    """
+    return Trainer.merge_trainer_configs(
+        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -439,7 +453,7 @@ class Trainer(Trainable):
 
         # User provided config (this is w/o the default Trainer's
         # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
-        # in self._setup().
+        # in self.setup().
         config = config or {}
 
         # Vars to synchronize to workers on each train call
@@ -492,14 +506,6 @@ class Trainer(Trainable):
     def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
 
-        if self._has_policy_optimizer():
-            self.global_vars["timestep"] = self.optimizer.num_steps_sampled
-            self.optimizer.workers.local_worker().set_global_vars(
-                self.global_vars)
-            for w in self.optimizer.workers.remote_workers():
-                w.set_global_vars.remote(self.global_vars)
-            logger.debug("updated global vars: {}".format(self.global_vars))
-
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
@@ -526,10 +532,6 @@ class Trainer(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
-        if self._has_policy_optimizer():
-            result["num_healthy_workers"] = len(
-                self.optimizer.workers.remote_workers())
-
         if self.config["evaluation_interval"] == 1 or (
                 self._iteration > 0 and self.config["evaluation_interval"]
                 and self._iteration % self.config["evaluation_interval"] == 0):
@@ -550,14 +552,14 @@ class Trainer(Trainable):
                 workers.local_worker().filters))
 
     @override(Trainable)
-    def _log_result(self, result: ResultDict):
+    def log_result(self, result: ResultDict):
         self.callbacks.on_train_result(trainer=self, result=result)
         # log after the callback is invoked, so that the user has a chance
         # to mutate the result
-        Trainable._log_result(self, result)
+        Trainable.log_result(self, result)
 
     @override(Trainable)
-    def _setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialTrainerConfigDict):
         env = self._env_id
         if env:
             config["env"] = env
@@ -571,7 +573,8 @@ class Trainer(Trainable):
             # Try gym.
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env)
+                self.env_creator = \
+                    lambda env_config: gym.make(env, **env_config)
         else:
             self.env_creator = lambda env_config: None
 
@@ -595,7 +598,9 @@ class Trainer(Trainable):
             self.config.pop("eager")
 
         # Enable eager/tracing support.
-        if tf1 and self.config["framework"] == "tfe":
+        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2" and tfv < 2:
+                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             logger.info("Executing eagerly, with eager_tracing={}".format(
@@ -659,20 +664,20 @@ class Trainer(Trainable):
 
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
-                    self._policy,
+                    self._policy_class,
                     merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
 
     @override(Trainable)
-    def _stop(self):
+    def cleanup(self):
         if hasattr(self, "workers"):
             self.workers.stop()
         if hasattr(self, "optimizer") and self.optimizer:
             self.optimizer.stop()
 
     @override(Trainable)
-    def _save(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir: str) -> str:
         checkpoint_path = os.path.join(checkpoint_dir,
                                        "checkpoint-{}".format(self.iteration))
         pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
@@ -680,13 +685,13 @@ class Trainer(Trainable):
         return checkpoint_path
 
     @override(Trainable)
-    def _restore(self, checkpoint_path: str):
+    def load_checkpoint(self, checkpoint_path: str):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
     @DeveloperAPI
     def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy: type, config: TrainerConfigDict,
+                      policy_class: Type[Policy], config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -696,9 +701,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
-            policy (class): The Policy class to use for creating the policies
-                of the workers.
-            config (dict): The Trainer's config.
+            policy (Type[Policy]): The Policy class to use for creating the
+                policies of the workers.
+            config (TrainerConfigDict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
 
@@ -706,9 +711,9 @@ class Trainer(Trainable):
             WorkerSet: The created WorkerSet.
         """
         return WorkerSet(
-            env_creator,
-            policy,
-            config,
+            env_creator=env_creator,
+            policy_class=policy_class,
+            trainer_config=config,
             num_workers=num_workers,
             logdir=self.logdir)
 
@@ -1039,8 +1044,11 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict) -> dict:
+    def merge_trainer_configs(cls,
+                              config1: TrainerConfigDict,
+                              config2: PartialTrainerConfigDict,
+                              _allow_unknown_configs: Optional[bool] = None
+                              ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         # Error if trainer default has deprecated value.
         if config1["sample_batch_size"] != DEPRECATED_VALUE:
@@ -1062,12 +1070,24 @@ class Trainer(Trainable):
                     legacy_callbacks_dict=legacy_callbacks_dict)
 
             config2["callbacks"] = make_callbacks
-        return deep_update(config1, config2, cls._allow_unknown_configs,
+        if _allow_unknown_configs is None:
+            _allow_unknown_configs = cls._allow_unknown_configs
+        return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
+        if config.get("_use_trajectory_view_api") and \
+                config.get("framework") != "torch":
+            raise ValueError(
+                "`_use_trajectory_view_api` only supported for PyTorch so "
+                "far!")
+        elif not config.get("_use_trajectory_view_api") and \
+                config.get("model", {}).get("_time_major"):
+            raise ValueError("`model._time_major` only supported "
+                             "iff `_use_trajectory_view_api` is True!")
+
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.
@@ -1095,27 +1115,20 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        if (not self._has_policy_optimizer()
-                and not hasattr(self, "execution_plan")):
-            raise NotImplementedError(
-                "Recovery is not supported for this algorithm")
-        if self._has_policy_optimizer():
-            workers = self.optimizer.workers
-        else:
-            assert hasattr(self, "execution_plan")
-            workers = self.workers
+        assert hasattr(self, "execution_plan")
+        workers = self.workers
 
         logger.info("Health checking all workers...")
         checks = []
         for ev in workers.remote_workers():
-            _, obj_id = ev.sample_with_count.remote()
-            checks.append(obj_id)
+            _, obj_ref = ev.sample_with_count.remote()
+            checks.append(obj_ref)
 
         healthy_workers = []
-        for i, obj_id in enumerate(checks):
+        for i, obj_ref in enumerate(checks):
             w = workers.remote_workers()[i]
             try:
-                ray.get(obj_id)
+                ray.get(obj_ref)
                 healthy_workers.append(w)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:
@@ -1129,23 +1142,9 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        if self._has_policy_optimizer():
-            self.optimizer.reset(healthy_workers)
-        else:
-            assert hasattr(self, "execution_plan")
-            logger.warning("Recreating execution plan after failure")
-            workers.reset(healthy_workers)
-            self.train_exec_impl = self.execution_plan(workers, self.config)
-
-    def _has_policy_optimizer(self):
-        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
-
-        Returns:
-            bool: True if this Trainer holds a PolicyOptimizer object in
-                property `self.optimizer`.
-        """
-        return hasattr(self, "optimizer") and isinstance(
-            self.optimizer, PolicyOptimizer)
+        logger.warning("Recreating execution plan after failure")
+        workers.reset(healthy_workers)
+        self.train_exec_impl = self.execution_plan(workers, self.config)
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],

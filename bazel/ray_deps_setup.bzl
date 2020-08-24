@@ -89,20 +89,19 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/33152ad163a21f568fb40eeeb88b79365886b4ea.tar.gz",
-        sha256 = "9a91274dfd131111227b39ffa3cf7b446fbbd7ee2e5a94c8e7d8ad334b4ff255",
+        url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
+        sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
         patches = [
-            "//thirdparty/patches:hiredis-connect-rename.patch",
-            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
-            "//thirdparty/patches:hiredis-windows-sockets.patch",
-            "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
     )
 
-    http_file(
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
+        build_file = "//bazel:BUILD.redis",
+        strip_prefix = None,
+        url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
-        urls = ["https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip"],
     )
 
     auto_http_archive(
@@ -115,6 +114,13 @@ def ray_deps_setup():
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
+    )
+
+    auto_http_archive(
+        name = "bazel_skylib",
+        strip_prefix = None,
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.2/bazel-skylib-1.0.2.tar.gz",
+        sha256 = "97e70364e9249702246c0e9444bccdc4b847bed1eb03c5a3ece4f83dfe6abc44",
     )
 
     auto_http_archive(
@@ -138,8 +144,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        url = "https://github.com/nelhage/rules_boost/archive/5b53112431ef916381d6969f114727cc4f83960b.tar.gz",
-        sha256 = "32080749fdb8e4015815694a5c7d009f479e5f6a4da443d262bd7f28b8bd1b55",
+        url = "https://github.com/nelhage/rules_boost/archive/2613d04ab3d22dfc4543ea0a083d9adeaa0daf09.tar.gz",
+        sha256 = "512f913240e026099d4ca4a98b1ce8048c99de77fdc8e8584e9e2539ee119ca2",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
@@ -181,7 +187,6 @@ def ray_deps_setup():
         sha256 = "2f0aaa50053792aa274b402f2530e63c1542085021cfef83beee9281412c12f6",
         patches = [
             "//thirdparty/patches:arrow-windows-export.patch",
-            "//thirdparty/patches:arrow-windows-nonstdc.patch",
         ],
     )
 
@@ -194,8 +199,12 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "io_opencensus_cpp",
-        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.tar.gz",
-        sha256 = "a0b4e2d3c4479cc343c003f0c31f48e9e05461cb232815e348fc0358bfa8bb79",
+        url = "https://github.com/census-instrumentation/opencensus-cpp/archive/b14a5c0dcc2da8a7fc438fab637845c73438b703.zip",
+        sha256 = "6592e07672e7f7980687f6c1abda81974d8d379e273fea3b54b6c4d855489b9d",
+        patches = [
+            "//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
+            "//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
+        ]
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
@@ -254,4 +263,11 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:msgpack-windows-iovec.patch",
         ],
+    )
+
+    http_archive(
+        name = "io_opencensus_proto",
+        strip_prefix = "opencensus-proto-0.3.0/src",
+        urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
+        sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )

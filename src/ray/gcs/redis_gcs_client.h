@@ -101,13 +101,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   virtual raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
-  /// Implements the Errors() interface.
-  // TODO: Some API for getting the error on the driver
-  ErrorTable &error_table();
   /// Implements the Stats() interface.
   ProfileTable &profile_table();
   /// Implements the Workers() interface.
-  WorkerFailureTable &worker_failure_table();
+  WorkerTable &worker_table();
 
  private:
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
@@ -124,13 +121,12 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
-  std::unique_ptr<ErrorTable> error_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<ClientTable> client_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
-  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
+  std::unique_ptr<WorkerTable> worker_table_;
   std::unique_ptr<JobTable> job_table_;
 };
 

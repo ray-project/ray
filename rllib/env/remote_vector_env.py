@@ -4,7 +4,7 @@ from typing import Tuple, Callable, Optional
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
 from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.types import MultiEnvDict, EnvType, EnvID, MultiAgentDict
+from ray.rllib.utils.typing import MultiEnvDict, EnvType, EnvID, MultiAgentDict
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,11 @@ class RemoteVectorEnv(BaseEnv):
 
         # Get and return observations for each of the ready envs
         env_ids = set()
-        for obj_id in ready:
-            actor = self.pending.pop(obj_id)
+        for obj_ref in ready:
+            actor = self.pending.pop(obj_ref)
             env_id = self.actors.index(actor)
             env_ids.add(env_id)
-            ob, rew, done, info = ray.get(obj_id)
+            ob, rew, done, info = ray.get(obj_ref)
             obs[env_id] = ob
             rewards[env_id] = rew
             dones[env_id] = done
@@ -78,15 +78,15 @@ class RemoteVectorEnv(BaseEnv):
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, actions in action_dict.items():
             actor = self.actors[env_id]
-            obj_id = actor.step.remote(actions)
-            self.pending[obj_id] = actor
+            obj_ref = actor.step.remote(actions)
+            self.pending[obj_ref] = actor
 
     @PublicAPI
     def try_reset(self,
                   env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
         actor = self.actors[env_id]
-        obj_id = actor.reset.remote()
-        self.pending[obj_id] = actor
+        obj_ref = actor.reset.remote()
+        self.pending[obj_ref] = actor
         return ASYNC_RESET_RETURN
 
     @PublicAPI

@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import try_import_tf
 tf1, tf, tfv = try_import_tf()
 
 
-class MultiHeadAttention(tf.keras.layers.Layer):
+class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
     """A multi-head attention layer described in [1]."""
 
     def __init__(self, out_dim, num_heads, head_dim, **kwargs):

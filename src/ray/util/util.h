@@ -43,6 +43,18 @@ class stream_protocol;
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
+// Transfer the string to the Hex format. It can be more readable than the ANSI mode
+inline std::string StringToHex(const std::string &str) {
+  constexpr char hex[] = "0123456789abcdef";
+  std::string result;
+  for (size_t i = 0; i < str.size(); i++) {
+    unsigned char val = str[i];
+    result.push_back(hex[val >> 4]);
+    result.push_back(hex[val & 0xf]);
+  }
+  return result;
+}
+
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has
 /// no relation to wall clock time. It must not be used for synchronization
@@ -64,6 +76,13 @@ inline int64_t current_sys_time_ms() {
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch());
   return ms_since_epoch.count();
+}
+
+inline int64_t current_sys_time_us() {
+  std::chrono::microseconds mu_since_epoch =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return mu_since_epoch.count();
 }
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
@@ -161,7 +180,7 @@ void FillRandom(T *data) {
   std::lock_guard<std::mutex> lock(random_engine_mutex);
   static std::mt19937 generator = randomly_seeded_mersenne_twister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < data->size(); i++) {
+  for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }

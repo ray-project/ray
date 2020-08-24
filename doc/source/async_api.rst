@@ -33,9 +33,9 @@ that supports top level ``await``:
     await actor.run_concurrent.remote()
 
 
-ObjectIDs as asyncio.Futures
-----------------------------
-ObjectIDs can be translated to asyncio.Future. This feature
+ObjectRefs as asyncio.Futures
+-----------------------------
+ObjectRefs can be translated to asyncio.Future. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
 
@@ -110,10 +110,3 @@ You can limit the number of concurrent task running at once using the
     # Only 10 tasks will be running concurrently. Once 10 finish, the next 10 should run.
     ray.get([actor.run_task.remote() for _ in range(50)])
 
-
-Known Issues
-------------
-
-Async API support is experimental, and we are working to improve it.
-Please `let us know <https://github.com/ray-project/ray/issues>`__
-any issues you encounter.

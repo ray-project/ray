@@ -9,6 +9,7 @@ import copy
 import logging
 import datetime
 import time
+from typing import Dict
 import re
 
 from operator import itemgetter
@@ -23,6 +24,7 @@ class NodeStats(threading.Thread):
             redis_address, password=redis_password)
 
         self._node_stats = {}
+        self._ip_to_hostname = {}
         self._addr_to_owner_addr = {}
         self._addr_to_actor_id = {}
         self._addr_to_extra_info_dict = {}
@@ -36,7 +38,7 @@ class NodeStats(threading.Thread):
             "jobId": "",
             "numExecutedTasks": 0,
             "numLocalObjects": 0,
-            "numObjectIdsInScope": 0,
+            "numObjectRefsInScope": 0,
             "port": 0,
             "state": 0,
             "taskQueueLength": 0,
@@ -55,23 +57,17 @@ class NodeStats(threading.Thread):
 
         super().__init__()
 
-    def _calculate_log_counts(self):
-        return {
-            ip: {
-                pid: len(logs_for_pid)
-                for pid, logs_for_pid in logs_for_ip.items()
-            }
-            for ip, logs_for_ip in self._logs.items()
-        }
+    def _insert_log_counts(self):
+        for ip, logs_by_pid in self._logs.items():
+            hostname = self._ip_to_hostname[ip]
+            logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
+            self._node_stats[hostname]["log_count"] = logs_by_pid
 
-    def _calculate_error_counts(self):
-        return {
-            ip: {
-                pid: len(errors_for_pid)
-                for pid, errors_for_pid in errors_for_ip.items()
-            }
-            for ip, errors_for_ip in self._errors.items()
-        }
+    def _insert_error_counts(self):
+        for ip, errs_by_pid in self._errors.items():
+            hostname = self._ip_to_hostname[ip]
+            errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
+            self._node_stats[hostname]["error_count"] = errs_by_pid
 
     def _purge_outdated_stats(self):
         def current(then, now):
@@ -89,15 +85,62 @@ class NodeStats(threading.Thread):
     def get_node_stats(self):
         with self._node_stats_lock:
             self._purge_outdated_stats()
+            self._insert_error_counts()
+            self._insert_log_counts()
             node_stats = sorted(
                 (v for v in self._node_stats.values()),
                 key=itemgetter("boot_time"))
-            return {
-                "clients": node_stats,
-                "log_counts": self._calculate_log_counts(),
-                "error_counts": self._calculate_error_counts(),
-            }
+            return {"clients": node_stats}
 
+    # Gets actors in a flat way to allow for grouping by actor type.
+    def get_actors(self, workers_info_by_node, infeasible_tasks, ready_tasks):
+        now = time.time()
+        actors: Dict[str, Dict[str, any]] = {}
+        # construct flattened actor tree
+        with self._node_stats_lock:
+            for addr, actor_id in self._addr_to_actor_id.items():
+                actors[actor_id] = copy.deepcopy(self._default_info)
+                actors[actor_id].update(self._addr_to_extra_info_dict[addr])
+
+            for node_id, workers_info in workers_info_by_node.items():
+                for worker_info in workers_info:
+                    if "coreWorkerStats" in worker_info:
+                        core_worker_stats = worker_info["coreWorkerStats"]
+                        addr = (core_worker_stats["ipAddress"],
+                                str(core_worker_stats["port"]))
+                        if addr in self._addr_to_actor_id:
+                            actor_info = actors[self._addr_to_actor_id[addr]]
+                            format_reply_id(core_worker_stats)
+                            actor_info.update(core_worker_stats)
+                            actor_info["averageTaskExecutionSpeed"] = round(
+                                actor_info["numExecutedTasks"] /
+                                (now - actor_info["timestamp"] / 1000), 2)
+                            actor_info["nodeId"] = node_id
+                            actor_info["pid"] = worker_info["pid"]
+
+            def _update_from_actor_tasks(task, task_spec_type,
+                                         invalid_state_type):
+                actor_id = ray.utils.binary_to_hex(
+                    b64decode(task[task_spec_type]["actorId"]))
+                task["state"] = -1
+                task["invalidStateType"] = invalid_state_type
+                task["actorTitle"] = task["functionDescriptor"][
+                    "pythonFunctionDescriptor"]["className"]
+                format_reply_id(task)
+                actors[actor_id] = task
+
+            for infeasible_task in infeasible_tasks:
+                _update_from_actor_tasks(infeasible_task,
+                                         "actorCreationTaskSpec",
+                                         "infeasibleActor")
+
+            for ready_task in ready_tasks:
+                _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
+                                         "pendingActor")
+
+        return actors
+
+    # Gets actors in a nested structure showing parent child relationships
     def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
                        ready_tasks):
         now = time.time()
@@ -182,8 +225,8 @@ class NodeStats(threading.Thread):
         p.subscribe(log_channel)
         logger.info("NodeStats: subscribed to {}".format(log_channel))
 
-        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
-        p.subscribe(error_channel)
+        error_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+        p.psubscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
         actor_channel = ray.gcs_utils.RAY_ACTOR_PUBSUB_PATTERN
@@ -218,9 +261,10 @@ class NodeStats(threading.Thread):
                         pid = str(data["pid"])
                         self._logs[ip][pid].extend(data["lines"])
                     elif channel == str(error_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(
+                            data)
                         error_data = ray.gcs_utils.ErrorTableData.FromString(
-                            gcs_entry.entries[0])
+                            pubsub_msg.data)
                         message = error_data.error_message
                         message = re.sub(r"\x1b\[\d+m", "", message)
                         match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
@@ -252,6 +296,7 @@ class NodeStats(threading.Thread):
                         }
                     elif channel == ray.gcs_utils.RAY_REPORTER_PUBSUB_PATTERN:
                         data = json.loads(ray.utils.decode(data))
+                        self._ip_to_hostname[data["ip"]] = data["hostname"]
                         self._node_stats[data["hostname"]] = data
                     else:
                         logger.warning("Unexpected channel data received, "

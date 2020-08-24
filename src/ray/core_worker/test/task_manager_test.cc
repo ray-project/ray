@@ -17,7 +17,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
-#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
@@ -29,18 +28,11 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
   task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
-    task.GetMutableMessage().add_args()->add_object_ids(dep.Binary());
+    task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+        dep.Binary());
   }
   return task;
 }
-
-class MockActorManager : public ActorManagerInterface {
-  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
-    num_terminations += 1;
-  }
-
-  int num_terminations = 0;
-};
 
 class TaskManagerTest : public ::testing::Test {
  public:
@@ -49,9 +41,8 @@ class TaskManagerTest : public ::testing::Test {
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             rpc::Address(),
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
-        actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
-        manager_(store_, reference_counter_, actor_manager_,
-                 [this](const TaskSpecification &spec, bool delay) {
+        manager_(store_, reference_counter_,
+                 [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
                    return Status::OK();
                  },
@@ -62,7 +53,6 @@ class TaskManagerTest : public ::testing::Test {
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
-  std::shared_ptr<ActorManagerInterface> actor_manager_;
   bool all_nodes_alive_ = true;
   std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
@@ -504,7 +494,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
-  ASSERT_EQ(resubmitted_task_deps, spec.GetDependencies());
+  ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   resubmitted_task_deps.clear();
 

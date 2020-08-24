@@ -14,7 +14,6 @@
 
 #include "ray/gcs/redis_gcs_client.h"
 
-#include <unistd.h>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
@@ -55,7 +54,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // For raylet, NodeID should be initialized in raylet layer(not here).
   client_table_.reset(new ClientTable({primary_context}, this));
 
-  error_table_.reset(new ErrorTable({primary_context}, this));
   job_table_.reset(new JobTable({primary_context}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
   // Tables below would be sharded.
@@ -68,8 +66,10 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
-  worker_failure_table_.reset(new WorkerFailureTable(shard_contexts, this));
+  worker_table_.reset(new WorkerTable(shard_contexts, this));
+
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
+
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
@@ -77,6 +77,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
   worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
+  placement_group_accessor_.reset(new RedisPlacementGroupInfoAccessor());
 
   is_connected_ = true;
 
@@ -101,7 +102,6 @@ std::string RedisGcsClient::DebugString() const {
   result << "\n- TaskReconstructionLog: " << task_reconstruction_log_->DebugString();
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
-  result << "\n- ErrorTable: " << error_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
   result << "\n- ClientTable: " << client_table_->DebugString();
   result << "\n- JobTable: " << job_table_->DebugString();
@@ -118,9 +118,7 @@ LogBasedActorTable &RedisGcsClient::log_based_actor_table() {
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
 
-WorkerFailureTable &RedisGcsClient::worker_failure_table() {
-  return *worker_failure_table_;
-}
+WorkerTable &RedisGcsClient::worker_table() { return *worker_table_; }
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
@@ -135,8 +133,6 @@ HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
   return *heartbeat_batch_table_;
 }
-
-ErrorTable &RedisGcsClient::error_table() { return *error_table_; }
 
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 

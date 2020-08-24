@@ -5,8 +5,8 @@ The implementation has a couple assumptions:
 - Each agent is bound to a policy of the same name.
 - Discrete actions are sent as logits (pre-softmax).
 
-For a minimal example, see twostep_game.py, and the README for how to run
-with the multi-agent particle envs.
+For a minimal example, see rllib/examples/two_step_game.py,
+and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
@@ -70,9 +70,10 @@ DEFAULT_CONFIG = with_common_config({
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
     # Force lockstep replay mode for MADDPG.
     "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {

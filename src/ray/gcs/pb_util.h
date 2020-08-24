@@ -18,7 +18,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -34,13 +34,15 @@ namespace gcs {
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &driver_ip_address, int64_t driver_pid) {
+    const std::string &driver_ip_address, int64_t driver_pid,
+    const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   job_info_ptr->set_timestamp(timestamp);
   job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
+  *job_info_ptr->mutable_config() = job_config;
   return job_info_ptr;
 }
 
@@ -82,11 +84,11 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 }
 
 /// Helper function to produce worker failure data.
-inline std::shared_ptr<ray::rpc::WorkerFailureData> CreateWorkerFailureData(
+inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const ClientID &raylet_id, const WorkerID &worker_id, const std::string &address,
     int32_t port, int64_t timestamp = std::time(nullptr),
     bool intentional_disconnect = false) {
-  auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerFailureData>();
+  auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);

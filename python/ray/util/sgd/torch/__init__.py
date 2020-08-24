@@ -14,5 +14,6 @@ try:
     from ray.util.sgd.torch.training_operator import TrainingOperator
 
     __all__ = ["TorchTrainer", "BaseTorchTrainable", "TrainingOperator"]
-except ImportError:
+except ImportError as e:
+    logger.warning(e)
     logger.warning("PyTorch not found. TorchTrainer will not be available")

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hiredis/hiredis.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -82,8 +83,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str,
                         queue_ids, rescale_queue_ids, suite_name, test_name, param);
 
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, resources};
@@ -98,8 +99,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, resources};
@@ -114,8 +115,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{1, resources};
@@ -182,8 +183,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "actor creation task", "")};
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     std::string name = "";
@@ -246,6 +247,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         true,                           // ref_counting_enabled
         false,                          // is_local_mode
         1,                              // num_workers
+        nullptr,                        // terminate_asyncio_thread
+        "",                             // serialized_job_config
+        -1,                             // metrics_agent_port
     };
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);

@@ -2,12 +2,13 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Dict, List, Any
+from typing import Any, Dict, Iterable, List, Optional, Set, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
@@ -25,6 +26,7 @@ class SampleBatch:
     """
 
     # Outputs from interacting with the environment
+    OBS = "obs"
     CUR_OBS = "obs"
     NEXT_OBS = "new_obs"
     ACTIONS = "actions"
@@ -39,7 +41,7 @@ class SampleBatch:
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
 
-    # Uniquely identifies an episode
+    # Uniquely identifies an episode.
     EPS_ID = "eps_id"
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
@@ -47,51 +49,86 @@ class SampleBatch:
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Uniquely identifies an agent within an episode
+    # Uniquely identifies an agent within an episode.
     AGENT_INDEX = "agent_index"
 
-    # Value function predictions emitted by the behaviour policy
+    # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
+        # Possible seq_lens (TxB or BxT) setup.
+        self.time_major = kwargs.pop("_time_major", None)
+        self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.max_seq_len = None
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.max_seq_len = max(self.seq_lens)
+
+        # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
+
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
             lengths.append(len(v))
-            self.data[k] = np.array(v, copy=False)
+            if isinstance(v, list):
+                self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, ("data columns must be same length",
-                                        self.data, lengths)
-        self.count = lengths[0]
+        assert len(set(lengths)) == 1, \
+            "Data columns must be same length, but lens are {}".format(lengths)
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.count = sum(self.seq_lens)
+        else:
+            self.count = len(self.data[k])
+
+        # Keeps track of new columns added after initial ones.
+        self.new_columns = []
 
     @staticmethod
     @PublicAPI
-    def concat_samples(samples):
+    def concat_samples(samples: List[Dict[str, TensorType]]) -> \
+            Union["SampleBatch", "MultiAgentBatch"]:
         """Concatenates n data dicts or MultiAgentBatches.
 
         Args:
-            samples (List[Dict[np.ndarray]]]): List of dicts of data (numpy).
+            samples (List[Dict[TensorType]]]): List of dicts of data (numpy).
 
         Returns:
-            Union[SampleBatch,MultiAgentBatch]: A new (compressed) SampleBatch/
-                MultiAgentBatch.
+            Union[SampleBatch, MultiAgentBatch]: A new (compressed)
+                SampleBatch or MultiAgentBatch.
         """
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
+        seq_lens = []
+        concat_samples = []
+        for s in samples:
+            if s.count > 0:
+                concat_samples.append(s)
+                if s.seq_lens is not None:
+                    seq_lens.extend(s.seq_lens)
+
         out = {}
-        samples = [s for s in samples if s.count > 0]
-        for k in samples[0].keys():
-            out[k] = concat_aligned([s[k] for s in samples])
-        return SampleBatch(out)
+        for k in concat_samples[0].keys():
+            out[k] = concat_aligned(
+                [s[k] for s in concat_samples],
+                time_major=concat_samples[0].time_major)
+        return SampleBatch(
+            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
 
     @PublicAPI
-    def concat(self, other):
+    def concat(self, other: "SampleBatch") -> "SampleBatch":
         """Returns a new SampleBatch with each data column concatenated.
+
+        Args:
+            other (SampleBatch): The other SampleBatch object to concat to this
+                one.
+
+        Returns:
+            SampleBatch: The new SampleBatch, resulting from concating `other`
+                to `self`.
 
         Examples:
             >>> b1 = SampleBatch({"a": [1, 2]})
@@ -110,14 +147,23 @@ class SampleBatch:
         return SampleBatch(out)
 
     @PublicAPI
-    def copy(self):
+    def copy(self) -> "SampleBatch":
+        """Creates a (deep) copy of this SampleBatch and returns it.
+
+        Returns:
+            SampleBatch: A (deep) copy of this SampleBatch object.
+        """
         return SampleBatch(
             {k: np.array(v, copy=True)
              for (k, v) in self.data.items()})
 
     @PublicAPI
-    def rows(self):
+    def rows(self) -> Dict[str, TensorType]:
         """Returns an iterator over data rows, i.e. dicts with column values.
+
+        Yields:
+            Dict[str, TensorType]: The column values of the row in this
+                iteration.
 
         Examples:
             >>> batch = SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
@@ -135,7 +181,7 @@ class SampleBatch:
             yield row
 
     @PublicAPI
-    def columns(self, keys):
+    def columns(self, keys: List[str]) -> List[any]:
         """Returns a list of the batch-data in the specified columns.
 
         Args:
@@ -157,7 +203,7 @@ class SampleBatch:
         return out
 
     @PublicAPI
-    def shuffle(self):
+    def shuffle(self) -> None:
         """Shuffles the rows of this batch in-place."""
 
         permutation = np.random.permutation(self.count)
@@ -165,7 +211,7 @@ class SampleBatch:
             self[key] = val[permutation]
 
     @PublicAPI
-    def split_by_episode(self):
+    def split_by_episode(self) -> List["SampleBatch"]:
         """Splits this batch's data by `eps_id`.
 
         Returns:
@@ -189,21 +235,43 @@ class SampleBatch:
         return slices
 
     @PublicAPI
-    def slice(self, start, end):
-        """Returns a slice of the row data of this batch.
+    def slice(self, start: int, end: int) -> "SampleBatch":
+        """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
             start (int): Starting index.
             end (int): Ending index.
 
         Returns:
-            SampleBatch which has a slice of this batch's data.
+            SampleBatch: A new SampleBatch, which has a slice of this batch's
+                data.
         """
-
-        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
+        if self.time_major is not None:
+            return SampleBatch(
+                {k: v[:, start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=self.seq_lens[start:end],
+                _time_major=self.time_major)
+        else:
+            return SampleBatch(
+                {k: v[start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=None,
+                _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:
+        """Returns SampleBatches, each one representing a k-slice of this one.
+
+        Will start from timestep 0 and produce slices of size=k.
+
+        Args:
+            k (int): The size (in timesteps) of each returned SampleBatch.
+
+        Returns:
+            List[SampleBatch]: The list of (new) SampleBatches (each one of
+                size k).
+        """
         out = []
         i = 0
         while i < self.count:
@@ -212,31 +280,79 @@ class SampleBatch:
         return out
 
     @PublicAPI
-    def keys(self):
+    def keys(self) -> Iterable[str]:
+        """
+        Returns:
+            Iterable[str]: The keys() iterable over `self.data`.
+        """
         return self.data.keys()
 
     @PublicAPI
-    def items(self):
+    def items(self) -> Iterable[TensorType]:
+        """
+        Returns:
+            Iterable[TensorType]: The values() iterable over `self.data`.
+        """
         return self.data.items()
 
     @PublicAPI
-    def get(self, key):
+    def get(self, key: str) -> Optional[TensorType]:
+        """Returns one column (by key) from the data or None if key not found.
+
+        Args:
+            key (str): The key (column name) to return.
+
+        Returns:
+            Optional[TensorType]: The data under the given key. None if key
+                not found in data.
+        """
         return self.data.get(key)
 
     @PublicAPI
     def size_bytes(self) -> int:
+        """
+        Returns:
+            int: The overall size in bytes of the data buffer (all columns).
+        """
         return sum(sys.getsizeof(d) for d in self.data)
 
     @PublicAPI
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> TensorType:
+        """Returns one column (by key) from the data.
+
+        Args:
+            key (str): The key (column name) to return.
+
+        Returns:
+            TensorType: The data under the given key.
+        """
         return self.data[key]
 
     @PublicAPI
-    def __setitem__(self, key, item):
+    def __setitem__(self, key, item) -> None:
+        """Inserts (overrides) an entire column (by key) in the data buffer.
+
+        Args:
+            key (str): The column name to set a value for.
+            item (TensorType): The data to insert.
+        """
+        if key not in self.data:
+            self.new_columns.append(key)
         self.data[key] = item
 
     @DeveloperAPI
-    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+        """Compresses the data buffers (by column) in place.
+
+        Args:
+            bulk (bool): Whether to compress across the batch dimension (0)
+                as well. If False will compress n separate list items, where n
+                is the batch size.
+            columns (Set[str]): The columns to compress. Default: Only
+                compress the obs and new_obs columns.
+        """
         for key in columns:
             if key in self.data:
                 if bulk:
@@ -246,7 +362,18 @@ class SampleBatch:
                         [pack(o) for o in self.data[key]])
 
     @DeveloperAPI
-    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "SampleBatch":
+        """Decompresses data buffers (per column if not compressed) in place.
+
+        Args:
+            columns (Set[str]): The columns to decompress. Default: Only
+                decompress the obs and new_obs columns.
+
+        Returns:
+            SampleBatch: This very SampleBatch.
+        """
         for key in columns:
             if key in self.data:
                 arr = self.data[key]
@@ -272,7 +399,13 @@ class SampleBatch:
 
 @PublicAPI
 class MultiAgentBatch:
-    """A batch of experiences from multiple agents in the environment."""
+    """A batch of experiences from multiple agents in the environment.
+
+    Attributes:
+        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            ids to SampleBatches of experiences.
+        count (int): The number of env steps in this batch.
+    """
 
     @PublicAPI
     def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
@@ -285,12 +418,8 @@ class MultiAgentBatch:
             env_steps (int): The number of timesteps in the environment this
                 batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
-
-        Attributes:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-                ids to SampleBatches of experiences.
-            count (int): the number of env steps in this batch.
         """
+
         for v in policy_batches.values():
             assert isinstance(v, SampleBatch)
         self.policy_batches = policy_batches
@@ -303,7 +432,7 @@ class MultiAgentBatch:
         """The number of env steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: the number of environment steps contained in this batch.
+            int: The number of environment steps contained in this batch.
         """
         return self.count
 
@@ -312,7 +441,7 @@ class MultiAgentBatch:
         """The number of agent steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: the number of agent steps total in this batch.
+            int: The number of agent steps total in this batch.
         """
         ct = 0
         for batch in self.policy_batches.values():
@@ -343,8 +472,8 @@ class MultiAgentBatch:
         steps = []
         for policy_id, batch in self.policy_batches.items():
             for row in batch.rows():
-                steps.append((row[SampleBatch.EPS_ID], row["t"], policy_id,
-                              row))
+                steps.append((row[SampleBatch.EPS_ID], row["t"],
+                              row["agent_index"], policy_id, row))
         steps.sort()
 
         finished_slices = []
@@ -363,7 +492,7 @@ class MultiAgentBatch:
         # For each unique env timestep.
         for _, group in itertools.groupby(steps, lambda x: x[:2]):
             # Accumulate into the current slice.
-            for _, _, policy_id, row in group:
+            for _, _, _, policy_id, row in group:
                 cur_slice[policy_id].add_values(**row)
             cur_slice_size += 1
             # Slice has reached target number of env steps.
@@ -379,8 +508,9 @@ class MultiAgentBatch:
 
     @staticmethod
     @PublicAPI
-    def wrap_as_needed(policy_batches: Dict[PolicyID, SampleBatch],
-                       env_steps: int) -> Any:
+    def wrap_as_needed(
+            policy_batches: Dict[PolicyID, SampleBatch],
+            env_steps: int) -> Union[SampleBatch, "MultiAgentBatch"]:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
 
         Args:
@@ -437,11 +567,17 @@ class MultiAgentBatch:
 
     @PublicAPI
     def size_bytes(self) -> int:
+        """
+        Returns:
+            int: The overall size in bytes of all policy batches (all columns).
+        """
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
     @DeveloperAPI
-    def compress(self, bulk=False, columns=frozenset(["obs", "new_obs"])):
-        """Compresses each policy batch.
+    def compress(self,
+                 bulk: bool = False,
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+        """Compresses each policy batch (per column) in place.
 
         Args:
             bulk (bool): Whether to compress across the batch dimension (0)
@@ -453,11 +589,16 @@ class MultiAgentBatch:
             batch.compress(bulk=bulk, columns=columns)
 
     @DeveloperAPI
-    def decompress_if_needed(self, columns=frozenset(["obs", "new_obs"])):
-        """Decompresses each policy batch, if already compressed.
+    def decompress_if_needed(self,
+                             columns: Set[str] = frozenset(
+                                 ["obs", "new_obs"])) -> "MultiAgentBatch":
+        """Decompresses each policy batch (per column), if already compressed.
 
         Args:
             columns (Set[str]): Set of column names to decompress.
+
+        Returns:
+            MultiAgentBatch: This very MultiAgentBatch.
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)

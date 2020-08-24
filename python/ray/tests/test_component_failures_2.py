@@ -58,8 +58,8 @@ def test_worker_failed(ray_start_workers_separate_multinode):
 
     # Submit more tasks than there are workers so that all workers and
     # cores are utilized.
-    object_ids = [f.remote(i) for i in range(num_initial_workers * num_nodes)]
-    object_ids += [f.remote(object_id) for object_id in object_ids]
+    object_refs = [f.remote(i) for i in range(num_initial_workers * num_nodes)]
+    object_refs += [f.remote(object_ref) for object_ref in object_refs]
     # Allow the tasks some time to begin executing.
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
@@ -68,9 +68,9 @@ def test_worker_failed(ray_start_workers_separate_multinode):
         time.sleep(0.1)
     # Make sure that we either get the object or we get an appropriate
     # exception.
-    for object_id in object_ids:
+    for object_ref in object_refs:
         try:
-            ray.get(object_id)
+            ray.get(object_ref)
         except (ray.exceptions.RayTaskError, ray.exceptions.RayWorkerError):
             pass
 

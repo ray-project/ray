@@ -8,8 +8,11 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
+
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -31,7 +34,7 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
-        num_return_vals: The number of object IDs that should be returned by
+        num_return_vals: The number of object refs that should be returned by
             invocations of this actor method.
     """
     assert len(args) == 0
@@ -64,7 +67,7 @@ class ActorMethod:
             invoking the method. The decorator must return a function that
             takes in two arguments ("args" and "kwargs"). In most cases, it
             should call the function that was passed into the decorator and
-            return the resulting ObjectIDs. For an example, see
+            return the resulting ObjectRefs. For an example, see
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
@@ -81,7 +84,7 @@ class ActorMethod:
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
         # cases, it should call the function that was passed into the decorator
-        # and return the resulting ObjectIDs.
+        # and return the resulting ObjectRefs.
         self._decorator = decorator
 
         # Acquire a hard ref to the actor, this is useful mainly when passing
@@ -93,9 +96,8 @@ class ActorMethod:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
-                        "of running 'object.{}()', try "
-                        "'object.{}.remote()'.".format(self._method_name,
-                                                       self._method_name))
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
@@ -155,9 +157,9 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise TypeError("{} can not be constructed directly, "
-                        "instead of running '{}()', try '{}.create()'".format(
-                            class_name, class_name, class_name))
+        raise TypeError(f"{class_name} can not be constructed directly, "
+                        f"instead of running '{class_name}()', "
+                        f"try '{class_name}.create()'")
 
     @classmethod
     def reset_cache(cls):
@@ -285,13 +287,14 @@ class ActorClass:
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError("Attempted to define subclass '{}' of actor "
-                                "class '{}'. Inheriting from actor classes is "
-                                "not currently supported. You can instead "
-                                "inherit from a non-actor base class and make "
-                                "the derived class an actor class (with "
-                                "@ray.remote).".format(
-                                    name, base.__ray_metadata__.class_name))
+                raise TypeError(
+                    f"Attempted to define subclass '{name}' of actor "
+                    f"class '{base.__ray_metadata__.class_name}'. "
+                    "Inheriting from actor classes is "
+                    "not currently supported. You can instead "
+                    "inherit from a non-actor base class and make "
+                    "the derived class an actor class (with "
+                    "@ray.remote).")
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -309,9 +312,8 @@ class ActorClass:
             Exception: Always.
         """
         raise TypeError("Actors cannot be instantiated directly. "
-                        "Instead of '{}()', use '{}.remote()'.".format(
-                            self.__ray_metadata__.class_name,
-                            self.__ray_metadata__.class_name))
+                        f"Instead of '{self.__ray_metadata__.class_name}()', "
+                        f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
@@ -322,16 +324,16 @@ class ActorClass:
                 "_ray_from_function_descriptor"
         ]:
             if hasattr(modified_class, attribute):
-                logger.warning("Creating an actor from class {} overwrites "
-                               "attribute {} of that class".format(
-                                   modified_class.__name__, attribute))
+                logger.warning("Creating an actor from class "
+                               f"{modified_class.__name__} overwrites "
+                               f"attribute {attribute} of that class")
 
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
             pass
 
-        name = "ActorClass({})".format(modified_class.__name__)
+        name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
@@ -411,7 +413,9 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False):
+                detached=False,
+                placement_group=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,6 +440,11 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: DEPRECATED.
+            placement_group: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -446,7 +455,6 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is not None and not is_direct_call:
             raise ValueError("Non-direct call actors are no longer supported.")
-
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(
@@ -474,8 +482,8 @@ class ActorClass:
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError("name must be None or a string, "
-                                "got: '{}'.".format(type(name)))
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -491,12 +499,18 @@ class ActorClass:
                 pass
             else:
                 raise ValueError(
-                    "The name {name} is already taken. Please use "
+                    f"The name {name} is already taken. Please use "
                     "a different name or get the existing actor using "
-                    "ray.get_actor('{name}')".format(name=name))
+                    f"ray.get_actor('{name}')")
             detached = True
         else:
             detached = False
+
+        if placement_group is None:
+            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -568,6 +582,8 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
+            placement_group.id,
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 
@@ -581,9 +597,6 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
-
-        if name is not None and not gcs_actor_service_enabled():
-            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -685,7 +698,7 @@ class ActorHandle:
             num_return_vals (int): The number of return values for the method.
 
         Returns:
-            object_ids: A list of object IDs returned by the remote actor
+            object_refs: A list of object refs returned by the remote actor
                 method.
         """
         worker = ray.worker.global_worker
@@ -713,21 +726,21 @@ class ActorHandle:
                 "Cross language remote actor method " \
                 "cannot be executed locally."
 
-        object_ids = worker.core_worker.submit_actor_task(
+        object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
             list_args, num_return_vals, self._ray_actor_method_cpus)
 
-        if len(object_ids) == 1:
-            object_ids = object_ids[0]
-        elif len(object_ids) == 0:
-            object_ids = None
+        if len(object_refs) == 1:
+            object_refs = object_refs[0]
+        elif len(object_refs) == 0:
+            object_refs = None
 
-        return object_ids
+        return object_refs
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, item))
+            raise AttributeError(f"'{type(self).__name__}' object has "
+                                 f"no attribute '{item}'")
         if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
@@ -738,9 +751,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        "Actor method {} is not supported by cross language."
-                        .format(item))
+                    logger.warning(f"Actor method {item} is not "
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 
@@ -758,9 +770,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return "Actor({}, {})".format(
-            self._ray_actor_creation_function_descriptor.class_name,
-            self._actor_id.hex())
+        return (f"Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name},"
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):
@@ -795,14 +807,14 @@ class ActorHandle:
         return state
 
     @classmethod
-    def _deserialization_helper(cls, state, outer_object_id=None):
+    def _deserialization_helper(cls, state, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
             state: The serialized state of the actor handle.
-            outer_object_id: The ObjectID that the serialized actor handle was
-                contained in, if any. This is used for counting references to
-                the actor handle.
+            outer_object_ref: The ObjectRef that the serialized actor handle
+                was contained in, if any. This is used for counting references
+                to the actor handle.
 
         """
         worker = ray.worker.global_worker
@@ -811,7 +823,7 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state, outer_object_id)
+                state, outer_object_ref)
         else:
             # Local mode
             return cls(

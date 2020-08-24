@@ -1,4 +1,5 @@
 #include <thread>
+
 #include "event_service.h"
 #include "gtest/gtest.h"
 

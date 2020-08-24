@@ -65,6 +65,13 @@ class Analysis:
             mode (str): One of [min, max].
         """
         rows = self._retrieve_rows(metric=metric, mode=mode)
+        if not rows:
+            # only nans encountered when retrieving rows
+            logger.warning("Not able to retrieve the best config for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
         all_configs = self.get_all_configs()
         compare_op = max if mode == "max" else min
         best_path = compare_op(rows, key=lambda k: rows[k][metric])
@@ -77,11 +84,20 @@ class Analysis:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
         """
+        assert mode in ["max", "min"]
         df = self.dataframe(metric=metric, mode=mode)
-        if mode == "max":
-            return df.iloc[df[metric].idxmax()].logdir
-        elif mode == "min":
-            return df.iloc[df[metric].idxmin()].logdir
+        mode_idx = pd.Series.idxmax if mode == "max" else pd.Series.idxmin
+        try:
+            return df.iloc[mode_idx(df[metric])].logdir
+        except KeyError:
+            # all dirs contains only nan values
+            # for the specified metric
+            # -> df is an empty dataframe
+            logger.warning("Not able to retrieve the best logdir for {} "
+                           "according to the specified metric "
+                           "(only nans encountered).".format(
+                               self._experiment_dir))
+            return None
 
     def fetch_trial_dataframes(self):
         fail_count = 0
@@ -151,6 +167,22 @@ class Analysis:
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
+    def get_best_checkpoint(self, trial, metric=TRAINING_ITERATION):
+        """Gets best persistent checkpoint path of provided trial.
+
+        Args:
+            trial (Trial): The log directory of a trial, or a trial instance.
+            metric (str): key of trial info to return, e.g. "mean_accuracy".
+                "training_iteration" is used by default.
+
+        Returns:
+            Path for best checkpoint of trial determined by metric
+        """
+
+        return max(
+            self.get_trial_checkpoints_paths(trial, metric),
+            key=lambda x: x[1])[0]
+
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]
         rows = {}
@@ -161,7 +193,13 @@ class Analysis:
                 idx = df[metric].idxmin()
             else:
                 idx = -1
-            rows[path] = df.iloc[idx].to_dict()
+            try:
+                rows[path] = df.iloc[idx].to_dict()
+            except TypeError:
+                # idx is nan
+                logger.warning(
+                    "Warning: Non-numerical value(s) encountered for {}".
+                    format(path))
 
         return rows
 
@@ -201,6 +239,11 @@ class ExperimentAnalysis(Analysis):
     """
 
     def __init__(self, experiment_checkpoint_path, trials=None):
+        experiment_checkpoint_path = os.path.expanduser(
+            experiment_checkpoint_path)
+        if not os.path.isfile(experiment_checkpoint_path):
+            raise ValueError(
+                "{} is not a valid file.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
             _experiment_state = json.load(f)
             self._experiment_state = _experiment_state

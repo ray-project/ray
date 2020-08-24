@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
-from ray.rllib.utils.types import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -107,12 +107,14 @@ class TrainTFMultiGPU:
                  train_batch_size: int,
                  shuffle_sequences: bool,
                  policies: List[PolicyID] = frozenset([]),
-                 _fake_gpus: bool = False):
+                 _fake_gpus: bool = False,
+                 framework: str = "tf"):
         self.workers = workers
         self.policies = policies or workers.local_worker().policies_to_train
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
+        self.framework = framework
 
         # Collect actual devices to use.
         if not num_gpus:

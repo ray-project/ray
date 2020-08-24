@@ -1,8 +1,9 @@
 import copy
 import logging
+import inspect
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
 import numpy as np
@@ -97,9 +98,9 @@ class UtilMonitor(Thread):
 def pin_in_object_store(obj):
     """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    obj_id = ray.put(obj, weakref=False)
-    _pinned_objects.append(obj_id)
-    return obj_id
+    obj_ref = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_ref)
+    return obj_ref
 
 
 def get_pinned_object(pinned_id):
@@ -135,6 +136,20 @@ class warn_if_slow:
                 "The `%s` operation took %s seconds to complete, "
                 "which may be a performance bottleneck.", self.name,
                 now - self.start)
+
+
+class Tee(object):
+    def __init__(self, stream1, stream2):
+        self.stream1 = stream1
+        self.stream2 = stream2
+
+    def write(self, *args, **kwargs):
+        self.stream1.write(*args, **kwargs)
+        self.stream2.write(*args, **kwargs)
+
+    def flush(self, *args, **kwargs):
+        self.stream1.flush(*args, **kwargs)
+        self.stream2.flush(*args, **kwargs)
 
 
 def merge_dicts(d1, d2):
@@ -216,6 +231,29 @@ def flatten_dict(dt, delimiter="/"):
     return dt
 
 
+def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
+    """
+    Unflatten `flat_key` and iteratively look up in `lookup`. E.g.
+    `flat_key="a/0/b"` will try to return `lookup["a"][0]["b"]`.
+    """
+    keys = deque(flat_key.split(delimiter))
+    base = lookup
+    while keys:
+        key = keys.popleft()
+        try:
+            if isinstance(base, Mapping):
+                base = base[key]
+            elif isinstance(base, Sequence):
+                base = base[int(key)]
+            else:
+                raise KeyError()
+        except KeyError as e:
+            if "default" in kwargs:
+                return kwargs["default"]
+            raise e
+    return base
+
+
 def _to_pinnable(obj):
     """Converts obj to a form that can be pinned in object store memory.
 
@@ -230,6 +268,92 @@ def _from_pinnable(obj):
     """Retrieve from _to_pinnable format."""
 
     return obj[0]
+
+
+def diagnose_serialization(trainable):
+    """Utility for detecting accidentally-scoped objects.
+
+    Args:
+        trainable (cls | func): The trainable object passed to
+            tune.run(trainable).
+
+    Returns:
+        bool | set of unserializable objects.
+
+    Example:
+
+    .. code-block::
+
+        import threading
+        # this is not serializable
+        e = threading.Event()
+
+        def test():
+            print(e)
+
+        diagnose_serialization(test)
+        # should help identify that 'e' should be moved into
+        # the `test` scope.
+
+        # correct implementation
+        def test():
+            e = threading.Event()
+            print(e)
+
+        assert diagnose_serialization(test) is True
+
+    """
+    from ray.tune.registry import register_trainable, check_serializability
+
+    def check_variables(objects, failure_set, printer):
+        for var_name, variable in objects.items():
+            msg = None
+            try:
+                check_serializability(var_name, variable)
+                status = "PASSED"
+            except Exception as e:
+                status = "FAILED"
+                msg = f"{e.__class__.__name__}: {str(e)}"
+                failure_set.add(var_name)
+            printer(f"{str(variable)}[name='{var_name}'']... {status}")
+            if msg:
+                printer(msg)
+
+    print(f"Trying to serialize {trainable}...")
+    try:
+        register_trainable("__test:" + str(trainable), trainable, warn=False)
+        print("Serialization succeeded!")
+        return True
+    except Exception as e:
+        print(f"Serialization failed: {e}")
+
+    print("Inspecting the scope of the trainable by running "
+          f"`inspect.getclosurevars({str(trainable)})`...")
+    closure = inspect.getclosurevars(trainable)
+    failure_set = set()
+    if closure.globals:
+        print(f"Detected {len(closure.globals)} global variables. "
+              "Checking serializability...")
+        check_variables(closure.globals, failure_set,
+                        lambda s: print("   " + s))
+
+    if closure.nonlocals:
+        print(f"Detected {len(closure.nonlocals)} nonlocal variables. "
+              "Checking serializability...")
+        check_variables(closure.nonlocals, failure_set,
+                        lambda s: print("   " + s))
+
+    if not failure_set:
+        print("Nothing was found to have failed the diagnostic test, though "
+              "serialization did not succeed. Feel free to raise an "
+              "issue on github.")
+        return failure_set
+    else:
+        print(f"Variable(s) {failure_set} was found to be non-serializable. "
+              "Consider either removing the instantiation/imports "
+              "of these objects or moving them into the scope of "
+              "the trainable. ")
+        return failure_set
 
 
 def validate_save_restore(trainable_cls,

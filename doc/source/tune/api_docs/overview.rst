@@ -3,6 +3,8 @@
 Tune API Reference
 ==================
 
+.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+
 This section contains a reference for the Tune API. If there is anything missing, please open an issue
 on `Github`_.
 
@@ -18,6 +20,7 @@ on `Github`_.
    grid_random.rst
    suggestion.rst
    schedulers.rst
+   sklearn.rst
    logging.rst
    internals.rst
    client.rst

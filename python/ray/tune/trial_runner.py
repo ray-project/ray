@@ -104,7 +104,14 @@ class TrialRunner:
         resume (str|False): see `tune.py:run`.
         sync_to_cloud (func|str): See `tune.py:run`.
         server_port (int): Port number for launching TuneServer.
-        fail_fast (bool): Finishes as soon as a trial fails if True.
+        fail_fast (bool | str): Finishes as soon as a trial fails if True.
+            If fail_fast='raise' provided, Tune will automatically
+            raise the exception received by the Trainable. fail_fast='raise'
+            can easily leak resources and should be used with caution.
+        run_errored_only (bool): Resets and reruns failed trials, assuming
+            the provided Trainable is the same. Previous trial artifacts
+            will be left untouched. Only to be used with
+            `resume` enabled. Raises ValueError otherwise.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -114,6 +121,7 @@ class TrialRunner:
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
     VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT"]
+    RAISE = "RAISE"
 
     def __init__(self,
                  search_alg=None,
@@ -126,6 +134,7 @@ class TrialRunner:
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  fail_fast=False,
+                 run_errored_only=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
@@ -141,6 +150,18 @@ class TrialRunner:
         self._iteration = 0
         self._has_errored = False
         self._fail_fast = fail_fast
+        if isinstance(self._fail_fast, str):
+            self._fail_fast = self._fail_fast.upper()
+            if self._fail_fast == TrialRunner.RAISE:
+                logger.warning(
+                    "fail_fast='raise' detected. Be careful when using this "
+                    "mode as resources (such as Ray processes, "
+                    "file descriptors, and temporary files) may not be "
+                    "cleaned up properly. To use "
+                    "a safer mode, use fail_fast=True.")
+            else:
+                raise ValueError("fail_fast must be one of {bool, RAISE}. "
+                                 f"Got {self._fail_fast}.")
         self._verbose = verbose
 
         self._server = None
@@ -165,13 +186,21 @@ class TrialRunner:
 
         if self._validate_resume(resume_type=resume):
             try:
-                self.resume()
-                logger.info("Resuming trial.")
+                self.resume(run_errored_only=run_errored_only)
                 self._resumed = True
-            except Exception:
-                logger.exception(
-                    "Runner restore failed. Restarting experiment.")
+            except Exception as e:
+                if self._verbose:
+                    logger.error(str(e))
+                logger.exception("Runner restore failed.")
+                if self._fail_fast:
+                    raise
+                logger.info("Restarting experiment.")
         else:
+            if run_errored_only:
+                raise ValueError(
+                    "'run_errored_only' should only be used with 'resume'. "
+                    f"Got: resume={resume}, "
+                    f"run_errored_only={run_errored_only}")
             logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
@@ -184,6 +213,10 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+    @property
+    def resumed(self):
+        return self._resumed
 
     @property
     def scheduler_alg(self):
@@ -240,17 +273,14 @@ class TrialRunner:
             (fname.startswith("experiment_state") and fname.endswith(".json"))
             for fname in os.listdir(directory))
 
-    def add_experiment(self, experiment):
-        if not self._resumed:
-            self._search_alg.add_configurations([experiment])
-        else:
-            logger.info("TrialRunner resumed, ignoring new add_experiment.")
-
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
+
+        Also automatically saves the search algorithm to the local
+        checkpoint dir.
 
         Args:
             force (bool): Forces a checkpoint despite checkpoint_period.
@@ -277,13 +307,16 @@ class TrialRunner:
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.replace(tmp_file_name, self.checkpoint_file)
+        self._search_alg.save_to_dir(
+            self._local_checkpoint_dir, session_str=self._session_str)
+
         if force:
             self._syncer.sync_up()
         else:
             self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
-    def resume(self):
+    def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -296,12 +329,13 @@ class TrialRunner:
 
         logger.warning("".join([
             "Attempting to resume experiment from {}. ".format(
-                self._local_checkpoint_dir), "This feature is experimental, "
-            "and may not work with all search algorithms. ",
+                self._local_checkpoint_dir),
             "This will ignore any new changes to the specification."
         ]))
 
         self.__setstate__(runner_state["runner_data"])
+        if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
+            self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
         trials = []
         for trial_cp in runner_state["checkpoints"]:
@@ -310,7 +344,11 @@ class TrialRunner:
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            self.add_trial(trial)
+            if run_errored_only and trial.status == Trial.ERROR:
+                new_trial = trial.reset()
+                self.add_trial(new_trial)
+            else:
+                self.add_trial(trial)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -522,6 +560,8 @@ class TrialRunner:
                 self._execute_action(trial, decision)
         except Exception:
             logger.exception("Trial %s: Error processing event.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_save(self, trial):
@@ -539,6 +579,8 @@ class TrialRunner:
             checkpoint_value = self.trial_executor.fetch_result(trial)
         except Exception:
             logger.exception("Trial %s: Error processing result.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
         if checkpoint_value:
@@ -549,6 +591,8 @@ class TrialRunner:
             except Exception:
                 logger.exception("Trial %s: Error handling checkpoint %s",
                                  trial, checkpoint_value)
+                if self._fail_fast == TrialRunner.RAISE:
+                    raise
 
         trial.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
@@ -570,6 +614,8 @@ class TrialRunner:
             self.trial_executor.continue_training(trial)
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
+            if self._fail_fast == TrialRunner.RAISE:
+                raise
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_failure(self, trial, error_msg):

@@ -1,25 +1,25 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
+import tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
-from ray.rllib.utils import try_import_tree
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
-tree = try_import_tree()
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +258,7 @@ class QMixTorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         explore=None,
+                        timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
@@ -278,15 +279,15 @@ class QMixTorchPolicy(Policy):
                 action_mask, dtype=torch.float, device=self.device)
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
-            # epsilon-greedy action selector
-            random_numbers = torch.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < (self.cur_epsilon
-                                             if explore else 0.0)).long()
-            from torch.distributions import Categorical
-            random_actions = Categorical(avail).sample().long()
-            actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.argmax(dim=2))
-            actions = actions.cpu().numpy()
+            masked_q_values_folded = torch.reshape(
+                masked_q_values, [-1] + list(masked_q_values.shape)[2:])
+            actions, _ = self.exploration.get_exploration_action(
+                action_distribution=TorchCategorical(masked_q_values_folded),
+                timestep=timestep,
+                explore=explore)
+            actions = torch.reshape(
+                actions,
+                list(masked_q_values.shape)[:-1]).cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
         return tuple(actions.transpose([1, 0])), hiddens, {}

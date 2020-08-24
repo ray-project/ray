@@ -1,12 +1,31 @@
-filegroup(
-    name = "files",
-    srcs = glob(["**"]),
+exports_files(
+    [
+        "redis-server.exe",
+        "redis-cli.exe",
+    ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "file",
-    srcs = ["Makefile"],
+genrule(
+    name = "bin",
+    srcs = glob(["**"]),
+    outs = [
+        "redis-server",
+        "redis-cli",
+    ],
+    cmd = """
+        tmpdir="redis.tmp"
+        p=$(location Makefile)
+        cp -p -L -R -- "$${p%/*}" "$${tmpdir}"
+        chmod +x "$${tmpdir}"/deps/jemalloc/configure
+        parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
+        make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
+        mv "$${tmpdir}"/src/redis-server $(location redis-server)
+        chmod +x $(location redis-server)
+        mv "$${tmpdir}"/src/redis-cli $(location redis-cli)
+        chmod +x $(location redis-cli)
+        rm -r -f -- "$${tmpdir}"
+    """,
     visibility = ["//visibility:public"],
 )
 
@@ -16,6 +35,8 @@ cc_library(
     name = "_hiredis",
     hdrs = [
         "deps/hiredis/dict.c",
+        "deps/hiredis/dict.h",
+        "deps/hiredis/fmacros.h",
     ],
     strip_include_prefix = "deps/hiredis",
 )
@@ -36,7 +57,6 @@ cc_library(
         "deps/hiredis/*.h",
         "deps/hiredis/adapters/*.h",
     ]),
-    includes = ["deps/hiredis"],
     strip_include_prefix = "deps",
     deps = [
         ":_hiredis",

@@ -15,6 +15,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
@@ -114,6 +115,18 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
+Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
+                                              const std::string &key,
+                                              const std::string &index_key,
+                                              const StatusCallback &callback) {
+  std::vector<std::string> redis_keys;
+  redis_keys.reserve(20);
+  redis_keys.push_back(GenRedisKey(table_name, key));
+  redis_keys.push_back(GenRedisKey(table_name, key, index_key));
+
+  return DeleteByKeys(redis_keys, callback);
+}
+
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           const StatusCallback &callback) {
@@ -122,6 +135,21 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   for (auto &key : keys) {
     redis_keys.push_back(GenRedisKey(table_name, key));
   }
+  return DeleteByKeys(redis_keys, callback);
+}
+
+Status RedisStoreClient::AsyncBatchDeleteWithIndex(
+    const std::string &table_name, const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+  RAY_CHECK(keys.size() == index_keys.size());
+
+  std::vector<std::string> redis_keys;
+  redis_keys.reserve(2 * keys.size());
+  for (size_t i = 0; i < keys.size(); ++i) {
+    redis_keys.push_back(GenRedisKey(table_name, keys[i]));
+    redis_keys.push_back(GenRedisKey(table_name, keys[i], index_keys[i]));
+  }
+
   return DeleteByKeys(redis_keys, callback);
 }
 

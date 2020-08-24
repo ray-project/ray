@@ -1,3 +1,4 @@
+from datetime import timedelta
 import numpy as np
 import logging
 import os
@@ -16,7 +17,8 @@ from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP
+from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
+from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -138,6 +140,8 @@ class TorchTrainer:
             Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
+        timeout_s (float): Seconds before the torch process group
+            times out. Useful when machines are unreliable.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
@@ -180,6 +184,7 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
+            timeout_s=NCCL_TIMEOUT_S,
             serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
@@ -240,7 +245,7 @@ class TorchTrainer:
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
 
-        logger.debug("Using {} as backend.".format(backend))
+        logger.debug(f"Using {backend} as backend.")
         self.backend = backend
         self.num_cpus_per_worker = num_cpus_per_worker
         self.use_gpu = use_gpu
@@ -248,6 +253,7 @@ class TorchTrainer:
 
         self.serialize_data_creation = serialize_data_creation
         self.wrap_ddp = wrap_ddp
+        self.timeout_s = timeout_s
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
@@ -347,10 +353,7 @@ class TorchTrainer:
                 self.apply_all_workers(self.initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
-            ip = ray.services.get_node_ip_address()
-            port = self.local_worker.find_free_port()
-
-            address = "tcp://{ip}:{port}".format(ip=ip, port=port)
+            address = setup_address()
 
             # Runs the creator functions.
             remote_component_setup = [
@@ -363,10 +366,12 @@ class TorchTrainer:
 
             # Setup the process group among all workers.
             remote_pgroup_setups = [
-                worker.setup_process_group.remote(address, i + 1, num_workers)
+                worker.setup_process_group.remote(address, i + 1, num_workers,
+                                                  timedelta(self.timeout_s))
                 for i, worker in enumerate(self.remote_workers)
             ]
-            self.local_worker.setup_process_group(address, 0, num_workers)
+            self.local_worker.setup_process_group(address, 0, num_workers,
+                                                  timedelta(self.timeout_s))
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_pgroup_setups)
 
@@ -654,12 +659,12 @@ class TorchTrainer:
                     "Failed to shutdown gracefully, forcing a shutdown.")
 
                 for worker in self.remote_workers:
-                    logger.warning("Killing worker {}.".format(worker))
+                    logger.warning(f"Killing worker {worker}.")
                     ray.kill(worker)
         else:
             self.local_worker.shutdown()
             for worker in self.remote_workers:
-                logger.debug("Killing worker {}.".format(worker))
+                logger.debug(f"Killing worker {worker}.")
                 ray.kill(worker)
 
         self.local_worker = DeactivatedRunner()
@@ -669,7 +674,7 @@ class TorchTrainer:
         """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
         for worker in self.remote_workers:
-            logger.debug("Killing worker {}.".format(worker))
+            logger.debug(f"Killing worker {worker}.")
             ray.kill(worker)
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
@@ -785,7 +790,7 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
 
         class CustomTrainable(TorchTrainable):
-            def _train(self):
+            def step(self):
                 for i in range(5):
                     train_stats = self.trainer.train()
                 validation_stats = self.trainer.validate()
@@ -799,11 +804,11 @@ class BaseTorchTrainable(Trainable):
 
     """
 
-    def _setup(self, config):
+    def setup(self, config):
         """Constructs a TorchTrainer object as `self.trainer`."""
         self._trainer = self._create_trainer(config)
 
-    def _train(self):
+    def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once.
 
         You may want to override this if using a custom LR scheduler.
@@ -813,20 +818,20 @@ class BaseTorchTrainable(Trainable):
         stats = merge_dicts(train_stats, validation_stats)
         return stats
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
         self.trainer.save(checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         """Restores the trainer state.
 
         Override this if you have state external to the Trainer object.
         """
         return self.trainer.load(checkpoint_path)
 
-    def _stop(self):
+    def cleanup(self):
         """Shuts down the trainer."""
         self.trainer.shutdown()
 

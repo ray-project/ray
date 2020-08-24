@@ -83,6 +83,7 @@ def test_actor_class_methods(ray_start_regular):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -95,10 +96,10 @@ def test_actor_gpus(ray_start_cluster):
     @ray.remote(num_gpus=1)
     class Actor1:
         def __init__(self):
-            self.gpu_ids = ray.get_gpu_ids()
+            self.gpu_ids = ray.get_gpu_ids(as_str=True)
 
         def get_location_and_ids(self):
-            assert ray.get_gpu_ids() == self.gpu_ids
+            assert ray.get_gpu_ids(as_str=True) == self.gpu_ids
             return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
@@ -242,7 +243,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             num_gpus=num_gpus_per_raylet,
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
-            }))
+            } if i == 0 else {}))
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -631,12 +632,12 @@ def test_creating_more_actors_than_resources(shutdown_only):
     results = []
     for _ in range(3):
         actor = ResourceActor2.remote()
-        object_id = actor.method.remote()
-        results.append(object_id)
+        object_ref = actor.method.remote()
+        results.append(object_ref)
         # Wait for the task to execute. We do this because otherwise it may
         # be possible for the __ray_terminate__ task to execute before the
         # method.
-        ray.wait([object_id])
+        ray.wait([object_ref])
 
     ray.get(results)
 

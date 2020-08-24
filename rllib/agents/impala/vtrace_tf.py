@@ -340,8 +340,8 @@ def from_importance_weights(log_rhos,
             clipped_rhos = tf.minimum(
                 clip_rho_threshold, rhos, name="clipped_rhos")
 
-            tf1.summary.histogram(
-                    "clipped_rhos_1000", tf.minimum(1000.0, rhos))
+            tf1.summary.histogram("clipped_rhos_1000", tf.minimum(
+                1000.0, rhos))
             tf1.summary.scalar(
                 "num_of_clipped_rhos",
                 tf.reduce_sum(

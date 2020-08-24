@@ -5,39 +5,42 @@ RLlib Algorithms
 
     Check out the `environments <rllib-env.html>`__ page to learn more about different environment types.
 
-Feature Compatibility Matrix
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Available Algorithms - Overview
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=================== ========== ======================= ================== =========== =====================
+=================== ========== ======================= ================== =========== =============================================================
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
-=================== ========== ======================= ================== =========== =====================
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+=================== ========== ======================= ================== =========== =============================================================
+`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`MAML`_             tf + torch No                      **Yes**            No
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+autoreg`_
+`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `QMIX`_             torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
-------------------- ---------- ----------------------- ------------------ ----------- ---------------------
+------------------- ---------- ----------------------- ------------------ ----------- -------------------------------------------------------------
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
-`MADDPG`_           tf         No                      **Yes**            **Yes**
-=================== ========== ======================= ================== =========== =====================
+`MADDPG`_           tf         **Yes**                 Partial            **Yes**
+=================== ========== ======================= ================== =========== =============================================================
 
+.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+.. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
+.. _`+Transformer`: rllib-models.html#attention-networks-transformers
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
-.. _`Rainbow`: rllib-algorithms.html#dqn
-.. _`TD3`: rllib-algorithms.html#ddpg
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
+.. _`Rainbow`: rllib-algorithms.html#dqn
+.. _`TD3`: rllib-algorithms.html#ddpg
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -301,16 +304,22 @@ SpaceInvaders  650                       1001                           1025    
 
 Policy Gradients
 ----------------
-|pytorch| |tensorflow|
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
+|pytorch| |tensorflow| An `implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ of a vanilla policy gradient algorithm for TensorFlow and PyTorch.
+
+**Papers**:
+`[1] - Policy Gradient Methods for Reinforcement Learning with Function Approximation. <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
+and
+`[2] - Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning. <http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf>`__
+
 
 .. figure:: a2c-arch.svg
 
     Policy gradients architecture (same as A2C)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
+**Tuned examples**: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
 
-**PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**PG-specific configs**: The following updates will overwrite/be added to the
+(base) Trainer config in `rllib/agents/trainer.py <rllib-training.html#common-parameters>`__ (*COMMON_CONFIG* dict):
 
 .. literalinclude:: ../../rllib/agents/pg/pg.py
    :language: python
@@ -406,6 +415,26 @@ HalfCheetah    13000       ~15000
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _maml:
+
+Model-Agnostic Meta-Learning (MAML)
+-----------------------------------
+|pytorch| |tensorflow|
+`[paper] <https://arxiv.org/abs/1703.03400>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/maml/maml.py>`__
+
+RLlib's MAML implementation is a meta-learning method for learning and quick adaptation across different tasks for continuous control. Code here is adapted from https://github.com/jonasrothfuss, which outperforms vanilla MAML and avoids computation of the higher order gradients during the meta-update step. MAML is evaluated on custom environments that are described in greater detail `here <https://github.com/ray-project/ray/blob/master/rllib/env/meta_env.py>`__.
+
+MAML uses additional metrics to measure performance; ``episode_reward_mean`` measures the agent's returns before adaptation, ``episode_reward_mean_adapt_N`` measures the agent's returns after N gradient steps of inner adaptation, and ``adaptation_delta`` measures the difference in performance before and after adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/maml>`__.
+
+Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/halfcheetah_rand_direc.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/halfcheetah-rand-direc-maml.yaml>`__), AntRandGoalEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/ant_rand_goal.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/ant-rand-goal-maml.yaml>`__), PendulumMassEnv (`Env <https://github.com/ray-project/ray/blob/master/rllib/examples/env/pendulum_mass.py>`__, `Config <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/maml/pendulum-mass-maml.yaml>`__)
+
+**MAML-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/maml/maml.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 Derivative-free
 ~~~~~~~~~~~~~~~
 
@@ -455,9 +484,9 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
 ---------------------------------------------------
 |pytorch|
-`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
+`[paper] <https://arxiv.org/abs/1803.11485>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/qmix/qmix.py>`__ Q-Mix is a specialized multi-agent algorithm. Code here is adapted from https://github.com/oxwhirl/pymarl_alpha  to integrate with RLlib multi-agent APIs. To use Q-Mix, you must specify an agent `grouping <rllib-env.html#grouping-agents>`__ in the environment (see the `two-step game example <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__). Currently, all agents in the group must be homogeneous. The algorithm can be scaled by increasing the number of workers or using Ape-X.
 
-Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__
+Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -471,11 +500,11 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__
+Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__
 
 .. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
    :language: python

@@ -14,23 +14,45 @@
 
 #pragma once
 
+#include <boost/bind.hpp>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
-
-#include <boost/bind.hpp>
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
+// Interface for mocking.
+class ReferenceCounterInterface {
+ public:
+  virtual void AddLocalReference(const ObjectID &object_id,
+                                 const std::string &call_site) = 0;
+  virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
+                                 const rpc::Address &owner_address) = 0;
+  virtual void AddOwnedObject(const ObjectID &object_id,
+                              const std::vector<ObjectID> &contained_ids,
+                              const rpc::Address &owner_address,
+                              const std::string &call_site, const int64_t object_size,
+                              bool is_reconstructable,
+                              const absl::optional<ClientID> &pinned_at_raylet_id =
+                                  absl::optional<ClientID>()) = 0;
+  virtual bool SetDeleteCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) = 0;
+
+  virtual ~ReferenceCounterInterface() {}
+};
+
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
-class ReferenceCounter {
+class ReferenceCounter : public ReferenceCounterInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
@@ -45,7 +67,7 @@ class ReferenceCounter {
       : rpc_address_(rpc_address),
         distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        client_factory_(client_factory) {}
+        borrower_pool_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -169,15 +191,34 @@ class ReferenceCounter {
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  /// Get the owner ID and address of the given object.
+  /// Get the owner address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
+  /// \return false if the object is out of scope or we do not yet have
+  /// ownership information. The latter can happen when object IDs are pasesd
+  /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
 
-  /// Manually delete the objects from the reference counter.
-  void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
+  /// Get the owner addresses of the given objects. The owner address
+  /// must be registered for these objects.
+  ///
+  /// \param[in] object_ids The IDs of the object to look up.
+  /// \return The addresses of the objects' owners.
+  std::vector<rpc::Address> GetOwnerAddresses(
+      const std::vector<ObjectID> object_ids) const;
+
+  /// Check whether an object value has been freed.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Whether the object value has been freed.
+  bool IsPlasmaObjectFreed(const ObjectID &object_id) const;
+
+  /// Release the underlying value from plasma (if any) for these objects.
+  ///
+  /// \param[in] object_ids The IDs whose values to free.
+  void FreePlasmaObjects(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
@@ -286,12 +327,12 @@ class ReferenceCounter {
   /// Check whether the object is pinned at a remote plasma store node.
   ///
   /// \param[in] object_id The object to check.
-  /// \param[out] pinned Whether the object was pinned at a remote plasma store
-  /// node.
+  /// \param[out] pinned_at The node ID of the raylet at which this object is
+  /// pinned. Set to nil if the object is not pinned.
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) const
+  bool IsPlasmaObjectPinned(const ObjectID &object_id, ClientID *pinned_at) const
       LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
@@ -316,6 +357,27 @@ class ReferenceCounter {
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
+  /// Add location to the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be added to the location table.
+  void AddObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Remove location from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to update.
+  /// \param[in] node_id The node to be removed from the location table.
+  void RemoveObjectLocation(const ObjectID &object_id, const ClientID &node_id)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get the locations from the location table of the given object.
+  ///
+  /// \param[in] object_id The object to get locations for.
+  /// \return The nodes that have the object.
+  std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -330,8 +392,8 @@ class ReferenceCounter {
           object_size(object_size),
           owned_by_us(true),
           owner_address(owner_address),
-          is_reconstructable(is_reconstructable),
-          pinned_at_raylet_id(pinned_at_raylet_id) {}
+          pinned_at_raylet_id(pinned_at_raylet_id),
+          is_reconstructable(is_reconstructable) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -475,6 +537,14 @@ class ReferenceCounter {
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
+  bool GetOwnerInternal(const ObjectID &object_id,
+                        rpc::Address *owner_address = nullptr) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Release the pinned plasma object, if any. Also unsets the raylet address
+  /// that the object was pinned at, if the address was set.
+  void ReleasePlasmaObject(ReferenceTable::iterator it);
+
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
   void ShutdownIfNeeded() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -599,17 +669,30 @@ class ReferenceCounter {
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
 
-  /// Map from worker address to core worker client. The owner of an object
+  /// Pool from worker address to core worker client. The owner of an object
   /// uses this client to request a notification from borrowers once the
   /// borrower's ref count for the ID goes to 0.
-  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      borrower_cache_ GUARDED_BY(mutex_);
+  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<ClientID>>;
+
+  /// Holds the client information for the owned objects. This table is seperate from
+  /// the reference table because we add object reference after putting object into the
+  /// plasma store and add the location to the object directory. Therefore we will receive
+  /// object location information before the reference is created.
+  LocationTable object_id_locations_ GUARDED_BY(mutex_);
+
+  /// Objects whose values have been freed by the language frontend.
+  /// The values in plasma will not be pinned. An object ID is
+  /// removed from this set once its Reference has been deleted
+  /// locally.
+  absl::flat_hash_set<ObjectID> freed_objects_ GUARDED_BY(mutex_);
 
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.

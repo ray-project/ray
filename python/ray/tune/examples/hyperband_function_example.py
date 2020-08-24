@@ -11,10 +11,10 @@ from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 
 
-def train(config, checkpoint=None):
+def train(config, checkpoint_dir=None):
     step = 0
-    if checkpoint:
-        with open(checkpoint) as f:
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
             step = json.loads(f.read())["timestep"]
 
     for timestep in range(step, 100):
@@ -22,11 +22,10 @@ def train(config, checkpoint=None):
         v *= config.get("height", 1)
 
         if timestep % 3 == 0:
-            checkpoint_dir = tune.make_checkpoint_dir(step=timestep)
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"timestep": timestep}))
-            tune.save_checkpoint(path)
+            with tune.checkpoint_dir(step=timestep) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(path, "w") as f:
+                    f.write(json.dumps({"timestep": timestep}))
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.

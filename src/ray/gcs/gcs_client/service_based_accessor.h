@@ -14,10 +14,11 @@
 
 #pragma once
 
-#include <ray/common/task/task_spec.h>
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -42,15 +43,18 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
-  Status AsyncSubscribeToFinishedJobs(
-      const SubscribeCallback<JobID, JobTableData> &subscribe,
-      const StatusCallback &done) override;
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
+                           const StatusCallback &done) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  FetchDataOperation fetch_all_data_operation_;
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_operation_;
@@ -77,6 +81,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGetByName(
       const std::string &name,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const StatusCallback &callback) override;
 
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
@@ -120,11 +127,16 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   /// server restarts from a failure.
   FetchDataOperation fetch_all_data_operation_;
 
+  // Mutex to protect the subscribe_operations_ field and fetch_data_operations_ field.
+  absl::Mutex mutex_;
+
   /// Save the subscribe operation of actors.
-  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_;
+  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_
+      GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
-  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_;
+  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_
+      GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
 
@@ -182,6 +194,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
+  void AsyncReReportHeartbeat() override;
+
   Status AsyncSubscribeHeartbeat(
       const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;
@@ -196,6 +210,13 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  Status AsyncSetInternalConfig(
+      std::unordered_map<std::string, std::string> &config) override;
+
+  Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
+      override;
+
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
@@ -206,6 +227,13 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
+
+  // Mutex to protect the cached_heartbeat_ field.
+  absl::Mutex mutex_;
+
+  /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
+  /// failure.
+  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
 
   void HandleNotification(const GcsNodeInfo &node_info);
 
@@ -317,13 +345,19 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
+  // Mutex to protect the subscribe_object_operations_ field and
+  // fetch_object_data_operations_ field.
+  absl::Mutex mutex_;
+
   /// Save the subscribe operations, so we can call them again when PubSub
   /// server restarts from a failure.
-  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_;
+  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_
+      GUARDED_BY(mutex_);
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
-  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_;
+  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_
+      GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
 
@@ -374,16 +408,19 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+  Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
                                   const StatusCallback &callback) override;
 
-  Status AsyncRegisterWorker(
-      rpc::WorkerType worker_type, const WorkerID &worker_id,
-      const std::unordered_map<std::string, std::string> &worker_info,
-      const StatusCallback &callback) override;
+  Status AsyncGet(const WorkerID &worker_id,
+                  const OptionalItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback) override;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+                  const StatusCallback &callback) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
@@ -392,6 +429,31 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   /// restarts from a failure.
   SubscribeOperation subscribe_operation_;
 
+  ServiceBasedGcsClient *client_impl_;
+};
+
+/// \class ServiceBasedPlacementGroupInfoAccessor
+/// ServiceBasedPlacementGroupInfoAccessor is an implementation of
+/// `PlacementGroupInfoAccessor` that uses GCS Service as the backend.
+
+class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
+  // TODO(AlisaWu):fill the ServiceAccessor.
+ public:
+  explicit ServiceBasedPlacementGroupInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
+
+  Status AsyncCreatePlacementGroup(
+      const PlacementGroupSpecification &placement_group_spec) override;
+
+  Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
+                                   const StatusCallback &callback) override;
+
+  Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+ private:
   ServiceBasedGcsClient *client_impl_;
 };
 

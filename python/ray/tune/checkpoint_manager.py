@@ -109,6 +109,10 @@ class CheckpointManager:
             return
 
         old_checkpoint = self.newest_persistent_checkpoint
+
+        if old_checkpoint.value == checkpoint.value:
+            return
+
         self.newest_persistent_checkpoint = checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
@@ -133,7 +137,7 @@ class CheckpointManager:
                 self._membership.remove(worst)
             # Don't delete the newest checkpoint. It will be deleted on the
             # next on_checkpoint() call since it isn't in self._membership.
-            if worst != checkpoint:
+            if worst.value != checkpoint.value:
                 self.delete(worst)
 
     def best_checkpoints(self):

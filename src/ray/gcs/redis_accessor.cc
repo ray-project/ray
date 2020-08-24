@@ -65,10 +65,19 @@ Status RedisLogBasedActorInfoAccessor::AsyncGet(
                                                       on_done);
 }
 
+Status RedisLogBasedActorInfoAccessor::AsyncRegisterActor(
+    const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
+  const std::string error_msg =
+      "Unsupported method of AsyncRegisterActor in RedisLogBasedActorInfoAccessor.";
+  RAY_LOG(FATAL) << error_msg;
+  return Status::Invalid(error_msg);
+}
+
 Status RedisLogBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   const std::string error_msg =
-      "Unsupported method of AsyncCreateActor in RedisLogBasedActorInfoAccessor.";
+      "Unsupported method of AsyncCreateActor in "
+      "RedisLogBasedActorInfoAccessor.";
   RAY_LOG(FATAL) << error_msg;
   return Status::Invalid(error_msg);
 }
@@ -349,15 +358,10 @@ Status RedisJobInfoAccessor::DoAsyncAppend(const std::shared_ptr<JobTableData> &
   return client_impl_->job_table().Append(job_id, job_id, data_ptr, on_done);
 }
 
-Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+Status RedisJobInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
-    if (job_data.is_dead()) {
-      subscribe(job_id, job_data);
-    }
-  };
-  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
@@ -656,6 +660,8 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
 
+void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
+
 Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
@@ -759,20 +765,11 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
 }
 
-RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl) {}
 
 Status RedisErrorInfoAccessor::AsyncReportJobError(
     const std::shared_ptr<ErrorTableData> &data_ptr, const StatusCallback &callback) {
-  ErrorTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const JobID &job_id,
-                         const ErrorTableData &data) { callback(Status::OK()); };
-  }
-
-  JobID job_id = JobID::FromBinary(data_ptr->job_id());
-  ErrorTable &error_table = client_impl_->error_table();
-  return error_table.Append(job_id, job_id, data_ptr, on_done);
+  return Status::Invalid("Not implemented");
 }
 
 RedisStatsInfoAccessor::RedisStatsInfoAccessor(RedisGcsClient *client_impl)
@@ -792,50 +789,59 @@ Status RedisStatsInfoAccessor::AsyncAddProfileData(
 
 RedisWorkerInfoAccessor::RedisWorkerInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
-      worker_failure_sub_executor_(client_impl->worker_failure_table()) {}
+      worker_failure_sub_executor_(client_impl->worker_table()) {}
 
 Status RedisWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+    const SubscribeCallback<WorkerID, WorkerTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
-    const std::shared_ptr<WorkerFailureData> &data_ptr, const StatusCallback &callback) {
-  WorkerFailureTable::WriteCallback on_done = nullptr;
+    const std::shared_ptr<WorkerTableData> &data_ptr, const StatusCallback &callback) {
+  WorkerTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const WorkerID &id,
-                         const WorkerFailureData &data) { callback(Status::OK()); };
+                         const WorkerTableData &data) { callback(Status::OK()); };
   }
 
   WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
-  WorkerFailureTable &worker_failure_table = client_impl_->worker_failure_table();
+  WorkerTable &worker_failure_table = client_impl_->worker_table();
   return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
 }
 
-Status RedisWorkerInfoAccessor::AsyncRegisterWorker(
-    rpc::WorkerType worker_type, const WorkerID &worker_id,
-    const std::unordered_map<std::string, std::string> &worker_info,
-    const StatusCallback &callback) {
-  std::vector<std::string> args;
-  args.emplace_back("HMSET");
-  if (worker_type == rpc::WorkerType::DRIVER) {
-    args.emplace_back("Drivers:" + worker_id.Binary());
-  } else {
-    args.emplace_back("Workers:" + worker_id.Binary());
-  }
-  for (const auto &entry : worker_info) {
-    args.push_back(entry.first);
-    args.push_back(entry.second);
-  }
+Status RedisWorkerInfoAccessor::AsyncGet(
+    const WorkerID &worker_id,
+    const OptionalItemCallback<rpc::WorkerTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
 
-  auto status = client_impl_->primary_context()->RunArgvAsync(args);
-  if (callback) {
-    // TODO (kfstorm): Invoke the callback asynchronously.
-    callback(status);
-  }
-  return status;
+Status RedisWorkerInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<rpc::WorkerTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisWorkerInfoAccessor::AsyncAdd(
+    const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
+    const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
+    const PlacementGroupSpecification &placement_group_spec) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  return Status::Invalid("Not implemented");
 }
 
 }  // namespace gcs

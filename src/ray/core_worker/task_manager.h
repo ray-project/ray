@@ -19,10 +19,9 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
-#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -51,20 +50,18 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
-using RetryTaskCallback = std::function<void(const TaskSpecification &spec, bool delay)>;
+using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
-              std::shared_ptr<ActorManagerInterface> actor_manager,
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const ClientID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
-        actor_manager_(actor_manager),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback) {
@@ -233,9 +230,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
-
-  // Interface for publishing actor creation.
-  std::shared_ptr<ActorManagerInterface> actor_manager_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

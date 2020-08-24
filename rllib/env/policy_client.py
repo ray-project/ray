@@ -10,11 +10,10 @@ import time
 from typing import Union, Optional
 
 import ray.cloudpickle as pickle
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env import ExternalEnv, MultiAgentEnv, ExternalMultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.types import MultiAgentDict, EnvInfoDict, EnvObsType, \
+from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
 logger = logging.getLogger(__name__)
@@ -337,6 +336,7 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     real_env_creator = kwargs["env_creator"]
     kwargs["env_creator"] = _auto_wrap_external(real_env_creator)
 
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
     rollout_worker = RolloutWorker(**kwargs)
     inference_thread = _LocalInferenceThread(rollout_worker, send_fn)
     inference_thread.start()

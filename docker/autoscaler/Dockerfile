@@ -1,14 +1,8 @@
-FROM rayproject/base-deps
-ARG WHEEL_PATH
-ARG WHEEL_NAME
+FROM rayproject/ray
 
 # Install kubectl.
 RUN apt-get update \
-    && apt-get install -y curl \
-                        tmux \
-                        screen \
-                        rsync \
-                        apt-transport-https \
+    && apt-get install -y apt-transport-https \
     && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && touch /etc/apt/sources.list.d/kubernetes.list \
     && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
@@ -17,12 +11,10 @@ RUN apt-get update \
     && apt-get clean 
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
-COPY requirements.txt .
-COPY $WHEEL_PATH $WHEEL_NAME
+COPY requirements.txt ./
+COPY requirements_autoscaler.txt ./
 
-RUN pip --no-cache-dir install -r requirements.txt \
-    && pip --no-cache-dir install $WHEEL_NAME[all]
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \ 
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_autoscaler.txt \
+    && rm requirements.txt && rm requirements_autoscaler.txt
 
-# For Click
-ENV LC_ALL=C.UTF-8
-ENV LANG=C.UTF-8
