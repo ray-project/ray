@@ -203,9 +203,15 @@ class PopulationBasedTraining(FIFOScheduler):
                 "`custom_explore_fn` to use PBT.")
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
-            raise TuneError(
+            raise ValueError(
                 "You must set `quantile_fraction` to a value between 0 and"
                 "0.5. Current value: '{}'".format(quantile_fraction))
+
+        if perturbation_interval <= 0:
+            raise ValueError(
+                "perturbation_interval must be a positive number greater "
+                "than 0. Current value: '{}'".format(perturbation_interval)
+            )
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -303,7 +309,7 @@ class PopulationBasedTraining(FIFOScheduler):
             if any([self._trial_state[t].last_train_time <
                     self._next_perturbation_sync and t != trial for t in
                     trial_runner.get_trials()]):
-                logger.info("Pausing trial {}".format(trial))
+                logger.debug("Pausing trial {}".format(trial))
             else:
                 # All trials are synced at the same timestep.
                 lower_quantile, upper_quantile = self._quantiles()
@@ -317,14 +323,16 @@ class PopulationBasedTraining(FIFOScheduler):
                 # occurs before exploiting of weaker ones.
                 all_trials = upper_quantile + not_in_quantile + lower_quantile
                 for t in all_trials:
-                    logger.info("Perturbing Trial {}".format(t))
+                    logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
-                    if t != trial:
-                        trial_runner.trial_executor.start_trial(t, train=False)
                     self._perturb_trial(t, trial_runner, upper_quantile, lower_quantile)
-                    if t != trial:
-                        trial_runner.trial_executor.pause_trial(t)
-                self._next_perturbation_sync += self._perturbation_interval
+
+                all_train_times = [self._trial_state[
+                                               trial].last_train_time for
+                                           trial in trial_runner.get_trials()]
+                max_last_train_time = max(all_train_times)
+                self._next_perturbation_sync = max(
+                    self._next_perturbation_sync+self._perturbation_interval, max_last_train_time)
             return TrialScheduler.PAUSE
 
     def _perturb_trial(self, trial, trial_runner, upper_quantile,
@@ -334,17 +342,20 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
             # callback. So, we override with the current result.
-            logger.info("Trial {} is in upper quantile".format(trial))
-            logger.info("Checkpointing {}".format(trial))
-            assert state.last_result is not None
-            state.last_checkpoint = trial_runner.trial_executor.save(
-                trial, Checkpoint.MEMORY, result=state.last_result)
+            logger.debug("Trial {} is in upper quantile".format(trial))
+            logger.debug("Checkpointing {}".format(trial))
+            if trial.status == Trial.PAUSED:
+                # Paused trial will always have an in-memory checkpoint.
+                state.last_checkpoint = trial.checkpoint
+            else:
+                state.last_checkpoint = trial_runner.trial_executor.save(
+                    trial, Checkpoint.MEMORY, result=state.last_result)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
 
         if trial in lower_quantile:
-            logger.info("Trial {} is in lower quantile".format(trial))
+            logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
             self._exploit(trial_runner.trial_executor, trial,
@@ -408,22 +419,27 @@ class PopulationBasedTraining(FIFOScheduler):
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
-        reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                      new_tag)
 
-        # TODO(ujvl): Refactor Scheduler abstraction to abstract
-        #  mechanism for trial restart away. We block on restore
-        #  and suppress train on start as a stop-gap fix to
-        #  https://github.com/ray-project/ray/issues/7258.
-        if reset_successful:
-            trial_executor.restore(
-                trial, new_state.last_checkpoint, block=True)
-        else:
-            trial_executor.stop_trial(trial, stop_logger=False)
+        if self._synch:
             trial.config = new_config
             trial.experiment_tag = new_tag
-            trial_executor.start_trial(
-                trial, new_state.last_checkpoint, train=False)
+            trial.on_checkpoint(new_state.last_checkpoint)
+        else:
+            reset_successful = trial_executor.reset_trial(trial, new_config,
+                                                          new_tag)
+            # TODO(ujvl): Refactor Scheduler abstraction to abstract
+            #  mechanism for trial restart away. We block on restore
+            #  and suppress train on start as a stop-gap fix to
+            #  https://github.com/ray-project/ray/issues/7258.
+            if reset_successful:
+                trial_executor.restore(
+                    trial, new_state.last_checkpoint, block=True)
+            else:
+                trial_executor.stop_trial(trial, stop_logger=False)
+                trial.config = new_config
+                trial.experiment_tag = new_tag
+                trial_executor.start_trial(
+                    trial, new_state.last_checkpoint, train=False)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -471,7 +487,6 @@ class PopulationBasedTraining(FIFOScheduler):
                     candidates.append(trial)
         candidates.sort(
             key=lambda trial: self._trial_state[trial].last_train_time)
-        logger.info("Candidates {}".format(candidates))
         return candidates[0] if candidates else None
 
     def reset_stats(self):

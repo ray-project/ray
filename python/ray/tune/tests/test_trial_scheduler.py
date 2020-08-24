@@ -215,6 +215,7 @@ class _MockTrialRunner():
         self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
+        print(action)
         if action == TrialScheduler.CONTINUE:
             pass
         elif action == TrialScheduler.PAUSE:
@@ -241,6 +242,7 @@ class _MockTrialRunner():
         return True
 
     def _pause_trial(self, trial):
+        self.trial_executor.save(trial, Checkpoint.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -701,6 +703,12 @@ class _MockTrial(Trial):
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
 
+    def on_checkpoint(self, checkpoint):
+        self.restored_checkpoint = checkpoint.value
+
+    @property
+    def checkpoint(self):
+        return Checkpoint(Checkpoint.MEMORY, "checkpoint", None)
 
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
@@ -719,7 +727,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                    require_attrs=True,
                    hyperparams=None,
                    hyperparam_mutations=None,
-                   step_once=True):
+                   step_once=True,
+                   synch=False):
         hyperparam_mutations = hyperparam_mutations or {
             "float_factor": lambda: 100.0,
             "int_factor": lambda: 10,
@@ -733,7 +742,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
             log_config=log_config,
-            require_attrs=require_attrs)
+            synch=synch,
+            require_attrs=require_attrs,)
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -745,10 +755,17 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trial = _MockTrial(i, trial_hyperparams)
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
+        for i in range(num_trials):
+            trial = runner.trials[i]
             if step_once:
-                self.assertEqual(
-                    pbt.on_trial_result(runner, trial, result(10, 50 * i)),
-                    TrialScheduler.CONTINUE)
+                if synch:
+                    self.assertEqual(pbt.on_trial_result(runner, trial,
+                                                         result(10, 50*i)),
+                                                         TrialScheduler.PAUSE)
+                else:
+                    self.assertEqual(
+                        pbt.on_trial_result(runner, trial, result(10, 50 * i)),
+                        TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
 
@@ -821,6 +838,34 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(pbt._num_checkpoints, 2)
         self.assertEqual(pbt._num_perturbations, 0)
 
+    def testCheckpointMostPromisingTrialsSynch(self):
+        pbt, runner = self.basicSetup(synch=True)
+        trials = runner.get_trials()
+
+        # no checkpoint: haven't hit next perturbation interval yet
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(15, 200)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+        self.assertEqual(pbt._num_checkpoints, 0)
+
+        # trials should be paused until all trials are synced.
+        for i in range(len(trials)-1):
+            self.assertEqual(
+                pbt.on_trial_result(runner, trials[i], result(20, 200+i)),
+                TrialScheduler.PAUSE
+            )
+
+        self.assertEqual(pbt.last_scores(trials), [200, 201, 202, 203, 200])
+        self.assertEqual(pbt._num_checkpoints, 0)
+
+        self.assertEqual(pbt.on_trial_result(runner, trials[-1],
+                                             result(20, 204)),
+                                             TrialScheduler.PAUSE)
+        self.assertEqual(pbt._num_checkpoints, 2)
+
+
     def testPerturbsLowPerformingTrials(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
@@ -850,6 +895,36 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(pbt._num_perturbations, 2)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertTrue("@perturbed" in trials[2].experiment_tag)
+
+    def testPerturbsLowPerformingTrialsSynch(self):
+        pbt, runner = self.basicSetup(synch=True)
+        trials = runner.get_trials()
+
+        # no perturbation: haven't hit next perturbation interval
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[-1], result(15, -100)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+        self.assertTrue("@perturbed" not in trials[-1].experiment_tag)
+        self.assertEqual(pbt._num_perturbations, 0)
+
+        # Don't perturb until all trials are synched.
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[-1], result(20, -100)),
+            TrialScheduler.PAUSE)
+        self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, -100])
+        self.assertTrue("@perturbed" not in trials[-1].experiment_tag)
+
+        # Synch all trials.
+        for i in range(len(trials)-1):
+            self.assertEqual(
+                pbt.on_trial_result(runner, trials[i], result(20, -10*i)),
+                TrialScheduler.PAUSE
+            )
+        self.assertEqual(pbt.last_scores(trials), [0, -10, -20, -30, -100])
+        self.assertIn(trials[-1].restored_checkpoint, ["trial_0", "trial_1"])
+        self.assertIn(trials[-2].restored_checkpoint, ["trial_0", "trial_1"])
+        self.assertEqual(pbt._num_perturbations, 2)
 
     def testPerturbWithoutResample(self):
         pbt, runner = self.basicSetup(resample_prob=0.0)
@@ -1061,6 +1136,30 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trials[i].status = Trial.PENDING
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[3])
 
+    def testSchedulesMostBehindTrialToRunSynch(self):
+        pbt, runner = self.basicSetup(synch=True)
+        trials = runner.get_trials()
+        runner.process_action(trials[0], pbt.on_trial_result(runner, trials[0],
+                                                          result(800, 1000)))
+        runner.process_action(trials[1], pbt.on_trial_result(runner,
+                                                              trials[1],
+                                                             result(700,
+                                                                    1001)))
+        runner.process_action(trials[2], pbt.on_trial_result(runner,
+                                                             trials[2],
+                                                             result(600,
+                                                                    1002)))
+        runner.process_action(trials[3], pbt.on_trial_result(runner,
+                                                             trials[3],
+                                                             result(500,
+                                                                    1003)))
+        runner.process_action(trials[4], pbt.on_trial_result(runner,
+                                                             trials[4],
+                                                             result(700,
+                                                                    1004)))
+        self.assertIn(pbt.choose_trial_to_run(runner), [trials[0], trials[
+            1], trials[3]])
+
     def testPerturbationResetsLastPerturbTime(self):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
@@ -1114,6 +1213,44 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 check_policy(json.loads(line))
         shutil.rmtree(tmpdir)
 
+    def testLogConfigSynch(self):
+        def check_policy(policy):
+            self.assertIsInstance(policy[2], int)
+            self.assertIsInstance(policy[3], int)
+            self.assertIn(policy[0], ["0tag", "1tag"])
+            self.assertIn(policy[1], ["3tag", "4tag"])
+            self.assertIn(policy[2], [0, 1])
+            self.assertIn(policy[3], [3, 4])
+            for i in [4, 5]:
+                self.assertIsInstance(policy[i], dict)
+                for key in [
+                        "const_factor", "int_factor", "float_factor",
+                        "id_factor"
+                ]:
+                    self.assertIn(key, policy[i])
+                self.assertIsInstance(policy[i]["float_factor"], float)
+                self.assertIsInstance(policy[i]["int_factor"], int)
+                self.assertIn(policy[i]["const_factor"], [3])
+                self.assertIn(policy[i]["int_factor"], [8, 10, 12])
+                self.assertIn(policy[i]["float_factor"], [2.4, 2, 1.6])
+                self.assertIn(policy[i]["id_factor"], [3, 4, 100])
+
+        pbt, runner = self.basicSetup(log_config=True, synch=True,
+                                      step_once=False)
+        trials = runner.get_trials()
+        tmpdir = tempfile.mkdtemp()
+        for i, trial in enumerate(trials):
+            trial.local_dir = tmpdir
+            trial.last_result = {TRAINING_ITERATION: i}
+            pbt.on_trial_result(runner, trials[i], result(10, i))
+        log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
+        for log_file in log_files:
+            self.assertTrue(os.path.exists(os.path.join(tmpdir, log_file)))
+            raw_policy = open(os.path.join(tmpdir, log_file), "r").readlines()
+            for line in raw_policy:
+                check_policy(json.loads(line))
+        shutil.rmtree(tmpdir)
+
     def testReplay(self):
         # Returns unique increasing parameter mutations
         class _Counter:
@@ -1129,6 +1266,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             perturbation_interval=5,
             log_config=True,
             step_once=False,
+            synch=True,
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
                 "int_factor": _Counter(1000)

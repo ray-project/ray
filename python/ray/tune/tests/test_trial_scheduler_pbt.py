@@ -10,68 +10,6 @@ import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 
-
-class MockTrainable(tune.Trainable):
-    def setup(self, config):
-        self.iter = 0
-        self.a = config["a"]
-        self.b = config["b"]
-        self.c = config["c"]
-
-    def step(self):
-        self.iter += 1
-        return {"mean_accuracy": (self.a - self.iter) * self.b}
-
-    def save_checkpoint(self, tmp_checkpoint_dir):
-        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
-        with open(checkpoint_path, "wb") as fp:
-            pickle.dump((self.a, self.b, self.iter), fp)
-        return tmp_checkpoint_dir
-
-    def load_checkpoint(self, tmp_checkpoint_dir):
-        checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
-        with open(checkpoint_path, "rb") as fp:
-            self.a, self.b, self.iter = pickle.load(fp)
-
-
-def MockTrainingFunc(config, checkpoint_dir=None):
-    iter = 0
-    a = config["a"]
-    b = config["b"]
-
-    if checkpoint_dir:
-        checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
-        with open(checkpoint_path, "rb") as fp:
-            a, b, iter = pickle.load(fp)
-
-    while True:
-        iter += 1
-        with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-            checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
-            with open(checkpoint_path, "wb") as fp:
-                pickle.dump((a, b, iter), fp)
-        tune.report(mean_accuracy=(a - iter) * b)
-
-def MockTrainingFuncSync(config, checkpoint_dir=None):
-    iter = 0
-
-    if checkpoint_dir:
-        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(checkpoint_path, "rb") as fp:
-            a, iter = pickle.load(fp)
-
-    a = config["a"] # Use the new hyperparameter if perturbed.
-
-    while True:
-        iter += 1
-        with tune.checkpoint_dir(step=iter) as checkpoint_dir:
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as fp:
-                pickle.dump((a, iter), fp)
-        # Score gets better every iteration.
-        time.sleep(10)
-        tune.report(mean_accuracy=iter+a, a=a)
-
 class MockParam(object):
     def __init__(self, params):
         self._params = params
@@ -83,16 +21,37 @@ class MockParam(object):
         return val
 
 
-class PopulationBasedTrainingSyncTest(unittest.TestCase):
+class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
+        def MockTrainingFuncSync(config, checkpoint_dir=None):
+            iter = 0
+
+            if checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(checkpoint_path, "rb") as fp:
+                    a, iter = pickle.load(fp)
+
+            a = config["a"]  # Use the new hyperparameter if perturbed.
+
+            while True:
+                iter += 1
+                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir,
+                                                   "checkpoint")
+                    with open(checkpoint_path, "wb") as fp:
+                        pickle.dump((a, iter), fp)
+                # Score gets better every iteration.
+                time.sleep(1)
+                tune.report(mean_accuracy=iter + a, a=a)
+
+        self.MockTrainingFuncSync = MockTrainingFuncSync
 
     def tearDown(self):
         ray.shutdown()
 
-    def testAsyncFail(self):
-        """End-to-end test of synchronous PBT. This test should fail in
-        async mode."""
+    def synchSetup(self, synch):
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
@@ -100,7 +59,7 @@ class PopulationBasedTrainingSyncTest(unittest.TestCase):
             perturbation_interval=1,
             log_config=True,
             hyperparam_mutations={"c": lambda: 1},
-            synch=True
+            synch=synch
         )
 
         param_a = MockParam([10, 20, 30])
@@ -108,7 +67,7 @@ class PopulationBasedTrainingSyncTest(unittest.TestCase):
         random.seed(100)
         np.random.seed(100)
         analysis = tune.run(
-            MockTrainingFuncSync,
+            self.MockTrainingFuncSync,
             config={
                 "a": tune.sample_from(lambda _: param_a()),
                 "c": 1
@@ -118,12 +77,16 @@ class PopulationBasedTrainingSyncTest(unittest.TestCase):
             scheduler=scheduler,
             name="testPBTSync",
             stop={"training_iteration": 3},
-            resources_per_trial={"cpu": 8},
         )
+        return analysis
 
-        print(analysis.get_best_config(metric="mean_accuracy"))
-        print(analysis.dataframe())
-        
+    def testAsynchFail(self):
+        analysis = self.synchSetup(False)
+        self.assertTrue(any(analysis.dataframe()["mean_accuracy"] != 33))
+
+    def testSynchPass(self):
+        analysis = self.synchSetup(True)
+        self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
@@ -140,6 +103,30 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         fix was not applied.
         See issues #9036, #9036
         """
+        class MockTrainable(tune.Trainable):
+            def setup(self, config):
+                self.iter = 0
+                self.a = config["a"]
+                self.b = config["b"]
+                self.c = config["c"]
+
+            def step(self):
+                self.iter += 1
+                return {"mean_accuracy": (self.a - self.iter) * self.b}
+
+            def save_checkpoint(self, tmp_checkpoint_dir):
+                checkpoint_path = os.path.join(tmp_checkpoint_dir,
+                                               "model.mock")
+                with open(checkpoint_path, "wb") as fp:
+                    pickle.dump((self.a, self.b, self.iter), fp)
+                return tmp_checkpoint_dir
+
+            def load_checkpoint(self, tmp_checkpoint_dir):
+                checkpoint_path = os.path.join(tmp_checkpoint_dir,
+                                               "model.mock")
+                with open(checkpoint_path, "rb") as fp:
+                    self.a, self.b, self.iter = pickle.load(fp)
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
@@ -171,6 +158,25 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             stop={"training_iteration": 3})
 
     def testPermutationContinuationFunc(self):
+        def MockTrainingFunc(config, checkpoint_dir=None):
+            iter = 0
+            a = config["a"]
+            b = config["b"]
+
+            if checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
+                with open(checkpoint_path, "rb") as fp:
+                    a, b, iter = pickle.load(fp)
+
+            while True:
+                iter += 1
+                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir,
+                                                   "model.mock")
+                    with open(checkpoint_path, "wb") as fp:
+                        pickle.dump((a, b, iter), fp)
+                tune.report(mean_accuracy=(a - iter) * b)
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
