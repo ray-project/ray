@@ -332,8 +332,6 @@ class TorchPolicy(Policy):
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         # Get batch ready for RNNs, if applicable.
-        #TODO
-        print()
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             max_seq_len=self.max_seq_len,

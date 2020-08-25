@@ -19,8 +19,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    #TODO
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
 
     configs = {
         "PPO": {
@@ -40,6 +39,8 @@ if __name__ == "__main__":
             "env": StatelessCartPole,
             "model": {
                 "use_lstm": True,
+                # Switch on time-major (and with that the usage of
+                # traj. view API).
                 "_time_major": args.torch,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },

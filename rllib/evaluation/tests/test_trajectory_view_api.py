@@ -232,16 +232,22 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 obs_t = pol_batch["obs"][t]
                 a_t = pol_batch["actions"][t]
                 r_t = pol_batch["rewards"][t]
+                state_in_0 = pol_batch["state_in_0"][t]
+                state_in_1 = pol_batch["state_in_1"][t]
                 if t > 0:
                     next_obs_t_m_1 = pol_batch["new_obs"][t - 1]
                     self.assertTrue((obs_t == next_obs_t_m_1).all())
+                    state_out_0_t_m_1 = pol_batch["state_out_0"][t - 1]
+                    self.assertTrue((state_in_0 == state_out_0_t_m_1).all())
+                    state_out_1_t_m_1 = pol_batch["state_out_1"][t - 1]
+                    self.assertTrue((state_in_1 == state_out_1_t_m_1).all())
                 if t < max_seq_len - 1:
                     prev_actions_t_p_1 = pol_batch["prev_actions"][t + 1]
                     self.assertTrue((a_t == prev_actions_t_p_1).all())
                     prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
                     self.assertTrue((r_t == prev_rewards_t_p_1).all())
 
-            # Check the sanity of all the buffers in the un underlying
+            # Check the sanity of all the buffers in the underlying
             # PerPolicy collector.
             for sample_batch_slot, agent_slot in enumerate(
                     range(sample_batch_offset_before, pc.sample_batch_offset)):
@@ -272,9 +278,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                         self.assertTrue((pol_batch["rewards"][seq_len][
                                              agent_slot] == 0.0).all())
                         self.assertTrue((pol_batch["actions"][seq_len][
-                                             agent_slot] == 0.0).all())
-                        print(end="")
-                        self.assertTrue((pol_batch["state_in_0"][seq_len][
                                              agent_slot] == 0.0).all())
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())

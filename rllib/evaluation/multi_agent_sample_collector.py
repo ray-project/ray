@@ -100,6 +100,9 @@ class _MultiAgentSampleCollector(_SampleCollector):
         # Regardless of the number of agents involved in each of these steps.
         self.count = 0
 
+        # Data columns that are added to a SampleBatch via postprocessing.
+        self.data_cols_added_in_postprocessing = set()
+
     @override(_SampleCollector)
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
                      env_id: EnvID, policy_id: PolicyID,
@@ -185,7 +188,9 @@ class _MultiAgentSampleCollector(_SampleCollector):
                             getattr(policy, "_sess", None))
 
                 # Add new columns' data to buffers.
-                for col in agent_batches[agent_key].new_columns:
+                self.data_cols_added_in_postprocessing.update(
+                    agent_batches[agent_key].new_columns)
+                for col in self.data_cols_added_in_postprocessing:
                     data = agent_batches[agent_key].data[col]
                     rc._build_buffers({col: data[0]})
                     timesteps = data.shape[0]
