@@ -11,6 +11,7 @@ import datetime
 import time
 from typing import Dict
 import re
+import math
 
 from operator import itemgetter
 
@@ -31,8 +32,34 @@ def group_actors_by_python_class(actors):
                 groups["Unknown Class"].append(actor)
     return groups
 
-
-
+def get_actor_group_stats(group):
+    group_stats = {}
+    state_to_count = defaultdict(0)
+    pending_tasks = 0
+    executed_tasks = 0
+    min_timestamp = math.inf
+    num_timestamps = 0
+    total_timestamps = 0
+    for actor in group:
+        state_to_count[actor["state"]] += 1
+        if "timestamp" in actor:
+            if actor["timestamp"] < min_timestamp:
+                min_timestamp = actor["timestamp"]
+            num_timestamps += 1
+            total_timestamps += actor["timestamp"]
+        if "pending_tasks" in actor:
+            pending_tasks += actor["pending_tasks"]
+        if "executed_tasks" in actor:
+            executed_tasks += actor["executed_tasks"]
+    
+    return {
+        "stateToCount": state_to_count,
+        "avgLifetime": total_timestamps / num_timestamps,
+        "maxLifetime": datetime.utcnow().timestamp() - min_timestamp,
+        "numPendingTasks": pending_tasks,
+        "numExecutedTasks": executed_tasks,
+    }
+            
 class NodeStats(threading.Thread):
     def __init__(self, redis_address, redis_password=None):
         self.redis_key = "{}.*".format(ray.gcs_utils.REPORTER_CHANNEL)
@@ -154,12 +181,13 @@ class NodeStats(threading.Thread):
                 _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
                                          "pendingActor")
         actor_groups = group_actors_by_python_class(actors)
-        stats_by_group = get_aggregate_actor_stats(actor_groups)
-        api_data = {}
-        for group_name, actors in actor_groups.keys():
-            api_data[group_name] = {"entries": actors,
-                                    "summary": stats_by_group[group_name]}
-        return actors
+        stats_by_group = { name: get_actor_group_stats(group)
+         for name, group in actor_groups }
+        
+        for name, group in actor_groups.items():
+            api_data[name] = {"entries": actors,
+                              "summary": stats_by_group[group_name]}
+        return api_data
 
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]

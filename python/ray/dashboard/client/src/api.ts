@@ -205,6 +205,19 @@ export function isFullActorInfo(
 
 export type InvalidStateType = "infeasibleActor" | "pendingActor";
 
+export type ActorGroupSummary = {
+  stateToCount: { [state in ActorState]: number };
+  avgLifetime: number;
+  maxLifetime: number;
+  numPendingTasks: number;
+  numExecutedTasks: number;
+};
+
+export type ActorGroup = {
+  entries: ActorInfo[];
+  summary: ActorGroupSummary;
+};
+
 export type RayletInfoResponse = {
   nodes: {
     [ip: string]: {
@@ -212,8 +225,8 @@ export type RayletInfoResponse = {
       workersStats: Array<RayletWorkerStats>;
     };
   };
-  actors: {
-    [actorId: string]: ActorInfo;
+  actorGroups: {
+    [groupKey: string]: ActorGroup;
   };
 };
 

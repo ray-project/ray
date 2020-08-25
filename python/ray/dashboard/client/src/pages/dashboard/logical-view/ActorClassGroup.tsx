@@ -10,7 +10,7 @@ import {
 } from "@material-ui/core";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
 import React from "react";
-import { ActorInfo } from "../../../api";
+import { ActorGroup } from "../../../api";
 import Actor from "./Actor";
 
 const useActorClassGroupStyles = makeStyles((theme) =>
@@ -26,12 +26,13 @@ const useActorClassGroupStyles = makeStyles((theme) =>
 
 type ActorClassGroupProps = {
   title: string;
-  actors: ActorInfo[];
+  actorGroup: ActorGroup;
 };
 
-const ActorClassGroup: React.FC<ActorClassGroupProps> = ({ actors, title }) => {
+const ActorClassGroup: React.FC<ActorClassGroupProps> = ({ actorGroup,
+  title }) => {
   const classes = useActorClassGroupStyles();
-  const entries = actors.map((actor, i) => (
+  const entries = actorGroup.entries.map((actor, i) => (
     <Box component="div" className={classes.actorEntry}>
       <Actor actor={actor} key={actor.actorId ?? i} />
     </Box>

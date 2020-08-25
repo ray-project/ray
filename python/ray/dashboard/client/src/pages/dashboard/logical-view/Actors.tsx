@@ -1,14 +1,13 @@
 import React, { Fragment } from "react";
-import { ActorState, RayletInfoResponse } from "../../../api";
+import { ActorState, ActorInfo } from "../../../api";
 import Actor from "./Actor";
 
 type ActorProps = {
-  actors: RayletInfoResponse["actors"];
+  actors: ActorInfo[];
 };
 
-const Actors = (props: ActorProps) => {
-  const { actors } = props;
-  const actorChildren = Object.entries(actors)
+const Actors = ({ actors }) => {
+  const actorChildren = actors
     .sort(([, actor1], [, actor2]) => {
       if (
         actor1.state === ActorState.Dead &&
