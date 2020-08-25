@@ -1,3 +1,4 @@
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -15,6 +16,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         super().__init__(*args, **kwargs)
         self.episode_id = None
         self.env_id = None
+        self.state_space = Box(-1.0, 1.0, (5,))
 
         class _fake_model:
             pass
@@ -30,6 +32,14 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 SampleBatch.REWARDS, shift=-1),
         }
+        for i in range(2):
+            self.model.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i), shift=-1, space=self.state_space)
+            self.model.inference_view_requirements[
+                "state_out_{}".format(i)] = \
+                ViewRequirement(space=self.state_space)
+
         self.training_view_requirements = dict(
             **{
                 SampleBatch.NEXT_OBS: ViewRequirement(
@@ -55,7 +65,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         # Always return (episodeID, envID)
         return [
             np.array([self.episode_id, self.env_id]) for _ in input_dict["obs"]
-        ], [], {}
+        ], [self.state_space.sample() for _ in range(2)], {}
 
     @override(Policy)
     def postprocess_trajectory(self,

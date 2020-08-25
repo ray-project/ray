@@ -19,7 +19,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    #TODO
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     configs = {
         "PPO": {
@@ -39,6 +40,7 @@ if __name__ == "__main__":
             "env": StatelessCartPole,
             "model": {
                 "use_lstm": True,
+                "_time_major": args.torch,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
             "framework": "torch" if args.torch else "tf",
@@ -50,7 +52,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

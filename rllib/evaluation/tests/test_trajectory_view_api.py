@@ -230,11 +230,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # Check prev_reward/action, next_obs consistency.
             for t in range(max_seq_len):
                 obs_t = pol_batch["obs"][t]
+                a_t = pol_batch["actions"][t]
                 r_t = pol_batch["rewards"][t]
                 if t > 0:
                     next_obs_t_m_1 = pol_batch["new_obs"][t - 1]
                     self.assertTrue((obs_t == next_obs_t_m_1).all())
                 if t < max_seq_len - 1:
+                    prev_actions_t_p_1 = pol_batch["prev_actions"][t + 1]
+                    self.assertTrue((a_t == prev_actions_t_p_1).all())
                     prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
                     self.assertTrue((r_t == prev_rewards_t_p_1).all())
 
@@ -266,7 +269,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                         self.assertTrue(
                             (pol_batch["obs"][seq_len +
                                               1][agent_slot] == 0.0).all())
-                    print(end="")
+                        self.assertTrue((pol_batch["rewards"][seq_len][
+                                             agent_slot] == 0.0).all())
+                        self.assertTrue((pol_batch["actions"][seq_len][
+                                             agent_slot] == 0.0).all())
+                        print(end="")
+                        self.assertTrue((pol_batch["state_in_0"][seq_len][
+                                             agent_slot] == 0.0).all())
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
 

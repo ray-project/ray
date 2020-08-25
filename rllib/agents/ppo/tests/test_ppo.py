@@ -33,6 +33,28 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
 }
 
+## Fake StatelessCartPole batch: [TxBx2]; T=4, B=2 (time-major testing).
+#FAKE_LSTM_BATCH = {
+#    SampleBatch.OBS: np.array([
+#        [0.1, -0.1], [0.3, -0.3],
+#        [0.2, -0.2], [0.4, -0.4],
+#        [0.0, 0.0], [0.5, -0.5],
+#        [0.0, 0.0], [0.0, 0.0],
+#    ], dtype=np.float32),
+#    SampleBatch.ACTIONS: np.array([0, 1, 1, 1, 0, 1, 0, 0]),
+#    SampleBatch.PREV_ACTIONS: np.array([0, 0, 0, 1, 1, 1, 0, 1]),
+#    SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0],
+#                                  dtype=np.float32),
+#    SampleBatch.PREV_REWARDS: np.array(
+#        [0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0], dtype=np.float32),
+#    SampleBatch.DONES: np.array(
+#        [False, False, True, False, False, True, False, False]),
+#    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+#    SampleBatch.ACTION_DIST_INPUTS: np.array(
+#        [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
+#    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+#}
+
 
 class TestPPO(unittest.TestCase):
     @classmethod
@@ -52,11 +74,9 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
-
         num_iterations = 2
 
-        #TODO
-        for fw in framework_iterator(config, frameworks="tf"):
+        for fw in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
