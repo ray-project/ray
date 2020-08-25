@@ -446,6 +446,10 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   Status AsyncCreatePlacementGroup(
       const PlacementGroupSpecification &placement_group_spec) override;
 
+  Status AsyncGet(
+      const PlacementGroupID &placement_group_id,
+      const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
  private:
   ServiceBasedGcsClient *client_impl_;
 };

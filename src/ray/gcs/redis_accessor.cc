@@ -833,6 +833,12 @@ Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
 }  // namespace gcs
 
 }  // namespace ray

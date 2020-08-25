@@ -272,7 +272,7 @@ class Node:
             return result
 
         env_resources = {}
-        env_string = os.getenv("RAY_OVERRIDE_RESOURCES")
+        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
         if env_string:
             env_resources = json.loads(env_string)
 
