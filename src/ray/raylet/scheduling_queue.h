@@ -44,13 +44,6 @@ enum class TaskState {
   // The task has resources that cannot be satisfied by any node, as far as we
   // know.
   INFEASIBLE,
-  // Swap queue for tasks that are in between states. This can happen when a
-  // task is removed from one queue, and an async callback is responsible for
-  // re-queuing the task. For example, a READY task that has just been assigned
-  // to a worker will get moved to the SWAP queue while waiting for a response
-  // from the worker. If the worker accepts the task, the task will be added to
-  // the RUNNING queue, else it will be returned to READY.
-  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -174,7 +167,6 @@ class SchedulingQueue {
              TaskState::READY,
              TaskState::RUNNING,
              TaskState::INFEASIBLE,
-             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
@@ -316,12 +308,6 @@ class SchedulingQueue {
   /// \param job_id All the tasks that have the given job_id are returned.
   /// \return All the tasks that have the given job ID.
   std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
-
-  /// \brief Get all the task IDs for an actor.
-  ///
-  /// \param actor_id All the tasks that have the given actor_id are returned.
-  /// \return All the tasks that have the given actor ID.
-  std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID &actor_id) const;
 
   /// Returns the number of running tasks in this class.
   ///

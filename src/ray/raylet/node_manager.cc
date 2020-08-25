@@ -1041,24 +1041,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
-  } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
-    RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
-    // When an actor fails but can be restarted, resubmit all of the queued
-    // tasks for that actor. This will mark the tasks as waiting for actor
-    // creation.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      SubmitTask(task);
-    }
   }
 }
 
