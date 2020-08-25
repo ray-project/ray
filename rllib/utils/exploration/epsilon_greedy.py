@@ -141,7 +141,7 @@ class EpsilonGreedy(Exploration):
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
                 q_values <= FLOAT_MIN,
-                torch.ones_like(q_values) * FLOAT_MIN,
+                torch.ones_like(q_values) * 0.0,
                 torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
