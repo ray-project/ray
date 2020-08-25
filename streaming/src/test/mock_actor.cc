@@ -479,6 +479,7 @@ class StreamingWorker {
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
                   int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::WORKER,  // worker_type
         Language::PYTHON,    // langauge
@@ -499,6 +500,8 @@ class StreamingWorker {
                   _7),  // task_execution_callback
         nullptr,        // check_signals
         nullptr,        // gc_collect
+        nullptr,        // spill_objects
+        nullptr,        // restore_spilled_objects
         nullptr,        // get_lang_stack
         nullptr,        // kill_main
         true,           // ref_counting_enabled
