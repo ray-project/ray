@@ -337,8 +337,10 @@ void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
       // (for example gpu resource when there’s only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
-      iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-      pending_placement_groups_.emplace_front(iter->second);
+      if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
+        iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+        pending_placement_groups_.emplace_front(iter->second);
+      }
     }
   }
 

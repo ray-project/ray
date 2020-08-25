@@ -106,8 +106,9 @@ class LogMonitor:
                     shutil.move(file_info.filename, target)
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
-                        logger.warning("Warning: The file {} was not "
-                                       "found.".format(file_info.filename))
+                        logger.warning(
+                            f"Warning: The file {file_info.filename} "
+                            "was not found.")
                     else:
                         raise e
             else:
@@ -169,8 +170,8 @@ class LogMonitor:
             except (IOError, OSError) as e:
                 # Catch "file not found" errors.
                 if e.errno == errno.ENOENT:
-                    logger.warning("Warning: The file {} was not "
-                                   "found.".format(file_info.filename))
+                    logger.warning(f"Warning: The file {file_info.filename} "
+                                   "was not found.")
                     self.log_filenames.remove(file_info.filename)
                     continue
                 raise e
@@ -182,8 +183,9 @@ class LogMonitor:
                     f = open(file_info.filename, "rb")
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
-                        logger.warning("Warning: The file {} was not "
-                                       "found.".format(file_info.filename))
+                        logger.warning(
+                            f"Warning: The file {file_info.filename} "
+                            "was not found.")
                         self.log_filenames.remove(file_info.filename)
                         continue
                     else:
@@ -224,10 +226,10 @@ class LogMonitor:
                         next_line = next_line[:-1]
                     lines_to_publish.append(next_line)
                 except Exception:
-                    logger.error("Error: Reading file: {}, position: {} "
-                                 "failed.".format(
-                                     file_info.full_path,
-                                     file_info.file_info.file_handle.tell()))
+                    logger.error(
+                        f"Error: Reading file: {file_info.full_path}, "
+                        f"position: {file_info.file_info.file_handle.tell()} "
+                        "failed.")
                     raise
 
             if file_info.file_position == 0:
@@ -320,8 +322,8 @@ if __name__ == "__main__":
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = ("The log monitor on node {} failed with the following "
-                   "error:\n{}".format(platform.node(), traceback_str))
+        message = (f"The log monitor on node {platform.node()} "
+                   f"failed with the following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
         raise e

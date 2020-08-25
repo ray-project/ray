@@ -25,6 +25,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 
 namespace {
@@ -164,6 +165,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
+      agent_manager_service_handler_(
+          new DefaultAgentManagerServiceHandler(agent_manager_)),
+      agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -208,7 +212,17 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
+  node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
+
+  AgentManager::Options options;
+  options.agent_commands = ParseCommandLine(config.agent_command);
+  agent_manager_.reset(
+      new AgentManager(std::move(options),
+                       /*delay_executor=*/
+                       [this](std::function<void()> task, uint32_t delay_ms) {
+                         return execute_after(io_service_, task, delay_ms);
+                       }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }
@@ -905,7 +919,8 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   SchedulingResources &new_local_resources = cluster_resource_map_[self_node_id_];
 
   // SpillOver locally to figure out which infeasible tasks can be placed now
-  std::vector<TaskID> decision = scheduling_policy_.SpillOver(new_local_resources);
+  std::vector<TaskID> decision =
+      scheduling_policy_.SpillOverInfeasibleTasks(new_local_resources);
 
   std::unordered_set<TaskID> local_task_ids(decision.begin(), decision.end());
 
@@ -972,7 +987,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
 
   // Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  auto decision = scheduling_policy_.SpillOver(remote_resources,
+                                               cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
