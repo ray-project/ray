@@ -214,7 +214,14 @@ class TrainingOperator:
             self._models = [DistributedDataParallel(model,
                                                     device_ids=self.device_ids) for model in self._models]
 
-    def train_epoch(self, info, num_steps=None):
+    def _train_epoch(self, iterator, info, num_steps=None):
+        if iterator is None:
+            iterator = iter(self.train_loader)
+        if num_steps:
+            iterator = itertools.islice(iterator, num_steps)
+        return self.train_epoch(iterator, info)
+
+    def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
@@ -253,9 +260,6 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        iterator = iter(self.train_loader)
-        if num_steps:
-            iterator = itertools.islice(iterator, num_steps)
         if self.use_tqdm and self.world_rank == 0:
             desc = ""
             if info is not None and "epoch_idx" in info:
@@ -361,7 +365,18 @@ class TrainingOperator:
 
         return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
-    def validate(self, info, num_steps=None):
+    def _validate(self, iterator, info, num_steps=None):
+        if iterator is not None:
+            val_iterator = iterator
+        else:
+            if self._validation_loader is None:
+                raise ValueError("No validation dataloader provided.")
+            val_iterator = iter(self._validation_loader)
+        if num_steps:
+            val_iterator = itertools.islice(val_iterator, num_steps)
+        return self.validate(val_iterator, info)
+
+    def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
@@ -384,11 +399,6 @@ class TrainingOperator:
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
         """
-        if self._validation_loader is None:
-            raise ValueError("No validation dataloader provided.")
-        val_iterator = iter(self._validation_loader)
-        if num_steps:
-            val_iterator = itertools.islice(val_iterator, num_steps)
         metric_meters = AverageMeterCollection()
 
         # switch to evaluate mode

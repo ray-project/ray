@@ -208,7 +208,8 @@ class TorchRunner:
             # if num_steps:
             #     iterator = itertools.islice(iterator, num_steps)
             #train_stats = self.training_operator.train_epoch(iterator, info)
-            train_stats = self.training_operator.train_epoch(info, num_steps)
+            train_stats = self.training_operator._train_epoch(iterator, info,
+                                                             num_steps)
 
         self.epochs += 1
         # This is so that `epochs` is first in ordering.
@@ -217,7 +218,8 @@ class TorchRunner:
             stats.update(profile=self.timers.stats())
         return stats
 
-    def validate(self, num_steps=None, profile=False, info=None):
+    def validate(self, num_steps=None, profile=False, info=None,
+                 iterator=None):
         """Evaluates the model on the validation data set."""
         # if self.validation_loader is None:
         #     raise ValueError("No validation dataloader provided.")
@@ -231,8 +233,8 @@ class TorchRunner:
             #         iter(self.validation_loader), num_steps)
             # validation_stats = self.training_operator.validate(
             #     iterator, info=info)
-            validation_stats = self.training_operator.validate(info=info,
-                                                               num_steps=num_steps)
+            validation_stats = self.training_operator._validate(
+                iterator=iterator, info=info, num_steps=num_steps)
         if profile:
             validation_stats.update(profile=self.timers.stats())
         return validation_stats
