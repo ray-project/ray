@@ -713,7 +713,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.ssh_command_runner.ssh_user, image, file_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_run_options", None))
+                f"{'head' if as_head else 'worker'}_run_options", []))
 
         if not self._check_container_status():
             self.run(start_command, run_env="host")
