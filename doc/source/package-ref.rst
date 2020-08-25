@@ -77,7 +77,7 @@ ray.get_resource_ids
 .. _ray-get_dashboard_url-ref:
 
 ray.get_dashboard_url
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.get_dashboard_url
 
@@ -190,12 +190,6 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:stack
    :prog: ray stack
-   :show-nested:
-
-.. _ray-stat-doc:
-
-.. click:: ray.scripts.scripts:statistics
-   :prog: ray statistics
    :show-nested:
 
 .. _ray-memory-doc:

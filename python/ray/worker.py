@@ -480,7 +480,7 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         enable_object_reconstruction=False,
-        # The following are unstable parameters:
+        # The following are unstable parameters and their use is discouraged.
         _redis_max_memory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
@@ -567,8 +567,6 @@ def init(
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.UnreconstructableError will be
             thrown.
-
-    The following args are unstable and their use is discouraged:
         _redis_max_memory: Redis max memory.
         _node_ip_address (str): The IP address of the node that we are on.
         _driver_object_store_memory (int): Limit the amount of memory the
