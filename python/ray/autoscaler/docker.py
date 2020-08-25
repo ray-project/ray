@@ -8,39 +8,22 @@ except ImportError:  # py2
 logger = logging.getLogger(__name__)
 
 
-def dockerize_if_needed(config):
+def validate_docker_config(config):
     if "docker" not in config:
         return config
 
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
 
     head_docker_image = config["docker"].get("head_image", docker_image)
-    head_run_options = config["docker"].get("head_run_options", [])
 
     worker_docker_image = config["docker"].get("worker_image", docker_image)
-    worker_run_options = config["docker"].get("worker_run_options", [])
 
     image_present = docker_image or (head_docker_image and worker_docker_image)
     if (not cname) and (not image_present):
         return
     else:
         assert cname and image_present, "Must provide a container & image name"
-
-    ssh_user = config["auth"]["ssh_user"]
-    docker_mounts = {dst: dst for dst in config["file_mounts"]}
-
-    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
-                                          run_options + head_run_options)
-
-    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
-                                            run_options + worker_run_options)
-
-    config["docker"]["worker_docker_start"] = worker_docker_start
-    config["docker"]["head_docker_start"] = head_docker_start
 
     return config
 
@@ -75,7 +58,8 @@ def check_docker_image(cname):
     ])
 
 
-def docker_start_cmds(user, image, mount, cname, user_options):
+def docker_start_cmds(user, image, mount_dict, cname, user_options):
+    mount = {dst: dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([

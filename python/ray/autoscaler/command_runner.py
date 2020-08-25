@@ -12,6 +12,7 @@ import time
 from ray.autoscaler.docker import check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_autoscaler_setup, \
+                                  docker_start_cmds, \
                                   with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
@@ -695,11 +696,11 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         return string
 
-    def run_init(self, *, as_head):
+    def run_init(self, *, as_head, file_mounts):
         image = self.docker_config.get("image")
         if image is None:
             image = self.docker_config.get(
-                "{}_image".format("head" if as_head else "worker"))
+                f"{'head' if as_head else 'worker'}_image")
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
@@ -708,8 +709,11 @@ class DockerCommandRunner(CommandRunnerInterface):
 
             self.run("docker pull {}".format(image), run_env="host")
 
-        start_command = self.docker_config["{}_docker_start".format(
-            "head" if as_head else "worker")]
+        start_command = docker_start_cmds(
+            self.ssh_command_runner.ssh_user, image, file_mounts,
+            self.container_name,
+            self.docker_config.get("run_options", []) + self.docker_config.get(
+                f"{'head' if as_head else 'worker'}_run_options", None))
 
         if not self._check_container_status():
             self.run(start_command, run_env="host")

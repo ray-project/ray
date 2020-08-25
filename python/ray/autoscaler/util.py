@@ -9,7 +9,7 @@ from typing import Any, Dict
 import ray
 import ray.services as services
 from ray.autoscaler.node_provider import get_default_config
-from ray.autoscaler.docker import dockerize_if_needed
+from ray.autoscaler.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -90,7 +90,7 @@ def validate_config(config: Dict[str, Any]) -> None:
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
-    dockerize_if_needed(with_defaults)
+    validate_docker_config(with_defaults)
     return with_defaults
 
 

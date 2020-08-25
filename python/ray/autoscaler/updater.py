@@ -291,7 +291,8 @@ class NodeUpdater:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
             if isinstance(self.cmd_runner, DockerCommandRunner):
-                self.cmd_runner.run_init(self.is_head_node)
+                self.cmd_runner.run_init(
+                    as_head=self.is_head_node, file_mounts=self.file_mounts)
 
         else:
             cli_logger.print(
@@ -345,7 +346,9 @@ class NodeUpdater:
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
                 if isinstance(self.cmd_runner, DockerCommandRunner):
-                    self.cmd_runner.run_init(self.is_head_node)
+                    self.cmd_runner.run_init(
+                        as_head=self.is_head_node,
+                        file_mounts=self.file_mounts)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",

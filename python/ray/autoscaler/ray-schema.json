@@ -210,10 +210,6 @@
                     "type": "array",
                     "description": "head specific run options, appended to run_options"
                 },
-                "head_docker_start": {
-                  "type": "string",
-                  "description": "command to start head_image. Internal Use Only."
-                },
                 "worker_image": {
                     "type": "string",
                     "description": "analogous to head_image"
@@ -221,10 +217,6 @@
                 "worker_run_options": {
                     "type": "array",
                     "description": "analogous to head_run_options"
-                },
-                "worker_docker_start": {
-                  "type": "string",
-                  "description": "analogous to head_docker_start"
                 }
             }
         },
