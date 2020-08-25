@@ -56,7 +56,7 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
                       << " data_size: " << channel_info_.queue_size;
   auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
   if (upstream_handler->UpstreamQueueExists(channel_info_.channel_id)) {
-    STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
+    STREAMING_LOG(INFO) << "StreamingQueueProducer CreateQueue duplicate.";
     return StreamingStatus::OK;
   }
 

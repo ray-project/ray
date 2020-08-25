@@ -21,6 +21,13 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+try:
+    import gpustat.core as gpustat
+except ImportError:
+    gpustat = None
+    logger.warning(
+        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+
 
 def recursive_asdict(o):
     if isinstance(o, tuple) and hasattr(o, "_asdict"):
@@ -81,9 +88,34 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
+    async def ReportMetrics(self, request, context):
+        # TODO(sang): Process metrics here.
+        return reporter_pb2.ReportMetricsReply()
+
     @staticmethod
     def _get_cpu_percent():
         return psutil.cpu_percent()
+
+    @staticmethod
+    def _get_gpu_usage():
+        if gpustat is None:
+            return []
+        gpu_utilizations = []
+        gpus = []
+        try:
+            gpus = gpustat.new_query().gpus
+        except Exception as e:
+            logger.debug(
+                "gpustat failed to retrieve GPU information: {}".format(e))
+        for gpu in gpus:
+            # Note the keys in this dict have periods which throws
+            # off javascript so we change .s to _s
+            gpu_data = {
+                "_".join(key.split(".")): val
+                for key, val in gpu.entry.items()
+            }
+            gpu_utilizations.append(gpu_data)
+        return gpu_utilizations
 
     @staticmethod
     def _get_boot_time():
@@ -173,6 +205,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
+            "gpus": self._get_gpu_usage(),
             "net": netstats,
             "cmdline": self._get_raylet_cmdline(),
         }

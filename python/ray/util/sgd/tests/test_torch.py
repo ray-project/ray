@@ -158,7 +158,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         data = list(iterator)
         for i, (model, optimizer) in enumerate(
                 zip(self.models, self.optimizers)):
-            result["model_{}".format(i)] = train(
+            result[f"model_{i}"] = train(
                 model=model,
                 criterion=self.criterion,
                 optimizer=optimizer,

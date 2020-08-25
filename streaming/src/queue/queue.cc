@@ -81,16 +81,6 @@ QueueItem Queue::BackPending() {
   return buffer_queue_.back();
 }
 
-bool Queue::IsPendingEmpty() {
-  std::unique_lock<std::mutex> lock(mutex_);
-  return std::next(watershed_iter_) == buffer_queue_.end();
-}
-
-bool Queue::IsPendingFull(uint64_t data_size) {
-  std::unique_lock<std::mutex> lock(mutex_);
-  return max_data_size_ < data_size + data_size_;
-}
-
 size_t Queue::ProcessedCount() {
   std::unique_lock<std::mutex> lock(mutex_);
   if (watershed_iter_ == buffer_queue_.begin()) return 0;

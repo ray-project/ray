@@ -41,7 +41,8 @@ class SortingType(Enum):
 
 
 class GroupByType(Enum):
-    NODE_ADDRESS = 2
+    NODE_ADDRESS = "node"
+    STACK_TRACE = "stack_trace"
 
 
 class ReferenceType:
@@ -94,6 +95,8 @@ class MemoryTableEntry:
     def group_key(self, group_by_type: GroupByType) -> str:
         if group_by_type == GroupByType.NODE_ADDRESS:
             return self.node_address
+        elif group_by_type == GroupByType.STACK_TRACE:
+            return self.call_site
         else:
             raise ValueError(
                 "group by type {} is invalid.".format(group_by_type))
@@ -272,7 +275,9 @@ class MemoryTable:
         return self.__repr__()
 
 
-def construct_memory_table(workers_info_by_node: dict) -> MemoryTable:
+def construct_memory_table(workers_info_by_node: dict,
+                           group_by: GroupByType = GroupByType.NODE_ADDRESS,
+                           sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
     memory_table_entries = []
     for node_id, worker_infos in workers_info_by_node.items():
         for worker_info in worker_infos:
@@ -290,5 +295,6 @@ def construct_memory_table(workers_info_by_node: dict) -> MemoryTable:
                     pid=pid)
                 if memory_table_entry.is_valid():
                     memory_table_entries.append(memory_table_entry)
-    memory_table = MemoryTable(memory_table_entries)
+    memory_table = MemoryTable(
+        memory_table_entries, group_by_type=group_by, sort_by_type=sort_by)
     return memory_table

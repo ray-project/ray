@@ -35,7 +35,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 .. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
-.. _`+Transformer`: rllib-models.html#attention-networks
+.. _`+Transformer`: rllib-models.html#attention-networks-transformers
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
 .. _`APEX-DQN`: rllib-algorithms.html#apex
 .. _`APEX-DDPG`: rllib-algorithms.html#apex
@@ -304,16 +304,22 @@ SpaceInvaders  650                       1001                           1025    
 
 Policy Gradients
 ----------------
-|pytorch| |tensorflow|
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
+|pytorch| |tensorflow| An `implementation <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ of a vanilla policy gradient algorithm for TensorFlow and PyTorch.
+
+**Papers**:
+`[1] - Policy Gradient Methods for Reinforcement Learning with Function Approximation. <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
+and
+`[2] - Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning. <http://www-anw.cs.umass.edu/~barto/courses/cs687/williams92simple.pdf>`__
+
 
 .. figure:: a2c-arch.svg
 
     Policy gradients architecture (same as A2C)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
+**Tuned examples**: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/pg/cartpole-pg.yaml>`__
 
-**PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**PG-specific configs**: The following updates will overwrite/be added to the
+(base) Trainer config in `rllib/agents/trainer.py <rllib-training.html#common-parameters>`__ (*COMMON_CONFIG* dict):
 
 .. literalinclude:: ../../rllib/agents/pg/pg.py
    :language: python

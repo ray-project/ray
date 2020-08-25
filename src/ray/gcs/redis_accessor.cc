@@ -833,6 +833,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
 Status RedisPlacementGroupInfoAccessor::AsyncGet(
     const PlacementGroupID &placement_group_id,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {

@@ -67,8 +67,15 @@ class Queue {
   /// Return the last item in pending state.
   QueueItem BackPending();
 
-  inline bool IsPendingEmpty();
-  inline bool IsPendingFull(uint64_t data_size = 0);
+  inline bool IsPendingEmpty() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return std::next(watershed_iter_) == buffer_queue_.end();
+  };
+
+  inline bool IsPendingFull(uint64_t data_size = 0) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return max_data_size_ < data_size + data_size_;
+  }
 
   /// Return the size in bytes of all items in queue.
   inline uint64_t QueueSize() { return data_size_; }
@@ -244,7 +251,6 @@ class ReaderQueue : public Queue {
 
   inline uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
   inline uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
-
  private:
   void Notify(uint64_t seq_id);
   void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args);
