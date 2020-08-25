@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from ray import tune
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
-    TuneReportCheckpointCallback, TuneCheckpointCallback
+    TuneReportCheckpointCallback, _TuneCheckpointCallback
 
 
 class _MockDataset(Dataset):
@@ -92,7 +92,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
-                    TuneCheckpointCallback(
+                    _TuneCheckpointCallback(
                         "trainer.ckpt", on=["batch_end", "train_end"])
                 ])
             trainer.fit(module)

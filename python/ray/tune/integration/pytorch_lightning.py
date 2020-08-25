@@ -72,21 +72,24 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_validation_batch_start(self, trainer: Trainer,
-                                  pl_module: LightningModule):
+                                  pl_module: LightningModule, batch, batch_idx,
+                                  dataloader_idx):
         if "validation_batch_start" in self._on:
             self._handle(trainer, pl_module)
 
     def on_validation_batch_end(self, trainer: Trainer,
-                                pl_module: LightningModule):
+                                pl_module: LightningModule, batch, batch_idx,
+                                dataloader_idx):
         if "validation_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_test_batch_start(self, trainer: Trainer,
-                            pl_module: LightningModule):
+    def on_test_batch_start(self, trainer: Trainer, pl_module: LightningModule,
+                            batch, batch_idx, dataloader_idx):
         if "test_batch_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule):
+    def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
+                          batch, batch_idx, dataloader_idx):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -177,7 +180,7 @@ class TuneReportCallback(TuneCallback):
         tune.report(**report_dict)
 
 
-class TuneCheckpointCallback(TuneCallback):
+class _TuneCheckpointCallback(TuneCallback):
     """PyTorch Lightning checkpoint callback
 
     Saves checkpoints after each validation step.
@@ -213,7 +216,7 @@ class TuneCheckpointCallback(TuneCallback):
     def __init__(self,
                  filename: str = "checkpoint",
                  on: Union[str, List[str]] = "validation_end"):
-        super(TuneCheckpointCallback, self).__init__(on)
+        super(_TuneCheckpointCallback, self).__init__(on)
         self._filename = filename
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
@@ -263,7 +266,7 @@ class TuneReportCheckpointCallback(TuneCallback):
                  filename: str = "checkpoint",
                  on: Union[str, List[str]] = "validation_end"):
         super(TuneReportCheckpointCallback, self).__init__(on)
-        self._checkpoint = TuneCheckpointCallback(filename, on)
+        self._checkpoint = _TuneCheckpointCallback(filename, on)
         self._report = TuneReportCallback(metrics, on)
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
