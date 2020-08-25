@@ -75,9 +75,27 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
                                             : ActorID::Nil());
-        auto &it = scheduling_key_entries_[scheduling_key];
-        it.task_queue_.push_back(task_spec);
-        RAY_CHECK(it.task_queue_.size() >= 1);
+        auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+        scheduling_key_entry.task_queue_.push_back(task_spec);
+        if (scheduling_key_entry.tot_tasks_in_flight <
+            scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
+          // The pipelines to the current workers are not full yet, so we don't need more
+          // workers.
+
+          // Find a worker with a number of tasks in flight that is less than the maximum
+          // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
+          // that worker
+          for (auto active_worker_addr : scheduling_key_entry.active_workers_) {
+            RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
+                      worker_to_lease_entry_.end());
+            auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
+            if (lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
+              OnWorkerIdle(active_worker_addr, scheduling_key, false,
+                           lease_entry.assigned_resources_);
+              break;
+            }
+          }
+        }
         RequestNewWorkerIfNeeded(scheduling_key);
       }
     }
@@ -246,30 +264,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  // If pipelining is enabled, check whether we really need a new worer or whether we have
+  // Check whether we really need a new worer or whether we have
   // enough room in an existing worker's pipeline to send the new tasks
-  if (max_tasks_in_flight_per_worker_ > 1) {
-    if (scheduling_key_entry.tot_tasks_in_flight <
-        scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
-      // The pipelines to the current workers are not full yet, so we don't need more
-      // workers.
+  if (scheduling_key_entry.tot_tasks_in_flight <
+      scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
+    // The pipelines to the current workers are not full yet, so we don't need more
+    // workers.
 
-      // Find a worker with a number of tasks in flight that is less than the maximum
-      // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
-      // that worker
-      for (auto active_worker_addr : scheduling_key_entry.active_workers_) {
-        RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
-                  worker_to_lease_entry_.end());
-        auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-        if (lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
-          OnWorkerIdle(active_worker_addr, scheduling_key, false,
-                       lease_entry.assigned_resources_);
-          break;
-        }
-      }
-
-      return;
-    }
+    // Find a worker with a number of tasks in flight that is less than the maximum
+    // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
+    // that worker
+    return;
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
@@ -287,7 +292,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         auto lease_client = std::move(pending_lease_request.first);
         const auto task_id = pending_lease_request.second;
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
-        RAY_CHECK(lease_client);
 
         if (status.ok()) {
           if (reply.canceled()) {
@@ -327,7 +331,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         }
       });
   pending_lease_request = std::make_pair(lease_client, task_id);
-  RAY_CHECK(pending_lease_request.first);
+  
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -469,23 +473,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             cancel_retry_timer_->async_wait(boost::bind(
                 &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
           }
-        } else if (status.ok() && reply.attempt_succeeded()) {
-          // Decrement the number of active workers consuming tasks from the queue
-          // associated with the current scheduling_key
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
-          scheduling_key_entry.active_workers_.erase(rpc::WorkerAddress(client_addr));
-          if (scheduling_key_entry.active_workers_.size() == 0) {
-            RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight == 0);
-            if (scheduling_key_entry.task_queue_.empty() &&
-                !scheduling_key_entry.pending_lease_request_.first) {
-              scheduling_key_entries_.erase(scheduling_key);
-            }
-          }
-
-          // Delete lease entry for the killed worker
-          worker_to_lease_entry_.erase(rpc::WorkerAddress(client_addr));
-        }
+        } 
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
       });
