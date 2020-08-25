@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # PlaNET Model LR
-    "model_lr": 6e-4,
+    "td_model_lr": 6e-4,
     # Actor LR
     "actor_lr": 8e-5,
     # Critic LR
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = with_common_config({
     "lambda": 0.95,
     # Training iterations per data collection from real env
     "dreamer_train_iters": 100,
-    # If specified, clip the global norm of gradients by this amount
+    # Horizon for Enviornment (1000 for Mujoco/DMC)
     "horizon": 1000,
     # Number of episodes to sample for Loss Calculation
     "batch_size": 50,
@@ -84,7 +84,7 @@ class EpisodicBuffer(object):
         """Data structure that stores episodes and samples chunks
         of size length from episodes
 
-        Arguments:
+        Args:
             max_length: Maximum episodes it can store
             length: Episode chunking lengh in sample()
         """
@@ -99,7 +99,7 @@ class EpisodicBuffer(object):
         """Splits a SampleBatch into episodes and adds episodes
         to the episode buffer
 
-        Arguments:
+        Args:
             batch: SampleBatch to be added
         """
 
@@ -119,7 +119,7 @@ class EpisodicBuffer(object):
         """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
         When t=0, the resetted obs is paired with action and reward of 0.
 
-        Arguments:
+        Args:
             episode: SampleBatch representing an episode
         """
         obs = episode["obs"]
@@ -146,7 +146,7 @@ class EpisodicBuffer(object):
     def sample(self, batch_size: int):
         """Samples [batch_size, length] from the list of episodes
 
-        Arguments:
+        Args:
             batch_size: batch_size to be sampled
         """
         episodes_buffer = []
@@ -169,6 +169,52 @@ class EpisodicBuffer(object):
 def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
+class DreamerIteration:
+    def __init__(self, worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat):
+        self.worker = worker
+        self.episode_buffer = episode_buffer
+        self.dreamer_train_iters = dreamer_train_iters
+        self.act_repeat = act_repeat
+        self.batch_size = batch_size
+
+    def __call__(self, samples):
+
+        # Dreamer Training Loop
+        for n in range(self.dreamer_train_iters):
+            print(n)
+            batch = self.episode_buffer.sample(self.batch_size)
+            if n == self.dreamer_train_iters - 1:
+                batch["log_gif"] = True
+            fetches = self.worker.learn_on_batch(batch)
+
+        # Custom Logging
+        policy_fetches = self.policy_stats(fetches)
+        if "log_gif" in policy_fetches:
+            gif = policy_fetches["log_gif"]
+            policy_fetches["log_gif"] = self.postprocess_gif(gif)
+
+        metrics = _get_shared_metrics()
+        metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[
+            STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps * self.act_repeat
+        res = collect_metrics(local_worker=self.worker)
+        res["info"] = metrics.info
+        res["info"].update(metrics.counters)
+        res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
+
+        self.episode_buffer.add(samples)
+        return res
+
+    def postprocess_gif(self, gif: np.ndarray):
+        gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
+        B, T, C, H, W = gif.shape
+        frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H,
+                                                         B * W))
+        return frames
+
+    def policy_stats(self, fetches):
+        return fetches["default_policy"]["learner_stats"]
+
 
 def execution_plan(workers, config):
     # Special Replay Buffer for Dreamer agent
@@ -185,45 +231,8 @@ def execution_plan(workers, config):
     dreamer_train_iters = config["dreamer_train_iters"]
     act_repeat = config["action_repeat"]
 
-    def dreamer_iteration(itr):
-        def postprocess_gif(gif: np.ndarray):
-            gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
-            B, T, C, H, W = gif.shape
-            frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H,
-                                                             B * W))
-            return frames
-
-        def policy_stats(fetches):
-            return fetches["default_policy"]["learner_stats"]
-
-        for samples in itr:
-            # Dreamer Training Loop
-            for n in range(dreamer_train_iters):
-                batch = episode_buffer.sample(batch_size)
-                if n == dreamer_train_iters - 1:
-                    batch["log_gif"] = True
-                fetches = local_worker.learn_on_batch(batch)
-
-            # Custom Logging
-            policy_fetches = policy_stats(fetches)
-            if "log_gif" in policy_fetches:
-                gif = policy_fetches["log_gif"]
-                policy_fetches["log_gif"] = postprocess_gif(gif)
-
-            metrics = _get_shared_metrics()
-            metrics.info[LEARNER_INFO] = fetches
-            metrics.counters[
-                STEPS_SAMPLED_COUNTER] = episode_buffer.timesteps * act_repeat
-            res = collect_metrics(local_worker=local_worker)
-            res["info"] = metrics.info
-            res["info"].update(metrics.counters)
-            res["timesteps_total"] = metrics.counters[STEPS_SAMPLED_COUNTER]
-            yield res
-
-            episode_buffer.add(samples)
-
     rollouts = ParallelRollouts(workers)
-    rollouts = rollouts.transform(dreamer_iteration)
+    rollouts = rollouts.for_each(DreamerIteration(local_worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat))
     return rollouts
 
 

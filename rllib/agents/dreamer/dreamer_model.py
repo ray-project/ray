@@ -26,7 +26,7 @@ class ConvEncoder(nn.Module):
                  shape: List = [3, 64, 64]):
         """Initializes Conv Encoder
 
-        Arguments:
+        Args:
           depth (int): Number of channels in the first conv layer
           act (Any): Activation for Encoder, default ReLU
           shape (List): Shape of observation input
@@ -89,7 +89,7 @@ class ConvDecoder(nn.Module):
                  shape: List = [3, 64, 64]):
         """Initializes Conv Decoder
 
-        Arguments:
+        Args:
           input_size (int): Input size, usually feature size output from RSSM
           depth (int): Number of channels in the first conv layer
           act (Any): Activation for Encoder, default ReLU
@@ -142,7 +142,7 @@ class DenseDecoder(nn.Module):
                  act: ActFunc = None):
         """Initializes FC network
 
-        Arguments:
+        Args:
           input_size (int): Input size to network
           output_size (int): Output size to network
           layers (int): Number of layers in network
@@ -199,7 +199,7 @@ class ActionDecoder(nn.Module):
                  mean_scale: float = 5.0):
         """Initializes Policy
 
-        Arguments:
+        Args:
           input_size (int): Input size to network
           action_size (int): Action space size
           layers (int): Number of layers in network
@@ -274,7 +274,7 @@ class RSSM(nn.Module):
                  act: ActFunc = None):
         """Initializes RSSM
 
-        Arguments:
+        Args:
           action_size (int): Action space size
           embed_size (int): Size of ConvEncoder embedding
           stoch (int): Size of the distributional hidden state
@@ -309,7 +309,7 @@ class RSSM(nn.Module):
         (from mean, std), and the deterministic hidden state, which is pushed
         through the GRUCell.
 
-        Arguments:
+        Args:
           batch_size (int): Batch size for initial state
 
         Returns:
@@ -332,7 +332,7 @@ class RSSM(nn.Module):
         starting state through eacn index of embed and action, saving all
         intermediate states between.
 
-        Arguments:
+        Args:
           embed (TensorType): ConvEncoder embedding
           action (TensorType): Actions
           state (List[TensorType]): Initial state before rollout
@@ -368,7 +368,7 @@ class RSSM(nn.Module):
         """Imagines the trajectory starting from state through a list of actions.
         Similar to observe(), requires rolling out the RNN for each timestep.
 
-        Arguments:
+        Args:
           action (TensorType): Actions
           state (List[TensorType]): Starting state before rollout
 
@@ -396,7 +396,7 @@ class RSSM(nn.Module):
             embed: TensorType) -> Tuple[List[TensorType], List[TensorType]]:
         """Runs through the posterior model and returns the posterior state
 
-        Arguments:
+        Args:
           prev_state (TensorType): The previous state
           prev_action (TensorType): The previous action
           embed (TensorType): Embedding from ConvEncoder
@@ -419,7 +419,7 @@ class RSSM(nn.Module):
                  prev_action: TensorType) -> List[TensorType]:
         """Runs through the prior model and returns the prior state
 
-        Arguments:
+        Args:
           prev_state (TensorType): The previous state
           prev_action (TensorType): The previous action
 

@@ -9,7 +9,7 @@ dmc-dreamer:
       timesteps_total: 1000000
     config:
         framework: torch
-        model_lr: 0.0006
+        td_model_lr: 0.0006
         actor_lr: 0.00008
         critic_lr: 0.00008
         discount: 0.99
