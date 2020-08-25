@@ -254,40 +254,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
-    def testScaleUpLoadMetrics(self):
-        config = MULTI_WORKER_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 50
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            lm,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(0)
-        autoscaler.update()
-        lm.update(
-            "1.2.3.4", {}, {}, {},
-            waiting_bundles=[{
-                "GPU": 1
-            }],
-            infeasible_bundles=[{
-                "CPU": 16
-            }])
-        autoscaler.update()
-        self.waitForNodes(2)
-        nodes = {
-            self.provider.mock_nodes[0].node_type,
-            self.provider.mock_nodes[1].node_type
-        }
-        assert nodes == {"p2.xlarge", "m4.4xlarge"}
-
     def testRequestBundles(self):
         config = MULTI_WORKER_CLUSTER.copy()
         config["min_workers"] = 0
@@ -358,6 +324,39 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "CPU: 32")
         runner.assert_has_call("172.0.0.1", "GPU: 8")
 
+    def testScaleUpLoadMetrics(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.update()
+        lm.update(
+            "1.2.3.4", {}, {}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }],
+            infeasible_bundles=[{
+                "CPU": 16
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        nodes = {
+            self.provider.mock_nodes[0].node_type,
+            self.provider.mock_nodes[1].node_type
+        }
+        assert nodes == {"p2.xlarge", "m4.4xlarge"}
 
 if __name__ == "__main__":
     import sys
