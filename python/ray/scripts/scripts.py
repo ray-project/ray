@@ -1007,7 +1007,7 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--yes",
@@ -1488,7 +1488,7 @@ def status(address):
     print(debug_status())
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.option(
     "--address",
     required=False,
@@ -1577,14 +1577,14 @@ add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
 add_command_alias(down, name="teardown", hidden=True)
-cli.add_command(kill_random_node, hidden=True)
+cli.add_command(kill_random_node)
 add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(status)
 cli.add_command(memory)
-cli.add_command(global_gc, hidden=True)
+cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 
