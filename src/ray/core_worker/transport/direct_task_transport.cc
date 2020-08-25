@@ -364,7 +364,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       lease_entry.tasks_in_flight_--;
 
       // Decrement the total number of tasks in flight to any worker with the current
-      // scheduling_key
+      // scheduling_key.
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
       RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
       RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight >= 1);
