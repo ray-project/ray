@@ -695,7 +695,7 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         return string
 
-    def run_init(self, as_head):
+    def run_init(self, *, as_head):
         image = self.docker_config.get("image")
         if image is None:
             image = self.docker_config.get(
@@ -704,7 +704,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
             assert image, "Image must be included in config if " + \
-            "pull_before_run is specified"
+                "pull_before_run is specified"
 
             self.run("docker pull {}".format(image), run_env="host")
 

@@ -39,12 +39,13 @@ class NodeUpdater:
         setup_commands: Commands run before ray starts
         ray_start_commands: Commands to start ray
         runtime_hash: Used to check for config changes
+        file_mounts_contents_hash: Used to check for changes to file mounts
+        is_head_node: Whether to use head start/setup commands
         process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
         use_internal_ip: Wwhether the node_id belongs to an internal ip
             or external ip.
         docker_config: Docker section of autoscaler yaml
-        is_head_node: Whether to use head start/setup commands
     """
 
     def __init__(self,
@@ -59,12 +60,12 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
+                 is_head_node,
                  node_resources=None,
                  cluster_synced_files=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None,
-                 is_head_node=False):
+                 docker_config=None):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
