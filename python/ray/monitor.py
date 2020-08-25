@@ -167,7 +167,6 @@ class Monitor:
         Args:
             channel: unused
             data: a resource request as JSON, e.g. {"CPU": 1}
-
         """
 
         if not self.autoscaler:
