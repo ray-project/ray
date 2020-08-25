@@ -20,7 +20,6 @@ docker_push() {
 build_and_push_tags() {
     # $1 image-name (Dockerfile directory)
     # $2 tag
-    # $3 Wheel Arg
     for GPU in "" "-gpu" 
     do 
         BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
@@ -78,9 +77,9 @@ if [[ "$TRAVIS" == "true" ]]; then
     build_or_pull_base_images
 
 
-    build_and_push_tags "ray" "ray:$commit_sha"
+    build_and_push_tags "ray" "$commit_sha"
 
-    build_and_push_tags "autoscaler" "autoscaler:$commit_sha"
+    build_and_push_tags "autoscaler" "$commit_sha"
  
 
     # We have a branch build, e.g. release/v0.7.0
