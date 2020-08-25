@@ -258,6 +258,22 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
+def test_wait_timing(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        time.sleep(1)
+
+    future = f.remote()
+
+    start = time.time()
+    ready, not_ready = ray.wait([future], timeout=0.2)
+    assert 0.2 < time.time() - start < 0.3
+    assert len(ready) == 0
+    assert len(not_ready) == 1
+
+
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -674,22 +690,6 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
-
-
-def test_wait_timing(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def f():
-        time.sleep(1)
-
-    future = f.remote()
-
-    start = time.time()
-    ready, not_ready = ray.wait([future], timeout=0.2)
-    assert 0.2 < time.time() - start < 0.3
-    assert len(ready) == 0
-    assert len(not_ready) == 1
 
 
 if __name__ == "__main__":
