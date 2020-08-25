@@ -1,8 +1,9 @@
 from ray.rllib.env.dm_control_wrapper import DMCEnv
-
 """
 8 Environments from Deepmind Control Suite
 """
+
+
 def acrobot_swingup(from_pixels=True,
                     height=64,
                     width=64,

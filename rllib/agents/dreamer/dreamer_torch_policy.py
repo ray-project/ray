@@ -6,15 +6,7 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.agents.dreamer.utils import FreezeParameters
-import tree
-from typing import Union
 
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
 torch, nn = try_import_torch()
 if torch:
     from torch import distributions as td
@@ -24,16 +16,16 @@ logger = logging.getLogger(__name__)
 
 # This is the computation graph for workers (inner adaptation steps)
 def compute_dreamer_loss(obs,
-                 action,
-                 reward,
-                 model,
-                 imagine_horizon,
-                 discount=0.99,
-                 lambda_=0.95,
-                 kl_coeff=1.0,
-                 free_nats=3.0,
-                 log=False):
-        """Constructs loss for the Dreamer objective
+                         action,
+                         reward,
+                         model,
+                         imagine_horizon,
+                         discount=0.99,
+                         lambda_=0.95,
+                         kl_coeff=1.0,
+                         free_nats=3.0,
+                         log=False):
+    """Constructs loss for the Dreamer objective
 
         Args:
             obs (TensorType): Observations (o_t)
@@ -47,84 +39,81 @@ def compute_dreamer_loss(obs,
             free_nats (float): Threshold for minimum divergence in model loss
             log (bool): If log, generate gifs
         """
-        encoder_weights = list(model.encoder.parameters())
-        decoder_weights = list(model.decoder.parameters())
-        reward_weights = list(model.reward.parameters())
-        dynamics_weights = list(model.dynamics.parameters())
-        critic_weights = list(model.value.parameters())
-        model_weights = list(encoder_weights + decoder_weights +
-                             reward_weights + dynamics_weights)
-        
-        device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+    encoder_weights = list(model.encoder.parameters())
+    decoder_weights = list(model.decoder.parameters())
+    reward_weights = list(model.reward.parameters())
+    dynamics_weights = list(model.dynamics.parameters())
+    critic_weights = list(model.value.parameters())
+    model_weights = list(encoder_weights + decoder_weights + reward_weights +
+                         dynamics_weights)
 
-        # PlaNET Model Loss
-        latent = model.encoder(obs)
-        post, prior = model.dynamics.observe(latent, action)
-        features = model.dynamics.get_feature(post)
-        image_pred = model.decoder(features)
-        reward_pred = model.reward(features)
-        image_loss = -torch.mean(image_pred.log_prob(obs))
-        reward_loss = -torch.mean(reward_pred.log_prob(reward))
-        prior_dist = model.dynamics.get_dist(prior[0], prior[1])
-        post_dist = model.dynamics.get_dist(post[0], post[1])
-        div = torch.mean(
-            torch.distributions.kl_divergence(post_dist,
-                                              prior_dist).sum(dim=2))
-        div = torch.clamp(div, min=free_nats)
-        model_loss = kl_coeff * div + reward_loss + image_loss
+    device = (torch.device("cuda")
+              if torch.cuda.is_available() else torch.device("cpu"))
 
-        # Actor Loss
-        # [imagine_horizon, batch_length*batch_size, feature_size]
-        with torch.no_grad():
-            actor_states = [v.detach() for v in post]
-        with FreezeParameters(model_weights):
-            imag_feat = model.imagine_ahead(actor_states, imagine_horizon)
-        with FreezeParameters(model_weights + critic_weights):
-            reward = model.reward(imag_feat).mean
-            value = model.value(imag_feat).mean
-        pcont = discount * torch.ones_like(reward)
-        returns = lambda_return(reward[:-1], value[:-1], pcont[:-1],
-                                     value[-1], lambda_)
-        discount_shape = pcont[:1].size()
-        discount = torch.cumprod(
-            torch.cat(
-                [torch.ones(*discount_shape).to(device), pcont[:-2]],
-                dim=0),
-            dim=0)
-        actor_loss = -torch.mean(discount * returns)
+    # PlaNET Model Loss
+    latent = model.encoder(obs)
+    post, prior = model.dynamics.observe(latent, action)
+    features = model.dynamics.get_feature(post)
+    image_pred = model.decoder(features)
+    reward_pred = model.reward(features)
+    image_loss = -torch.mean(image_pred.log_prob(obs))
+    reward_loss = -torch.mean(reward_pred.log_prob(reward))
+    prior_dist = model.dynamics.get_dist(prior[0], prior[1])
+    post_dist = model.dynamics.get_dist(post[0], post[1])
+    div = torch.mean(
+        torch.distributions.kl_divergence(post_dist, prior_dist).sum(dim=2))
+    div = torch.clamp(div, min=free_nats)
+    model_loss = kl_coeff * div + reward_loss + image_loss
 
-        # Critic Loss
-        with torch.no_grad():
-            val_feat = imag_feat.detach()[:-1]
-            target = returns.detach()
-            val_discount = discount.detach()
-        val_pred = model.value(val_feat)
-        critic_loss = -torch.mean(
-            val_discount * val_pred.log_prob(target))
+    # Actor Loss
+    # [imagine_horizon, batch_length*batch_size, feature_size]
+    with torch.no_grad():
+        actor_states = [v.detach() for v in post]
+    with FreezeParameters(model_weights):
+        imag_feat = model.imagine_ahead(actor_states, imagine_horizon)
+    with FreezeParameters(model_weights + critic_weights):
+        reward = model.reward(imag_feat).mean
+        value = model.value(imag_feat).mean
+    pcont = discount * torch.ones_like(reward)
+    returns = lambda_return(reward[:-1], value[:-1], pcont[:-1], value[-1],
+                            lambda_)
+    discount_shape = pcont[:1].size()
+    discount = torch.cumprod(
+        torch.cat([torch.ones(*discount_shape).to(device), pcont[:-2]], dim=0),
+        dim=0)
+    actor_loss = -torch.mean(discount * returns)
 
-        # Logging purposes
-        prior_ent = torch.mean(prior_dist.entropy())
-        post_ent = torch.mean(post_dist.entropy())
+    # Critic Loss
+    with torch.no_grad():
+        val_feat = imag_feat.detach()[:-1]
+        target = returns.detach()
+        val_discount = discount.detach()
+    val_pred = model.value(val_feat)
+    critic_loss = -torch.mean(val_discount * val_pred.log_prob(target))
 
-        log_gif = None
-        if log:
-            log_gif = log_summary(obs, action, latent, image_pred, model)
+    # Logging purposes
+    prior_ent = torch.mean(prior_dist.entropy())
+    post_ent = torch.mean(post_dist.entropy())
 
-        return_dict = {
-            "model_loss": model_loss,
-            "reward_loss": reward_loss,
-            "image_loss": image_loss,
-            "divergence": div,
-            "actor_loss": actor_loss,
-            "critic_loss": critic_loss,
-            "prior_ent": prior_ent,
-            "post_ent": post_ent,
-        }
+    log_gif = None
+    if log:
+        log_gif = log_summary(obs, action, latent, image_pred, model)
 
-        if log_gif is not None:
-            return_dict["log_gif"] = log_gif
-        return return_dict
+    return_dict = {
+        "model_loss": model_loss,
+        "reward_loss": reward_loss,
+        "image_loss": image_loss,
+        "divergence": div,
+        "actor_loss": actor_loss,
+        "critic_loss": critic_loss,
+        "prior_ent": prior_ent,
+        "post_ent": post_ent,
+    }
+
+    if log_gif is not None:
+        return_dict["log_gif"] = log_gif
+    return return_dict
+
 
 # Similar to GAE-Lambda, calculate value targets
 def lambda_return(reward, value, pcont, bootstrap, lambda_):
@@ -143,6 +132,7 @@ def lambda_return(reward, value, pcont, bootstrap, lambda_):
     returns = list(reversed(returns))
     returns = torch.stack(returns, dim=0)
     return returns
+
 
 # Creates gif
 def log_summary(obs, action, embed, image_pred, model):

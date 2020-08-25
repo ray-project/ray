@@ -169,12 +169,14 @@ class EpisodicBuffer(object):
 def total_sampled_timesteps(worker):
     return worker.policy_map[DEFAULT_POLICY_ID].global_timestep
 
+
 class DreamerIteration:
-    def __init__(self, worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat):
+    def __init__(self, worker, episode_buffer, dreamer_train_iters, batch_size,
+                 act_repeat):
         self.worker = worker
         self.episode_buffer = episode_buffer
         self.dreamer_train_iters = dreamer_train_iters
-        self.act_repeat = act_repeat
+        self.repeat = act_repeat
         self.batch_size = batch_size
 
     def __call__(self, samples):
@@ -193,10 +195,11 @@ class DreamerIteration:
             gif = policy_fetches["log_gif"]
             policy_fetches["log_gif"] = self.postprocess_gif(gif)
 
+        # Metrics Calculation
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
-        metrics.counters[
-            STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps * self.act_repeat
+        metrics.counters[STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps
+        metrics.counter[STEPS_SAMPLED_COUNTER] *= self.repeat
         res = collect_metrics(local_worker=self.worker)
         res["info"] = metrics.info
         res["info"].update(metrics.counters)
@@ -208,8 +211,7 @@ class DreamerIteration:
     def postprocess_gif(self, gif: np.ndarray):
         gif = np.clip(255 * gif, 0, 255).astype(np.uint8)
         B, T, C, H, W = gif.shape
-        frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H,
-                                                         B * W))
+        frames = gif.transpose((1, 2, 3, 0, 4)).reshape((1, T, C, H, B * W))
         return frames
 
     def policy_stats(self, fetches):
@@ -232,7 +234,9 @@ def execution_plan(workers, config):
     act_repeat = config["action_repeat"]
 
     rollouts = ParallelRollouts(workers)
-    rollouts = rollouts.for_each(DreamerIteration(local_worker, episode_buffer, dreamer_train_iters, batch_size, act_repeat))
+    rollouts = rollouts.for_each(
+        DreamerIteration(local_worker, episode_buffer, dreamer_train_iters,
+                         batch_size, act_repeat))
     return rollouts
 
 
