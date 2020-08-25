@@ -56,8 +56,7 @@ def accept_batch(f: Callable) -> Callable:
     return f
 
 
-# TODO(architkulkarni): Add type hint for name after upgrading cloudpickle.
-def init(name=None,
+def init(name: Optional[str] = None,
          http_host: str = DEFAULT_HTTP_HOST,
          http_port: int = DEFAULT_HTTP_PORT,
          _http_middlewares: List[Any] = []) -> None:

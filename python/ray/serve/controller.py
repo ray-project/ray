@@ -16,7 +16,7 @@ from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Tuple
 
 import numpy as np
 
@@ -648,9 +648,10 @@ class ServeController:
                 ) for router in self.routers.values()
             ])
 
-    async def create_endpoint(
-            self, endpoint: str, traffic_dict: Dict[str, float],
-            route: Optional[str], methods: List[str]) -> None:
+    # TODO(architkulkarni): add optional type hints after upgrading cloudpickle
+    async def create_endpoint(self, endpoint: str,
+                              traffic_dict: Dict[str, float], route,
+                              methods) -> None:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
