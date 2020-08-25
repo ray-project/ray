@@ -224,22 +224,20 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
     for (const auto &task_id : queue.second) {
       const auto &task = scheduling_queue_.GetTaskOfState(task_id, TaskState::READY);
       const auto &spec = task.GetTaskSpecification();
-      if (!spec.IsActorTask()) {
-        // Make sure the node has enough available resources to prevent forwarding cycles.
-        if (spec.GetRequiredPlacementResources().IsSubset(
-                remote_resources.GetAvailableResources())) {
-          // Update the scheduling resources.
-          ResourceSet new_remote_load(remote_resources.GetLoadResources());
-          new_remote_load.AddResources(spec.GetRequiredResources());
-          remote_resources.SetLoadResources(std::move(new_remote_load));
-          ResourceSet new_local_load(local_resources.GetLoadResources());
-          new_local_load.SubtractResources(spec.GetRequiredResources());
-          local_resources.SetLoadResources(std::move(new_local_load));
+      // Make sure the node has enough available resources to prevent forwarding cycles.
+      if (spec.GetRequiredPlacementResources().IsSubset(
+              remote_resources.GetAvailableResources())) {
+        // Update the scheduling resources.
+        ResourceSet new_remote_load(remote_resources.GetLoadResources());
+        new_remote_load.AddResources(spec.GetRequiredResources());
+        remote_resources.SetLoadResources(std::move(new_remote_load));
+        ResourceSet new_local_load(local_resources.GetLoadResources());
+        new_local_load.SubtractResources(spec.GetRequiredResources());
+        local_resources.SetLoadResources(std::move(new_local_load));
 
-          decision.push_back(spec.TaskId());
-          task_spilled = true;
-          break;
-        }
+        decision.push_back(spec.TaskId());
+        task_spilled = true;
+        break;
       }
     }
     if (task_spilled) {
