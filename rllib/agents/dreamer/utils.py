@@ -3,71 +3,80 @@ import numpy as np
 
 torch, nn = try_import_torch()
 
-
 # Custom initialization for different types of layers
-class Linear(nn.Linear):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+if torch:
 
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
+    class Linear(nn.Linear):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
 
-
-class Conv2d(nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
 
 
-class ConvTranspose2d(nn.ConvTranspose2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+if torch:
 
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
+    class Conv2d(nn.Conv2d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
 
 
-class GRUCell(nn.GRUCell):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+if torch:
 
-    def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight_ih)
-        nn.init.orthogonal_(self.weight_hh)
-        nn.init.zeros_(self.bias_ih)
-        nn.init.zeros_(self.bias_hh)
+    class ConvTranspose2d(nn.ConvTranspose2d):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+
+
+if torch:
+
+    class GRUCell(nn.GRUCell):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+        def reset_parameters(self):
+            nn.init.xavier_uniform_(self.weight_ih)
+            nn.init.orthogonal_(self.weight_hh)
+            nn.init.zeros_(self.bias_ih)
+            nn.init.zeros_(self.bias_hh)
 
 
 # Custom Tanh Bijector due to big gradients through Dreamer Actor
-class TanhBijector(torch.distributions.Transform):
-    def __init__(self):
-        super().__init__()
+if torch:
 
-    def atanh(self, x):
-        return 0.5 * torch.log((1 + x) / (1 - x))
+    class TanhBijector(torch.distributions.Transform):
+        def __init__(self):
+            super().__init__()
 
-    def sign(self):
-        return 1.
+        def atanh(self, x):
+            return 0.5 * torch.log((1 + x) / (1 - x))
 
-    def _call(self, x):
-        return torch.tanh(x)
+        def sign(self):
+            return 1.
 
-    def _inverse(self, y):
-        y = torch.where((torch.abs(y) <= 1.),
-                        torch.clamp(y, -0.99999997, 0.99999997), y)
-        y = self.atanh(y)
-        return y
+        def _call(self, x):
+            return torch.tanh(x)
 
-    def log_abs_det_jacobian(self, x, y):
-        return 2. * (np.log(2) - x - nn.functional.softplus(-2. * x))
+        def _inverse(self, y):
+            y = torch.where((torch.abs(y) <= 1.),
+                            torch.clamp(y, -0.99999997, 0.99999997), y)
+            y = self.atanh(y)
+            return y
+
+        def log_abs_det_jacobian(self, x, y):
+            return 2. * (np.log(2) - x - nn.functional.softplus(-2. * x))
 
 
 # Modified from https://github.com/juliusfrost/dreamer-pytorch
