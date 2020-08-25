@@ -473,48 +473,41 @@ def print_failed_task(task_status):
     """)
 
 
-def init(address=None,
-         redis_address=None,
-         redis_port=None,
-         num_cpus=None,
-         num_gpus=None,
-         memory=None,
-         object_store_memory=None,
-         resources=None,
-         driver_object_store_memory=None,
-         redis_max_memory=None,
-         log_to_driver=True,
-         node_ip_address=ray_constants.NODE_DEFAULT_IP,
-         object_ref_seed=None,
-         local_mode=False,
-         redirect_worker_output=None,
-         redirect_output=None,
-         ignore_reinit_error=False,
-         num_redis_shards=None,
-         redis_max_clients=None,
-         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-         plasma_directory=None,
-         huge_pages=False,
-         include_java=False,
-         include_dashboard=None,
-         dashboard_host="localhost",
-         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
-         job_id=None,
-         job_config=None,
-         configure_logging=True,
-         logging_level=logging.INFO,
-         logging_format=ray_constants.LOGGER_FORMAT,
-         plasma_store_socket_name=None,
-         raylet_socket_name=None,
-         temp_dir=None,
-         load_code_from_local=False,
-         java_worker_options=None,
-         use_pickle=True,
-         _internal_config=None,
-         lru_evict=False,
-         enable_object_reconstruction=False,
-         _metrics_export_port=None,
-         object_spilling_config=None):
+def init(
+        address=None,
+        *,
+        num_cpus=None,
+        num_gpus=None,
+        resources=None,
+        object_store_memory=None,
+        local_mode=False,
+        ignore_reinit_error=False,
+        include_dashboard=None,
+        dashboard_host="localhost",
+        dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        job_config=None,
+        configure_logging=True,
+        logging_level=logging.INFO,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        enable_object_reconstruction=False,
+        # The following are unstable parameters:
+        _job_id=None,
+        _redis_max_memory=None,
+        _node_ip_address=ray_constants.NODE_DEFAULT_IP,
+        _driver_object_store_memory=None,
+        _log_to_driver=True,
+        _memory=None,
+        _num_redis_shards=None,
+        _redis_max_clients=None,
+        _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        _include_java=False,
+        _java_worker_options=None,
+        _temp_dir=None,
+        _load_code_from_local=False,
+        _lru_evict=False,
+        _metrics_export_port=None,
+        _object_spilling_config=None,
+        _internal_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -547,53 +540,19 @@ def init(address=None,
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
             specify a specific node address.
-        redis_address (str): Deprecated; same as address.
-        redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet.
         num_gpus (int): Number of GPUs the user wishes to assign to each
             raylet.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
-        memory: The amount of memory (in bytes) that is available for use by
-            workers requesting memory resources. By default, this is
-            automatically set based on available system memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory, subject to a 20GB cap.
-        redis_max_memory: The max amount of memory (in bytes) to allow each
-            redis shard to use. Once the limit is exceeded, redis will start
-            LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables).  By default, this is
-            autoset based on available system memory, subject to a 10GB cap.
-        log_to_driver (bool): If true, the output from all of the worker
-            processes on all nodes will be directed to the driver.
-        node_ip_address (str): The IP address of the node that we are on.
-        object_ref_seed (int): Used to seed the deterministic generation of
-            object refs. The same value can be used across multiple runs of the
-            same driver in order to generate the object refs in a consistent
-            manner. However, the same ID should not be used for different
-            drivers.
         local_mode (bool): If true, the code will be executed serially. This
             is useful for debugging.
-        driver_object_store_memory (int): Limit the amount of memory the driver
-            can use in the object store for creating objects. By default, this
-            is autoset based on available system memory, subject to a 20GB cap.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
-        num_redis_shards: The number of Redis shards to start in addition to
-            the primary Redis shard.
-        redis_max_clients: If provided, attempt to configure Redis with this
-            maxclients number.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        plasma_directory: A directory where the Plasma memory mapped files
-            will be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        include_java: Boolean flag indicating whether or not to enable java
-            workers.
         include_dashboard: Boolean flag indicating whether or not to start the
             Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
@@ -604,7 +563,6 @@ def init(address=None,
             external machines.
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
-        job_id: The ID of this job.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -615,36 +573,49 @@ def init(address=None,
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        plasma_store_socket_name (str): If provided, specifies the socket
-            name used by the plasma store.
-        raylet_socket_name (str): If provided, specifies the socket path
-            used by the raylet process.
-        temp_dir (str): If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
-        load_code_from_local: Whether code should be loaded from a local
-            module or from the GCS.
-        java_worker_options: Overwrite the options to start Java workers.
-        use_pickle: Deprecated.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
-        lru_evict (bool): If True, when an object store is full, it will evict
-            objects in LRU order to make more space and when under memory
-            pressure, ray.UnreconstructableError may be thrown. If False, then
-            reference counting will be used to decide which objects are safe
-            to evict and when under memory pressure, ray.ObjectStoreFullError
-            may be thrown.
         enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.UnreconstructableError will be
             thrown.
+
+    The following args are unstable and their use is discouraged:
+        _job_id: The ID of this job.
+        _redis_max_memory: Redis max memory.
+        _node_ip_address (str): The IP address of the node that we are on.
+        _driver_object_store_memory (int): Limit the amount of memory the
+            driver can use in the object store for creating objects.
+        _log_to_driver (bool): If true, the output from all of the worker
+            processes on all nodes will be directed to the driver.
+        _memory: Amount of reservable memory resource to create.
+        _num_redis_shards: The number of Redis shards to start in addition to
+            the primary Redis shard.
+        _redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
+        _redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
+        _include_java: Boolean flag indicating whether or not to enable java
+            workers.
+        _temp_dir (str): If provided, specifies the root temporary
+            directory for the Ray process. Defaults to an OS-specific
+            conventional location, e.g., "/tmp/ray".
+        _load_code_from_local: Whether code should be loaded from a local
+            module or from the GCS.
+        _java_worker_options: Overwrite the options to start Java workers.
+        _lru_evict (bool): If True, when an object store is full, it will evict
+            objects in LRU order to make more space and when under memory
+            pressure, ray.UnreconstructableError may be thrown. If False, then
+            reference counting will be used to decide which objects are safe
+            to evict and when under memory pressure, ray.ObjectStoreFullError
+            may be thrown.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        object_spilling_config (str): The configuration json string for object
+        _object_spilling_config (str): The configuration json string for object
             spilling I/O worker.
+        _internal_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -654,15 +625,8 @@ def init(address=None,
             arguments is passed in.
     """
 
-    if not use_pickle:
-        raise DeprecationWarning("The use_pickle argument is deprecated.")
-
-    if redis_address is not None:
-        raise DeprecationWarning("The redis_address argument is deprecated. "
-                                 "Please use address instead.")
-
     if "RAY_ADDRESS" in os.environ:
-        if redis_address is None and (address is None or address == "auto"):
+        if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
         else:
             raise RuntimeError(
@@ -672,9 +636,10 @@ def init(address=None,
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
-    if redis_address is not None or address is not None:
-        redis_address, _, _ = services.validate_redis_address(
-            address, redis_address)
+    if address:
+        redis_address, _, _ = services.validate_redis_address(address)
+    else:
+        redis_address = None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -695,12 +660,6 @@ def init(address=None,
                                "'ignore_reinit_error=True' or by calling "
                                "'ray.shutdown()' prior to 'ray.init()'.")
 
-    # Convert hostnames to numerical IP address.
-    if node_ip_address is not None:
-        node_ip_address = services.address_to_ip(node_ip_address)
-
-    raylet_ip_address = node_ip_address
-
     _internal_config = (json.loads(_internal_config)
                         if _internal_config else {})
 
@@ -709,39 +668,37 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            redis_port=redis_port,
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
-            object_ref_seed=object_ref_seed,
+            node_ip_address=None,
+            raylet_ip_address=None,
+            object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=redirect_worker_output,
-            redirect_output=redirect_output,
+            redirect_worker_output=None,
+            redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
-            num_redis_shards=num_redis_shards,
-            redis_max_clients=redis_max_clients,
-            redis_password=redis_password,
-            plasma_directory=plasma_directory,
-            huge_pages=huge_pages,
-            include_java=include_java,
+            num_redis_shards=_num_redis_shards,
+            redis_max_clients=_redis_max_clients,
+            redis_password=_redis_password,
+            plasma_directory=None,
+            huge_pages=None,
+            include_java=_include_java,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
-            memory=memory,
+            memory=_memory,
             object_store_memory=object_store_memory,
-            redis_max_memory=redis_max_memory,
-            plasma_store_socket_name=plasma_store_socket_name,
-            raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
-            java_worker_options=java_worker_options,
+            redis_max_memory=_redis_max_memory,
+            plasma_store_socket_name=None,
+            temp_dir=_temp_dir,
+            load_code_from_local=_load_code_from_local,
+            java_worker_options=_java_worker_options,
             start_initial_python_workers_for_first_job=True,
             _internal_config=_internal_config,
-            lru_evict=lru_evict,
+            lru_evict=_lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
-            object_spilling_config=object_spilling_config)
+            object_spilling_config=_object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -760,45 +717,15 @@ def init(address=None,
         if resources is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "resources must not be provided.")
-        if num_redis_shards is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "num_redis_shards must not be provided.")
-        if redis_max_clients is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "redis_max_clients must not be provided.")
-        if memory is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "memory must not be provided.")
         if object_store_memory is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "object_store_memory must not be provided.")
-        if redis_max_memory is not None:
+        if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
-                             "redis_max_memory must not be provided.")
-        if plasma_directory is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "plasma_directory must not be provided.")
-        if huge_pages:
-            raise ValueError("When connecting to an existing cluster, "
-                             "huge_pages must not be provided.")
-        if temp_dir is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "temp_dir must not be provided.")
-        if plasma_store_socket_name is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "plasma_store_socket_name must not be provided.")
-        if raylet_socket_name is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "raylet_socket_name must not be provided.")
-        if java_worker_options is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "java_worker_options must not be provided.")
+                             "lru_evict must not be provided.")
         if _internal_config is not None and len(_internal_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
                              "_internal_config must not be provided.")
-        if lru_evict:
-            raise ValueError("When connecting to an existing cluster, "
-                             "lru_evict must not be provided.")
         if enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -806,15 +733,15 @@ def init(address=None,
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=None,
+            raylet_ip_address=None,
             redis_address=redis_address,
-            redis_password=redis_password,
-            object_ref_seed=object_ref_seed,
-            temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
+            redis_password=_redis_password,
+            object_ref_seed=None,
+            temp_dir=_temp_dir,
+            load_code_from_local=_load_code_from_local,
             _internal_config=_internal_config,
-            lru_evict=lru_evict,
+            lru_evict=_lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
@@ -827,10 +754,10 @@ def init(address=None,
     connect(
         _global_node,
         mode=driver_mode,
-        log_to_driver=log_to_driver,
+        log_to_driver=_log_to_driver,
         worker=global_worker,
-        driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id,
+        driver_object_store_memory=_driver_object_store_memory,
+        job_id=_job_id,
         job_config=job_config)
 
     for hook in _post_init_hooks:
