@@ -1568,7 +1568,9 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
-    return ray.util.named_actors._get_actor(name)
+    worker = ray.worker.global_worker
+    handle = worker.core_worker.get_named_actor_handle(name)
+    return handle
 
 
 def kill(actor, *, no_restart=True):

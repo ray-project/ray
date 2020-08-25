@@ -196,7 +196,7 @@ class CaptureOutputAndError:
 
 
 def test_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=True)
+    ray.init(num_cpus=1, _log_to_driver=True)
 
     @ray.remote
     def f():
@@ -221,7 +221,7 @@ def test_logging_to_driver(shutdown_only):
 
 
 def test_not_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=False)
+    ray.init(num_cpus=1, _log_to_driver=False)
 
     @ray.remote
     def f():
@@ -262,7 +262,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
+    ray.init(num_cpus=1, _job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray.worker.global_worker.current_job_id
@@ -385,23 +385,6 @@ def test_ray_stack(ray_start_2_cpus):
     if not success:
         raise Exception("Failed to find necessary information with "
                         "'ray stack'")
-
-
-def test_socket_dir_not_existing(shutdown_only):
-    if sys.platform != "win32":
-        random_name = ray.ObjectRef.from_random().hex()
-        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                              "tests", random_name)
-        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                               "raylet_socket")
-        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
-
-        @ray.remote
-        def foo(x):
-            time.sleep(1)
-            return 2 * x
-
-        ray.get([foo.remote(i) for i in range(2)])
 
 
 def test_raylet_is_robust_to_random_messages(ray_start_regular):

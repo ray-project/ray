@@ -18,8 +18,8 @@ def ray_start_sharded(request):
     ray.init(
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
-        num_redis_shards=num_redis_shards,
-        redis_max_memory=10**7)
+        _num_redis_shards=num_redis_shards,
+        _redis_max_memory=10**7)
 
     yield None
 

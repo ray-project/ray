@@ -47,7 +47,7 @@ class TestMemoryLimits(unittest.TestCase):
 
     def testTooLargeAllocation(self):
         try:
-            ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
+            ray.init(num_cpus=1, _driver_object_store_memory=100 * MB)
             ray.worker.global_worker.put_object(
                 np.zeros(50 * MB, dtype=np.uint8), pin_object=False)
             self.assertRaises(
@@ -62,7 +62,7 @@ class TestMemoryLimits(unittest.TestCase):
             ray.init(
                 num_cpus=1,
                 object_store_memory=300 * MB,
-                driver_object_store_memory=driver_quota)
+                _driver_object_store_memory=driver_quota)
             obj = np.ones(200 * 1024, dtype=np.uint8)
             z = ray.put(obj, weakref=True)
             a = LightActor._remote(object_store_memory=a_quota)

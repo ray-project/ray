@@ -23,7 +23,7 @@ class TestRedisPassword:
         def f():
             return 1
 
-        info = ray.init(redis_password=password)
+        info = ray.init(_redis_password=password)
         address = info["redis_address"]
         redis_ip, redis_port = address.split(":")
 
@@ -50,7 +50,7 @@ class TestRedisPassword:
         def f():
             return 1
 
-        node_args = {"redis_password": password}
+        node_args = {"_redis_password": password}
         cluster = Cluster(
             initialize_head=True, connect=True, head_node_args=node_args)
         cluster.add_node(**node_args)
@@ -63,7 +63,7 @@ class TestRedisPassword:
         def f():
             return 1
 
-        info = ray.init(redis_port=1234, redis_password="testpassword")
+        info = ray.init(redis_port=1234, _redis_password="testpassword")
         address = info["redis_address"]
         redis_ip, redis_port = address.split(":")
         assert redis_port == "1234"
