@@ -287,7 +287,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "initial_reconstruction_timeout_milliseconds": 1000,
+        "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     })
     cluster = ray_start_cluster
@@ -441,15 +441,14 @@ def test_caller_task_reconstruction(ray_start_regular):
     assert ray.get(RetryableTask.remote(remote_actor)) == 3
 
 
-# NOTE(hchen): we set initial_reconstruction_timeout_milliseconds to 1s for
+# NOTE(hchen): we set object_timeout_milliseconds to 1s for
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
 # could be very slow. We can remove this once we support dynamic timeout.
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_internal_config_map(
-            initial_reconstruction_timeout_milliseconds=1000,
-            num_heartbeats_timeout=10)
+            object_timeout_milliseconds=1000, num_heartbeats_timeout=10)
     ],
     indirect=True)
 def test_multiple_actor_restart(ray_start_cluster_head):

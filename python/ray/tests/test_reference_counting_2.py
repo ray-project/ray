@@ -23,7 +23,7 @@ def one_worker_100MiB(request):
     config = json.dumps({
         "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
-        "initial_reconstruction_timeout_milliseconds": 1000,
+        "object_timeout_milliseconds": 1000,
     })
     yield ray.init(
         num_cpus=1,

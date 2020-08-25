@@ -336,7 +336,7 @@ def test_call_chain(ray_start_cluster):
 def test_internal_config_when_connecting(ray_start_cluster):
     config = json.dumps({
         "object_pinning_enabled": 0,
-        "initial_reconstruction_timeout_milliseconds": 200
+        "object_timeout_milliseconds": 200
     })
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(

@@ -34,8 +34,7 @@ def test_shutdown():
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_internal_config_map(
-            num_heartbeats_timeout=20,
-            initial_reconstruction_timeout_milliseconds=12345)
+            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
     ],
     indirect=True)
 def test_internal_config(ray_start_cluster_head):
@@ -52,8 +51,7 @@ def test_internal_config(ray_start_cluster_head):
 
     @ray.remote
     def f():
-        assert ray._config.initial_reconstruction_timeout_milliseconds(
-        ) == 12345
+        assert ray._config.object_timeout_milliseconds() == 12345
         assert ray._config.num_heartbeats_timeout() == 20
 
     ray.get([f.remote() for _ in range(5)])

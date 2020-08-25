@@ -634,7 +634,7 @@ def test_lease_request_leak(shutdown_only):
     ray.init(
         num_cpus=1,
         _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
+            "object_timeout_milliseconds": 200
         }))
     assert len(ray.objects()) == 0
 

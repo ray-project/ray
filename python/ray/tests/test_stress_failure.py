@@ -24,7 +24,7 @@ def ray_start_reconstruction(request):
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
             "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
+                "object_timeout_milliseconds": 200
             })
         })
     for i in range(num_nodes - 1):
