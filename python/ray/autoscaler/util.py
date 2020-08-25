@@ -91,8 +91,6 @@ def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     dockerize_if_needed(with_defaults)
-    from pprint import pprint
-    pprint(with_defaults)
     return with_defaults
 
 

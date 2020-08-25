@@ -247,7 +247,6 @@ class AutoscalingTest(unittest.TestCase):
         config = MULTI_WORKER_CLUSTER.copy()
         config["min_workers"] = 0
         config["max_workers"] = 50
-        print(config)
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
