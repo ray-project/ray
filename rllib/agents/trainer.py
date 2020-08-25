@@ -222,7 +222,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
     # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    "_use_trajectory_view_api": "auto",
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -1078,13 +1078,20 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if config.get("_use_trajectory_view_api") and \
-                config.get("framework") != "torch":
+        use_traj_view_api = config.get("_use_trajectory_view_api")
+        model_is_time_major = config.get("model", {}).get("_time_major")
+        # Enable trajectory view API iff "auto" and framework=torch and
+        # model=_time_major.
+        if use_traj_view_api == "auto":
+            if config.get("framework") == "torch" and model_is_time_major:
+                config["_use_trajectory_view_api"] = True
+            else:
+                config["_use_trajectory_view_api"] = False
+        elif use_traj_view_api and config.get("framework") != "torch":
             raise ValueError(
                 "`_use_trajectory_view_api` only supported for PyTorch so "
                 "far!")
-        elif not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
+        elif not use_traj_view_api and model_is_time_major:
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 

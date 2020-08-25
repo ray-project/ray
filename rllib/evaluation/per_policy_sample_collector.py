@@ -399,10 +399,11 @@ class _PerPolicySampleCollector:
             base_shape = (time_size, self.num_agents) if self.time_major else \
                 (self.num_agents, time_size)
             # Python primitive -> np.array.
-            if isinstance(data, (int, float, bool)):
+            if isinstance(data, (int, float, bool, str)):
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
-                    np.int32 if type(data) == int else np.bool_
+                    np.int32 if t_ == int else np.bool_ \
+                        if t_ == bool else np.unicode_
                 self.buffers[col] = np.zeros(shape=base_shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:

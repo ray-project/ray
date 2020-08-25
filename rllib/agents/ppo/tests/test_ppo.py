@@ -52,14 +52,17 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
+
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        #TODO
+        for fw in framework_iterator(config, frameworks="tf"):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
+                    config["model"]["_time_major"] = fw == "torch" and lstm
                     config["model"]["lstm_use_prev_action_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
