@@ -201,14 +201,15 @@ class StandardAutoscaler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
             if resource_demand_vector:
-                if self.resource_demand_scheduler and self.resource_demand_vector:
-                    to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
-                        self.provider.non_terminated_nodes(tag_filters={}),
-                        self.pending_launches.breakdown(),
-                        resource_demand_vector))
-                    # TODO(ekl) also enforce max launch concurrency here?
-                    for node_type, count in to_launch:
-                        self.launch_new_node(count, node_type=node_type)
+                to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
+                    self.provider.non_terminated_nodes(tag_filters={}),
+                    self.pending_launches.breakdown(),
+                    resource_demand_vector))
+                # TODO(ekl) also enforce max launch concurrency here?
+                print(f"vector: {resource_demand_vector}")
+                print(f"result: {to_launch}")
+                for node_type, count in to_launch:
+                    self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
