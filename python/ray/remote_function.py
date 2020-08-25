@@ -101,8 +101,8 @@ class RemoteFunction:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Remote functions cannot be called directly. Instead "
-                        "of running '{}()', try '{}.remote()'.".format(
-                            self._function_name, self._function_name))
+                        f"of running '{self._function_name}()', "
+                        f"try '{self._function_name}.remote()'.")
 
     def _submit(self,
                 args=None,
@@ -191,7 +191,7 @@ class RemoteFunction:
             max_retries = self._max_retries
 
         if placement_group is None:
-            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+            placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
