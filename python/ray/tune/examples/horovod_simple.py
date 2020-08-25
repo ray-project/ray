@@ -1,7 +1,9 @@
 import torch
 import numpy as np
-
+from ray import tune
+from ray.tune.integration.horovod import DistributedTrainableCreator
 import time
+
 
 def sq(x):
     m2 = 1.
@@ -33,14 +35,17 @@ class Net(torch.nn.Module):
         if ~self.mode:
             return x * x + self.param[0] * x + self.param[1]
         else:
-            return 10 * x * x * x + self.param[0] * x * x + self.param[1] * x + self.param[2]
+            return_val = 10 * x * x * x
+            return_val += self.param[0] * x * x
+            return_val += self.param[1] * x + self.param[2]
+            return return_val
 
 
 def train(config):
     import torch
     import horovod.torch as hvd
     hvd.init()
-    device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = Net(args.mode).to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
@@ -52,7 +57,6 @@ def train(config):
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
 
-    prev_zero = False
     start = time.time()
     for step in range(1, num_steps + 1):
         features = torch.Tensor(
@@ -79,30 +83,32 @@ def train(config):
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import ray
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--mode', type=str, default="square", choices=["square", "cubic"])
+        "--mode", type=str, default="square", choices=["square", "cubic"])
     parser.add_argument(
-        '--op',
+        "--op",
         type=str,
         default="Average",
         choices=["Average", "Adasum"],
-        dest='op')
+        dest="op")
     parser.add_argument(
-        '--learning_rate', type=float, default=0.1, dest='learning_rate')
-    parser.add_argument('--x_max', type=float, default=1., dest='x_max')
+        "--learning_rate", type=float, default=0.1, dest="learning_rate")
+    parser.add_argument("--x_max", type=float, default=1., dest="x_max")
     parser.add_argument("--gpu", action="store_true")
-    parser.add_argument('--workers', "-j", type=int, default=1)
+    parser.add_argument("--workers", "-j", type=int, default=1)
     args = parser.parse_args()
 
     ray.init(address="auto")  # assumes ray is started with ray up
 
-
     horovod_trainable = DistributedTrainableCreator(
         train, use_gpu=True, num_nodes=2, num_workers_per_node=4)
     analysis = tune.run(
-        horovod_trainable, config={"lr": tune.uniform(0.1, 1)}, num_samples=10, fail_fast=True)
+        horovod_trainable,
+        config={"lr": tune.uniform(0.1, 1)},
+        num_samples=10,
+        fail_fast=True)
     config = analysis.get_best_config(metric="loss")

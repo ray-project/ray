@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Callable, List
+from typing import List, Dict
 import os
 import ray
 from ray import tune
@@ -8,15 +8,17 @@ from ray.tune.trainable import TrainableUtil
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
-from ray.tune.function_runner import (wrap_function,
-                                      detect_checkpoint_function)
-from horovod.runner.common.util import settings as hvd_settings
+from ray.tune.function_runner import wrap_function
+from horovod.runner.common.util import Settings
 from horovod.runner.driver import driver_service
 from horovod.runner.http.http_server import RendezvousServer
 from horovod.runner.common.util.hosts import get_host_assignments, parse_hosts
 from horovod.runner.common.util import secret, timeout
-from horovod.runner.util import network
 from dataclasses import dataclass
+
+
+def map_blocking(fn, collection):
+    return ray.get([fn(w) for w in collection])
 
 
 def logger_creator(log_config, logdir, index):
@@ -31,7 +33,7 @@ class MiniSettings:
     verbose: int = 1
     key = secret.make_secret_key()
     ssh_port = None
-    ssh_identity_file = os.path.expanduser("~/ray_bootstrap_key.pem")
+    ssh_identity_file = None
     timeout_s: int = 300
 
     @property
@@ -50,7 +52,8 @@ class HorovodMixin:
         # the intended hostname.
         return ray.services.get_node_ip_address()
 
-    def update_env_vars(self, env_vars: dict):
+    def update_env_vars(self, env_vars: Dict[str, str]):
+        """Update the env vars in the actor process."""
         sanitized = {k: str(v) for k, v in env_vars.items()}
         os.environ.update(sanitized)
 
@@ -62,7 +65,16 @@ class HorovodMixin:
 
 @ray.remote
 class NodeColocator:
-    """Responsible for colocation of child actors."""
+    """Responsible for colocation of child actors.
+
+    These actors are given resources equal to the sum of their children.
+    This is a mechanism for gang-scheduling and could be replaced
+    later on with placement groups. Gang-scheduling must occur because
+    otherwise another concurrent group could be placed on this node.
+
+    Right now, the only resources that are explicitly propogated to
+    underlying colocated workers are cuda visible devices.
+    """
 
     def __init__(self, num_workers: int, use_gpu: bool):
         self.num_workers = num_workers
@@ -71,12 +83,17 @@ class NodeColocator:
             assert len(gpu_ids) == num_workers, gpu_ids
         self.workers = []
 
-    def create_workers(self, trainable: object, config: dict, logdir: Callable):
+    def create_workers(self, trainable: type, config: dict, logdir: str):
         """Colocates a number of workers."""
+        # Create a node ip resource label so that we can pin
+        # all of the child actors to the same node. This ensures
+        # colocation and balanced training.
         node_id = f"node:{ray.services.get_node_ip_address()}"
         remote_cls = ray.remote(trainable)
         remote_cls = remote_cls.options(
             num_cpus=0, num_gpus=0, resources={node_id: 0.01})
+
+        # Create Tune trainable actors.
         self.workers = [
             remote_cls.remote(
                 config=config,
@@ -84,6 +101,8 @@ class NodeColocator:
             for rank in range(self.num_workers)
         ]
 
+        # Propogate cuda visible devices to the underlying
+        # colocated workers.
         gpu_ids = ray.get_gpu_ids(as_str=True)
         for worker, gpu_id in zip(self.workers, gpu_ids):
             worker.update_env_vars.remote({"CUDA_VISIBLE_DEVICES": gpu_id})
@@ -99,22 +118,25 @@ class Coordinator:
     nics = None
     hostnames = None
 
-    def __init__(self, settings):
+    def __init__(
+            self,
+            settings: Settings,
+    ):
         self.settings = settings
         self.hostnames_by_rank = defaultdict(list)
 
     @property
-    def world_size(self):
+    def world_size(self) -> int:
         return sum(len(ranks) for ranks in self.hostnames_by_rank.values())
 
     @property
-    def hoststring(self):
+    def hoststring(self) -> str:
         return ",".join([
             f"{host}:{len(ranks)}"
             for host, ranks in self.hostnames_by_rank.items()
         ])
 
-    def register(self, hostname, world_rank):
+    def register(self, hostname: str, world_rank: int):
         self.hostnames_by_rank[hostname].append(world_rank)
 
     def finalize_registration(self) -> dict:
@@ -130,8 +152,11 @@ class Coordinator:
                     local_size=len(ranks))
         return rank_to_info
 
-    def establish_rendezvous(self):
-        """Creates the rendezvous server and identifies the nics to be used."""
+    def establish_rendezvous(self) -> Dict[str, str]:
+        """Creates the rendezvous server and identifies the nics to be used.
+
+        Returns:
+            Environment variables for each worker. """
 
         # start global rendezvous server and get port that it is listening on
         self.rendezvous = RendezvousServer(self.settings.verbose)
@@ -148,8 +173,6 @@ class Coordinator:
         self.nics = driver_service.get_common_interfaces(
             self.settings, list(self.hostnames_by_rank))
 
-    def get_coordinator_envs(self):
-        # self.print("rendezvous address", str(network.get_driver_ip(self.nics)))
         return {
             # "HOROVOD_LOG_LEVEL": "DEBUG",
             "HOROVOD_GLOO_RENDEZVOUS_ADDR": ray.services.get_node_ip_address(),
@@ -162,6 +185,7 @@ class Coordinator:
 
 
 class _HorovodTrainable(tune.Trainable):
+    """Abstract Trainable class for Horovod."""
     _num_nodes: int = None
     _num_workers_per_node: int = None
     _num_cpus_per_worker: int = None
@@ -203,19 +227,17 @@ class _HorovodTrainable(tune.Trainable):
         # going out of scope.
         self.colocators = colocators
 
-        func_trainable = wrap_function(self.__class__._function)
+        trainable = wrap_function(self.__class__._function)
 
-        node_ids = ray.get([
-            actor.create_workers.remote(func_trainable, config, self.logdir)
-            for actor in colocators
-        ])
+        node_ids = map_blocking(
+            lambda a: a.create_workers.remote(trainable, config, self.logdir),
+            colocators)
         assert len(set(node_ids)) == len(node_ids), (
             "Colocator actors must "
             f"be placed on unique nodes! Got: {node_ids}")
 
         # Obtain handles to the workers
-        workers = ray.get(
-            [actor.get_workers.remote() for actor in colocators])
+        workers = map_blocking(lambda w: w.get_workers.remote(), colocators)
         self.workers = sum(workers, [])
 
         # Update the environment variables.
@@ -224,26 +246,27 @@ class _HorovodTrainable(tune.Trainable):
                 dict(world_rank=i, world_size=self.num_workers))
             for i, w in enumerate(self.workers)
         ])
-        hostnames = ray.get([w.hostname.remote() for w in self.workers])
+        # Get all the hostnames of all workers
+        hostnames = map_blocking(lambda w: w.hostname.remote(), self.workers)
+        # Register each hostname to the coordinator. assumes the hostname
+        # ordering is the same.
         for rank, hostname in enumerate(hostnames):
             self.coordinator.register(hostname, rank)
         all_info = self.coordinator.finalize_registration()
-        # import yaml
-        # print(yaml.dump(all_info, default_flow_style=False))
 
-        # print("Update world info on workers")
         indexed_runners = dict(enumerate(self.workers))
-        for i, local_cross_env_var in all_info.items():
-            indexed_runners[i].update_env_vars.remote(local_cross_env_var)
+        for rank, local_cross_env_var in all_info.items():
+            indexed_runners[rank].update_env_vars.remote(local_cross_env_var)
 
-        self.coordinator.establish_rendezvous()
-        c_envs = self.coordinator.get_coordinator_envs()
-        ray.get([w.update_env_vars.remote(c_envs) for w in self.workers])
+        coordinator_envs = self.coordinator.establish_rendezvous()
+
+        map_blocking(lambda w: w.update_env_vars.remote(coordinator_envs),
+                     self.workers)
 
     def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
-        result = ray.get([w.step.remote() for w in self.workers])[0]
+        result = map_blocking(lambda w: w.step.remote(), self.workers)[0]
         if RESULT_DUPLICATE in result:
             self._finished = True
         return result
@@ -257,24 +280,71 @@ class _HorovodTrainable(tune.Trainable):
 
     def load_checkpoint(self, checkpoint_dir):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
-        return ray.get(
-            w.restore_from_object.remote(checkpoint_obj) for w in self.workers)
+        return map_blocking(
+            lambda w: w.restore_from_object.remote(checkpoint_obj),
+            self.workers)
 
     def stop(self):
-        ray.get([worker.stop.remote() for worker in self.workers])
+        map_blocking(lambda w: w.stop.remote(), self.workers)
 
 
 def DistributedTrainableCreator(func,
                                 use_gpu=False,
                                 num_nodes=1,
-                                num_workers_per_node=4,
-                                num_cpus_per_worker=2,
-                                timeout_s=30):
-    # detect_checkpoint_function(func, abort=True)
-    func.__mixins__ = (HorovodMixin, )
+                                num_workers_per_node=1,
+                                num_cpus_per_worker=1,
+                                timeout_s=30,
+                                replicate_pem=False):
+    """Horovod Tune Converter.
 
-    with open(os.path.expanduser("~/ray_bootstrap_key.pem")) as f:
-        sshkeystr = f.read()
+    Uses gloo as the underlying communication primitive.
+    Fault tolerance is handled at the Tune level and is disregarded
+    at the underlying trial level.
+
+    Args:
+        use_gpu (bool); Whether to allocate a GPU per worker.
+        num_cpus_per_worker (int): Number of CPUs to request
+            from Ray per worker.
+        num_nodes (int): Number of nodes that each trial is expected
+            to use.
+        num_workers_per_node (int): Number of workers to start on each node.
+        timeout_s (int): Seconds for Horovod rendezvous to timeout.
+        replicate_pem (bool): Whether to replicate the underlying Ray
+            cluster ssh key across all nodes. This may be insecure.
+
+
+    Returns:
+        Trainable class that can be passed into `tune.run`.
+
+    Example:
+
+    .. code-block::
+
+        def train(config):
+            horovod.init()
+            horovod.allreduce()
+
+        from ray.tune.integration.horovod import DistributedTrainableCreator
+        trainable_cls = DistributedTrainableCreator(
+            train, num_nodes=1, num_workers_per_node=2, use_gpu=True)
+
+        tune.run(trainable_cls)
+
+
+    Notes:
+        This currently does not support function checkpointing.
+    """
+    func.__mixins__ = (HorovodMixin, )
+    ssh_identity_file = None
+    sshkeystr = None
+
+    if replicate_pem:
+        from ray.tune.cluster_info import get_ssh_key
+        ssh_identity_file = get_ssh_key()
+        if os.path.exists(ssh_identity_file):
+            # For now, we assume that you're on a Ray cluster.
+            with open(ssh_identity_file) as f:
+                sshkeystr = f.read()
 
     class WrappedDistributedTorchTrainable(_HorovodTrainable):
         _function = func
@@ -282,7 +352,7 @@ def DistributedTrainableCreator(func,
         _num_workers_per_node = num_workers_per_node
         _num_cpus_per_worker = num_cpus_per_worker
         _use_gpu = use_gpu
-        _ssh_key_path = os.path.expanduser("~/ray_bootstrap_key.pem")
+        _ssh_identity_file = ssh_identity_file
         _ssh_str = sshkeystr
 
         @property
@@ -290,17 +360,18 @@ def DistributedTrainableCreator(func,
             from filelock import FileLock
             # Very hacky - maybe instead want to recommend
             # an autoscaler mechanism for doing this.
-            with FileLock(self._ssh_key_path + ".lock"):
-                if not os.path.exists(self._ssh_key_path):
-                    with open(self._ssh_key_path, "w") as f:
-                        os.chmod(self._ssh_key_path, 0o600)
-                        f.write(self._ssh_str)
+            if replicate_pem:
+                with FileLock(self._ssh_identity_file + ".lock"):
+                    if not os.path.exists(self._ssh_key_path):
+                        with open(self._ssh_key_path, "w") as f:
+                            os.chmod(self._ssh_key_path, 0o600)
+                            f.write(self._ssh_str)
 
-            return MiniSettings(timeout_s=timeout_s)
+            return MiniSettings(
+                timeout_s=timeout_s, ssh_identity_file=self._ssh_identity_file)
 
         @classmethod
         def default_resource_request(cls, config):
-            head_ip = ray.services.get_node_ip_address()
             extra_gpu = int(num_nodes * num_workers_per_node) * int(use_gpu)
             extra_cpu = int(
                 num_nodes * num_workers_per_node * num_cpus_per_worker)
@@ -309,7 +380,7 @@ def DistributedTrainableCreator(func,
                 cpu=0,
                 gpu=0,
                 extra_cpu=extra_cpu,
-                extra_gpu=extra_gpu,)
+                extra_gpu=extra_gpu,
+            )
 
     return WrappedDistributedTorchTrainable
-
