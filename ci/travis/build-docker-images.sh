@@ -8,6 +8,7 @@ set -x
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR"/../../; pwd)
 DOCKER_USERNAME="raytravisbot"
+WHEEL="$(basename "$ROOT_DIR"/.whl/*cp37m-manylinux*)"
 
 docker_push() {
     if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
@@ -19,13 +20,13 @@ docker_push() {
 build_and_push_tags() {
     # $1 image-name (Dockerfile directory)
     # $2 tag
-    # $3 Extra Build Args
+    # $3 Wheel Arg
     for GPU in "" "-gpu" 
     do 
         BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
         SPECIFIC_NAME="rayproject/$1:$2$GPU"
         LATEST_NAME="rayproject/$1:latest$GPU"
-        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" "$3" -t "$SPECIFIC_NAME" /"$ROOT_DIR"/docker/"$1"
+        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" -t "$SPECIFIC_NAME" /"$ROOT_DIR"/docker/"$1"
         
         docker tag "$SPECIFIC_NAME" "$LATEST_NAME"
 
@@ -69,7 +70,6 @@ if [[ "$TRAVIS" == "true" ]]; then
         fi
     fi
 
-    wheel="$(basename "$ROOT_DIR"/.whl/*cp37m-manylinux*)"
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray/.whl
     cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
@@ -78,7 +78,7 @@ if [[ "$TRAVIS" == "true" ]]; then
     build_or_pull_base_images
 
 
-    build_and_push_tags "ray" "ray:$commit_sha" "--build-arg WHEEL_PATH=.whl/$wheel"
+    build_and_push_tags "ray" "ray:$commit_sha"
 
     build_and_push_tags "autoscaler" "autoscaler:$commit_sha"
  
