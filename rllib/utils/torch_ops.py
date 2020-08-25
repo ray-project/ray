@@ -8,8 +8,8 @@ torch, nn = try_import_torch()
 
 # Limit values suitable for use as close to a -inf logit. These are useful
 # since -inf / inf cause NaNs during backprop.
-FLOAT_MIN = 1e-15
-FLOAT_MAX = 1e15
+FLOAT_MIN = -3.4e38
+FLOAT_MAX = 3.4e38
 
 
 def atanh(x):
