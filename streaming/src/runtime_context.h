@@ -22,7 +22,7 @@ class RuntimeContext {
  public:
   RuntimeContext();
   virtual ~RuntimeContext();
-  inline const StreamingConfig &GetConfig() const { return config_; };
+  inline StreamingConfig &GetConfig() { return config_; };
   void SetConfig(const StreamingConfig &config);
   void SetConfig(const uint8_t *data, uint32_t buffer_len);
   inline RuntimeStatus GetRuntimeStatus() { return runtime_status_; }
