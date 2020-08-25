@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
 from operator import attrgetter
-from typing import Union, List, Any, Callable, Type, Optional
+from typing import Union, List, Any, Callable, Type
 import time
 
 import ray
@@ -100,13 +100,14 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
     else:
         assert False, "func_or_class must be function or class."
 
+    # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedWorker(object):
         def __init__(self,
-                     backend_tag: str,
-                     replica_tag: str,
-                     init_args: Iterable,
+                     backend_tag,
+                     replica_tag,
+                     init_args,
                      backend_config: BackendConfig,
-                     instance_name: Optional[str] = None):
+                     instance_name=None):
             serve.init(name=instance_name)
 
             if is_function:
