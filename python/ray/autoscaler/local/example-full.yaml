@@ -26,7 +26,7 @@ idle_timeout_minutes: 5
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled. Assumes Docker is installed.
 docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    image: "" # e.g., rayproject/ray:0.8.7
     container_name: "" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.

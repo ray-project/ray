@@ -88,6 +88,28 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
+    def handle_resource_demands(self, resource_load_by_shape):
+        """Handle the message.resource_load_by_shape protobuf for the demand
+        based autoscaling. Catch and log all exceptions so this doesn't
+        interfere with the utilization based autoscaler until we're confident
+        this is stable.
+
+        Args:
+            resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
+                in protobuf form or None.
+        """
+        try:
+            if not self.autoscaler:
+                return
+            bundles = []
+            for resource_demand_pb in list(
+                    resource_load_by_shape.resource_demands):
+                request_shape = dict(resource_demand_pb.shape)
+                bundles.append(request_shape)
+            self.autoscaler.request_resources(bundles)
+        except Exception as e:
+            logger.exception(e)
+
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
 
@@ -111,8 +133,8 @@ class Monitor:
                                          available_resources, resource_load)
             else:
                 logger.warning(
-                    "Monitor: "
-                    "could not find ip for client {}".format(client_id))
+                    f"Monitor: could not find ip for client {client_id}")
+            self.handle_resource_demands(message.resource_load_by_shape)
 
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
@@ -343,8 +365,8 @@ if __name__ == "__main__":
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = "The monitor failed with the following error:\n{}".format(
-            traceback_str)
+        message = ("The monitor failed with the "
+                   f"following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e

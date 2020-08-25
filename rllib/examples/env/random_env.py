@@ -52,9 +52,9 @@ class RandomEnv(gym.Env):
             done = True
         # Max not reached yet -> Sample done via p_done.
         else:
-            done = bool(np.random.choice(
-                [True, False], p=[self.p_done, 1.0 - self.p_done]
-            ))
+            done = bool(
+                np.random.choice(
+                    [True, False], p=[self.p_done, 1.0 - self.p_done]))
 
         return self.observation_space.sample(), \
             float(self.reward_space.sample()), done, {}

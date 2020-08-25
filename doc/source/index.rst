@@ -131,7 +131,6 @@ Academic Papers
    walkthrough.rst
    using-ray.rst
    configure.rst
-   ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
@@ -154,6 +153,7 @@ Academic Papers
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/architecture.rst
    serve/package-ref.rst
 
 .. toctree::
@@ -207,6 +207,14 @@ Academic Papers
    iter.rst
    pandas_on_ray.rst
    projects.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Observability
+
+   ray-dashboard.rst
+   ray-metrics.rst
 
 .. toctree::
    :hidden:

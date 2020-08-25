@@ -71,7 +71,7 @@ class DMCEnv(core.Env):
                  domain_name,
                  task_name,
                  task_kwargs=None,
-                 visualize_reward={},
+                 visualize_reward=False,
                  from_pixels=False,
                  height=84,
                  width=84,

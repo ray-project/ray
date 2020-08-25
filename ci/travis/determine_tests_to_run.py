@@ -47,6 +47,7 @@ if __name__ == "__main__":
     RAY_CI_STREAMING_JAVA_AFFECTED = 0
     RAY_CI_DASHBOARD_AFFECTED = 0
     RAY_CI_DOCKER_AFFECTED = 0
+    RAY_CI_DOC_AFFECTED = 0
 
     event_type = None
     for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
@@ -70,6 +71,7 @@ if __name__ == "__main__":
 
         for changed_file in files:
             if changed_file.startswith("python/ray/tune"):
+                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_RLLIB_FULL_AFFECTED = 1
@@ -90,6 +92,8 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/dashboard"):
                 RAY_CI_DASHBOARD_AFFECTED = 1
+            elif changed_file.startswith("dashboard"):
+                RAY_CI_DASHBOARD_AFFECTED = 1
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
@@ -100,11 +104,15 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_DOC_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
+            elif changed_file.startswith("doc/") and changed_file.endswith(
+                    ".py"):
+                RAY_CI_DOC_AFFECTED = 1
             elif any(
                     changed_file.startswith(prefix)
                     for prefix in skip_prefix_list):
@@ -123,6 +131,7 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
+                RAY_CI_DOC_AFFECTED = 1
             elif changed_file.startswith("streaming/src"):
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
@@ -138,6 +147,7 @@ if __name__ == "__main__":
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
+                RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
@@ -151,6 +161,7 @@ if __name__ == "__main__":
         RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
+        RAY_CI_DOC_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
         RAY_CI_STREAMING_CPP_AFFECTED = 1
@@ -174,6 +185,7 @@ if __name__ == "__main__":
         "RAY_CI_RLLIB_FULL_AFFECTED={}".format(RAY_CI_RLLIB_FULL_AFFECTED),
         "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
         "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
+        "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
         "RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED),
         "RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED),
         "RAY_CI_LINUX_WHEELS_AFFECTED={}".format(RAY_CI_LINUX_WHEELS_AFFECTED),

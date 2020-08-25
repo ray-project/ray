@@ -121,7 +121,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process {} to exit.".format(pid))
+        f"Timed out while waiting for process {pid} to exit.")
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -217,7 +217,7 @@ def wait_for_num_actors(num_actors, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-def wait_for_condition(condition_predictor, timeout=30, retry_interval_ms=100):
+def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -394,7 +394,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=10):
+def get_error_message(pub_sub, num, error_type=None, timeout=5):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []

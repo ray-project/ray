@@ -213,8 +213,7 @@ def decode(byte_str, allow_none=False):
         return ""
 
     if not isinstance(byte_str, bytes):
-        raise ValueError(
-            "The argument {} must be a bytes object.".format(byte_str))
+        raise ValueError(f"The argument {byte_str} must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -271,9 +270,9 @@ def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 
     Returns:
-        if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
-            this returns None.
+        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
+            list of strings representing the IDs of the visible GPUs.
+            If it is not set or is set to NoDevFiles, returns empty list.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -286,7 +285,8 @@ def get_cuda_visible_devices():
     if gpu_ids_str == "NoDevFiles":
         return []
 
-    return [int(i) for i in gpu_ids_str.split(",")]
+    # GPU identifiers are given as strings representing integers or UUIDs.
+    return list(gpu_ids_str.split(","))
 
 
 last_set_gpu_ids = None
@@ -296,7 +296,7 @@ def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
-        gpu_ids: This is a list of integers representing GPU IDs.
+        gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
     global last_set_gpu_ids
@@ -455,7 +455,7 @@ def create_and_init_new_worker_log(path, worker_pid):
         # This should always be the first message to appear in the worker's
         # stdout and stderr log files. The string "Ray worker pid:" is
         # parsed in the log monitor process.
-        print("Ray worker pid: {}".format(worker_pid), file=f)
+        print(f"Ray worker pid: {worker_pid}", file=f)
     return f
 
 

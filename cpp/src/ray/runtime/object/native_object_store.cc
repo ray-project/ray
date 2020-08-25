@@ -1,12 +1,14 @@
 
+#include "native_object_store.h"
+
+#include <ray/api/ray_exception.h>
+
 #include <algorithm>
 #include <chrono>
 #include <list>
 #include <thread>
 
-#include <ray/api/ray_exception.h>
 #include "../abstract_ray_runtime.h"
-#include "native_object_store.h"
 
 namespace ray {
 namespace api {

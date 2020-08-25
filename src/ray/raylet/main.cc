@@ -28,6 +28,7 @@ DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
+DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
@@ -43,6 +44,7 @@ DEFINE_string(static_resource_list, "", "The static resource list of this node."
 DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
+DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -81,6 +83,7 @@ int main(int argc, char *argv[]) {
   const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
+  const std::string agent_command = FLAGS_agent_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -88,6 +91,7 @@ int main(int argc, char *argv[]) {
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
+  const int metrics_export_port = FLAGS_metrics_export_port;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -182,6 +186,11 @@ int main(int argc, char *argv[]) {
           RAY_CHECK(0) << "Either Python worker command or Java worker command should be "
                           "provided.";
         }
+        if (!agent_command.empty()) {
+          node_manager_config.agent_command = agent_command;
+        } else {
+          RAY_LOG(DEBUG) << "Agent command is empty.";
+        }
 
         node_manager_config.heartbeat_period_ms =
             RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
@@ -231,7 +240,8 @@ int main(int argc, char *argv[]) {
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-            redis_password, node_manager_config, object_manager_config, gcs_client));
+            redis_password, node_manager_config, object_manager_config, gcs_client,
+            metrics_export_port));
 
         server->Start();
       }));

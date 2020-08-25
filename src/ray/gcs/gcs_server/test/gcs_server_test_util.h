@@ -189,6 +189,20 @@ struct GcsServerMocker {
       }
     }
 
+    // Trigger reply to CancelResourceReserve.
+    bool GrantCancelResourceReserve(bool success = true) {
+      Status status = Status::OK();
+      rpc::CancelResourceReserveReply reply;
+      if (return_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = return_callbacks.front();
+        callback(status, reply);
+        return_callbacks.pop_front();
+        return true;
+      }
+    }
+
     ~MockRayletResourceClient() {}
 
     int num_lease_requested = 0;
@@ -203,10 +217,6 @@ struct GcsServerMocker {
 
     void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
       lease_client_factory_ = std::move(lease_client_factory);
-    }
-
-    void ResetClientFactory(rpc::ClientFactoryFn client_factory) {
-      client_factory_ = std::move(client_factory);
     }
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,

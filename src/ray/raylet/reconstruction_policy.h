@@ -14,15 +14,13 @@
 
 #pragma once
 
+#include <boost/asio.hpp>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 
-#include <boost/asio.hpp>
-
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
-
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {
@@ -33,7 +31,8 @@ using rpc::TaskReconstructionData;
 
 class ReconstructionPolicyInterface {
  public:
-  virtual void ListenAndMaybeReconstruct(const ObjectID &object_id) = 0;
+  virtual void ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                         const rpc::Address &owner_address) = 0;
   virtual void Cancel(const ObjectID &object_id) = 0;
   virtual ~ReconstructionPolicyInterface(){};
 };
@@ -65,7 +64,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// for the task that created the object.
   ///
   /// \param object_id The object to check for reconstruction.
-  void ListenAndMaybeReconstruct(const ObjectID &object_id);
+  void ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                 const rpc::Address &owner_address);
 
   /// Cancel listening for an object. Notifications for the object will be
   /// ignored. This does not cancel a reconstruction attempt that is already in
@@ -102,6 +102,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
     // The objects created by this task that we are listening for notifications for.
     std::unordered_set<ObjectID> created_objects;
+    // Owner addresses of created objects.
+    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
     // The time at which the timer for this task expires, according to this
     // node's steady clock.
     int64_t expires_at;

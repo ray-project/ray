@@ -51,6 +51,7 @@ echo "workload: $workload"
 wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux1_x86_64.whl"
 
 pip install -U pip
+unset RAY_ADDRESS
 source activate tensorflow_p36 && pip install -q -U "$wheel" Click
 source activate tensorflow_p36 && pip install -q "ray[all]" "gym[atari]"
 source activate tensorflow_p36 && python "workloads/$workload.py"
