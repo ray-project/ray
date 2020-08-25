@@ -1731,7 +1731,7 @@ def kill(actor, no_restart=True):
         no_restart (bool): Whether or not this actor should be restarted if
             it's a restartable actor.
     """
-    worker = ray.worker.global_worker
+    worker = global_worker
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
