@@ -668,7 +668,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             with_output=True).decode("utf-8").strip()
         # Checks for the false positive where "true" is in the container name
         return ("true" in output.lower()
-                and "No such object" not in output.lower())
+                and "no such object" not in output.lower())
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
@@ -695,7 +695,7 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
-            assert image, "Image must be included in config if "
+            assert image, "Image must be included in config if " + \
             "pull_before_run is specified"
 
             self.run("docker pull {}".format(image), run_env="host")
@@ -711,10 +711,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 with_output=True,
                 run_env="host").decode("utf-8").strip()
             if running_image != image:
-                logger.error(
-                    "A container with name {} ".format(self.container_name) +
-                    "is running image {} instead ".format(running_image) +
-                    "of {} (which was provided in the YAML".format(image))
+                logger.error(f"A container with name {self.container_name} " +
+                             f"is running image {running_image} instead " +
+                             f"of {image} (which was provided in the YAML")
 
         # Copy bootstrap config & key over
         if as_head:
