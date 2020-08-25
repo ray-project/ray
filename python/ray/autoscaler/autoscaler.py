@@ -381,8 +381,7 @@ class StandardAutoscaler:
             initialization_commands=[],
             setup_commands=[],
             ray_start_commands=with_head_node_ip(
-                self.config["worker_start_ray_commands"]
-            ),
+                self.config["worker_start_ray_commands"]),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
@@ -396,8 +395,8 @@ class StandardAutoscaler:
         if TAG_RAY_USER_NODE_TYPE in node_tags:
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
             if node_type not in self.available_node_types:
-                raise ValueError("Unknown node type tag: {}.".format(
-                    node_type))
+                raise ValueError(
+                    "Unknown node type tag: {}.".format(node_type))
             node_specific_config = self.available_node_types[node_type]
             if key in node_specific_config:
                 return node_specific_config[key].copy()
@@ -406,7 +405,8 @@ class StandardAutoscaler:
     def _get_worker_initialization_commands(self, node_id):
         from ray.autoscaler.docker import docker_pull_if_needed
         default = self.config["initialization_commands"]
-        node_specific = self._get_node_specific_key(node_id, "initialization_commands")
+        node_specific = self._get_node_specific_key(node_id,
+                                                    "initialization_commands")
         if node_specific:
             docker_pull_if_needed(self.config, node_specific)
             return node_specific

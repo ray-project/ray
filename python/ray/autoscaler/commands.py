@@ -454,6 +454,7 @@ def warn_about_bad_start_command(start_commands):
             "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
             "to ray start in the head_start_ray_commands section.")
 
+
 def _get_head_specific_key(config, key):
     node_type = config.get("head_node_type")
     if node_type:
@@ -465,6 +466,7 @@ def _get_head_specific_key(config, key):
             return node_specific.copy()
     return None
 
+
 def _get_head_initialization_commands(config):
     from ray.autoscaler.docker import docker_pull_if_needed
     default = config["initialization_commands"]
@@ -475,6 +477,7 @@ def _get_head_initialization_commands(config):
     else:
         return default
 
+
 def _get_head_setup_commands(config):
     from ray.autoscaler.docker import dockerize_head_setup_if_needed
     default = config["head_setup_commands"]
@@ -484,6 +487,7 @@ def _get_head_setup_commands(config):
         return node_specific
     else:
         return default
+
 
 def get_or_create_head_node(config,
                             config_file,
