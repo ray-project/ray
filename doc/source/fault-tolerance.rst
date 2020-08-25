@@ -41,6 +41,8 @@ You can experiment with this behavior by running the following code.
         except ray.exceptions.RayWorkerError:
             print('FAILURE')
 
+.. _actor-fault-tolerance:
+
 Actors
 ------
 

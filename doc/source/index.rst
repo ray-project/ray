@@ -153,6 +153,7 @@ Academic Papers
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/architecture.rst
    serve/package-ref.rst
 
 .. toctree::

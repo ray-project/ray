@@ -91,7 +91,7 @@ class RayTaskError(RayError):
             def __str__(self):
                 return error_msg
 
-        name = "RayTaskError({})".format(cause_cls.__name__)
+        name = f"RayTaskError({cause_cls.__name__})"
         cls.__name__ = name
         cls.__qualname__ = name
 
@@ -104,9 +104,10 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append("{}{}{} (pid={}, ip={})".format(
-                    colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
-                    self.pid, self.ip))
+                out.append(f"{colorama.Fore.CYAN}"
+                           f"{self.proctitle}"
+                           f"{colorama.Fore.RESET} "
+                           f"(pid={self.pid}, ip={self.ip})")
             elif in_worker:
                 in_worker = False
             elif "ray/worker.py" in line or "ray/function_manager.py" in line:
@@ -144,7 +145,7 @@ class RayletError(RayError):
         self.client_exc = client_exc
 
     def __str__(self):
-        return "The Raylet died with this message: {}".format(self.client_exc)
+        return f"The Raylet died with this message: {self.client_exc}"
 
 
 class ObjectStoreFullError(RayError):
@@ -182,13 +183,13 @@ class UnreconstructableError(RayError):
 
     def __str__(self):
         return (
-            "Object {} is lost (either LRU evicted or deleted by user) and "
+            f"Object {self.object_ref.hex()} is lost "
+            "(either LRU evicted or deleted by user) and "
             "cannot be reconstructed. Try increasing the object store "
             "memory available with ray.init(object_store_memory=<bytes>) "
             "or setting object store limits with "
-            "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                self.object_ref.hex(),
-                "https://docs.ray.io/en/latest/memory-management.html"))
+            "ray.remote(object_store_memory=<bytes>). "
+            "See also: https://docs.ray.io/en/latest/memory-management.html")
 
 
 class RayTimeoutError(RayError):
