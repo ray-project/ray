@@ -389,7 +389,7 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
-    def _get_node_type_specific_commands(self, node_id : str, commands_key : str):
+    def _get_node_type_specific_commands(self, node_id: str, commands_key: str):
         commands = self.config[commands_key]
         node_tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in node_tags:
