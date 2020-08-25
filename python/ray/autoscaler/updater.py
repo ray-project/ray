@@ -287,10 +287,10 @@ class NodeUpdater:
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
 
-        # When resuming from a stopped instance the runtime_hash may be the
-        # same, but the container will not be started.
-        if isinstance(self.cmd_runner, DockerCommandRunner):
-            self.cmd_runner.run_init(self.is_head_node)
+            # When resuming from a stopped instance the runtime_hash may be the
+            # same, but the container will not be started.
+            if isinstance(self.cmd_runner, DockerCommandRunner):
+                self.cmd_runner.run_init(self.is_head_node)
 
         else:
             cli_logger.print(
