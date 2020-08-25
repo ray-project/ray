@@ -146,7 +146,7 @@ thus just use the same ``Trainable`` for the replay run.
         stop={"training_iteration": 100})
 
 DCGAN with PBT
-----------------------------
+--------------
 
 The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
 models via a training paradigm consisting of two competing modules – a generator and a
