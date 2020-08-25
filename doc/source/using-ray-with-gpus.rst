@@ -1,4 +1,4 @@
-tGPU Support
+GPU Support
 ===========
 
 GPUs are critical for many machine learning applications. Ray enables remote

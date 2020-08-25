@@ -481,7 +481,6 @@ def init(
         logging_format=ray_constants.LOGGER_FORMAT,
         enable_object_reconstruction=False,
         # The following are unstable parameters:
-        _job_id=None,
         _redis_max_memory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
@@ -570,7 +569,6 @@ def init(
             thrown.
 
     The following args are unstable and their use is discouraged:
-        _job_id: The ID of this job.
         _redis_max_memory: Redis max memory.
         _node_ip_address (str): The IP address of the node that we are on.
         _driver_object_store_memory (int): Limit the amount of memory the
@@ -744,7 +742,7 @@ def init(
         log_to_driver=_log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
-        job_id=_job_id,
+        job_id=None,
         job_config=job_config)
 
     for hook in _post_init_hooks:
