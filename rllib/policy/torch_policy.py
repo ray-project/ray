@@ -199,7 +199,7 @@ class TorchPolicy(Policy):
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
             seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None

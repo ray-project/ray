@@ -135,16 +135,20 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        self.inference_view_requirements.update(
-            dict(
-                **{
-                    SampleBatch.OBS: ViewRequirement(shift=0),
-                    SampleBatch.PREV_REWARDS: ViewRequirement(
-                        SampleBatch.REWARDS, shift=-1),
-                    SampleBatch.PREV_ACTIONS: ViewRequirement(
-                        SampleBatch.ACTIONS, space=self.action_space,
-                        shift=-1),
-                }))
+        # Add prev-action/rewards to view-requirements (if
+        if self.use_prev_action_reward:
+            self.inference_view_requirements.update(
+                dict(
+                    **{
+                        #SampleBatch.OBS: ViewRequirement(shift=0),
+                        SampleBatch.PREV_REWARDS: ViewRequirement(
+                            SampleBatch.REWARDS, shift=-1),
+                        SampleBatch.PREV_ACTIONS: ViewRequirement(
+                            SampleBatch.ACTIONS, space=self.action_space,
+                            shift=-1),
+                    }))
+        # Add state inputs/outputs to Model's view-requirements (LSTM has two
+        # hidden states).
         for i in range(2):
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(

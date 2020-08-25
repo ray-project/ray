@@ -61,7 +61,6 @@ def pad_batch_to_sequences_of_same_size(
     """
     if _use_trajectory_view_api:
         if batch.time_major is not None:
-            batch["seq_lens"] = torch.tensor(batch.seq_lens)
             t = 0 if batch.time_major else 1
             for col in batch.data.keys():
                 # Cut time-dim from states.
@@ -74,6 +73,7 @@ def pad_batch_to_sequences_of_same_size(
                         batch[col] = batch[col][:batch.max_seq_len]
                     batch[col] = batch[col].reshape((-1, ) +
                                                     batch[col].shape[2:])
+            batch["seq_lens"] = torch.tensor(batch.seq_lens)
         return
 
     if batch_divisibility_req > 1:

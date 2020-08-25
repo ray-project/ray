@@ -1,9 +1,11 @@
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork as TorchRNN
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
@@ -91,15 +93,30 @@ class TorchRNNModel(TorchRNN, nn.Module):
         self.obs_size = get_preprocessor(obs_space)(obs_space).size
         self.fc_size = fc_size
         self.lstm_state_size = lstm_state_size
+        self.time_major = self.model_config.get("_time_major", False)
 
         # Build the Module from fc + LSTM + 2xfc (action + value outs).
         self.fc1 = nn.Linear(self.obs_size, self.fc_size)
         self.lstm = nn.LSTM(
-            self.fc_size, self.lstm_state_size, batch_first=True)
+            self.fc_size, self.lstm_state_size,
+            batch_first=not self.time_major)
         self.action_branch = nn.Linear(self.lstm_state_size, num_outputs)
         self.value_branch = nn.Linear(self.lstm_state_size, 1)
         # Holds the current "base" output (before logits layer).
         self._features = None
+
+        # Add state inputs/outputs to Model's view-requirements (LSTM has two
+        # hidden states).
+        for i in range(2):
+            self.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
+
 
     @override(ModelV2)
     def get_initial_state(self):
@@ -117,11 +134,12 @@ class TorchRNNModel(TorchRNN, nn.Module):
 
     @override(TorchRNN)
     def forward_rnn(self, inputs, state, seq_lens):
-        """Feeds `inputs` (B x T x ..) through the Gru Unit.
+        """Feeds `inputs` (B x T x ..) through the LSTM Unit.
 
         Returns the resulting outputs as a sequence (B x T x ...).
         Values are stored in self._cur_value in simple (B) shape (where B
         contains both the B and T dims!).
+        Switch B and T above in case self.time_major=True.
 
         Returns:
             NN Outputs (B x T x ...) as sequence.
