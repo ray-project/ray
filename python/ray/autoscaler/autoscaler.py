@@ -198,12 +198,12 @@ class StandardAutoscaler:
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler and self.resource_demand_vector:
-            # TODO(ekl) include head node in the node list
-            instances = (self.resource_demand_scheduler.get_nodes_to_launch(
-                nodes, self.pending_launches.breakdown(),
+            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
+                self.provider.non_terminated_nodes(tag_filters={}),
+                self.pending_launches.breakdown(),
                 self.resource_demand_vector))
             # TODO(ekl) also enforce max launch concurrency here?
-            for node_type, count in instances:
+            for node_type, count in to_launch:
                 self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
@@ -288,7 +288,6 @@ class StandardAutoscaler:
                  [
                      new_config["worker_setup_commands"],
                      new_config["worker_start_ray_commands"],
-                     new_config.get("available_node_types", {})
                  ],
                  generate_file_mounts_contents_hash=sync_continuously,
              )
@@ -390,38 +389,17 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
-    def _get_node_specific_key(self, node_id, key):
+    def _get_node_type_specific_commands(self, node_id : str, commands_key : str):
+        commands = self.config[commands_key]
         node_tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in node_tags:
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
             if node_type not in self.available_node_types:
-                raise ValueError(
-                    "Unknown node type tag: {}.".format(node_type))
+                raise ValueError(f"Unknown node type tag: {node_type}.")
             node_specific_config = self.available_node_types[node_type]
-            if key in node_specific_config:
-                return node_specific_config[key].copy()
-        return None
-
-    def _get_worker_initialization_commands(self, node_id):
-        from ray.autoscaler.docker import docker_pull_if_needed
-        default = self.config["initialization_commands"]
-        node_specific = self._get_node_specific_key(node_id,
-                                                    "initialization_commands")
-        if node_specific:
-            docker_pull_if_needed(self.config, node_specific)
-            return node_specific
-        else:
-            return default
-
-    def _get_worker_setup_commands(self, node_id):
-        from ray.autoscaler.docker import dockerize_worker_setup_if_needed
-        default = self.config["worker_setup_commands"]
-        node_specific = self._get_node_specific_key(node_id, "setup_commands")
-        if node_specific:
-            dockerize_worker_setup_if_needed(self.config, node_specific)
-            return node_specific
-        else:
-            return default
+            if commands_key in node_specific_config:
+                commands = node_specific_config[commands_key]
+        return commands
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
@@ -436,10 +414,10 @@ class StandardAutoscaler:
             init_commands = []
             ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_worker_setup_commands(node_id)
+            init_commands = self._get_node_type_specific_commands(node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self._get_worker_setup_commands(node_id)
+            init_commands = self._get_node_type_specific_commands(node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
         return (node_id, init_commands, ray_commands)
@@ -454,7 +432,7 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self._get_worker_initialization_commands(node_id)),
+                self._get_node_type_specific_commands(node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
@@ -521,8 +499,9 @@ class StandardAutoscaler:
             resources: Either a list of resource bundles or a single resource
                 demand dictionary.
         """
-        logger.info(
-            "StandardAutoscaler: resource_requests={}".format(resources))
+        if resources:
+            logger.info(
+                "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:

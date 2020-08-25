@@ -8,61 +8,21 @@ except ImportError:  # py2
 logger = logging.getLogger(__name__)
 
 
-def docker_pull_if_needed(config, commands):
-    if "docker" not in config:
-        return
-    if config["docker"].get("pull_before_run", True) is False:
-        return
-
-    docker_image = config["docker"].get("image")
-    docker_pull_cmd = "docker pull {}".format(docker_image)
-    commands.append(docker_pull_cmd)
-
-
-def dockerize_worker_setup_if_needed(config, commands):
-    if "docker" not in config:
-        return config
-
-    docker_image = config["docker"].get("image")
-    ssh_user = config["auth"]["ssh_user"]
-    worker_docker_image = config["docker"].get("worker_image", docker_image)
-    docker_mounts = {dst: dst for dst in config["file_mounts"]}
-    cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
-    worker_run_options = config["docker"].get("worker_run_options", [])
-    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
-                                            run_options + worker_run_options)
-    return worker_docker_start + (with_docker_exec(
-        commands, container_name=cname))
-
-
-def dockerize_head_setup_if_needed(config, commands):
-    docker_image = config["docker"].get("image")
-    ssh_user = config["auth"]["ssh_user"]
-    head_docker_image = config["docker"].get("head_image", docker_image)
-    docker_mounts = {dst: dst for dst in config["file_mounts"]}
-    cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
-    head_run_options = config["docker"].get("head_run_options", [])
-    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
-                                          run_options + head_run_options)
-
-    return head_docker_start + (with_docker_exec(
-        config["head_setup_commands"], container_name=cname))
-
-
 def dockerize_if_needed(config):
     if "docker" not in config:
         return config
 
-    docker_pull_if_needed(config, config["initialization_commands"])
-
-    cname = config["docker"].get("container_name")
     docker_image = config["docker"].get("image")
+    docker_pull = config["docker"].get("pull_before_run", True)
+    cname = config["docker"].get("container_name")
+    run_options = config["docker"].get("run_options", [])
+
     head_docker_image = config["docker"].get("head_image", docker_image)
+    head_run_options = config["docker"].get("head_run_options", [])
+
     worker_docker_image = config["docker"].get("worker_image", docker_image)
+    worker_run_options = config["docker"].get("worker_run_options", [])
+
     if not docker_image and not (head_docker_image and worker_docker_image):
         if cname:
             logger.warning(
@@ -71,20 +31,40 @@ def dockerize_if_needed(config):
         return config
     else:
         assert cname, "Must provide container name!"
+    ssh_user = config["auth"]["ssh_user"]
+    docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
-    config["head_setup_commands"] = dockerize_head_setup_if_needed(
-        config, config["head_setup_commands"])
+    if docker_pull:
+        docker_pull_cmd = "docker pull {}".format(docker_image)
+        config["initialization_commands"].append(docker_pull_cmd)
+        for node_type_config in config.get():
+            # Set node_type_config["initialization_commands"]
+            pass
+
+    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
+                                          docker_mounts, cname,
+                                          run_options + head_run_options)
+
+    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
+                                            docker_mounts, cname,
+                                            run_options + worker_run_options)
+
+    config["head_setup_commands"] = head_docker_start + (with_docker_exec(
+        config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = dockerize_worker_setup_if_needed(
-        config, config["worker_setup_commands"])
+    config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
+        config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
         env_vars=["RAY_HEAD_IP"])
 
+    for node_type_config in config.get():
+        # Set node_type_config["setup_commands"]
+        pass
     return config
 
 
