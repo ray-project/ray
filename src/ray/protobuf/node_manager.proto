@@ -139,6 +139,16 @@ message FormatGlobalMemoryInfoReply {
   string memory_summary = 1;
 }
 
+message RequestObjectSpillageRequest {
+  // ObjectID to spill.
+  bytes object_id = 1;
+}
+
+message RequestObjectSpillageReply {
+  // Whether the object spilling was successful or not.
+  bool success = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -169,4 +179,7 @@ service NodeManagerService {
   // Get global object reference stats in formatted form.
   rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
       returns (FormatGlobalMemoryInfoReply);
+  // Ask the raylet to spill an object to external storage.
+  rpc RequestObjectSpillage(RequestObjectSpillageRequest)
+      returns (RequestObjectSpillageReply);
 }

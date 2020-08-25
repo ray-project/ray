@@ -186,7 +186,7 @@ class NodeProvider:
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError
