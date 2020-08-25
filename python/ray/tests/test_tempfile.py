@@ -5,7 +5,6 @@ import time
 
 import pytest
 import ray
-from ray.cluster_utils import Cluster
 from ray.test_utils import check_call_ray
 
 
