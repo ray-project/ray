@@ -80,7 +80,7 @@ from ray.state import (jobs, nodes, actors, objects, timeline,
                        available_resources)  # noqa: E402
 from ray.worker import (  # noqa: F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
-    disconnect, get, get_actor, get_gpu_ids, get_resource_ids, get_webui_url,
+    disconnect, get, get_actor, get_gpu_ids, get_resource_ids, get_dashboard_url,
     init, is_initialized, put, kill, register_custom_serializer, remote,
     shutdown, show_in_webui, wait,
 )  # noqa: E402
@@ -121,7 +121,7 @@ __all__ = [
     "get_actor",
     "get_gpu_ids",
     "get_resource_ids",
-    "get_webui_url",
+    "get_dashboard_url",
     "init",
     "internal",
     "is_initialized",

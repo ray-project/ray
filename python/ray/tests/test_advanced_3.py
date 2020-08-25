@@ -464,13 +464,6 @@ def test_put_pins_object(ray_start_object_store_memory):
     assert not ray.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary))
 
-    # weakref put
-    y_id = ray.put(obj, weakref=True)
-    for _ in range(10):
-        ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(y_id)
-
 
 def test_decorated_function(ray_start_regular):
     def function_invocation_decorator(f):

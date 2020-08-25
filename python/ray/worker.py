@@ -434,13 +434,13 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-def get_webui_url():
-    """Get the URL to access the web UI.
+def get_dashboard_url():
+    """Get the URL to access the Ray dashboard.
 
-    Note that the URL does not specify which node the web UI is on.
+    Note that the URL does not specify which node the dashboard is on.
 
     Returns:
-        The URL of the web UI as a string.
+        The URL of the dashboard as a string.
     """
     if _global_node is None:
         raise RuntimeError("Ray has not been initialized/connected.")
@@ -1491,7 +1491,7 @@ def show_in_webui(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
-def get(object_refs, timeout=None):
+def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ref is
@@ -1564,17 +1564,13 @@ def get(object_refs, timeout=None):
         return values
 
 
-def put(value, weakref=False):
+def put(value):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
-        weakref: If set, allows the object to be evicted while a reference
-            to the returned ID exists. You might want to set this if putting
-            a lot of objects that you might not need in the future.
-            It allows Ray to more aggressively reclaim memory.
 
     Returns:
         The object ref assigned to this value.
@@ -1583,7 +1579,7 @@ def put(value, weakref=False):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, pin_object=not weakref)
+            object_ref = worker.put_object(value, pin_object=True)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1596,7 +1592,7 @@ def put(value, weakref=False):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, num_returns=1, timeout=None):
+def wait(object_refs, *, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1704,7 +1700,7 @@ def get_actor(name):
     return ray.util.named_actors._get_actor(name)
 
 
-def kill(actor, no_restart=True):
+def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1730,7 +1726,7 @@ def kill(actor, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, force=False):
+def cancel(object_ref, *, force=False):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If

@@ -74,12 +74,12 @@ ray.get_resource_ids
 
 .. autofunction:: ray.get_resource_ids
 
-.. _ray-get_webui_url-ref:
+.. _ray-get_dashboard_url-ref:
 
-ray.get_webui_url
+ray.get_dashboard_url
 ~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.get_webui_url
+.. autofunction:: ray.get_dashboard_url
 
 .. _ray-shutdown-ref:
 

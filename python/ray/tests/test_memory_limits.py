@@ -48,7 +48,8 @@ class TestMemoryLimits(unittest.TestCase):
     def testTooLargeAllocation(self):
         try:
             ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
-            ray.put(np.zeros(50 * MB, dtype=np.uint8), weakref=True)
+            ray.worker.global_worker.put_object(
+                np.zeros(50 * MB, dtype=np.uint8), pin_object=False)
             self.assertRaises(
                 OBJECT_TOO_LARGE,
                 lambda: ray.put(np.zeros(200 * MB, dtype=np.uint8)))
