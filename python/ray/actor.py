@@ -413,7 +413,7 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False,
+                lifetime="default",
                 placement_group=None,
                 placement_group_bundle_index=-1):
         """Create an actor.
@@ -438,8 +438,13 @@ class ActorClass:
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
-            name: The globally unique name for the actor.
-            detached: DEPRECATED.
+            name: The globally unique name for the actor, which can be used
+                to retrieve the actor via ray.get_actor(name) as long as the
+                actor is still alive.
+            lifetime: Either "default", which specifies the actor will fate
+                share with its creator and will be deleted once its refcount
+                drops to zero, or "detached", which means the actor will live
+                as a global object independent of the creator.
             placement_group: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
@@ -476,10 +481,6 @@ class ActorClass:
             raise RuntimeError("Actors cannot be created before ray.init() "
                                "has been called.")
 
-        if detached:
-            logger.warning("The detached flag is deprecated. To create a "
-                           "detached actor, use the name parameter.")
-
         if name is not None:
             if not isinstance(name, str):
                 raise TypeError(
@@ -502,9 +503,13 @@ class ActorClass:
                     f"The name {name} is already taken. Please use "
                     "a different name or get the existing actor using "
                     f"ray.get_actor('{name}')")
+
+        if lifetime == "default":
+            detached = False
+        elif lifetime == "detached":
             detached = True
         else:
-            detached = False
+            raise ValueError("lifetime must be either 'default' or 'detached'")
 
         if placement_group is None:
             placement_group = PlacementGroup.empty()
