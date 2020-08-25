@@ -18,8 +18,7 @@ static int node_manager_port;
 
 class StreamingQueueTest : public StreamingQueueTestBase {
  public:
-  StreamingQueueTest()
-      : StreamingQueueTestBase(1, node_manager_port) {}
+  StreamingQueueTest() : StreamingQueueTestBase(1, node_manager_port) {}
 };
 
 class StreamingWriterTest : public StreamingQueueTestBase {
