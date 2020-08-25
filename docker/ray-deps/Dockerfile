@@ -1,4 +1,5 @@
-FROM rayproject/base-deps:latest
+ARG GPU=""
+FROM rayproject/base-deps:latest"$GPU"
 ARG WHEEL_PATH
 # For Click
 ENV LC_ALL=C.UTF-8

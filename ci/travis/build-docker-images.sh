@@ -16,23 +16,45 @@ docker_push() {
         echo "Skipping docker push because it's in PR environment."
     fi
 }
+build_and_push_tags() {
+    # $1 image-name (Dockerfile directory)
+    # $2 tag
+    # $3 Extra Build Args
+    for GPU in "" "-gpu" 
+    do 
+        BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
+        SPECIFIC_NAME="rayproject/$1:$2$GPU"
+        LATEST_NAME="rayproject/$1:latest$GPU"
+        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" "$3" -t "$SPECIFIC_NAME" /"$ROOT_DIR"/docker/"$1"
+        
+        docker tag "$SPECIFIC_NAME" "$LATEST_NAME"
 
-build_or_pull_base_deps() {
+        docker_push "$SPECIFIC_NAME"
+        docker_push "$LATEST_NAME"
+    done
+}
+
+build_or_pull_base_images() {
     docker pull rayproject/base-deps:latest
+    TAG=$(date +%F_%H-00)
+    
     age=$(docker inspect -f '{{ .Created }}' rayproject/base-deps:latest)
-    tag=$(date +%F_%H)
-    # Build if older than 1 week or updated in this PR
-    if [[  $(date -d "-7 days" +%F) > $(date -d "$age" +%F) || "$RAY_CI_DOCKER_AFFECTED" == "1" ]]; then
-        docker image rm rayproject/base-deps:latest
-        docker build -t rayproject/base-deps docker/base-deps
+    # Build if older than 2 weeks, files have been edited in this PR OR branch release
+    if [[  $(date -d "-14 days" +%F) > $(date -d "$age" +%F) || \
+        "$RAY_CI_DOCKER_AFFECTED" == "1" || \
+        "$RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" == "1" || \
+         "$TRAVIS_BRANCH" != "master"
+        ]]; then
+        cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray-deps/.whl
+        for IMAGE in "base-deps" "ray-deps"
+        do
+            build_and_push_tags "$IMAGE" "$TAG"
+        done
+
     else
-        echo "Just pulling an image"
+        echo "Just pulling images"
     fi
 
-    docker tag rayproject/base-deps rayproject/base-deps:"$tag"
-    docker tag rayproject/base-deps rayproject/base-deps:latest
-    docker_push rayproject/base-deps:"$tag"
-    docker_push rayproject/base-deps:latest
 }
 
 # We will only build and push when we are building branch build.
@@ -53,35 +75,27 @@ if [[ "$TRAVIS" == "true" ]]; then
     cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
     cp "$ROOT_DIR"/python/requirements_autoscaler.txt "$ROOT_DIR"/docker/autoscaler/requirements_autoscaler.txt
 
-    build_or_pull_base_deps
+    build_or_pull_base_images
 
-    docker build \
-        --build-arg WHEEL_PATH=".whl/$wheel" \
-        -t rayproject/ray \
-        "$ROOT_DIR"/docker/ray
 
-    docker build \
-        -t rayproject/autoscaler:"$commit_sha" \
-        "$ROOT_DIR"/docker/autoscaler
+    build_and_push_tags "ray" "ray:$commit_sha" "--build-arg WHEEL_PATH=.whl/$wheel"
+
+    build_and_push_tags "autoscaler" "autoscaler:$commit_sha"
  
-    docker tag rayproject/ray rayproject/ray:"$commit_sha" 
-    docker_push rayproject/ray:"$commit_sha"
-    docker_push rayproject/autoscaler:"$commit_sha"
-
 
     # We have a branch build, e.g. release/v0.7.0
     if [[ "$TRAVIS_BRANCH" != "master" ]]; then
        # Replace / in branch name to - so it is legal tag name
        normalized_branch_name=$(echo "$TRAVIS_BRANCH" | sed -e "s/\//-/")
-       docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:"$normalized_branch_name"
-       docker tag rayproject/ray:"$commit_sha" rayproject/ray:"$normalized_branch_name"
-       docker_push rayproject/autoscaler:"$normalized_branch_name"
-       docker_push rayproject/ray:"$normalized_branch_name"
-    else
-       docker tag rayproject/autoscaler:"$commit_sha" rayproject/autoscaler:latest
-       docker tag rayproject/ray:"$commit_sha" rayproject/ray:latest
-       docker_push rayproject/autoscaler:latest
-       docker_push rayproject/ray:latest
+
+       for IMAGE in "base-deps" "ray-deps" "ray" "autoscaler"
+       do
+            for GPU in "" "-gpu"
+            do
+                docker tag "rayproject/$IMAGE:latest$GPU" "rayproject/$IMAGE:$normalized_branch_name$GPU"
+                docker_push  "rayproject/$IMAGE:$normalized_branch_name$GPU"
+            done
+       done 
     fi
 fi
 

@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
-ARG BASE_IMAGE=ubuntu:focal
+ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
