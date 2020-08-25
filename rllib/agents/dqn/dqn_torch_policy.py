@@ -223,8 +223,8 @@ def build_q_losses(policy, model, _, train_batch):
 
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
-        q_tp1_using_online_net, q_logits_tp1_using_online_net, \
-            q_dist_tp1_using_online_net = compute_q_values(
+        q_tp1_using_online_net, _q_logits_tp1_using_online_net, \
+            _q_dist_tp1_using_online_net = compute_q_values(
                 policy,
                 policy.q_model,
                 train_batch[SampleBatch.NEXT_OBS],
@@ -233,20 +233,15 @@ def build_q_losses(policy, model, _, train_batch):
         q_tp1_best_using_online_net = torch.argmax(q_tp1_using_online_net, 1)
         q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
                                                  policy.action_space.n)
-        q_tp1_best = torch.sum(
-            torch.where(q_tp1 > -float("inf"), q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
-            q_tp1_best_one_hot_selection, 1)
-        q_probs_tp1_best = torch.sum(
-            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
     else:
         q_tp1_best_one_hot_selection = F.one_hot(
             torch.argmax(q_tp1, 1), policy.action_space.n)
-        q_tp1_best = torch.sum(
-            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
-            q_tp1_best_one_hot_selection, 1)
-        q_probs_tp1_best = torch.sum(
-            q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
+    q_tp1_best = torch.sum(
+        torch.where(q_tp1 > -float("inf"), q_tp1,
+                    torch.tensor(0.0, device=policy.device)) *
+        q_tp1_best_one_hot_selection, 1)
+    q_probs_tp1_best = torch.sum(
+        q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
     policy.q_loss = QLoss(
         q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
