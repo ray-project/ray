@@ -73,11 +73,16 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config) {
       nullptr,                                // task_execution_callback
       nullptr,                                // check_signals
       nullptr,                                // gc_collect
+      nullptr,                                // spill_objects
+      nullptr,                                // restore_spilled_objects
       nullptr,                                // get_lang_stack
       nullptr,                                // kill_main
       true,                                   // ref_counting_enabled
       false,                                  // is_local_mode
       1,                                      // num_workers
+      nullptr,                                // terminate_asyncio_thread
+      "",                                     // serialized_job_config
+      -1,                                     // metrics_agent_port
   };
   CoreWorkerProcess::Initialize(options);
 }
