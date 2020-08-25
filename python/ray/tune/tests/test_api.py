@@ -33,10 +33,12 @@ from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
+        self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
+        shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
         """Checks logging is the same between APIs.
@@ -546,6 +548,44 @@ class TrainableFunctionApiTest(unittest.TestCase):
             tune.run(train, stop=CustomStopper().stop)
         with self.assertRaises(TuneError):
             tune.run(train, stop=stop)
+
+    def testCustomTrialDir(self):
+        def train(config):
+            for i in range(10):
+                tune.report(test=i)
+
+        custom_name = "TRAIL_TRIAL"
+
+        def custom_trial_dir(trial):
+            return custom_name
+
+        trials = tune.run(
+            train,
+            config={
+                "t1": tune.grid_search([1, 2, 3])
+            },
+            trial_dirname_creator=custom_trial_dir,
+            local_dir=self.tmpdir).trials
+        logdirs = {t.logdir for t in trials}
+        assert len(logdirs) == 3
+        assert all(custom_name in dirpath for dirpath in logdirs)
+
+    def testTrialDirRegression(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        trials = tune.run(
+            train,
+            config={
+                "t1": tune.grid_search([1, 2, 3])
+            },
+            local_dir=self.tmpdir).trials
+        logdirs = {t.logdir for t in trials}
+        for i in [1, 2, 3]:
+            assert any(f"t1={i}" in dirpath for dirpath in logdirs)
+        for t in trials:
+            assert any(t.trainable_name in dirpath for dirpath in logdirs)
 
     def testEarlyReturn(self):
         def train(config, reporter):

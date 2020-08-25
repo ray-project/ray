@@ -507,7 +507,7 @@ class ActorClass:
             detached = False
 
         if placement_group is None:
-            placement_group = PlacementGroup(ray.PlacementGroupID.nil(), -1)
+            placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
