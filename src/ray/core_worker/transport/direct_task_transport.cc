@@ -76,22 +76,28 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        scheduling_key_entry.task_queue_.push_back(task_spec);
-        if (scheduling_key_entry.tot_tasks_in_flight <
-            scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
+        scheduling_key_entry.task_queue.push_back(task_spec);
+        if (scheduling_key_entry.total_tasks_in_flight <
+            scheduling_key_entry.active_workers.size() *
+                max_tasks_in_flight_per_worker_) {
           // The pipelines to the current workers are not full yet, so we don't need more
           // workers.
 
           // Find a worker with a number of tasks in flight that is less than the maximum
-          // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
-          // that worker
-          for (auto active_worker_addr : scheduling_key_entry.active_workers_) {
+          // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks
+          // to that worker
+          for (auto active_worker_addr : scheduling_key_entry.active_workers) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-            if (lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
+            if (lease_entry.tasks_in_flight < max_tasks_in_flight_per_worker_) {
               OnWorkerIdle(active_worker_addr, scheduling_key, false,
-                           lease_entry.assigned_resources_);
+                           lease_entry.assigned_resources);
+              // If we find a worker with a non-full pipeline, all we need to do is to
+              // submit the new task to the worker in question by calling OnWorkerIdle
+              // once. We don't need to worry about other tasks in the queue because the
+              // queue cannot have other tasks in it if there are active workers with
+              // non-full pipelines.
               break;
             }
           }
@@ -118,42 +124,39 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   worker_to_lease_entry_.emplace(addr, new_lease_entry);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  RAY_CHECK(scheduling_key_entry.active_workers_.emplace(addr).second);
-  RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
+  RAY_CHECK(scheduling_key_entry.active_workers.emplace(addr).second);
+  RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto &lease_entry = worker_to_lease_entry_[addr];
-  if (!lease_entry.lease_client_) {
+  if (!lease_entry.lease_client) {
     return;
   }
-  RAY_CHECK(lease_entry.lease_client_);
+  RAY_CHECK(lease_entry.lease_client);
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &current_queue = scheduling_key_entry.task_queue_;
+  auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || current_queue.empty() ||
-      current_time_ms() > lease_entry.lease_expiration_time_) {
-    RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
+      current_time_ms() > lease_entry.lease_expiration_time) {
+    RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 
     // Return the worker only if there are no tasks in flight
-    if (lease_entry.tasks_in_flight_ == 0) {
+    if (lease_entry.tasks_in_flight == 0) {
       // Decrement the number of active workers consuming tasks from the queue associated
       // with the current scheduling_key
-      scheduling_key_entry.active_workers_.erase(addr);
-      if (scheduling_key_entry.active_workers_.size() == 0) {
-        RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight == 0);
-        if (current_queue.empty() && !scheduling_key_entry.pending_lease_request_.first) {
-          scheduling_key_entries_.erase(scheduling_key);
-        }
+      scheduling_key_entry.active_workers.erase(addr);
+      if (scheduling_key_entry.SafeToDeleteEntry()) {
+        scheduling_key_entries_.erase(scheduling_key);
       }
 
       auto status =
-          lease_entry.lease_client_->ReturnWorker(addr.port, addr.worker_id, was_error);
+          lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error);
       if (!status.ok()) {
         RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
       }
@@ -164,16 +167,16 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
     while (!current_queue.empty() &&
-           lease_entry.tasks_in_flight_ < max_tasks_in_flight_per_worker_) {
+           lease_entry.tasks_in_flight < max_tasks_in_flight_per_worker_) {
       auto task_spec = current_queue.front();
       lease_entry
-          .tasks_in_flight_++;  // Increment the number of tasks in flight to the worker
+          .tasks_in_flight++;  // Increment the number of tasks in flight to the worker
 
       // Increment the total number of tasks in flight to any worker associated with the
       // current scheduling_key
 
-      RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
-      scheduling_key_entry.tot_tasks_in_flight++;
+      RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+      scheduling_key_entry.total_tasks_in_flight++;
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
@@ -193,13 +196,13 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &task_queue = scheduling_key_entry.task_queue_;
+  auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks, so let the worker lease request succeed.
     return;
   }
 
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request_;
+  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
   if (pending_lease_request.first) {
     // There is an in-flight lease request. Cancel it.
     auto &lease_client = pending_lease_request.first;
@@ -251,14 +254,14 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request_;
+  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
 
   if (pending_lease_request.first) {
     // There's already an outstanding lease request for this type of task.
     return;
   }
 
-  auto &task_queue = scheduling_key_entry.task_queue_;
+  auto &task_queue = scheduling_key_entry.task_queue;
   if (task_queue.empty()) {
     // We don't have any of this type of task to run.
     return;
@@ -266,14 +269,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks
-  if (scheduling_key_entry.tot_tasks_in_flight <
-      scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
+  if (scheduling_key_entry.total_tasks_in_flight <
+      scheduling_key_entry.active_workers.size() * max_tasks_in_flight_per_worker_) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
 
-    // Find a worker with a number of tasks in flight that is less than the maximum
-    // value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle to send tasks to
-    // that worker
     return;
   }
 
@@ -287,7 +287,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        auto &pending_lease_request = scheduling_key_entry.pending_lease_request_;
+        auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
         RAY_CHECK(pending_lease_request.first);
         auto lease_client = std::move(pending_lease_request.first);
         const auto task_id = pending_lease_request.second;
@@ -306,7 +306,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
             AddWorkerLeaseClient(addr, std::move(lease_client), resources_copy,
                                  scheduling_key);
-            RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
+            RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/false, resources_copy);
           } else {
@@ -331,7 +331,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         }
       });
   pending_lease_request = std::make_pair(lease_client, task_id);
-  
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -360,15 +359,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
       // Decrement the number of tasks in flight to the worker
       auto &lease_entry = worker_to_lease_entry_[addr];
-      RAY_CHECK(lease_entry.tasks_in_flight_ > 0);
-      lease_entry.tasks_in_flight_--;
+      RAY_CHECK(lease_entry.tasks_in_flight > 0);
+      lease_entry.tasks_in_flight--;
 
       // Decrement the total number of tasks in flight to any worker with the current
       // scheduling_key.
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      RAY_CHECK(scheduling_key_entry.active_workers_.size() >= 1);
-      RAY_CHECK(scheduling_key_entry.tot_tasks_in_flight >= 1);
-      scheduling_key_entry.tot_tasks_in_flight--;
+      RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+      RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= 1);
+      scheduling_key_entry.total_tasks_in_flight--;
     }
     if (reply.worker_exiting()) {
       // The worker is draining and will shutdown after it is done. Don't return
@@ -376,7 +375,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       absl::MutexLock lock(&mu_);
       worker_to_lease_entry_.erase(addr);
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      scheduling_key_entry.active_workers_.erase(addr);
+      scheduling_key_entry.active_workers.erase(addr);
     } else if (!status.ok() || !is_actor_creation) {
       // Successful actor creation leases the worker indefinitely from the raylet.
       absl::MutexLock lock(&mu_);
@@ -404,7 +403,6 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
-  rpc::Address client_addr;
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
@@ -413,7 +411,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     }
 
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    auto &scheduled_tasks = scheduling_key_entry.task_queue_;
+    auto &scheduled_tasks = scheduling_key_entry.task_queue;
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
     if (!scheduled_tasks.empty()) {
@@ -449,7 +447,6 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       return Status::OK();
     }
     client = maybe_client.value();
-    client_addr = rpc_client->second.ToProto();
   }
 
   RAY_CHECK(client != nullptr);
@@ -458,7 +455,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   client->CancelTask(
-      request, [this, task_spec, scheduling_key, client_addr, force_kill](
+      request, [this, task_spec, scheduling_key, force_kill](
                    const Status &status, const rpc::CancelTaskReply &reply) {
         absl::MutexLock lock(&mu_);
         cancelled_tasks_.erase(task_spec.TaskId());
@@ -473,7 +470,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             cancel_retry_timer_->async_wait(boost::bind(
                 &CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec, force_kill));
           }
-        } 
+        }
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.
       });

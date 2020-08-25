@@ -182,11 +182,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// (4) The resources assigned to the worker
   /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
   struct LeaseEntry {
-    std::shared_ptr<WorkerLeaseInterface> lease_client_;
-    int64_t lease_expiration_time_;
-    uint32_t tasks_in_flight_;
-    google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources_;
-    SchedulingKey scheduling_key_;
+    std::shared_ptr<WorkerLeaseInterface> lease_client;
+    int64_t lease_expiration_time;
+    uint32_t tasks_in_flight;
+    google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
+    SchedulingKey scheduling_key;
 
     LeaseEntry(
         std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
@@ -195,11 +195,11 @@ class CoreWorkerDirectTaskSubmitter {
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
                                                        ActorID::Nil()))
-        : lease_client_(lease_client),
-          lease_expiration_time_(lease_expiration_time),
-          tasks_in_flight_(tasks_in_flight),
-          assigned_resources_(assigned_resources),
-          scheduling_key_(scheduling_key) {}
+        : lease_client(lease_client),
+          lease_expiration_time(lease_expiration_time),
+          tasks_in_flight(tasks_in_flight),
+          assigned_resources(assigned_resources),
+          scheduling_key(scheduling_key) {}
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
@@ -208,17 +208,25 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request_ =
+    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
         std::make_pair(nullptr, TaskID::Nil());
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
-    std::deque<TaskSpecification> task_queue_ = std::deque<TaskSpecification>();
+    std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
-    absl::flat_hash_set<rpc::WorkerAddress> active_workers_ =
+    absl::flat_hash_set<rpc::WorkerAddress> active_workers =
         absl::flat_hash_set<rpc::WorkerAddress>();
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
-    uint32_t tot_tasks_in_flight = 0;
+    uint32_t total_tasks_in_flight = 0;
+
+    bool SafeToDeleteEntry() {
+      if (!pending_lease_request.first && task_queue.empty() &&
+          active_workers.size() == 0 && total_tasks_in_flight == 0) {
+        return true;
+      }
+      return false;
+    }
   };
 
   // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct

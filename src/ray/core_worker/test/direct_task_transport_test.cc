@@ -1239,8 +1239,6 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
 }
 
-
-
 TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
