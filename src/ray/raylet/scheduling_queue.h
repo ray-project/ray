@@ -44,9 +44,6 @@ enum class TaskState {
   // The task has resources that cannot be satisfied by any node, as far as we
   // know.
   INFEASIBLE,
-  // The task is an actor method and is waiting to learn where the actor was
-  // created.
-  WAITING_FOR_ACTOR_CREATION,
   // Swap queue for tasks that are in between states. This can happen when a
   // task is removed from one queue, and an async callback is responsible for
   // re-queuing the task. For example, a READY task that has just been assigned
@@ -177,7 +174,6 @@ class SchedulingQueue {
              TaskState::READY,
              TaskState::RUNNING,
              TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION,
              TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {

@@ -242,9 +242,6 @@ void SchedulingQueue::FilterState(std::unordered_set<TaskID> &task_ids,
   case TaskState::PLACEABLE:
     FilterStateFromQueue(task_ids, TaskState::PLACEABLE);
     break;
-  case TaskState::WAITING_FOR_ACTOR_CREATION:
-    FilterStateFromQueue(task_ids, TaskState::WAITING_FOR_ACTOR_CREATION);
-    break;
   case TaskState::WAITING:
     FilterStateFromQueue(task_ids, TaskState::WAITING);
     break;
@@ -326,7 +323,6 @@ std::vector<Task> SchedulingQueue::RemoveTasks(std::unordered_set<TaskID> &task_
            TaskState::READY,
            TaskState::RUNNING,
            TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
            TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_ids, &removed_tasks);
@@ -347,7 +343,6 @@ bool SchedulingQueue::RemoveTask(const TaskID &task_id, Task *removed_task,
            TaskState::READY,
            TaskState::RUNNING,
            TaskState::INFEASIBLE,
-           TaskState::WAITING_FOR_ACTOR_CREATION,
            TaskState::SWAP,
        }) {
     RemoveTasksFromQueue(task_state, task_id_set, &removed_tasks);
