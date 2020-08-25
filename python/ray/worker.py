@@ -1330,7 +1330,7 @@ def _changeproctitle(title, next_title):
         setproctitle.setproctitle(next_title)
 
 
-def show_in_webui(message, key="", dtype="text"):
+def show_in_dashboard(message, key="", dtype="text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.

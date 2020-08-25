@@ -82,7 +82,7 @@ from ray.worker import (  # noqa: F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
     disconnect, get, get_actor, get_gpu_ids, get_resource_ids,
     get_dashboard_url, init, is_initialized, put, kill, remote, shutdown,
-    show_in_webui, wait,
+    show_in_dashboard, wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
 import ray.projects  # noqa: E402
@@ -132,7 +132,7 @@ __all__ = [
     "kill",
     "remote",
     "shutdown",
-    "show_in_webui",
+    "show_in_dashboard",
     "wait",
     "Language",
     "java_function",

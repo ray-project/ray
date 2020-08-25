@@ -50,7 +50,7 @@ def test_worker_stats(shutdown_only):
 
     @ray.remote
     def f():
-        ray.show_in_webui("test")
+        ray.show_in_dashboard("test")
         return os.getpid()
 
     @ray.remote
@@ -59,10 +59,10 @@ def test_worker_stats(shutdown_only):
             pass
 
         def f(self):
-            ray.show_in_webui("test")
+            ray.show_in_dashboard("test")
             return os.getpid()
 
-    # Test show_in_webui for remote functions.
+    # Test show_in_dashboard for remote functions.
     worker_pid = ray.get(f.remote())
     reply = try_get_node_stats()
     target_worker_present = False
@@ -75,7 +75,7 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    # Test show_in_webui for remote actors.
+    # Test show_in_dashboard for remote actors.
     a = Actor.remote()
     worker_pid = ray.get(a.f.remote())
     reply = try_get_node_stats()
