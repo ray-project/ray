@@ -9,12 +9,14 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.runtime.serialization.CrossLangSerializer;
 import io.ray.streaming.runtime.serialization.JavaSerializer;
 import io.ray.streaming.runtime.serialization.Serializer;
-import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.DataWriter;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.xml.bind.DatatypeConverter;
 
 public class OutputCollector implements Collector<Record> {
   private static final Logger LOGGER = LoggerFactory.getLogger(OutputCollector.class);

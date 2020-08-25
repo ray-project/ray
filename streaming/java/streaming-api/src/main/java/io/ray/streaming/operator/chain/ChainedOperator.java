@@ -14,6 +14,7 @@ import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.operator.TwoInputOperator;
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,23 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     return tailOperator;
   }
 
+  @Override
+  public Object doCheckpoint(long checkpointId) {
+    Object[] checkpoints = new Object[operators.size()];
+    for (int i = 0; i < operators.size(); ++i) {
+      checkpoints[i] = operators.get(i).doCheckpoint(checkpointId);
+    }
+    return checkpoints;
+  }
+
+  @Override
+  public void loadCheckpoint(Object checkpointObject, long checkpointId) {
+    Object[] checkpoints = (Object[]) checkpointObject;
+    for (int i = 0; i < operators.size(); ++i) {
+       operators.get(i).loadCheckpoint(checkpoints[i], checkpointId);
+    }
+  }
+
   private RuntimeContext createRuntimeContext(RuntimeContext runtimeContext, int index) {
     return (RuntimeContext) Proxy.newProxyInstance(runtimeContext.getClass().getClassLoader(),
         new Class[] {RuntimeContext.class},
@@ -122,8 +140,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     }
 
     @Override
-    public void run() {
-      sourceOperator.run();
+    public void fetch(long checkpointId) {
+      sourceOperator.fetch(checkpointId);
     }
 
     @Override

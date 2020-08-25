@@ -72,6 +72,16 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
+  public Object doCheckpoint(long checkpointId) {
+    return function.doCheckpoint(checkpointId);
+  }
+
+  @Override
+  public void loadCheckpoint(Object checkpointObject, long checkpointId) {
+    function.loadCheckpoint(checkpointObject, checkpointId);
+  }
+
+  @Override
   public String getName() {
     return name;
   }

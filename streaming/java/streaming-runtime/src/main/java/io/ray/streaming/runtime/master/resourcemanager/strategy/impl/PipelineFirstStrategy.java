@@ -38,9 +38,9 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   private int currentContainerIndex = 0;
 
   /**
-   *  Assign resource to each execution vertex in the given execution graph.
+   * Assign resource to each execution vertex in the given execution graph.
    *
-   * @param containers registered containers
+   * @param containers     registered containers
    * @param executionGraph execution graph
    * @return allocating map, key is container ID, value is list of vertextId, and contains vertices
    */
@@ -125,8 +125,9 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Find a container which matches required resource
+   *
    * @param requiredResource required resource
-   * @param containers registered containers
+   * @param containers       registered containers
    * @return container that matches the required resource
    */
   private Container findMatchedContainer(
@@ -151,8 +152,9 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Check if current container has enough resource
+   *
    * @param requiredResource required resource
-   * @param container container
+   * @param container        container
    * @return true if matches, false else
    */
   private boolean hasEnoughResource(Map<String, Double> requiredResource, Container container) {
@@ -198,6 +200,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
 
   /**
    * Get current container
+   *
    * @param containers registered container
    * @return current container to allocate actor
    */
