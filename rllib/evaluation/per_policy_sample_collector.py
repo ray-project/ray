@@ -6,7 +6,7 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.types import AgentID, EnvID, EpisodeID, TensorType
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, TensorType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -103,7 +103,13 @@ class _PerPolicySampleCollector:
         self._next_agent_slot()
 
         if SampleBatch.OBS not in self.buffers:
-            self._build_buffers(single_row={SampleBatch.OBS: init_obs})
+            self._build_buffers(
+                single_row={
+                    SampleBatch.OBS: init_obs,
+                    SampleBatch.EPS_ID: episode_id,
+                    SampleBatch.AGENT_INDEX: agent_id,
+                    "env_id": env_id,
+                })
         if self.time_major:
             self.buffers[SampleBatch.OBS][self.shift_before-1, agent_slot] = \
                 init_obs
@@ -262,12 +268,12 @@ class _PerPolicySampleCollector:
             batch = sample_batch_data[agent_key]
 
             for view_col, view_req in view_reqs.items():
+                data_col = view_req.data_col or view_col
                 # Skip columns that will only get added through postprocessing
                 # (these may not even exist yet).
-                if view_req.created_during_postprocessing:
+                if data_col not in self.buffers:
                     continue
 
-                data_col = view_req.data_col or view_col
                 shift = view_req.shift
                 if data_col == SampleBatch.OBS:
                     shift -= 1
@@ -289,20 +295,22 @@ class _PerPolicySampleCollector:
             SampleBatch: Returns the accumulated sample batch for this
                 policy.
         """
-        seq_lens = [
+        seq_lens_w_0s = [
             self.agent_key_to_timestep[k] - self.shift_before
             for k in self.slot_to_agent_key if k is not None
         ]
-        first_zero_len = len(seq_lens)
-        if seq_lens[-1] == 0:
-            first_zero_len = seq_lens.index(0)
+        # We have an agent-axis buffer "rollover" (new SampleBatch will be
+        # built from last n agent records plus first m agent records in
+        # buffer).
+        if self.agent_slot_cursor < self.sample_batch_offset:
+            rollover = -(self.num_agents - self.sample_batch_offset)
+            seq_lens_w_0s = seq_lens_w_0s[rollover:] + seq_lens_w_0s[:rollover]
+        first_zero_len = len(seq_lens_w_0s)
+        if seq_lens_w_0s[-1] == 0:
+            first_zero_len = seq_lens_w_0s.index(0)
             # Assert that all zeros lie at the end of the seq_lens array.
-            try:
-                assert all(seq_lens[i] == 0
-                           for i in range(first_zero_len, len(seq_lens)))
-            except AssertionError as e:
-                print()
-                raise e
+            assert all(seq_lens_w_0s[i] == 0
+                       for i in range(first_zero_len, len(seq_lens_w_0s)))
 
         t_start = self.shift_before
         t_end = t_start + self.num_timesteps
@@ -311,8 +319,8 @@ class _PerPolicySampleCollector:
         # actually already has at least 1 timestep of data (thus it excludes
         # just-rolled over chunks (which only have the initial obs in them)).
         valid_agent_cursor = \
-            (self.agent_slot_cursor - (len(seq_lens) - first_zero_len)) % \
-            self.num_agents
+            (self.agent_slot_cursor -
+             (len(seq_lens_w_0s) - first_zero_len)) % self.num_agents
 
         # Construct the view dict.
         view = {}
@@ -320,12 +328,13 @@ class _PerPolicySampleCollector:
             data_col = view_req.data_col or view_col
             assert data_col in self.buffers
             # For OBS, indices must be shifted by -1.
-            extra_shift = 0 if data_col != SampleBatch.OBS else -1
+            shift = view_req.shift
+            shift += 0 if data_col != SampleBatch.OBS else -1
             # If agent_slot has been rolled-over to beginning, we have to copy
             # here.
             if valid_agent_cursor < self.sample_batch_offset:
-                time_slice = self.buffers[data_col][t_start + extra_shift:
-                                                    t_end + extra_shift]
+                time_slice = self.buffers[data_col][t_start + shift:t_end +
+                                                    shift]
                 one_ = time_slice[:, self.sample_batch_offset:]
                 two_ = time_slice[:, :valid_agent_cursor]
                 if torch and isinstance(time_slice, torch.Tensor):
@@ -335,17 +344,15 @@ class _PerPolicySampleCollector:
             else:
                 view[view_col] = \
                     self.buffers[data_col][
-                    t_start + extra_shift:t_end + extra_shift,
+                    t_start + shift:t_end + shift,
                     self.sample_batch_offset:valid_agent_cursor]
 
         # Copy all still ongoing trajectories to new agent slots
         # (including the ones that just started (are seq_len=0)).
         new_chunk_args = []
-        for i, seq_len in enumerate(seq_lens):
+        for i, seq_len in enumerate(seq_lens_w_0s):
             if seq_len < self.num_timesteps:
-                agent_slot = self.sample_batch_offset + i
-                if agent_slot >= self.num_agents:
-                    agent_slot = agent_slot % self.num_agents
+                agent_slot = (self.sample_batch_offset + i) % self.num_agents
                 if not self.buffers[SampleBatch.
                                     DONES][seq_len - 1 +
                                            self.shift_before][agent_slot]:
@@ -354,9 +361,9 @@ class _PerPolicySampleCollector:
                         (agent_slot, agent_key,
                          self.agent_key_to_timestep[agent_key]))
         # Cut out all 0 seq-lens.
-        seq_lens = seq_lens[:first_zero_len]
+        seq_lens = seq_lens_w_0s[:first_zero_len]
         batch = SampleBatch(
-            view, _seq_lens=np.array(seq_lens), _time_major=True)
+            view, _seq_lens=np.array(seq_lens), _time_major=self.time_major)
 
         # Reset everything for new data.
         self.postprocessed_agents = [False] * self.num_agents
@@ -376,9 +383,14 @@ class _PerPolicySampleCollector:
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
         """Builds the internal data buffers based on a single given row.
 
+        This may be called several times in the lifetime of this instance
+        to add new columns to the buffer. Columns in `single_row` that already
+        exist in the buffer will be ignored.
+
         Args:
             single_row (Dict[str, TensorType]): A single datarow with one or
-                more columns (str as key, np.ndarray|tensor as data).
+                more columns (str as key, np.ndarray|tensor as data) to be used
+                as template to build the pre-allocated buffer.
         """
         time_size = self.num_timesteps + self.shift_before + self.shift_after
         for col, data in single_row.items():

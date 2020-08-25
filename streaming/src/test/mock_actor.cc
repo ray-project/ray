@@ -257,6 +257,165 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
   }
 };
 
+class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
+ public:
+  StreamingQueueUpStreamTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
+                                std::vector<ObjectID> rescale_queue_ids)
+      : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
+    test_func_map_ = {
+        {"pull_peer_async_test",
+         std::bind(&StreamingQueueUpStreamTestSuite::PullPeerAsyncTest, this)},
+         {"get_queue_test",
+         std::bind(&StreamingQueueUpStreamTestSuite::GetQueueTest, this)}};
+  }
+
+  void GetQueueTest() {
+    // Sleep 2s, queue shoulde not exist when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
+    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    upstream_handler->CreateUpstreamQueue(queue_id, peer_actor_id_, 10240);
+    STREAMING_LOG(INFO) << "IsQueueExist: "
+                        << upstream_handler->UpstreamQueueExists(queue_id);
+
+    // Sleep 2s, No valid data when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10 * 1000));
+    STREAMING_LOG(INFO) << "StreamingQueueUpStreamTestSuite::GetQueueTest done";
+    status_ = true;
+  }
+
+  void PullPeerAsyncTest() {
+    // Sleep 2s, queue should not exist when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
+    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    std::shared_ptr<WriterQueue> queue =
+        upstream_handler->CreateUpstreamQueue(queue_id, peer_actor_id_, 10240);
+    STREAMING_LOG(INFO) << "IsQueueExist: "
+                        << upstream_handler->UpstreamQueueExists(queue_id);
+
+    // Sleep 2s, No valid data when reader pull
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    // message id starts from 1
+    for (int msg_id = 1; msg_id <= 80; msg_id++) {
+      uint8_t data[100];
+      memset(data, msg_id, 100);
+      STREAMING_LOG(INFO) << "Writer User Push item msg_id: " << msg_id;
+      ASSERT_TRUE(
+          queue->Push(msg_id/*seqid*/, data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
+      queue->Send();
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    STREAMING_LOG(INFO) << "StreamingQueueUpStreamTestSuite::PullPeerAsyncTest done";
+    status_ = true;
+  }
+};
+
+class StreamingQueueDownStreamTestSuite : public StreamingQueueTestSuite {
+ public:
+  StreamingQueueDownStreamTestSuite(ActorID peer_actor_id, std::vector<ObjectID> queue_ids,
+                                std::vector<ObjectID> rescale_queue_ids)
+      : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
+    test_func_map_ = {
+        {"pull_peer_async_test",
+         std::bind(&StreamingQueueDownStreamTestSuite::PullPeerAsyncTest, this)},
+         {"get_queue_test",
+         std::bind(&StreamingQueueDownStreamTestSuite::GetQueueTest, this)}};
+  };
+
+  void GetQueueTest() {
+    auto downstream_handler =
+         ray::streaming::DownstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
+    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
+
+    bool is_upstream_first_pull_ = false;
+    downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
+    ASSERT_TRUE(is_upstream_first_pull_);
+    downstream_handler->PullQueue(queue_id, 1, is_upstream_first_pull_, 10 * 1000);
+    ASSERT_FALSE(is_upstream_first_pull_);
+    STREAMING_LOG(INFO) << "StreamingQueueDownStreamTestSuite::GetQueueTest done";
+    status_ = true;
+  }
+
+  void PullPeerAsyncTest() {
+    auto downstream_handler =
+         ray::streaming::DownstreamQueueMessageHandler::GetService();
+    ObjectID &queue_id = queue_ids_[0];
+    RayFunction async_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
+    RayFunction sync_call_func{ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
+    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    std::shared_ptr<ReaderQueue> queue =
+        downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
+
+    bool is_first_pull;
+    downstream_handler->PullQueue(queue_id, 1, is_first_pull, 10 * 1000);
+    uint64_t count = 0;
+    uint8_t msg_id = 1;
+    while (true) {
+      uint8_t *data = nullptr;
+      uint32_t data_size = 0;
+      uint64_t timeout_ms = 1000;
+      QueueItem item = queue->PopPendingBlockTimeout(timeout_ms * 1000);
+      if (item.SeqId() == QUEUE_INVALID_SEQ_ID) {
+        STREAMING_LOG(INFO) << "PopPendingBlockTimeout timeout.";
+        data = nullptr;
+        data_size = 0;
+      } else {
+        data = item.Buffer()->Data();
+        data_size = item.Buffer()->Size();
+      }
+
+      STREAMING_LOG(INFO) << "[Reader] count: " << count;
+      if (data == nullptr) {
+        STREAMING_LOG(INFO) << "[Reader] data null";
+        continue;
+      }
+
+      for (uint32_t i = 0; i < data_size; i++) {
+        ASSERT_EQ(data[i], msg_id);
+      }
+
+      count++;
+      if (count == 80) {
+        bool is_upstream_first_pull;
+        msg_id = 50;
+        downstream_handler->PullPeerAsync(queue_id, 50, is_upstream_first_pull, 1000);
+        continue;
+      }
+
+      msg_id++;
+      STREAMING_LOG(INFO) << "[Reader] count: " << count;
+      if (count == 110) {
+        break;
+      }
+    }
+
+    STREAMING_LOG(INFO) << "StreamingQueueDownStreamTestSuite::PullPeerAsyncTest done";
+    status_ = true;
+  }
+};
+
 class TestSuiteFactory {
  public:
   static std::shared_ptr<StreamingQueueTestSuite> CreateTestSuite(
@@ -272,12 +431,18 @@ class TestSuiteFactory {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueWriterTestSuite>(
             peer_actor_id, queue_ids, rescale_queue_ids);
+      } else if (suite_name == "StreamingQueueTest") {
+        test_suite = std::make_shared<StreamingQueueUpStreamTestSuite>(
+            peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsurported suite_name: " << suite_name;
       }
     } else {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueReaderTestSuite>(
+            peer_actor_id, queue_ids, rescale_queue_ids);
+      } else if (suite_name == "StreamingQueueTest") {
+        test_suite = std::make_shared<StreamingQueueDownStreamTestSuite>(
             peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsupported suite_name: " << suite_name;
@@ -323,9 +488,6 @@ class StreamingWorker {
         -1,             // metrics_agent_port
     };
     CoreWorkerProcess::Initialize(options);
-
-    reader_client_ = std::make_shared<ReaderClient>();
-    writer_client_ = std::make_shared<WriterClient>();
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
@@ -348,7 +510,7 @@ class StreamingWorker {
     RAY_CHECK(function_descriptor->Type() ==
               ray::FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
-    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask "
+    STREAMING_LOG(DEBUG) << "StreamingWorker::ExecuteTask "
                         << typed_descriptor->ToString();
 
     std::string func_name = typed_descriptor->FunctionName();
@@ -412,6 +574,8 @@ class StreamingWorker {
 
  private:
   void HandleInitTask(std::shared_ptr<LocalMemoryBuffer> buffer) {
+    reader_client_ = std::make_shared<ReaderClient>();
+    writer_client_ = std::make_shared<WriterClient>();
     uint8_t *bytes = buffer->Data();
     uint8_t *p_cur = bytes;
     uint32_t *magic_num = (uint32_t *)p_cur;
@@ -425,17 +589,12 @@ class StreamingWorker {
         queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType);
     std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
-    STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
     CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
         actor_handle_serialized, ObjectID::Nil());
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
-    STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();
-
-    // STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
-    // peer_actor_handle_ =
-    //     std::make_shared<ActorHandle>(actor_handle_serialized);
+    STREAMING_LOG(INFO) << "Actor id from handle: " << actor_handle->GetActorID();
 
     STREAMING_LOG(INFO) << "HandleInitTask queues:";
     for (auto qid : message->QueueIds()) {

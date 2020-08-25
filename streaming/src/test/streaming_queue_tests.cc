@@ -16,6 +16,12 @@ namespace streaming {
 
 static int node_manager_port;
 
+class StreamingQueueTest : public StreamingQueueTestBase {
+ public:
+  StreamingQueueTest()
+      : StreamingQueueTestBase(1, node_manager_port) {}
+};
+
 class StreamingWriterTest : public StreamingQueueTestBase {
  public:
   StreamingWriterTest() : StreamingQueueTestBase(1, node_manager_port) {}
@@ -26,6 +32,20 @@ class StreamingExactlySameTest : public StreamingQueueTestBase {
   StreamingExactlySameTest() : StreamingQueueTestBase(1, node_manager_port) {}
 };
 
+TEST_P(StreamingQueueTest, PullPeerAsyncTest) {
+  STREAMING_LOG(INFO) << "StreamingQueueTest.pull_peer_async_test";
+
+  uint32_t queue_num = 1;
+  SubmitTest(queue_num, "StreamingQueueTest", "pull_peer_async_test", 60 * 1000);
+}
+
+TEST_P(StreamingQueueTest, GetQueueTest) {
+  STREAMING_LOG(INFO) << "StreamingQueueTest.get_queue_test";
+
+  uint32_t queue_num = 1;
+  SubmitTest(queue_num, "StreamingQueueTest", "get_queue_test", 60 * 1000);
+}
+
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   STREAMING_LOG(INFO) << "StreamingWriterTest.streaming_writer_exactly_once_test";
 
@@ -35,6 +55,8 @@ TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   SubmitTest(queue_num, "StreamingWriterTest", "streaming_writer_exactly_once_test",
              60 * 1000);
 }
+
+INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingQueueTest, testing::Values(0));
 
 INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));
 

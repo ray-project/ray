@@ -29,8 +29,7 @@ class ViewRequirement:
     def __init__(self,
                  data_col: Optional[str] = None,
                  space: gym.Space = None,
-                 shift: Union[int, List[int]] = 0,
-                 created_during_postprocessing: bool = False):
+                 shift: Union[int, List[int]] = 0):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -47,11 +46,8 @@ class ViewRequirement:
                 Example: For a view column "obs" in an Atari framestacking
                 fashion, you can set `data_col="obs"` and
                 `shift=[-3, -2, -1, 0]`.
-            created_during_postprocessing (bool): Whether this column only gets
-                created during postprocessing.
         """
         self.data_col = data_col
         self.space = space or gym.spaces.Box(
             float("-inf"), float("inf"), shape=())
         self.shift = shift
-        self.created_during_postprocessing = created_during_postprocessing

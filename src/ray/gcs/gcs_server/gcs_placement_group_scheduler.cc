@@ -32,6 +32,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictSpreadStrategy>());
 }
 
 ScheduleMap GcsStrictPackStrategy::Schedule(
@@ -97,19 +98,98 @@ ScheduleMap GcsPackStrategy::Schedule(
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
+  // When selecting nodes, if you traverse from the beginning each time, a large number of
+  // bundles will be deployed to the previous nodes. So we start with the next node of the
+  // last selected node.
   ScheduleMap schedule_map;
-  auto &alive_nodes = context->node_manager_.GetClusterRealtimeResources();
-  auto iter = alive_nodes.begin();
-  size_t index = 0;
-  size_t alive_nodes_size = alive_nodes.size();
-  for (; iter != alive_nodes.end(); iter++, index++) {
-    for (size_t base = 0;; base++) {
-      if (index + base * alive_nodes_size >= bundles.size()) {
+  const auto &candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+  if (candidate_nodes.empty()) {
+    return schedule_map;
+  }
+
+  auto iter = candidate_nodes.begin();
+  auto iter_begin = iter;
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    // Traverse all nodes from `iter_begin` to `candidate_nodes.end()` to find a node that
+    // meets the resource requirements. `iter_begin` is the next node of the last selected
+    // node.
+    for (; iter != candidate_nodes.end(); ++iter) {
+      if (required_resources.IsSubset(*iter->second)) {
+        iter->second->SubtractResourcesStrict(required_resources);
+        schedule_map[bundle->BundleId()] = iter->first;
         break;
-      } else {
-        schedule_map[bundles[index + base * alive_nodes_size]->BundleId()] = iter->first;
       }
     }
+
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
+    // haven't found one that meets the requirements.
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
+    // satisfied, we will return directly. Otherwise, we will traverse the nodes from
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
+    // requirements.
+    if (iter == candidate_nodes.end()) {
+      if (iter_begin != candidate_nodes.begin()) {
+        // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
+        for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
+          if (required_resources.IsSubset(*iter->second)) {
+            iter->second->SubtractResourcesStrict(required_resources);
+            schedule_map[bundle->BundleId()] = iter->first;
+            break;
+          }
+        }
+        if (iter == iter_begin) {
+          // We have traversed all the nodes, so return directly.
+          break;
+        }
+      } else {
+        // We have traversed all the nodes, so return directly.
+        break;
+      }
+    }
+    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
+    iter_begin = ++iter;
+  }
+
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
+  }
+  return schedule_map;
+}
+
+ScheduleMap GcsStrictSpreadStrategy::Schedule(
+    std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+    const std::unique_ptr<ScheduleContext> &context) {
+  // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
+  // schedule bundles with special resource requirements first, which will be implemented
+  // in the next pr.
+  ScheduleMap schedule_map;
+  auto candidate_nodes = context->node_manager_.GetClusterRealtimeResources();
+
+  // The number of bundles is more than the number of nodes, scheduling fails.
+  if (bundles.size() > candidate_nodes.size()) {
+    return schedule_map;
+  }
+
+  for (const auto &bundle : bundles) {
+    const auto &required_resources = bundle->GetRequiredResources();
+    auto iter = candidate_nodes.begin();
+    for (; iter != candidate_nodes.end(); ++iter) {
+      if (required_resources.IsSubset(*iter->second)) {
+        schedule_map[bundle->BundleId()] = iter->first;
+        candidate_nodes.erase(iter);
+        break;
+      }
+    }
+
+    // Node resource is not satisfied, scheduling failed.
+    if (iter == candidate_nodes.end()) {
+      break;
+    }
+  }
+
+  if (schedule_map.size() != bundles.size()) {
+    schedule_map.clear();
   }
   return schedule_map;
 }
@@ -194,7 +274,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
   }
   placement_group_to_bundle_locations_.erase(it);
 
-  // Remove bundles from node_to_leased_bundles_ because bundels are removed now.
+  // Remove bundles from node_to_leased_bundles_ because bundles are removed now.
   for (const auto &bundle_location : *bundle_locations) {
     const auto &bundle_id = bundle_location.first;
     const auto &node_id = bundle_location.second.first;
@@ -330,7 +410,6 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
 
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     const PlacementGroupID &placement_group_id) {
-  // TODO(ffbin): We will add listener to the GCS node manager to handle node deletion.
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &iter : alive_nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {
