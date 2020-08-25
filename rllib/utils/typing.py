@@ -43,6 +43,9 @@ EnvID = int
 # Represents an episode id.
 EpisodeID = int
 
+# Represents an "unroll" (maybe across different sub-envs in a vector env).
+UnrollID = int
+
 # A dict keyed by agent ids, e.g. {"agent-1": value}.
 MultiAgentDict = Dict[AgentID, Any]
 

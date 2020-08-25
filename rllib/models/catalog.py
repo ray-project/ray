@@ -65,6 +65,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_cell_size": 256,
     # Whether to feed a_{t-1}, r_{t-1} to LSTM.
     "lstm_use_prev_action_reward": False,
+    # Experimental (only works with `_use_trajectory_view_api`=True):
+    # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
+    "_time_major": False,
     # When using modelv1 models with a modelv2 algorithm, you may have to
     # define the state shape here (e.g., [256, 256]).
     "state_shape": None,

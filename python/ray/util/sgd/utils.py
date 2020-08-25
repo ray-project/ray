@@ -142,9 +142,9 @@ class TimerCollection:
         for k, t in self._timers.items():
             if t.count > 0:
                 if mean:
-                    aggregates["mean_%s_s" % k] = t.mean
+                    aggregates[f"mean_{k}_s"] = t.mean
                 if last:
-                    aggregates["last_%s_s" % k] = t.last
+                    aggregates[f"last_{k}_s"] = t.last
         return aggregates
 
 

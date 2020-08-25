@@ -25,6 +25,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 
 namespace {
@@ -164,6 +165,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
+      agent_manager_service_handler_(
+          new DefaultAgentManagerServiceHandler(agent_manager_)),
+      agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -208,7 +212,17 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
+  node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
+
+  AgentManager::Options options;
+  options.agent_commands = ParseCommandLine(config.agent_command);
+  agent_manager_.reset(
+      new AgentManager(std::move(options),
+                       /*delay_executor=*/
+                       [this](std::function<void()> task, uint32_t delay_ms) {
+                         return execute_after(io_service_, task, delay_ms);
+                       }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }
@@ -1911,10 +1925,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       if (new_scheduler_enabled_) {
-        new_resource_scheduler_->SubtractCPUResourceInstances(
-            worker->GetBorrowedCPUInstances());
-        new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
-        worker->ClearAllocatedInstances();
+        cluster_task_manager_->HandleTaskFinished(worker);
       }
       HandleWorkerAvailable(worker);
     }
@@ -1955,22 +1966,37 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   Task removed_task;
   TaskState removed_task_state;
-  const auto canceled =
-      local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
-  if (!canceled) {
-    // We do not have the task. This could be because we haven't received the
-    // lease request yet, or because we already granted the lease request and
-    // it has already been returned.
-  } else {
-    if (removed_task.OnDispatch()) {
+  bool canceled;
+  if (new_scheduler_enabled_) {
+    canceled = cluster_task_manager_->CancelTask(task_id);
+    if (canceled) {
       // We have not yet granted the worker lease. Cancel it now.
-      removed_task.OnCancellation()();
       task_dependency_manager_.TaskCanceled(task_id);
       task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     } else {
-      // We already granted the worker lease and sent the reply. Re-queue the
-      // task and wait for the requester to return the leased worker.
-      local_queues_.QueueTasks({removed_task}, removed_task_state);
+      // There are 2 cases here.
+      // 1. We haven't received the lease request yet. It's the caller's job to
+      //    retry the cancellation once we've received the request.
+      // 2. We have already granted the lease. The caller is now responsible
+      //    for returning the lease, not cancelling it.
+    }
+  } else {
+    canceled = local_queues_.RemoveTask(task_id, &removed_task, &removed_task_state);
+    if (!canceled) {
+      // We do not have the task. This could be because we haven't received the
+      // lease request yet, or because we already granted the lease request and
+      // it has already been returned.
+    } else {
+      if (removed_task.OnDispatch()) {
+        // We have not yet granted the worker lease. Cancel it now.
+        removed_task.OnCancellation()();
+        task_dependency_manager_.TaskCanceled(task_id);
+        task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+      } else {
+        // We already granted the worker lease and sent the reply. Re-queue the
+        // task and wait for the requester to return the leased worker.
+        local_queues_.QueueTasks({removed_task}, removed_task_state);
+      }
     }
   }
   // The task cancellation failed if we did not have the task queued, since
