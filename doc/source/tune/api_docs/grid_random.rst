@@ -115,6 +115,7 @@ In the below example, ``num_samples=10`` repeats the 3x3 grid search 10 times, f
         },
     )
 
+.. _tune_custom-search:
 
 Custom/Conditional Search Spaces
 --------------------------------

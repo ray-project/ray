@@ -46,8 +46,10 @@ dataclasses
 dask[complete]
 feather-format
 gym
+gym-minigrid
 kubernetes
 lxml
+moto
 mypy
 networkx
 numba
@@ -62,5 +64,6 @@ pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow
+testfixtures
 werkzeug
 xlrd

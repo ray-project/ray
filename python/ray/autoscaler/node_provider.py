@@ -186,7 +186,7 @@ class NodeProvider:
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError
@@ -233,22 +233,6 @@ class NodeProvider:
     def cleanup(self):
         """Clean-up when a Provider is no longer required."""
         pass
-
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        """Creates a number of nodes with a given instance type.
-
-        This is an optional method only required if using the resource
-        demand scheduler.
-        """
-        assert instance_type is not None
-        raise NotImplementedError
-
-    def get_instance_type(self, node_config):
-        """Returns the instance type of this node config.
-
-        This is an optional method only required if using the resource
-        demand scheduler."""
-        return None
 
     @staticmethod
     def bootstrap_config(cluster_config):

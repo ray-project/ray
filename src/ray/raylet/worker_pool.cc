@@ -284,7 +284,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     }
   }
 
-  std::map<std::string, std::string> env;
+  ProcessEnvironment env;
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
@@ -335,7 +335,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const std::map<std::string, std::string> &env) {
+                                 const ProcessEnvironment &env) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting worker process with command:";

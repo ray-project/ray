@@ -22,6 +22,7 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic.py",
     "test_cancel.py",
+    "test_cli.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_dynres.py",
