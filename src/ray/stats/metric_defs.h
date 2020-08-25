@@ -72,7 +72,3 @@ static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
 static Gauge SchedulingQueueStats("scheduling_queue_stats",
                                   "Stats the metric values of scheduling queue.", "pcs",
                                   {ValueTypeKey});
-
-static Gauge ConnectionPoolStats("connection_pool_stats",
-                                 "Stats the connection pool metrics.", "pcs",
-                                 {ValueTypeKey});
