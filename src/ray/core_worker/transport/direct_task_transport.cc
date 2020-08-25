@@ -264,7 +264,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  // Check whether we really need a new worer or whether we have
+  // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks
   if (scheduling_key_entry.tot_tasks_in_flight <
       scheduling_key_entry.active_workers_.size() * max_tasks_in_flight_per_worker_) {
