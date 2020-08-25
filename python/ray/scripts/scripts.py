@@ -20,7 +20,6 @@ from ray.autoscaler.commands import (
     debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
-from ray.projects.scripts import project_cli, session_cli
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -1459,36 +1458,6 @@ def timeline(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def statistics(address):
-    """Get the current metrics protobuf from a Ray cluster (developer tool)."""
-    if not address:
-        address = services.find_redis_address_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
-
-    import grpc
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
-
-    for raylet in ray.nodes():
-        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                        ray.nodes()[0]["NodeManagerPort"])
-        logger.info(f"Querying raylet {raylet_address}")
-
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        reply = stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest(include_memory_info=False),
-            timeout=2.0)
-        print(reply)
-
-
-@cli.command()
-@click.option(
-    "--address",
-    required=False,
-    type=str,
-    help="Override the address to connect to.")
 @click.option(
     "--redis_password",
     required=False,
@@ -1525,7 +1494,7 @@ def status(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def globalgc(address):
+def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
         address = services.find_redis_address_or_die()
@@ -1608,18 +1577,15 @@ add_command_alias(rsync_up, name="rsync_up", hidden=True)
 cli.add_command(submit)
 cli.add_command(down)
 add_command_alias(down, name="teardown", hidden=True)
-cli.add_command(kill_random_node)
+cli.add_command(kill_random_node, hidden=True)
 add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
-cli.add_command(statistics)
 cli.add_command(status)
 cli.add_command(memory)
-cli.add_command(globalgc)
+cli.add_command(global_gc, hidden=True)
 cli.add_command(timeline)
-cli.add_command(project_cli)
-cli.add_command(session_cli)
 cli.add_command(install_nightly)
 
 try:
