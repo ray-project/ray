@@ -64,49 +64,6 @@ Serialization notes
 
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
-Last resort: Custom Serialization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If none of these options work, you can try registering a custom serializer with ``ray.register_custom_serializer`` (:ref:`docstring <ray-register_custom_serializer-ref>`):
-
-.. code-block:: python
-
-      import ray
-
-      ray.init()
-
-      class Foo(object):
-          def __init__(self, value):
-              self.value = value
-
-      def custom_serializer(obj):
-          return obj.value
-
-      def custom_deserializer(value):
-          object = Foo()
-          object.value = value
-          return object
-
-      ray.register_custom_serializer(
-          Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-      object_ref = ray.put(Foo(100))
-      assert ray.get(object_ref).value == 100
-
-
-If you find cases where Ray serialization doesn't work or does something unexpected, please `let us know`_ so we can fix it.
-
-.. _`let us know`: https://github.com/ray-project/ray/issues
-
-Advanced: Huge Pages
-~~~~~~~~~~~~~~~~~~~~
-
-On Linux, it is possible to increase the write throughput of the Plasma object store by using huge pages. See the `Configuration page <configure.html#using-the-object-store-with-huge-pages>`_ for information on how to use huge pages in Ray.
-
-
-.. _`Apache Arrow`: https://arrow.apache.org/
-
-
 Known Issues
 ------------
 
