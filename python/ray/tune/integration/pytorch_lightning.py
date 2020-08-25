@@ -226,7 +226,7 @@ class _TuneCheckpointCallback(TuneCallback):
 
 
 class TuneReportCheckpointCallback(TuneCallback):
-    """PyTorch Lightning checkpoint callback
+    """PyTorch Lightning report and checkpoint callback
 
     Saves checkpoints after each validation step. Also reports metrics to Tune,
     which is needed for checkpoint registration.
