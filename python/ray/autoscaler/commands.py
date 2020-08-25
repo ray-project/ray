@@ -454,20 +454,36 @@ def warn_about_bad_start_command(start_commands):
             "workers. Add --autoscaling-config=~/ray_bootstrap_config.yaml"
             "to ray start in the head_start_ray_commands section.")
 
-
-def _get_head_commands(config, commands_key):
-    commands = config[commands_key]
+def _get_head_specific_key(config, key):
     node_type = config.get("head_node_type")
     if node_type:
-        assert "available_node_types" in config
-        assert node_type in config[
-            "available_node_types"], "Unknown node type tag: {}.".format(
-                node_type)
-        node_specific_config = config["available_node_types"][node_type]
-        if commands_key in node_specific_config:
-            commands = node_specific_config[commands_key]
-    return commands
+        available_node_types = config["available_node_types"]
+        if node_type not in available_node_types:
+            raise ValueError(f"Unknown Node type: {node_type}")
+        node_specific = available_node_types[node_type].get(key)
+        if node_specific:
+            return node_specific.copy()
+    return None
 
+def _get_head_initialization_commands(config):
+    from ray.autoscaler.docker import docker_pull_if_needed
+    default = config["initialization_commands"]
+    node_specific = _get_head_specific_key(config, "initialization_commands")
+    if node_specific:
+        docker_pull_if_needed(config, node_specific)
+        return node_specific
+    else:
+        return default
+
+def _get_head_setup_commands(config):
+    from ray.autoscaler.docker import dockerize_head_setup_if_needed
+    default = config["head_setup_commands"]
+    node_specific = _get_head_specific_key(config, "setup_commands")
+    if node_specific:
+        dockerize_head_setup_if_needed(config, node_specific)
+        return node_specific
+    else:
+        return default
 
 def get_or_create_head_node(config,
                             config_file,
@@ -642,17 +658,13 @@ def get_or_create_head_node(config,
 
             if restart_only:
                 init_commands = []
-                ray_start_commands = _get_head_commands(
-                    config, "head_start_ray_commands")
+                ray_start_commands = config["head_start_ray_commands"]
             elif no_restart:
-                init_commands = _get_head_commands(config,
-                                                   "head_setup_commands")
+                init_commands = _get_head_setup_commands(config)
                 ray_start_commands = []
             else:
-                init_commands = _get_head_commands(config,
-                                                   "head_setup_commands")
-                ray_start_commands = _get_head_commands(
-                    config, "head_start_ray_commands")
+                init_commands = _get_head_setup_commands(config)
+                ray_start_commands = config["head_start_ray_commands"]
 
             if not no_restart:
                 warn_about_bad_start_command(ray_start_commands)
@@ -664,8 +676,8 @@ def get_or_create_head_node(config,
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
-                initialization_commands=_get_head_commands(
-                    config, "initialization_commands"),
+                initialization_commands=_get_head_initialization_commands(
+                    config),
                 setup_commands=init_commands,
                 ray_start_commands=ray_start_commands,
                 process_runner=_runner,

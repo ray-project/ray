@@ -400,7 +400,7 @@ class StandardAutoscaler:
                     node_type))
             node_specific_config = self.available_node_types[node_type]
             if key in node_specific_config:
-                return node_specific_config[key]
+                return node_specific_config[key].copy()
         return None
 
     def _get_worker_initialization_commands(self, node_id):
@@ -408,7 +408,6 @@ class StandardAutoscaler:
         default = self.config["initialization_commands"]
         node_specific = self._get_node_specific_key(node_id, "initialization_commands")
         if node_specific:
-            node_specific = node_specific.copy()
             docker_pull_if_needed(self.config, node_specific)
             return node_specific
         else:
@@ -419,7 +418,6 @@ class StandardAutoscaler:
         default = self.config["worker_setup_commands"]
         node_specific = self._get_node_specific_key(node_id, "setup_commands")
         if node_specific:
-            node_specific = node_specific.copy()
             dockerize_worker_setup_if_needed(self.config, node_specific)
             return node_specific
         else:

@@ -91,6 +91,8 @@ def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     dockerize_if_needed(with_defaults)
+    from pprint import pprint
+    pprint(with_defaults)
     return with_defaults
 
 
@@ -98,11 +100,6 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
-    to_fill = [
-        "head_setup_commands", "worker_setup_commands", "setup_commands",
-        "initialization_commands", "head_start_ray_commands",
-        "worker_start_ray_commands"
-    ]
     return defaults
 
 

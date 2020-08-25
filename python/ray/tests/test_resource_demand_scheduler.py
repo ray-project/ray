@@ -196,8 +196,8 @@ class AutoscalingTest(unittest.TestCase):
 
     def testGetOrCreateMultiNodeType(self):
         config = MULTI_WORKER_CLUSTER.copy()
-        config["available_node_types"]["m4.large"]["head_setup_commands"] = [
-            "new head setup cmd"
+        config["available_node_types"]["m4.large"]["setup_commands"] = [
+            "new_setup_cmd"
         ]
         # Commenting out this line causes the test case to fail?!?!
         config["min_workers"] = 0
@@ -216,7 +216,7 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         self.waitForNodes(1)
         runner.assert_has_call("1.2.3.4", "init_cmd")
-        runner.assert_has_call("1.2.3.4", "new head setup cmd")
+        runner.assert_has_call("1.2.3.4", "new_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, "m4.large")
         self.assertEqual(
@@ -247,6 +247,7 @@ class AutoscalingTest(unittest.TestCase):
         config = MULTI_WORKER_CLUSTER.copy()
         config["min_workers"] = 0
         config["max_workers"] = 50
+        print(config)
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
