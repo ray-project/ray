@@ -80,6 +80,10 @@ class HorovodMixin:
         sanitized = {k: str(v) for k, v in env_vars.items()}
         os.environ.update(sanitized)
 
+    def env_vars(self):
+        """Check the env vars in the actor process."""
+        return dict(os.environ)
+
 
 @ray.remote
 class NodeColocator:
@@ -205,9 +209,9 @@ class Coordinator:
 
 class _HorovodTrainable(tune.Trainable):
     """Abstract Trainable class for Horovod."""
-    _num_nodes: int = None
-    _num_workers_per_node: int = None
-    _num_cpus_per_worker: int = None
+    _num_nodes: int = 1
+    _num_workers_per_node: int = 1
+    _num_cpus_per_worker: int = 1
     _use_gpu: bool = False
     _finished: bool = False
     workers: List = None
@@ -305,6 +309,8 @@ class _HorovodTrainable(tune.Trainable):
 
     def stop(self):
         map_blocking(lambda w: w.stop.remote(), self.workers)
+        for colocator in self.colocators:
+            del colocator
 
 
 def DistributedTrainableCreator(func,
@@ -404,6 +410,9 @@ def DistributedTrainableCreator(func,
 
     return WrappedDistributedTorchTrainable
 
+
+class _MockHorovodTrainable(HorovodMixin, tune.Trainable):
+    pass
 
 def _train_simple(config):
     import horovod.torch as hvd

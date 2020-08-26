@@ -1,10 +1,16 @@
+import os
 import pytest
 
 import ray
 from ray import tune
-from ray.tune.integration.horovod import (DistributedTrainableCreator,
-                                          _train_simple)
+from ray.tune.function_runner import wrap_function
+from ray.tune.integration.horovod import (
+    DistributedTrainableCreator, _train_simple, NodeColocator, HorovodMixin, _MockHorovodTrainable)
 
+try:
+    import horovod
+except ImportError:
+    horovod = None
 # pytest.importorskip("horovod")
 
 
@@ -25,6 +31,24 @@ def ray_start_4_cpus():
 
 
 @pytest.fixture
+def ray_start_6_cpus():
+    address_info = ray.init(num_cpus=6)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpus_4_gpus():
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+    address_info = ray.init(num_cpus=4, num_gpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    del os.environ["CUDA_VISIBLE_DEVICES"]
+
+
+@pytest.fixture
 def ray_connect_cluster():
     try:
         address_info = ray.init(address="auto")
@@ -35,6 +59,7 @@ def ray_connect_cluster():
     ray.shutdown()
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_nodes=1, num_workers_per_node=2)
@@ -43,6 +68,7 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     trainer.stop()
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 def test_step_after_completion(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_nodes=1, num_workers_per_node=2)
@@ -52,6 +78,7 @@ def test_step_after_completion(ray_start_2_cpus):  # noqa: F811
             trainer.train()
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 def test_validation(ray_start_2_cpus):  # noqa: F811
     def bad_func(a, b, c):
         return 1
@@ -60,6 +87,7 @@ def test_validation(ray_start_2_cpus):  # noqa: F811
         DistributedTrainableCreator(bad_func, num_workers_per_node=2)
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 def test_set_global(ray_start_2_cpus):  # noqa: F811
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_workers_per_node=2)
@@ -69,6 +97,7 @@ def test_set_global(ray_start_2_cpus):  # noqa: F811
     assert result["rank"] == 0
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 def test_simple_tune(ray_start_4_cpus):
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_workers_per_node=2)
@@ -100,18 +129,44 @@ def test_coordinator_registration():
             for info in rank_to_info.values()} == {0, 1, 2, 3}
 
 
-def test_colocator():
-    pass
+def test_colocator(tmpdir, ray_start_6_cpus):
+    colocator = NodeColocator.remote(num_workers=4, use_gpu=False)
+    colocator.create_workers.remote(_MockHorovodTrainable, {"hi": 1}, tmpdir)
+    worker_handles = ray.get(colocator.get_workers.remote())
+    assert len(set(ray.get([h.hostname.remote() for h in worker_handles]))) == 1
+
+    resources = ray.available_resources()
+    assert resources.get("CPU", 0) == 2 , resources
+    assert resources.get("node:{ip_address}", 0) == 1 - 6 * 0.01
 
 
-def test_colocator_gpu():
-    pass
+def test_colocator_gpu(tmpdir, ray_start_4_cpus_4_gpus):
+    colocator = NodeColocator.remote(num_workers=4, use_gpu=True)
+    colocator.create_workers.remote(_MockHorovodTrainable, {"hi": 1}, tmpdir)
+    worker_handles = ray.get(colocator.get_workers.remote())
+    assert len(set(ray.get(
+        [h.hostname.remote() for h in worker_handles]))) == 1
+    resources = ray.available_resources()
+    assert resources.get("CPU", 0) == 0, resources
+    assert resources.get("GPU", 0) == 0, resources
+    assert resources.get("node:{ip_address}", 0) == 1 - 6 * 0.01
+
+    all_envs = ray.get([h.env_vars.remote() for h in worker_handles])
+    assert len({ev["CUDA_VISIBLE_DEVICES"] for ev in all_envs}) == 4
 
 
-def test_horovod_mixin():
-    pass
+def test_horovod_mixin(ray_start_2_cpus):
+    class Test(HorovodMixin):
+        pass
+
+    assert Test().hostname() == ray.services.get_node_ip_address()
+    actor = ray.remote(HorovodMixin).remote()
+    DUMMY_VALUE = 1123123
+    actor.update_env_vars.remote({"TEST": DUMMY_VALUE})
+    assert ray.get(actor.env_vars.remote())["TEST"] == str(DUMMY_VALUE)
 
 
+@pytest.mark.skipif(horovod is None, reason="Horovod not found.")
 @pytest.mark.parametrize("use_gpu", [True, False])
 def test_resource_tune(ray_connect_cluster, use_gpu):
     if use_gpu and not ray.cluster_resources().get("GPU", 0):
