@@ -1,4 +1,5 @@
-FROM rayproject/ray
+ARG GPU
+FROM rayproject/ray:latest"$GPU"
 
 # Install kubectl.
 RUN apt-get update \
