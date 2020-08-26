@@ -199,4 +199,7 @@ if __name__ == "__main__":
             RAY_CI_STREAMING_PYTHON_AFFECTED),
         "RAY_CI_STREAMING_JAVA_AFFECTED={}".format(
             RAY_CI_STREAMING_JAVA_AFFECTED),
+        "RAY_CI_DOCKER_AFFECTED={}".format(RAY_CI_DOCKER_AFFECTED),
+        "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED={}".format(
+            RAY_CI_PYTHON_DEPENDENCIES_AFFECTED),
     ]))
