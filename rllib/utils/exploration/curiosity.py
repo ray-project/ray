@@ -242,8 +242,6 @@ class Curiosity(Exploration):
         inverse_loss = -action_dist.logp(train_batch[SampleBatch.ACTIONS])
         inverse_loss = torch.mean(inverse_loss)
 
-        # Forward loss term has already been calculated during train batch pre-
-        # processing (just have to weight with beta here).
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat(
                 [
