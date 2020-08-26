@@ -389,6 +389,19 @@ class StandardAutoscaler:
         updater.start()
         self.updaters[node_id] = updater
 
+    def _get_node_type_specific_commands(self, node_id: str,
+                                         commands_key: str):
+        commands = self.config[commands_key]
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+            if node_type not in self.available_node_types:
+                raise ValueError(f"Unknown node type tag: {node_type}.")
+            node_specific_config = self.available_node_types[node_type]
+            if commands_key in node_specific_config:
+                commands = node_specific_config[commands_key]
+        return commands
+
     def should_update(self, node_id):
         if not self.can_update(node_id):
             return None, None, None  # no update
@@ -402,10 +415,12 @@ class StandardAutoscaler:
             init_commands = []
             ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
         return (node_id, init_commands, ray_commands)
@@ -420,7 +435,8 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
+                self._get_node_type_specific_commands(
+                    node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
