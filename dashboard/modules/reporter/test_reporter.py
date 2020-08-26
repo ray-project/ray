@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import requests
 import time
@@ -93,3 +94,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
             return False
 
     wait_for_condition(_check_workers, timeout=10)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

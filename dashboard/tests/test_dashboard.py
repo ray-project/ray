@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import logging
@@ -356,3 +357,7 @@ assert all(cls.__name__ != "TestAgent" for cls in agent_cls_list)
 print("success")
 """
     run_string_as_driver(test_code)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

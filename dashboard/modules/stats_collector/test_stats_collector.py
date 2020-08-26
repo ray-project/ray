@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import requests
 import time
@@ -83,3 +84,7 @@ def test_node_info(disable_test_module, ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
