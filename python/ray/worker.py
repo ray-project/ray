@@ -491,7 +491,6 @@ def init(
         _driver_object_store_memory=None,
         _log_to_driver=True,
         _memory=None,
-        _num_redis_shards=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
         _java_worker_options=None,
@@ -579,8 +578,6 @@ def init(
         _log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         _memory: Amount of reservable memory resource to create.
-        _num_redis_shards: The number of Redis shards to start in addition to
-            the primary Redis shard.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
         _include_java: Boolean flag indicating whether or not to enable java
@@ -665,7 +662,7 @@ def init(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
-            num_redis_shards=_num_redis_shards,
+            num_redis_shards=None,
             redis_max_clients=None,
             redis_password=_redis_password,
             plasma_directory=None,
