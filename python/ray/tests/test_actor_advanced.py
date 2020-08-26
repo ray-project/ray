@@ -620,6 +620,33 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     ray.get(g.remote())
 
 
+def test_named_but_not_detached(ray_start_regular):
+    redis_address = ray_start_regular["redis_address"]
+
+    driver_script = """
+import ray
+ray.init(address="{}")
+
+@ray.remote
+class NotDetached:
+    def ping(self):
+        return "pong"
+
+actor = NotDetached.options(name="actor").remote()
+assert ray.get(actor.ping.remote()) == "pong"
+handle = ray.get_actor("actor")
+assert ray.get(handle.ping.remote()) == "pong"
+""".format(redis_address)
+
+    # Creates and kills actor once the driver exits.
+    run_string_as_driver(driver_script)
+    detached_actor = ray.get_actor("actor")
+
+    # Must raise an exception since lifetime is not detached.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(detached_actor.ping.remote())
+
+
 def test_detached_actor(ray_start_regular):
     @ray.remote
     class DetachedActor:
