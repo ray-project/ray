@@ -37,7 +37,8 @@ def dockerize_if_needed(config):
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
         config["initialization_commands"].append(docker_pull_cmd)
-        for node_type_config in config.get("available_node_types", {}).values():
+        for node_type_config in config.get("available_node_types",
+                                           {}).values():
             node_type_config["initialization_commands"].append(docker_pull_cmd)
             pass
 
@@ -64,8 +65,10 @@ def dockerize_if_needed(config):
 
     for node_type_config in config.get("available_node_types", {}).values():
         if "worker_setup_commands" in node_type_config:
-            node_type_config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
-                node_type_config["worker_setup_commands"], container_name=cname))
+            node_type_config["worker_setup_commands"] = worker_docker_start + (
+                with_docker_exec(
+                    node_type_config["worker_setup_commands"],
+                    container_name=cname))
     return config
 
 

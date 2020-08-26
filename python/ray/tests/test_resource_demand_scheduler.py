@@ -355,9 +355,8 @@ class AutoscalingTest(unittest.TestCase):
     def testCommandPassing(self):
         t = "custom"
         config = MULTI_WORKER_CLUSTER.copy()
-        config["available_node_types"]["p2.8xlarge"]["worker_setup_commands"] = [
-            "new_worker_setup_command"
-        ]
+        config["available_node_types"]["p2.8xlarge"][
+            "worker_setup_commands"] = ["new_worker_setup_command"]
         config["available_node_types"]["p2.xlarge"][
             "initialization_commands"] = ["new_worker_initialization_cmd"]
         config["available_node_types"]["p2.xlarge"]["resources"][t] = 1
