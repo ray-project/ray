@@ -216,6 +216,7 @@ class RayParams:
                 raise Exception(
                     "Object reconstruction cannot be enabled if using LRU "
                     "eviction.")
+            print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
             self._system_config["free_objects_period_milliseconds"] = -1
 
