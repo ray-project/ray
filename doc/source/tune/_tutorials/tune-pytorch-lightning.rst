@@ -303,9 +303,7 @@ a combined reporting and checkpointing callback:
 The ``checkpoint`` value is the name of the checkpoint file within the
 checkpoint directory.
 
-We also include checkpoint loading in our training function. The name
-of the checkpoint has to coincide with the one we passed to the
-``TuneCheckpointCallback``:
+We also include checkpoint loading in our training function:
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
