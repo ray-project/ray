@@ -55,7 +55,8 @@ def recover_checkpoint(tune_checkpoint_dir, model_name=None):
 
 
 # __train_begin__
-@wandb_mixin
+# Uncomment this line to use W&B!
+#@wandb_mixin
 def train_transformer(config, checkpoint_dir=None):
     data_args = DataTrainingArguments(
         task_name=config["task_name"], data_dir=config["data_dir"])
