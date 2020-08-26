@@ -136,7 +136,7 @@ RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 /// available. This is a lower bound on the time to report the loss of an
 /// object stored in the distributed object store in the case that the worker
 /// that created the original ObjectRef dies.
-RAY_CONFIG(int64_t, object_timeout_milliseconds, 10000)
+RAY_CONFIG(int64_t, object_timeout_milliseconds, 100)
 
 /// The maximum duration that workers can hold on to another worker's lease
 /// for direct task submission until it must be returned to the raylet.
