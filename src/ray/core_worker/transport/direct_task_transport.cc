@@ -77,9 +77,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
-        if (scheduling_key_entry.total_tasks_in_flight <
-            scheduling_key_entry.active_workers.size() *
-                max_tasks_in_flight_per_worker_) {
+        if (!AllPipelinesToWorkersFull(scheduling_key_entry)) {
           // The pipelines to the current workers are not full yet, so we don't need more
           // workers.
 
@@ -90,7 +88,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-            if (lease_entry.tasks_in_flight < max_tasks_in_flight_per_worker_) {
+            if (!PipelineToWorkerFull(lease_entry)) {
               OnWorkerIdle(active_worker_addr, scheduling_key, false,
                            lease_entry.assigned_resources);
               // If we find a worker with a non-full pipeline, all we need to do is to
@@ -151,7 +149,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       // Decrement the number of active workers consuming tasks from the queue associated
       // with the current scheduling_key
       scheduling_key_entry.active_workers.erase(addr);
-      if (scheduling_key_entry.SafeToDeleteEntry()) {
+      if (scheduling_key_entry.CanDelete()) {
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);
       }
 
@@ -166,8 +166,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
-    while (!current_queue.empty() &&
-           lease_entry.tasks_in_flight < max_tasks_in_flight_per_worker_) {
+    while (!current_queue.empty() && !PipelineToWorkerFull(lease_entry)) {
       auto task_spec = current_queue.front();
       lease_entry
           .tasks_in_flight++;  // Increment the number of tasks in flight to the worker
@@ -222,6 +221,13 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             // should already have been removed from our local state, so we no
             // longer need to cancel.
             CancelWorkerLeaseIfNeeded(scheduling_key);
+          } else {
+            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+            if (scheduling_key_entry.CanDelete()) {
+              // We can safely remove the entry keyed by scheduling_key from the
+              // scheduling_key_entries_ hashmap.
+              scheduling_key_entries_.erase(scheduling_key);
+            }
           }
         });
   }
@@ -264,13 +270,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto &task_queue = scheduling_key_entry.task_queue;
   if (task_queue.empty()) {
     // We don't have any of this type of task to run.
+    if (scheduling_key_entry.CanDelete()) {
+      // We can safely remove the entry keyed by scheduling_key from the
+      // scheduling_key_entries_ hashmap.
+      scheduling_key_entries_.erase(scheduling_key);
+    }
     return;
   }
 
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks
-  if (scheduling_key_entry.total_tasks_in_flight <
-      scheduling_key_entry.active_workers.size() * max_tasks_in_flight_per_worker_) {
+  if (!AllPipelinesToWorkersFull(scheduling_key_entry)) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
 
@@ -376,6 +386,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       worker_to_lease_entry_.erase(addr);
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
       scheduling_key_entry.active_workers.erase(addr);
+      if (scheduling_key_entry.CanDelete()) {
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
+        scheduling_key_entries_.erase(scheduling_key);
+      }
     } else if (!status.ok() || !is_actor_creation) {
       // Successful actor creation leases the worker indefinitely from the raylet.
       absl::MutexLock lock(&mu_);

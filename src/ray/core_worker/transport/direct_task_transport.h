@@ -202,6 +202,13 @@ class CoreWorkerDirectTaskSubmitter {
           scheduling_key(scheduling_key) {}
   };
 
+  // Check whether the pipeline to the worker associated with a LeaseEntry is full. This
+  // method is declared outside the LeaseEntry struct so that we can access the
+  // max_tasks_in_flight_per_worker_ const.
+  bool PipelineToWorkerFull(LeaseEntry &lease_entry) {
+    return lease_entry.tasks_in_flight == max_tasks_in_flight_per_worker_;
+  }
+
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
   absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry> worker_to_lease_entry_
       GUARDED_BY(mu_);
@@ -220,6 +227,8 @@ class CoreWorkerDirectTaskSubmitter {
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
     uint32_t total_tasks_in_flight = 0;
 
+    // Check whether it's safe to delete this SchedulingKeyEntry from the
+    // scheduling_key_entries_ hashmap.
     bool CanDelete() {
       if (!pending_lease_request.first && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
@@ -228,6 +237,15 @@ class CoreWorkerDirectTaskSubmitter {
       return false;
     }
   };
+
+  // Check whether the pipelines to the active workers associated with a
+  // SchedulingKeyEntry are all full. This function is defined outside of the
+  // SchedulingKeyEntry struct so that we can access the max_tasks_in_flight_per_worker_
+  // const.
+  bool AllPipelinesToWorkersFull(SchedulingKeyEntry &scheduling_key_entry) {
+    return scheduling_key_entry.total_tasks_in_flight ==
+           (scheduling_key_entry.active_workers.size() * max_tasks_in_flight_per_worker_);
+  }
 
   // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct
   // with the queue of tasks belonging to that SchedulingKey, together with the other
