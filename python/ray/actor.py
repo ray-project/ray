@@ -472,9 +472,7 @@ class ActorClass:
             raise ValueError("max_concurrency must be >= 1")
 
         worker = ray.worker.global_worker
-        if worker.mode is None:
-            raise RuntimeError("Actors cannot be created before ray.init() "
-                               "has been called.")
+        worker.check_connected()
 
         if detached:
             logger.warning("The detached flag is deprecated. To create a "
