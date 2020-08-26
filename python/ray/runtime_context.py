@@ -23,15 +23,6 @@ class RuntimeContext(object):
         return self.worker.current_job_id
 
     @property
-    def get_job_configs(self):
-        # TODO: make a job table
-        key = "_JOB_CONFIG_{}".format(self.current_driver_id.hex())
-        result = ray.state.state._execute_command_on_primary("GET", key)
-        if result is None:
-            raise ValueError(f"Failed to get a job config from GCS for a job id, {self.current_driver_id.hex()}.")
-        return json.loads(result, encoding="UTF-8")
-
-    @property
     def current_actor_id(self):
         """Get the current actor ID in this worker.
 
@@ -44,9 +35,14 @@ class RuntimeContext(object):
 
     @property
     def was_current_actor_reconstructed(self):
+        """Check whether this actor has been restarted
+
+        Returns:
+            Whether this actor has been ever restarted.
+        """
         # TODO: this method should not be called in a normal task.
         actor_info = ray.state.actors(self.current_actor_id.hex())
-        return actor_info and actor_info["NumRestarts"] != 0:
+        return actor_info and actor_info["NumRestarts"] != 0
 
 _runtime_context = None
 
