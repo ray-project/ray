@@ -206,8 +206,6 @@ class StandardAutoscaler:
                     self.pending_launches.breakdown(),
                     resource_demand_vector))
                 # TODO(ekl) also enforce max launch concurrency here?
-                print(f"vector: {resource_demand_vector}")
-                print(f"result: {to_launch}")
                 for node_type, count in to_launch:
                     self.launch_new_node(count, node_type=node_type)
 
