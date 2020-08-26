@@ -67,7 +67,7 @@ if __name__ == "__main__":
         print(pformat(files), file=sys.stderr)
 
         skip_prefix_list = [
-            "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"
+            "doc/", "examples/", "dev/", "kubernetes/", "site/"
         ]
 
         for changed_file in files:
