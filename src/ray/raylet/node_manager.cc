@@ -1043,50 +1043,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
-    // The actor's location is now known. Dequeue any methods that were
-    // submitted before the actor's location was known.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto &methods = local_queues_.GetTasks(TaskState::WAITING_FOR_ACTOR_CREATION);
-    std::unordered_set<TaskID> created_actor_method_ids;
-    for (const auto &method : methods) {
-      if (method.GetTaskSpecification().ActorId() == actor_id) {
-        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
-      }
-    }
-    // Resubmit the methods that were submitted before the actor's location was
-    // known.
-    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-    for (const auto &method : created_actor_methods) {
-      // Maintain the invariant that if a task is in the
-      // MethodsWaitingForActorCreation queue, then it is subscribed to its
-      // respective actor creation task. Since the actor location is now known,
-      // we can remove the task from the queue and forget its dependency on the
-      // actor creation task.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(
-          method.GetTaskSpecification().TaskId()));
-      // The task's uncommitted lineage was already added to the local lineage
-      // cache upon the initial submission, so it's okay to resubmit it with an
-      // empty lineage this time.
-      SubmitTask(method);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
-    RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
-    // When an actor fails but can be restarted, resubmit all of the queued
-    // tasks for that actor. This will mark the tasks as waiting for actor
-    // creation.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      SubmitTask(task);
-    }
   }
 }
 
@@ -2810,7 +2766,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
       local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
       local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
-      local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
 
       // Make sure that the remaining tasks are all WAITING or direct call
       // actors.
