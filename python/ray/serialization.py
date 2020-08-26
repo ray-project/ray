@@ -462,4 +462,3 @@ class SerializationContext:
             # Since we are pickling objects of this class, we don't actually
             # need to ship the class definition.
             register_class_for_serialization({"worker": self.worker})
->>>>>>> e2eef6469b2df38448bd86dd7a1d0bbabf952470
