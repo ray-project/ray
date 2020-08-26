@@ -43,7 +43,7 @@ def test_node_info(disable_test_module, ray_start_with_dashboard):
             assert len(hostname_list) == 1
 
             hostname = hostname_list[0]
-            response = requests.get(webui_url + "/nodes/{}".format(hostname))
+            response = requests.get(webui_url + f"/nodes/{hostname}")
             response.raise_for_status()
             detail = response.json()
             assert detail["result"] is True, detail["msg"]
@@ -81,6 +81,5 @@ def test_node_info(disable_test_module, ray_start_with_dashboard):
                 ex_stack = traceback.format_exception(
                     type(last_ex), last_ex,
                     last_ex.__traceback__) if last_ex else []
-                raise Exception(
-                    "Timed out while waiting for dashboard to start, {}".
-                    format("".join(ex_stack)))
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")

@@ -77,8 +77,7 @@ def test_log(disable_test_module, ray_start_with_dashboard):
                 if test_log_text in response.text:
                     break
             else:
-                raise Exception("Can't find {} from {}".format(
-                    test_log_text, urls))
+                raise Exception(f"Can't find {test_log_text} from {urls}")
 
             # Test range request.
             response = requests.get(
@@ -89,7 +88,7 @@ def test_log(disable_test_module, ray_start_with_dashboard):
 
             # Test logUrl in node info.
             response = requests.get(webui_url +
-                                    "/nodes/{}".format(socket.gethostname()))
+                                    f"/nodes/{socket.gethostname()}")
             response.raise_for_status()
             node_info = response.json()
             assert node_info["result"] is True
@@ -104,6 +103,5 @@ def test_log(disable_test_module, ray_start_with_dashboard):
                 ex_stack = traceback.format_exception(
                     type(last_ex), last_ex,
                     last_ex.__traceback__) if last_ex else []
-                raise Exception(
-                    "Timed out while waiting for dashboard to start, {}".
-                    format("".join(ex_stack)))
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")

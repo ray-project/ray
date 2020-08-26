@@ -37,10 +37,10 @@ def setup_static_dir():
             errno.ENOENT, "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
-            "(cd python/ray/{}/client "
+            f"(cd python/ray/{module_name}/client "
             "&& npm install "
             "&& npm ci "
-            "&& npm run build)".format(module_name), build_dir)
+            "&& npm run build)", build_dir)
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=True)

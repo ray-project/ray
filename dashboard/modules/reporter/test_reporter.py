@@ -38,7 +38,7 @@ def test_profiling(disable_test_module, shutdown_only):
         if time.time() - start_time > 10:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats, "
-                "launch_profiling: {}".format(launch_profiling))
+                f"launch_profiling: {launch_profiling}")
         launch_profiling = requests.get(
             webui_url + "/api/launch_profiling",
             params={

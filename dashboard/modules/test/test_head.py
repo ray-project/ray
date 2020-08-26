@@ -61,7 +61,7 @@ class TestHead(dashboard_utils.DashboardHeadModule):
             data = dict(DataSource.__dict__.get(key))
             return await dashboard_utils.rest_response(
                 success=True,
-                message="Fetch {} from datacenter success.".format(key),
+                message=f"Fetch {key} from datacenter success.",
                 **{key: data})
 
     @routes.get("/test/notified_agents")

@@ -103,10 +103,9 @@ class ClassMethodRouteTable:
         def _wrapper(handler):
             if path in cls._bind_map[method]:
                 bind_info = cls._bind_map[method][path]
-                raise Exception("Duplicated route path: {}, "
-                                "previous one registered at {}:{}".format(
-                                    path, bind_info.filename,
-                                    bind_info.lineno))
+                raise Exception(f"Duplicated route path: {path}, "
+                                f"previous one registered at "
+                                f"{bind_info.filename}:{bind_info.lineno}")
 
             bind_info = cls._BindInfo(handler.__code__.co_filename,
                                       handler.__code__.co_firstlineno, None)
@@ -185,7 +184,7 @@ def dashboard_module(enable):
 
 
 def get_all_modules(module_type):
-    logger.info("Get all modules by type: {}".format(module_type.__name__))
+    logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.new_dashboard.modules
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
@@ -327,8 +326,7 @@ class Change:
         self.new = new
 
     def __str__(self):
-        return "Change(owner: {}, old: {}, new: {}".format(
-            self.owner, self.old, self.new)
+        return f"Change(owner: {self.owner}, old: {self.old}, new: {self.new}"
 
 
 class NotifyQueue:

@@ -51,17 +51,17 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         # returns directory's index as html
 
         index_of = "Index of logs"
-        h1 = "<h1>{}</h1>".format(index_of)
+        h1 = f"<h1>{index_of}</h1>"
 
         index_list = []
         for url in sorted(url_list):
-            index_list.append('<li><a href="{url}">{name}</a></li>'.format(
-                url=url, name=url))
-        ul = "<ul>\n{}\n</ul>".format("\n".join(index_list))
-        body = "<body>\n{}\n{}\n</body>".format(h1, ul)
+            index_list.append(f'<li><a href="{url}">{url}</a></li>')
+        index_list = "\n".join(index_list)
+        ul = f"<ul>\n{index_list}\n</ul>"
+        body = f"<body>\n{h1}\n{ul}\n</body>"
 
-        head_str = "<head>\n<title>{}</title>\n</head>".format(index_of)
-        html = "<html>\n{}\n{}\n</html>".format(head_str, body)
+        head_str = f"<head>\n<title>{index_of}</title>\n</head>"
+        html = f"<html>\n{head_str}\n{body}\n</html>"
 
         return html
 

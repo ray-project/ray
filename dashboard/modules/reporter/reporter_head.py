@@ -31,7 +31,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             self._stubs.pop(ip)
         if change.new:
             ip, ports = next(iter(change.new.items()))
-            channel = aiogrpc.insecure_channel("{}:{}".format(ip, ports[1]))
+            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -43,12 +43,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         reporter_stub = self._stubs[ip]
         reply = await reporter_stub.GetProfilingStats(
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
-        print("ccc", reply.std_err, reply.std_out)
+        profiling_info = (json.loads(reply.profiling_stats)
+                          if reply.profiling_stats else reply.std_out)
         return await dashboard_utils.rest_response(
             success=True,
             message="Profiling success.",
-            profiling_info=json.loads(reply.profiling_stats)
-            if reply.profiling_stats else reply.std_out)
+            profiling_info=profiling_info)
 
     async def run(self, server):
         aioredis_client = self._dashboard_head.aioredis_client
@@ -56,7 +56,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
         await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-        logger.info("Subscribed to {}".format(reporter_key))
+        logger.info("Subscribed to %s", reporter_key)
 
         async for sender, msg in receiver.iter():
             try:

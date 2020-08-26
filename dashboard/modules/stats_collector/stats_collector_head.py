@@ -75,7 +75,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 host_name_list=list(DataSource.hostname_to_ip.keys()))
         else:
             return await dashboard_utils.rest_response(
-                success=False, message="Unknown view {}".format(view))
+                success=False, message=f"Unknown view {view}")
 
     @routes.get("/nodes/{hostname}")
     async def get_node(self, req) -> aiohttp.web.Response:
@@ -92,7 +92,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         key = "{}:*".format(stats_collector_consts.ACTOR_CHANNEL)
         pattern = receiver.pattern(key)
         await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to {}".format(key))
+        logger.info("Subscribed to %s", key)
 
         # Get all actor info.
         while True:
@@ -107,12 +107,12 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         result[binary_to_hex(actor_info.actor_id)] = \
                             actor_table_data_to_dict(actor_info)
                     DataSource.actors.reset(result)
-                    logger.info("Received {} actor info from GCS.".format(
-                        len(result)))
+                    logger.info("Received %d actor info from GCS.",
+                                len(result))
                     break
                 else:
-                    raise Exception("Failed to GetAllActorInfo: {}".format(
-                        reply.status.message))
+                    raise Exception(
+                        f"Failed to GetAllActorInfo: {reply.status.message}")
             except Exception as ex:
                 logger.exception(ex)
                 await asyncio.sleep(stats_collector_consts.

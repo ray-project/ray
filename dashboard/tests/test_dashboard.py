@@ -160,7 +160,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             try:
                 dump_info = response.json()
             except Exception as ex:
-                logger.info("failed response: {}".format(response.text))
+                logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
@@ -176,7 +176,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             try:
                 notified_agents = response.json()
             except Exception as ex:
-                logger.info("failed response: {}".format(response.text))
+                logger.info("failed response: %s", response.text)
                 raise ex
             assert notified_agents["result"] is True
             notified_agents = notified_agents["data"]
@@ -210,7 +210,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             try:
                 dump_info = response.json()
             except Exception as ex:
-                logger.info("failed response: {}".format(response.text))
+                logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
@@ -219,13 +219,13 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             http_port, grpc_port = ports
 
             response = requests.get(
-                "http://{}:{}/test/http_get_from_agent?url={}".format(
-                    ip, http_port, target_url))
+                f"http://{ip}:{http_port}"
+                f"/test/http_get_from_agent?url={target_url}")
             response.raise_for_status()
             try:
                 dump_info = response.json()
             except Exception as ex:
-                logger.info("failed response: {}".format(response.text))
+                logger.info("failed response: %s", response.text)
                 raise ex
             assert dump_info["result"] is True
             break
@@ -233,8 +233,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             logger.info("Retry because of %s", e)
         finally:
             if time.time() > start_time + timeout_seconds:
-                raise Exception(
-                    "Timed out while waiting for dashboard to start.")
+                raise Exception("Timed out while testing.")
 
 
 def test_class_method_route_table(enable_test_module):
@@ -325,14 +324,14 @@ def test_class_method_route_table(enable_test_module):
 def test_async_loop_forever(disable_test_module):
     counter = [0]
 
-    @dashboard_utils.async_loop_forever(interval_seconds=1)
+    @dashboard_utils.async_loop_forever(interval_seconds=0.1)
     async def foo():
         counter[0] += 1
         raise Exception("Test exception")
 
     loop = asyncio.get_event_loop()
     loop.create_task(foo())
-    loop.call_later(4, loop.stop)
+    loop.call_later(1, loop.stop)
     loop.run_forever()
     assert counter[0] > 2
 

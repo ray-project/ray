@@ -142,7 +142,7 @@ class DashboardHead:
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
-        logger.info("Loaded {} modules.".format(len(modules)))
+        logger.info("Loaded %d modules.", len(modules))
         return modules
 
     async def run(self):
