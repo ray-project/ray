@@ -299,7 +299,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     return l;
   }
 
-  public static byte[] callPythonActorHandle(NativePyActorHandle actor) {
+  public static byte[] callPythonActorHandle(PyActorHandle actor) {
     // This function will be called from test_cross_language_invocation.py
     ObjectRef<byte[]> res = actor.task(
         PyActorMethod.of("increase", byte[].class),
