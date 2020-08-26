@@ -195,8 +195,6 @@ def create_or_update_cluster(config_file: str,
         cli_logger.old_style = True
     cli_logger.newline()
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
-    if config["provider"]["type"] != "aws":
-        cli_logger.old_style = False
 
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
