@@ -19,6 +19,7 @@ optuna
 pytest-remotedata>=0.3.1
 pytorch-lightning
 scikit-optimize
+scipy
 sigopt
 smart_open
 tensorflow_probability

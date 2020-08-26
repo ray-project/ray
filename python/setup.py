@@ -111,7 +111,7 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 extras = {
     "debug": [],
     "serve": ["uvicorn", "flask", "requests"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "tune": ["tabulate", "tensorboardX", "pandas", "scipy"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -121,7 +121,6 @@ extras["rllib"] = extras["tune"] + [
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
-    "scipy",
 ]
 
 extras["streaming"] = []
