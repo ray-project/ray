@@ -150,7 +150,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
 
-    timeout_seconds = 20
+    timeout_seconds = 10
     start_time = time.time()
     while True:
         time.sleep(1)
@@ -199,7 +199,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
 
     target_url = webui_url + "/test/dump"
 
-    timeout_seconds = 20
+    timeout_seconds = 10
     start_time = time.time()
     while True:
         time.sleep(1)

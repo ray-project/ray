@@ -45,7 +45,7 @@ def test_log(disable_test_module, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
 
-    timeout_seconds = 20
+    timeout_seconds = 10
     start_time = time.time()
     last_ex = None
     while True:

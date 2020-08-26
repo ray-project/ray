@@ -35,7 +35,7 @@ def test_profiling(disable_test_module, shutdown_only):
     launch_profiling = None
     while True:
         # Sometimes some startup time is required
-        if time.time() - start_time > 30:
+        if time.time() - start_time > 10:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats, "
                 "launch_profiling: {}".format(launch_profiling))
@@ -92,4 +92,4 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
             logger.info(ex)
             return False
 
-    wait_for_condition(_check_workers, timeout=30)
+    wait_for_condition(_check_workers, timeout=10)
