@@ -632,7 +632,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
             return self.dependency
 
     # Make sure it is scheduled in the second node.
-    @ray.remote(resources={"node": 1}, num_cpus=1)
+    @ray.remote(resources={"node": 1})
     class Owner:
         def get_pid(self):
             return os.getpid()
@@ -649,7 +649,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
             # Wait until the `Caller` start executing the remote `call` method.
             ray.get(signal_handle.wait.remote())
 
-    @ray.remote
+    @ray.remote(resources={"caller": 1})
     class Caller:
         def call(self, owner_pid, signal_handle, actor_handle):
             # Notify the `Owner` that the `Caller` is executing the remote
@@ -665,15 +665,15 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
             return True
 
     cluster = ray_start_cluster
-    node_to_be_broken = cluster.add_node(num_cpus=1, resources={"node": 1})
+    node_to_be_broken = cluster.add_node(resources={"node": 1})
+    cluster.add_node(resources={"caller": 1})
 
     owner = Owner.remote()
     owner_pid = ray.get(owner.get_pid.remote())
 
     caller = Caller.remote()
-    owner.create_actor.remote(caller)
+    ray.get(owner.create_actor.remote(caller))
     cluster.remove_node(node_to_be_broken)
-    # Wait for the `Owner` to exit.
     wait_for_pid_to_exit(owner_pid)
 
     # It will hang here if location is not properly resolved.
