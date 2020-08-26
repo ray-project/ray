@@ -85,7 +85,6 @@ from ray.worker import (  # noqa: F401
     show_in_dashboard, wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
-import ray.projects  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: F401
@@ -127,7 +126,6 @@ __all__ = [
     "is_initialized",
     "method",
     "profile",
-    "projects",
     "put",
     "kill",
     "remote",
