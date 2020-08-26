@@ -414,6 +414,7 @@ def DistributedTrainableCreator(func,
 class _MockHorovodTrainable(HorovodMixin, tune.Trainable):
     pass
 
+
 def _train_simple(config):
     import horovod.torch as hvd
     hvd.init()
