@@ -16,14 +16,14 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 def test_cached_object(ray_start_cluster):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "object_timeout_milliseconds": 200,
-    })
+    }
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(num_cpus=0, _internal_config=config)
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -72,7 +72,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -132,7 +132,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -182,7 +182,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -240,7 +240,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -314,7 +314,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -395,7 +395,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
@@ -456,7 +456,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
-        _internal_config=config,
+        _system_config=config,
         object_store_memory=10**8,
         enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
@@ -493,17 +493,17 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
 
 
 def test_reconstruction_stress(ray_start_cluster):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
         "max_direct_call_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
-    })
+    }
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0, _internal_config=config, enable_object_reconstruction=True)
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(

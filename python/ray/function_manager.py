@@ -544,43 +544,13 @@ class FunctionActorManager:
         """
 
         def actor_method_executor(actor, *args, **kwargs):
-            # Update the actor's task counter to reflect the task we're about
-            # to execute.
-            self._worker.actor_task_counter += 1
-
-            # Execute the assigned method and save a checkpoint if necessary.
-            try:
-                is_bound = (is_class_method(method)
-                            or is_static_method(type(actor), method_name))
-                if is_bound:
-                    method_returns = method(*args, **kwargs)
-                else:
-                    method_returns = method(actor, *args, **kwargs)
-            except Exception as e:
-                # Save the checkpoint before allowing the method exception
-                # to be thrown, but don't save the checkpoint for actor
-                # creation task.
-                if (isinstance(actor, ray.actor.Checkpointable)
-                        and self._worker.actor_task_counter != 1):
-                    self._save_and_log_checkpoint(actor)
-                raise e
+            # Execute the assigned method.
+            is_bound = (is_class_method(method)
+                        or is_static_method(type(actor), method_name))
+            if is_bound:
+                return method(*args, **kwargs)
             else:
-                # Handle any checkpointing operations before storing the
-                # method's return values.
-                # NOTE(swang): If method_returns is a pointer to the actor's
-                # state and the checkpointing operations can modify the return
-                # values if they mutate the actor's state. Is this okay?
-                if isinstance(actor, ray.actor.Checkpointable):
-                    # If this is the first task to execute on the actor, try to
-                    # resume from a checkpoint.
-                    if self._worker.actor_task_counter == 1:
-                        if actor_imported:
-                            self._restore_and_log_checkpoint(actor)
-                    else:
-                        # Save the checkpoint before returning the method's
-                        # return values.
-                        self._save_and_log_checkpoint(actor)
-                return method_returns
+                return method(actor, *args, **kwargs)
 
         # Set method_name and method as attributes to the executor clusore
         # so we can make decision based on these attributes in task executor.

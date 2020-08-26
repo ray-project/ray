@@ -6,7 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_internal_config_map, SignalActor
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +33,11 @@ def test_shutdown():
 
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
-        generate_internal_config_map(
+        generate_system_config_map(
             num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
     ],
     indirect=True)
-def test_internal_config(ray_start_cluster_head):
+def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
     We set the cluster to timeout nodes after 2 seconds of no timeouts. We

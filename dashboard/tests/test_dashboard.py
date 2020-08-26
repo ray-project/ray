@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import logging
 
@@ -42,9 +41,9 @@ cleanup_test_files()
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
-        "_internal_config": json.dumps({
+        "_system_config": {
             "agent_register_timeout_ms": 5000
-        })
+        }
     }],
     indirect=True)
 def test_basic(ray_start_with_dashboard):
