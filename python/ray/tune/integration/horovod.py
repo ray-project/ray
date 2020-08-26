@@ -1,6 +1,9 @@
 from collections import defaultdict
-from typing import List, Dict
+from dataclasses import dataclass
 import os
+from typing import List, Dict
+import logging
+
 import ray
 from ray import tune
 from ray.tune.resources import Resources
@@ -9,12 +12,32 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
 from ray.tune.function_runner import wrap_function
-from horovod.runner.common.util import Settings
-from horovod.runner.driver import driver_service
-from horovod.runner.http.http_server import RendezvousServer
-from horovod.runner.common.util.hosts import get_host_assignments, parse_hosts
-from horovod.runner.common.util import secret, timeout
-from dataclasses import dataclass
+
+Settings = None
+secret = None
+timeout = None
+hosts = None
+driver_service = None
+RendezvousServer = None
+
+logger = logging.getLogger(__name__)
+
+
+def is_horovod_available():
+    try:
+        import horovod  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+if is_horovod_available():
+    from horovod.runner.common.util import Settings, secret, timeout, hosts
+    from horovod.runner.driver import driver_service
+    from horovod.runner.http.http_server import RendezvousServer
+else:
+    logger.info("Run `HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 "
+                "pip install horovod` to try out Horovod with Ray.")
 
 
 def map_blocking(fn, collection):
@@ -31,7 +54,7 @@ def logger_creator(log_config, logdir, index):
 class MiniSettings:
     nics: set = None
     verbose: int = 1
-    key = secret.make_secret_key()
+    key = secret.make_secret_key() if secret else None
     ssh_port = None
     ssh_identity_file = None
     timeout_s: int = 300
@@ -56,11 +79,6 @@ class HorovodMixin:
         """Update the env vars in the actor process."""
         sanitized = {k: str(v) for k, v in env_vars.items()}
         os.environ.update(sanitized)
-
-    def execute(self, fn, args=None, kwargs=None):
-        args = args or []
-        kwargs = kwargs or {}
-        return fn(*args, **kwargs)
 
 
 @ray.remote
@@ -163,8 +181,9 @@ class Coordinator:
 
         # allocate processes into slots
         # hosts = parse_hosts(hosts_string="10.11.11.11:4,10.11.11.12:4")
-        hosts = parse_hosts(hosts_string=self.hoststring)
-        host_alloc_plan = get_host_assignments(hosts, self.world_size)
+        parsed_hosts = hosts.parse_hosts(hosts_string=self.hoststring)
+        host_alloc_plan = hosts.get_host_assignments(parsed_hosts,
+                                                     self.world_size)
 
         # start global rendezvous server and get port that it is listening on
         self.global_rendezv_port = self.rendezvous.start()
@@ -384,3 +403,13 @@ def DistributedTrainableCreator(func,
             )
 
     return WrappedDistributedTorchTrainable
+
+
+def _train_simple(config):
+    import horovod.torch as hvd
+    hvd.init()
+    from ray import tune
+    for i in range(config.get("epochs", 2)):
+        import time
+        time.sleep(1)
+        tune.report(test=1, rank=hvd.rank())

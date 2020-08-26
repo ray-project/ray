@@ -312,6 +312,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod",
+    size = "medium",
+    srcs = ["tests/test_horovod.py"],
+    tags = ["exclusive", "example", "pytorch"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
