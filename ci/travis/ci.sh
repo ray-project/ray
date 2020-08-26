@@ -185,7 +185,14 @@ test_cpp() {
   ps -ef | grep raylet
   ps -ef | grep gcs
   bazel test --config=ci //cpp:all --build_tests_only
-  ray stop
+  ls /tmp/ray/session_latest/logs/
+  tail -n 200 /tmp/ray/session_latest/logs/gcs_server.err
+  tail -n 200 /tmp/ray/session_latest/logs/gcs_server.out
+  tail -n 200 /tmp/ray/session_latest/logs/raylet.err
+  tail -n 200 /tmp/ray/session_latest/logs/raylet.out
+  ps -ef | grep redis
+  ps -ef | grep raylet
+  ps -ef | grep gcs
 }
 
 test_wheels() {
