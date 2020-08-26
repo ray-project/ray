@@ -192,7 +192,7 @@ OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
 
-# A constant used as object metadata for ActorHandle
+# A constant used as object metadata to indicate the object is an actor handle.
 # TODO(fyrestone): Serialize the ActorHandle as a custom type of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
