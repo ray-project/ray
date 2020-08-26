@@ -162,6 +162,7 @@ def test_get_nodes_respects_max_limit():
         "CPU": 1
     }] * 10) == [("m4.large", 2)]
 
+
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
