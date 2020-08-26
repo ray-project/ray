@@ -35,6 +35,7 @@ def test_placement_group_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -42,8 +43,8 @@ def test_placement_group_pack(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
-    print(ray.get(actor_1.value.remote()))
-    print(ray.get(actor_2.value.remote()))
+    ray.get(actor_1.value.remote())
+    ray.get(actor_2.value.remote())
 
     # Get all actors.
     actor_infos = ray.actors()
@@ -80,6 +81,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -87,8 +89,8 @@ def test_placement_group_strict_pack(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
-    print(ray.get(actor_1.value.remote()))
-    print(ray.get(actor_2.value.remote()))
+    ray.get(actor_1.value.remote())
+    ray.get(actor_2.value.remote())
 
     # Get all actors.
     actor_infos = ray.actors()
@@ -125,6 +127,7 @@ def test_placement_group_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -132,8 +135,8 @@ def test_placement_group_spread(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=1).remote()
 
-    print(ray.get(actor_1.value.remote()))
-    print(ray.get(actor_2.value.remote()))
+    ray.get(actor_1.value.remote())
+    ray.get(actor_2.value.remote())
 
     # Get all actors.
     actor_infos = ray.actors()
@@ -174,6 +177,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -184,9 +188,9 @@ def test_placement_group_strict_spread(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=2).remote()
 
-    print(ray.get(actor_1.value.remote()))
-    print(ray.get(actor_2.value.remote()))
-    print(ray.get(actor_3.value.remote()))
+    ray.get(actor_1.value.remote())
+    ray.get(actor_2.value.remote())
+    ray.get(actor_3.value.remote())
 
     # Get all actors.
     actor_infos = ray.actors()
@@ -284,7 +288,7 @@ def test_remove_placement_group(ray_start_cluster):
     # First try to remove a placement group that doesn't
     # exist. This should not do anything.
     random_group_id = PlacementGroupID.from_random()
-    random_placement_group = PlacementGroup(random_group_id, -1)
+    random_placement_group = PlacementGroup(random_group_id, [{"CPU": 1}])
     for _ in range(3):
         ray.experimental.remove_placement_group(random_placement_group)
 
@@ -477,9 +481,9 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=2,
         detached=True).remote()
-    print(ray.get(actor_1.value.remote()))
-    print(ray.get(actor_2.value.remote()))
-    print(ray.get(actor_3.value.remote()))
+    ray.get(actor_1.value.remote())
+    ray.get(actor_2.value.remote())
+    ray.get(actor_3.value.remote())
 
     cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
     cluster.wait_for_nodes()
@@ -496,9 +500,9 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
         placement_group=placement_group,
         placement_group_bundle_index=2,
         detached=True).remote()
-    print(ray.get(actor_4.value.remote()))
-    print(ray.get(actor_5.value.remote()))
-    print(ray.get(actor_6.value.remote()))
+    ray.get(actor_4.value.remote())
+    ray.get(actor_5.value.remote())
+    ray.get(actor_6.value.remote())
     ray.shutdown()
 
 
@@ -544,6 +548,63 @@ def test_check_bundle_index(ray_start_cluster):
     except ValueError:
         error_count = error_count + 1
     assert error_count == 3
+
+
+def test_pending_placement_group_wait(ray_start_cluster):
+    cluster = ray_start_cluster
+    [cluster.add_node(num_cpus=2) for _ in range(1)]
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    # Wait on placement group that cannot be created.
+    placement_group = ray.experimental.placement_group(
+        name="name",
+        strategy="SPREAD",
+        bundles=[
+            {
+                "CPU": 2
+            },
+            {
+                "CPU": 2
+            },
+            {
+                "GPU": 2
+            },
+        ])
+    ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
+    assert len(unready) == 1
+    assert len(ready) == 0
+    table = ray.experimental.placement_group_table(placement_group)
+    assert table["state"] == "PENDING"
+    with pytest.raises(ray.exceptions.RayTimeoutError):
+        ray.get(placement_group.ready(), timeout=0.1)
+
+
+def test_placement_group_wait(ray_start_cluster):
+    cluster = ray_start_cluster
+    [cluster.add_node(num_cpus=2) for _ in range(2)]
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    # Wait on placement group that cannot be created.
+    placement_group = ray.experimental.placement_group(
+        name="name", strategy="SPREAD", bundles=[
+            {
+                "CPU": 2
+            },
+            {
+                "CPU": 2
+            },
+        ])
+    ready, unready = ray.wait([placement_group.ready()])
+    assert len(unready) == 0
+    assert len(ready) == 1
+    table = ray.experimental.placement_group_table(placement_group)
+    assert table["state"] == "CREATED"
+
+    pg = ray.get(placement_group.ready())
+    assert pg.bundles == placement_group.bundles
+    assert pg.id.binary() == placement_group.id.binary()
 
 
 def test_schedule_placement_group_when_node_add(ray_start_cluster):

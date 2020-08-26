@@ -25,6 +25,7 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
 
 namespace {
@@ -164,6 +165,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
+      agent_manager_service_handler_(
+          new DefaultAgentManagerServiceHandler(agent_manager_)),
+      agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
@@ -208,7 +212,17 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
+  node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
+
+  AgentManager::Options options;
+  options.agent_commands = ParseCommandLine(config.agent_command);
+  agent_manager_.reset(
+      new AgentManager(std::move(options),
+                       /*delay_executor=*/
+                       [this](std::function<void()> task, uint32_t delay_ms) {
+                         return execute_after(io_service_, task, delay_ms);
+                       }));
 
   RAY_CHECK_OK(SetupPlasmaSubscription());
 }
@@ -905,7 +919,8 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   SchedulingResources &new_local_resources = cluster_resource_map_[self_node_id_];
 
   // SpillOver locally to figure out which infeasible tasks can be placed now
-  std::vector<TaskID> decision = scheduling_policy_.SpillOver(new_local_resources);
+  std::vector<TaskID> decision =
+      scheduling_policy_.SpillOverInfeasibleTasks(new_local_resources);
 
   std::unordered_set<TaskID> local_task_ids(decision.begin(), decision.end());
 
@@ -972,7 +987,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
 
   // Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  auto decision = scheduling_policy_.SpillOver(remote_resources,
+                                               cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -1027,50 +1043,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
-    // The actor's location is now known. Dequeue any methods that were
-    // submitted before the actor's location was known.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto &methods = local_queues_.GetTasks(TaskState::WAITING_FOR_ACTOR_CREATION);
-    std::unordered_set<TaskID> created_actor_method_ids;
-    for (const auto &method : methods) {
-      if (method.GetTaskSpecification().ActorId() == actor_id) {
-        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
-      }
-    }
-    // Resubmit the methods that were submitted before the actor's location was
-    // known.
-    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-    for (const auto &method : created_actor_methods) {
-      // Maintain the invariant that if a task is in the
-      // MethodsWaitingForActorCreation queue, then it is subscribed to its
-      // respective actor creation task. Since the actor location is now known,
-      // we can remove the task from the queue and forget its dependency on the
-      // actor creation task.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(
-          method.GetTaskSpecification().TaskId()));
-      // The task's uncommitted lineage was already added to the local lineage
-      // cache upon the initial submission, so it's okay to resubmit it with an
-      // empty lineage this time.
-      SubmitTask(method);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
-    RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
-    // When an actor fails but can be restarted, resubmit all of the queued
-    // tasks for that actor. This will mark the tasks as waiting for actor
-    // creation.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      SubmitTask(task);
-    }
   }
 }
 
@@ -2794,7 +2766,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
       local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
       local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
-      local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
 
       // Make sure that the remaining tasks are all WAITING or direct call
       // actors.

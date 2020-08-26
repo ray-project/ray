@@ -1,9 +1,12 @@
 import sys
+import socket
+import json
 import asyncio
 import logging
 
 import aiohttp
-import aioredis
+import aiohttp.web
+from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray.services
@@ -25,22 +28,25 @@ def gcs_node_info_to_dict(message):
 
 
 class DashboardHead:
-    def __init__(self, redis_address, redis_password):
-        # Scan and import head modules for collecting http routes.
-        self._head_cls_list = dashboard_utils.get_all_modules(
-            dashboard_utils.DashboardHeadModule)
-        ip, port = redis_address.split(":")
+    def __init__(self, http_host, http_port, redis_address, redis_password):
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
         # Public attributes are accessible for all head modules.
-        self.redis_address = (ip, int(port))
+        self.http_host = http_host
+        self.http_port = http_port
+        self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
-        self.http_session = aiohttp.ClientSession(
-            loop=asyncio.get_event_loop())
+        self.http_session = None
         self.ip = ray.services.get_node_ip_address()
+        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
+        self.grpc_port = self.server.add_insecure_port("[::]:0")
+        logger.info("Dashboard head grpc address: %s:%s", self.ip,
+                    self.grpc_port)
+        logger.info("Dashboard head http address: %s:%s", self.http_host,
+                    self.http_port)
 
     async def _get_nodes(self):
         """Read the client table.
@@ -83,7 +89,7 @@ class DashboardHead:
                             node_ip)
                         agent_port = await self.aioredis_client.get(key)
                         if agent_port:
-                            agents[node_ip] = agent_port
+                            agents[node_ip] = json.loads(agent_port)
                 for ip in agents.keys() - set(node_ips):
                     agents.pop(ip, None)
 
@@ -112,18 +118,34 @@ class DashboardHead:
     def _load_modules(self):
         """Load dashboard head modules."""
         modules = []
-        for cls in self._head_cls_list:
-            logger.info("Load %s: %s",
+        head_cls_list = dashboard_utils.get_all_modules(
+            dashboard_utils.DashboardHeadModule)
+        for cls in head_cls_list:
+            logger.info("Loading %s: %s",
                         dashboard_utils.DashboardHeadModule.__name__, cls)
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
+        logger.info("Loaded {} modules.".format(len(modules)))
         return modules
 
     async def run(self):
         # Create an aioredis client for all modules.
-        self.aioredis_client = await aioredis.create_redis_pool(
-            address=self.redis_address, password=self.redis_password)
+        try:
+            self.aioredis_client = await dashboard_utils.get_aioredis_client(
+                self.redis_address, self.redis_password,
+                dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
+                dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
+        except (socket.gaierror, ConnectionError):
+            logger.error(
+                "Dashboard head exiting: "
+                "Failed to connect to redis at %s", self.redis_address)
+            sys.exit(-1)
+
+        # Create a http session for all modules.
+        self.http_session = aiohttp.ClientSession(
+            loop=asyncio.get_event_loop())
+
         # Waiting for GCS is ready.
         while True:
             try:
@@ -140,9 +162,20 @@ class DashboardHead:
             else:
                 self.aiogrpc_gcs_channel = channel
                 break
+
         # Create a NodeInfoGcsServiceStub.
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             self.aiogrpc_gcs_channel)
+
+        # Start a grpc asyncio server.
+        await self.server.start()
+
+        # Write the dashboard head port to redis.
+        await self.aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
+                                       self.ip + ":" + str(self.http_port))
+        await self.aioredis_client.set(
+            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+            self.ip + ":" + str(self.grpc_port))
 
         async def _async_notify():
             """Notify signals from queue."""
@@ -164,7 +197,24 @@ class DashboardHead:
                     logger.exception(e)
 
         modules = self._load_modules()
+
+        # Http server should be initialized after all modules loaded.
+        app = aiohttp.web.Application()
+        app.add_routes(routes=routes.bound_routes())
+        web_server = aiohttp.web._run_app(
+            app, host=self.http_host, port=self.http_port)
+
+        # Dump registered http routes.
+        dump_routes = [
+            r for r in app.router.routes() if r.method != hdrs.METH_HEAD
+        ]
+        for r in dump_routes:
+            logger.info(r)
+        logger.info("Registered %s routes.", len(dump_routes))
+
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
         await asyncio.gather(self._update_nodes(), _async_notify(),
-                             _purge_data(), *(m.run() for m in modules))
+                             _purge_data(), web_server,
+                             *(m.run(self.server) for m in modules))
+        await self.server.wait_for_termination()

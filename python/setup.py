@@ -136,6 +136,7 @@ install_requires = [
     # included in the stable release.
     # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
     "aiohttp",
+    "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
     "colorama",
@@ -411,7 +412,7 @@ def api_main(program, *args):
             nonlocal result
             if excinfo[1].errno != errno.ENOENT:
                 msg = excinfo[1].strerror
-                logger.error("cannot remove {}: {}" % (path, msg))
+                logger.error("cannot remove {}: {}".format(path, msg))
                 result = 1
 
         for subdir in CLEANABLE_SUBDIRS:

@@ -95,6 +95,7 @@ Reference Materials
 Here are some reference materials for Tune:
 
   * :doc:`/tune/user-guide`
+  * :ref:`Frequently asked questions <tune-faq>`
   * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune
 
 Below are some blog posts and talks about Tune:
