@@ -220,7 +220,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Keep track of how many tasks with this SchedulingKey are in flight, in total
     uint32_t total_tasks_in_flight = 0;
 
-    bool SafeToDeleteEntry() {
+    bool CanDelete() {
       if (!pending_lease_request.first && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
