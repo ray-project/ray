@@ -436,7 +436,6 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
         autoscaler.request_resources([{"GPU": 1}] * 9)
-        # autoscaler.request_resources([{t: 1}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
