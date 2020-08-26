@@ -28,7 +28,7 @@ class RuntimeContext(object):
         key = "_JOB_CONFIG_{}".format(self.current_driver_id.hex())
         result = ray.state.state._execute_command_on_primary("GET", key)
         if result is None:
-            raise Exception("Can not get job conig.")
+            raise ValueError(f"Failed to get a job config from GCS for a job id, {self.current_driver_id.hex()}.")
         return json.loads(result, encoding="UTF-8")
 
     @property
@@ -39,19 +39,14 @@ class RuntimeContext(object):
             The current driver id in this worker.
         """
         # only worker mode has actor_id
-        if self.worker.mode != ray.worker.WORKER_MODE:
-            raise Exception("This method should only be called in worker mode")
+        assert self.worker.mode == ray.worker.WORKER_MODE, (f"This method is only available when the process is a worker. Current mode: {self.worker.mode}")
         return self.worker.actor_id
 
     @property
     def was_current_actor_reconstructed(self):
         # TODO: this method should not be called in a normal task.
-        # None means call this in a normal task.
-        assert self.worker is not None
         actor_info = ray.state.actors(self.current_actor_id.hex())
-        if actor_info and actor_info["NumRestarts"] != 0:
-            return True
-        return False
+        return actor_info and actor_info["NumRestarts"] != 0:
 
 _runtime_context = None
 
