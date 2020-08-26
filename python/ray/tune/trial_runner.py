@@ -384,8 +384,8 @@ class TrialRunner:
         try:
             with warn_if_slow("experiment_checkpoint"):
                 self.checkpoint()
-        except Exception:
-            logger.exception("Trial Runner checkpointing failed.")
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
         self._iteration += 1
 
         if self._server:

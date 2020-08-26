@@ -919,7 +919,8 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   SchedulingResources &new_local_resources = cluster_resource_map_[self_node_id_];
 
   // SpillOver locally to figure out which infeasible tasks can be placed now
-  std::vector<TaskID> decision = scheduling_policy_.SpillOver(new_local_resources);
+  std::vector<TaskID> decision =
+      scheduling_policy_.SpillOverInfeasibleTasks(new_local_resources);
 
   std::unordered_set<TaskID> local_task_ids(decision.begin(), decision.end());
 
@@ -986,7 +987,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
 
   // Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  auto decision = scheduling_policy_.SpillOver(remote_resources,
+                                               cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
