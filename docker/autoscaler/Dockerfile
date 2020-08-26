@@ -3,7 +3,7 @@ FROM rayproject/ray:latest"$GPU"
 
 # Install kubectl.
 RUN apt-get update \
-    && apt-get install -y apt-transport-https \
+    && apt-get install -y gnupg \
     && wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
     && touch /etc/apt/sources.list.d/kubernetes.list \
     && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
