@@ -200,6 +200,10 @@ class AutoscalingTest(unittest.TestCase):
         return path
 
     def testGetOrCreateMultiNodeType(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config_path = self.write_config(config)
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -214,7 +218,7 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         self.waitForNodes(1)
         runner.assert_has_call("1.2.3.4", "init_cmd")
-        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, "empty_node")
         self.assertEqual(
@@ -347,6 +351,55 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "RAY_OVERRIDE_RESOURCES=")
         runner.assert_has_call("172.0.0.1", "CPU: 32")
         runner.assert_has_call("172.0.0.1", "GPU: 8")
+
+    def testCommandPassing(self):
+        t = "custom"
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["available_node_types"]["p2.8xlarge"][
+            "worker_setup_commands"] = ["new_worker_setup_command"]
+        config["available_node_types"]["p2.xlarge"][
+            "initialization_commands"] = ["new_worker_initialization_cmd"]
+        config["available_node_types"]["p2.xlarge"]["resources"][t] = 1
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config["max_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+        autoscaler.request_resources([{"GPU": 1}] * 9)
+        # autoscaler.request_resources([{t: 1}])
+        autoscaler.update()
+        self.waitForNodes(3)
+        assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
+        autoscaler.update()
+        sleep(0.1)
+        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
+                               "new_worker_setup_command")
+        runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
+                                   "setup_cmd")
+        runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
+                                   "worker_setup_cmd")
+        runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
+                               "new_worker_initialization_cmd")
+        runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
+                                   "init_cmd")
 
 
 if __name__ == "__main__":

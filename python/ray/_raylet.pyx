@@ -222,6 +222,9 @@ cdef class Language:
     cdef from_native(const CLanguage& lang):
         return Language(<int32_t>lang)
 
+    def value(self):
+        return <int32_t>self.lang
+
     def __eq__(self, other):
         return (isinstance(other, Language) and
                 (<int32_t>self.lang) == (<int32_t>(<Language>other).lang))
