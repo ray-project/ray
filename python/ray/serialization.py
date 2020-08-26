@@ -4,8 +4,9 @@ import time
 import threading
 
 import ray.cloudpickle as pickle
-from ray import ray_constants
+from ray import ray_constants, JobID
 import ray.utils
+from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError,
