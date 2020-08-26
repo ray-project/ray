@@ -161,7 +161,6 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
             assert call.request_args[0] in runner_shard_keys[i]
 
 
-# TODO(fix)
 async def test_router_use_max_concurrency(serve_instance):
     # The VisibleRouter::get_queues method needs to pickle queries
     # so we register serializer here. In regular code path, query
