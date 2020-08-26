@@ -26,6 +26,7 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_dynres.py",
+    "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_iter.py",
