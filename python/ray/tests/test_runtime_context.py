@@ -46,7 +46,8 @@ def test_was_current_actor_reconstructed():
     pid = ray.get(a.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
     time.sleep(2)
-    # These 2 methods should be return True because this actor failed and restored.
+    # These 2 methods should be return True because
+    # this actor failed and restored.
     assert ray.get(a.get_was_reconstructed.remote()) is True
     assert ray.get(a.update_was_reconstructed.remote()) is True
 

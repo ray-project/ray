@@ -1,5 +1,4 @@
 import ray.worker
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,8 +30,8 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         assert self.worker.mode == ray.worker.WORKER_MODE, (
-            f"This method is only available when the process is a worker. Current mode: {self.worker.mode}"
-        )
+            f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}")
         return self.worker.actor_id
 
     @property
