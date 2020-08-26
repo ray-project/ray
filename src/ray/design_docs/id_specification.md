@@ -50,5 +50,7 @@ Note: Dummy actor id is an `ActorID` whose unique part is nil.
 
 #### ObjectID (20 bytes)
 An `ObjectID` contains 2 parts:
-- `index bytes`: 4 bytes to indicate the index of the object.
+- `index bytes`: 4 bytes to indicate the index of the object within its creator task.
+  1 <= idx <= num_return_objects is reserved for the task's return objects, while
+  idx > num_return_objects is available for the task's put objects.
 - `TaskID`: 16 bytes to indicate the ID of the task to which this object belongs.
