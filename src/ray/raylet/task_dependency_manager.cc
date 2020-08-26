@@ -506,16 +506,10 @@ std::string TaskDependencyManager::DebugString() const {
 }
 
 void TaskDependencyManager::RecordMetrics() const {
-  stats::TaskDependencyManagerStats().Record(
-      task_dependencies_.size(), {{stats::ValueTypeKey, "num_task_dependencies"}});
-  stats::TaskDependencyManagerStats().Record(
-      required_tasks_.size(), {{stats::ValueTypeKey, "num_required_tasks"}});
-  stats::TaskDependencyManagerStats().Record(
-      required_objects_.size(), {{stats::ValueTypeKey, "num_required_objects"}});
-  stats::TaskDependencyManagerStats().Record(
-      local_objects_.size(), {{stats::ValueTypeKey, "num_local_objects"}});
-  stats::TaskDependencyManagerStats().Record(
-      pending_tasks_.size(), {{stats::ValueTypeKey, "num_pending_tasks"}});
+  stats::NumSubscribedTasks().Record(task_dependencies_.size());
+  stats::NumRequiredTasks().Record(required_tasks_.size());
+  stats::NumRequiredObjects().Record(required_objects_.size());
+  stats::NumPendingTasks().Record(pending_tasks_.size());
 }
 
 bool TaskDependencyManager::GetOwnerAddress(const ObjectID &object_id,
