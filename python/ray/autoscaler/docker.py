@@ -25,7 +25,6 @@ def validate_docker_config(config):
     else:
         assert cname and image_present, "Must provide a container & image name"
 
-
     return config
 
 
