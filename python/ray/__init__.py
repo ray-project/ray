@@ -106,7 +106,7 @@ __all__ = [
     "cancel",
     "cluster_resources",
     "connect",
-    "disconnect"/,
+    "disconnect",
     "get",
     "get_actor",
     "get_gpu_ids",
