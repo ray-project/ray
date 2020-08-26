@@ -159,7 +159,9 @@ def log_to_cli(config):
             _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
             _tags=tags)
 
-        print_info("EC2 Key pair", "KeyName", "keypair_src", "keypair_src")
+        if "KeyName" in config["head_node"] and "KeyName" in config["worker_nodes"]:
+            print_info("EC2 Key pair", "KeyName", "keypair_src", "keypair_src")
+
         print_info(
             "VPC Subnets",
             "SubnetIds",
@@ -275,16 +277,8 @@ def _configure_key_pair(config):
     if "ssh_private_key" in config["auth"]:
         _set_config_info(keypair_src="config")
 
-        cli_logger.doassert(  # todo: verify schema beforehand?
-            "KeyName" in config["head_node"],
-            "`KeyName` missing for head node.")  # todo: err msg
-        cli_logger.doassert(
-            "KeyName" in config["worker_nodes"],
-            "`KeyName` missing for worker nodes.")  # todo: err msg
-
-        assert "KeyName" in config["head_node"]
-        assert "KeyName" in config["worker_nodes"]
         return config
+
     _set_config_info(keypair_src="default")
 
     ec2 = _resource("ec2", config)
