@@ -174,7 +174,17 @@ test_python() {
 }
 
 test_cpp() {
-  bazel test --config=ci //cpp:all --build_tests_only
+  ray start --head --redis-port 6379 --redis-password 5241590000000000
+  sleep 10
+  ls /tmp/ray/session_latest/logs/
+  tail -n 100 /tmp/ray/session_latest/logs/gcs_server.err
+  tail -n 100 /tmp/ray/session_latest/logs/gcs_server.out
+  tail -n 100 /tmp/ray/session_latest/logs/raylet.err
+  tail -n 100 /tmp/ray/session_latest/logs/raylet.out
+  ps -ef | grep redis
+  ps -ef | grep raylet
+  ps -ef | grep gcs
+  # bazel test --config=ci //cpp:all --build_tests_only
 }
 
 test_wheels() {
