@@ -184,7 +184,8 @@ test_cpp() {
   ps -ef | grep redis
   ps -ef | grep raylet
   ps -ef | grep gcs
-  # bazel test --config=ci //cpp:all --build_tests_only
+  bazel test --config=ci //cpp:all --build_tests_only
+  ray stop
 }
 
 test_wheels() {
