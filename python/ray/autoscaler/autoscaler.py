@@ -385,6 +385,7 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
+            is_head_node=False,
             docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
@@ -441,6 +442,7 @@ class StandardAutoscaler:
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
             process_runner=self.process_runner,
             use_internal_ip=True,
