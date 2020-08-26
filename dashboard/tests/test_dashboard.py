@@ -21,11 +21,6 @@ import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
 
-try:
-    create_task = asyncio.create_task
-except AttributeError:
-    create_task = asyncio.ensure_future
-
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
