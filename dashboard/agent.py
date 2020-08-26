@@ -24,6 +24,11 @@ from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 import psutil
 
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
@@ -88,7 +93,7 @@ class DashboardAgent(object):
                     dashboard_consts.
                     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
 
-        check_parent_task = asyncio.create_task(_check_parent())
+        check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
         try:

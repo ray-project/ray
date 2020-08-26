@@ -8,6 +8,7 @@ import traceback
 import html.parser
 import urllib.parse
 
+import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
