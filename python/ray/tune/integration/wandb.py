@@ -104,7 +104,7 @@ def _set_api_key(wandb_config):
     except AttributeError:
         if api_key_file:
             if api_key:
-                raise ValueError("Both WandB `api_key_file` and `api_key` set.")
+                raise ValueError("Both WandB `api_key_file` and `api_key` set.") from None
             with open(api_key_file, "rt") as fp:
                 api_key = fp.readline().strip()
         if api_key:
