@@ -97,8 +97,7 @@ def _set_api_key(wandb_config):
 
     if api_key_file:
         if api_key:
-            raise ValueError(
-                "Both WandB `api_key_file` and `api_key` set.")
+            raise ValueError("Both WandB `api_key_file` and `api_key` set.")
         with open(api_key_file, "rt") as fp:
             api_key = fp.readline().strip()
     if api_key:
@@ -115,8 +114,7 @@ def _set_api_key(wandb_config):
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
             "variable, pass `api_key` or `api_key_file` in the config, "
-            "or run `wandb login` from the command line".format(
-                WANDB_ENV_VAR))
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):
