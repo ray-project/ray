@@ -1,4 +1,4 @@
-package io.ray.api.exception;
+package io.ray.runtime.exception;
 
 /**
  * Indicates that the actor died unexpectedly before finishing a task.
