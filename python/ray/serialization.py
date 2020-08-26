@@ -358,8 +358,7 @@ class SerializationContext:
                 ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
             value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
-            # TODO(fyresone): ActorHandle should be serialized as a
-            #  custom cross language type.
+            # TODO(fyresone): ActorHandle should be serialized via the custom type feature of cross-language.
             serialized, actor_handle_id = value._serialization_helper()
             # Update ref counting for the actor handle
             self.add_contained_object_ref(actor_handle_id)
