@@ -12,6 +12,7 @@ import redis
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
 from ray.test_utils import (
     wait_for_condition,
@@ -450,6 +451,22 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular,
     errors = get_error_message(p, 1)
     assert len(errors) == 0, "Should not have propogated an error - {}".format(
         errors)
+
+
+def test_exception_chain(ray_start_regular):
+    @ray.remote
+    def bar():
+        return 1 / 0
+
+    @ray.remote
+    def foo():
+        return ray.get(bar.remote())
+
+    r = foo.remote()
+    try:
+        ray.get(r)
+    except ZeroDivisionError as ex:
+        assert isinstance(ex, RayTaskError)
 
 
 @pytest.mark.skip("This test does not work yet.")

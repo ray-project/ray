@@ -37,7 +37,6 @@ struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
   int restarting_actors = 0;
-  int max_num_handles = 0;
 };
 
 /// A helper function to return the statistical data of actors in this node manager.
@@ -51,9 +50,6 @@ ActorStats GetActorStatisticalData(
       item.restarting_actors += 1;
     } else {
       item.dead_actors += 1;
-    }
-    if (pair.second.NumHandles() > item.max_num_handles) {
-      item.max_num_handles = pair.second.NumHandles();
     }
   }
   return item;
@@ -3026,7 +3022,6 @@ std::string NodeManager::DebugString() const {
   result << "\n- num live actors: " << statistical_data.live_actors;
   result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
-  result << "\n- max num handles: " << statistical_data.max_num_handles;
 
   result << "\nRemote node manager clients: ";
   for (const auto &entry : remote_node_manager_clients_) {
@@ -3410,18 +3405,12 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
-  reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
-  stats::ActorStats().Record(statistical_data.live_actors,
-                             {{stats::ValueTypeKey, "live_actors"}});
-  stats::ActorStats().Record(statistical_data.restarting_actors,
-                             {{stats::ValueTypeKey, "restarting_actors"}});
-  stats::ActorStats().Record(statistical_data.dead_actors,
-                             {{stats::ValueTypeKey, "dead_actors"}});
-  stats::ActorStats().Record(statistical_data.max_num_handles,
-                             {{stats::ValueTypeKey, "max_num_handles"}});
+  stats::LiveActors().Record(statistical_data.live_actors);
+  stats::RestartingActors().Record(statistical_data.restarting_actors);
+  stats::DeadActors().Record(statistical_data.dead_actors);
 }
 
 }  // namespace raylet

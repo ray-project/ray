@@ -1,14 +1,44 @@
 import os
+from traceback import format_exception
 
 import colorama
 
 import ray
+import ray.cloudpickle as pickle
+from ray.core.generated.common_pb2 import RayException, Language
 import setproctitle
 
 
 class RayError(Exception):
     """Super class of all ray exception types."""
-    pass
+
+    def to_bytes(self):
+        # Extract exc_info from exception object.
+        exc_info = (type(self), self, self.__traceback__)
+        formatted_exception_string = "\n".join(format_exception(*exc_info))
+        return RayException(
+            language=ray.Language.PYTHON.value(),
+            serialized_exception=pickle.dumps(self),
+            formatted_exception_string=formatted_exception_string
+        ).SerializeToString()
+
+    @staticmethod
+    def from_bytes(b):
+        ray_exception = RayException()
+        ray_exception.ParseFromString(b)
+        if ray_exception.language == ray.Language.PYTHON.value():
+            return pickle.loads(ray_exception.serialized_exception)
+        else:
+            return CrossLanguageError(ray_exception)
+
+
+class CrossLanguageError(RayError):
+    """Raised from another language."""
+
+    def __init__(self, ray_exception):
+        super().__init__("An exception raised from {}:\n{}".format(
+            Language.Name(ray_exception.language),
+            ray_exception.formatted_exception_string))
 
 
 class RayConnectionError(RayError):

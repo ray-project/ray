@@ -54,12 +54,40 @@ static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.", "pcs",
                                 {ResourceNameKey});
 
-static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.", "pcs",
-                        {ValueTypeKey});
+static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
 
-static Gauge ObjectManagerStats("object_manager_stats",
-                                "Stat the metric values of object in raylet", "pcs",
-                                {ValueTypeKey});
+static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
+                              "actors");
+
+static Gauge DeadActors("dead_actors", "Number of dead actors.", "actors");
+
+static Gauge ObjectStoreAvailableMemory(
+    "object_store_available_memory",
+    "Amount of memory currently available in the object store.", "bytes");
+
+static Gauge ObjectStoreUsedMemory(
+    "object_store_used_memory",
+    "Amount of memory currently occupied in the object store.", "bytes");
+
+static Gauge ObjectStoreLocalObjects("object_store_num_local_objects",
+                                     "Number of objects currently in the object store.",
+                                     "objects");
+
+static Gauge ObjectManagerWaitRequests("object_manager_num_wait_requests",
+                                       "Number of pending wait requests for objects.",
+                                       "requests");
+
+static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
+                                       "Number of active pull requests for objects.",
+                                       "requests");
+
+static Gauge ObjectManagerUnfulfilledPushRequests(
+    "object_manager_unfulfilled_push_requests",
+    "Number of unfulfilled push requests for objects.", "requests");
+
+static Gauge ObjectManagerProfileEvents("object_manager_num_buffered_profile_events",
+                                        "Number of locally-buffered profile events.",
+                                        "events");
 
 static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
                                         "Stat the metric values of task dependency.",
@@ -68,10 +96,6 @@ static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
 static Gauge SchedulingQueueStats("scheduling_queue_stats",
                                   "Stats the metric values of scheduling queue.", "pcs",
                                   {ValueTypeKey});
-
-static Gauge ReconstructionPolicyStats(
-    "reconstruction_policy_stats", "Stats the metric values of reconstruction policy.",
-    "pcs", {ValueTypeKey});
 
 static Gauge ConnectionPoolStats("connection_pool_stats",
                                  "Stats the connection pool metrics.", "pcs",
