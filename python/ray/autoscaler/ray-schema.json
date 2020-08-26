@@ -248,6 +248,10 @@
             "type": "boolean",
             "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
         },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata field that can be used to store user-defined data in the cluster config. Ray does not interpret these fields."
+        },
         "initialization_commands": {
             "$ref": "#/definitions/commands",
             "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
