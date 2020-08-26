@@ -123,21 +123,6 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 def test_global_state_api(shutdown_only):
 
-    error_message = ("The ray global state API cannot be used "
-                     "before ray.init has been called.")
-
-    with pytest.raises(Exception, match=error_message):
-        ray.objects()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.actors()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.nodes()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.jobs()
-
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     assert ray.cluster_resources()["CPU"] == 5
@@ -460,15 +445,6 @@ def test_non_ascii_comment(ray_start_regular):
         return 1
 
     assert ray.get(f.remote()) == 1
-
-
-def test_shutdown_disconnect_global_state():
-    ray.init(num_cpus=0)
-    ray.shutdown()
-
-    with pytest.raises(Exception) as e:
-        ray.objects()
-    assert str(e.value).endswith("ray.init has been called.")
 
 
 @pytest.mark.parametrize(
