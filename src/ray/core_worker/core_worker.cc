@@ -1044,55 +1044,26 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
 
   absl::flat_hash_set<ObjectID> ready;
-  // Wait from both store providers with timeout set to 0. This is to avoid the case
-  // where we might use up the entire timeout on trying to get objects from one store
-  // provider before even trying another (which might have all of the objects available).
-  if (memory_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(memory_store_->Wait(
-        memory_object_ids,
-        std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-        /*timeout_ms=*/0, worker_context_, &ready));
-    RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                              plasma_object_ids, ready);
-  }
+  int64_t start_time = current_time_ms();
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
+      worker_context_, &ready));
+  RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                            plasma_object_ids, ready);
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  if (timeout_ms > 0) {
+    timeout_ms =
+        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+  }
   if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
         plasma_object_ids,
         std::min(static_cast<int>(plasma_object_ids.size()),
                  num_objects - static_cast<int>(ready.size())),
-        /*timeout_ms=*/0, worker_context_, &ready));
+        timeout_ms, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-
-  if (timeout_ms != 0 && static_cast<int>(ready.size()) < num_objects) {
-    // Clear the ready set and retry. We clear it so that we can compute the number of
-    // objects to fetch from the memory store easily below.
-    ready.clear();
-
-    int64_t start_time = current_time_ms();
-    if (memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_->Wait(
-          memory_object_ids,
-          std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
-          worker_context_, &ready));
-      RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                                plasma_object_ids, ready);
-    }
-    RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-    if (timeout_ms > 0) {
-      timeout_ms =
-          std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
-    }
-    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids,
-          std::min(static_cast<int>(plasma_object_ids.size()),
-                   num_objects - static_cast<int>(ready.size())),
-          timeout_ms, worker_context_, &ready));
-    }
-    RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-  }
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {

@@ -102,7 +102,8 @@ size_t Queue::PendingCount() {
 }
 
 Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
-                         uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end, bool raw) {
+                         uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end,
+                         bool raw) {
   if (IsPendingFull(buffer_size)) {
     return Status::OutOfMemory("Queue Push OutOfMemory");
   }
@@ -122,8 +123,8 @@ Status WriterQueue::Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size,
 void WriterQueue::Send() {
   while (!IsPendingEmpty()) {
     QueueItem item = PopPending();
-    DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.MsgIdStart(), item.MsgIdEnd(), item.Buffer(),
-                    item.IsRaw());
+    DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.MsgIdStart(),
+                    item.MsgIdEnd(), item.Buffer(), item.IsRaw());
     std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
     STREAMING_CHECK(transport_ != nullptr);
     transport_->Send(std::move(buffer));
@@ -191,8 +192,10 @@ int WriterQueue::ResendItems(std::list<QueueItem>::iterator start_iter,
 }
 
 void WriterQueue::FindItem(
-    uint64_t target_msg_id, std::function<void()> greater_callback, std::function<void()> less_callback,
-    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> equal_callback) {
+    uint64_t target_msg_id, std::function<void()> greater_callback,
+    std::function<void()> less_callback,
+    std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)>
+        equal_callback) {
   auto last_one = std::prev(watershed_iter_);
   bool last_item_too_small =
       last_one != buffer_queue_.end() && last_one->MsgIdEnd() < target_msg_id;
@@ -243,10 +246,11 @@ void WriterQueue::OnPull(
            /// target_msg_id is too small.
            [this, &pull_msg, &callback]() {
              STREAMING_LOG(WARNING) << "Data lost.";
-             PullResponseMessage msg(
-                 pull_msg->PeerActorId(), pull_msg->ActorId(), pull_msg->QueueId(),
-                 QUEUE_INVALID_SEQ_ID, QUEUE_INVALID_SEQ_ID,
-                 queue::protobuf::StreamingQueueError::DATA_LOST, is_upstream_first_pull_);
+             PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
+                                     pull_msg->QueueId(), QUEUE_INVALID_SEQ_ID,
+                                     QUEUE_INVALID_SEQ_ID,
+                                     queue::protobuf::StreamingQueueError::DATA_LOST,
+                                     is_upstream_first_pull_);
              std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
 
              callback(std::move(buffer));

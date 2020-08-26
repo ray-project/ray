@@ -11,6 +11,9 @@ import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.actor.NativePyActorHandle;
+import io.ray.runtime.exception.CrossLanguageException;
+import io.ray.runtime.exception.RayException;
+import io.ray.runtime.generated.Common.Language;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,14 +22,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(CrossLanguageInvocationTest.class);
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
 
   @Override
@@ -151,7 +151,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         PyFunction.of(PYTHON_MODULE, "py_func_call_java_actor", byte[].class),
         "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "Counter1".getBytes());
-
   }
 
   @Test
@@ -186,6 +185,91 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
             byte[].class),
         actorHandleBytes).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
+  }
+
+  @Test
+  public void testExceptionSerialization() throws IOException {
+    try {
+      throw new RayException("Test Exception");
+    } catch (RayException e) {
+      String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
+          .getStackTrace(e);
+      io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
+          .parseFrom(e.toBytes());
+      Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
+    }
+  }
+
+  @Test
+  public void testRaiseExceptionFromPython() {
+    ObjectRef<Object> res = Ray.task(PyFunction.of(
+        PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      // ex is a Python exception(py_func_python_raise_exception) with no cause.
+      Assert.assertTrue(ex instanceof CrossLanguageException);
+      CrossLanguageException e = (CrossLanguageException) ex;
+      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
+      // ex.cause is null.
+      Assert.assertNull(ex.getCause());
+      Assert.assertTrue(ex.getMessage().contains("ZeroDivisionError: division by zero"),
+          ex.getMessage());
+      return;
+    }
+    Assert.fail();
+  }
+
+  @Test
+  public void testThrowExceptionFromJava() {
+    ObjectRef<Object> res = Ray.task(PyFunction.of(
+        PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
+      Assert.assertTrue(message.contains("io.ray.test.CrossLanguageInvocationTest.throwException"),
+          message);
+      Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
+      return;
+    }
+    Assert.fail();
+  }
+
+  @Test
+  public void testRaiseExceptionFromNestPython() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_nest_python_raise_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_nest_python_raise_exception"), message);
+      Assert.assertTrue(message.contains("io.ray.runtime.task.TaskExecutor.execute"), message);
+      Assert.assertTrue(message.contains("py_func_python_raise_exception"), message);
+      Assert.assertTrue(message.contains("ZeroDivisionError: division by zero"), message);
+      return;
+    }
+    Assert.fail();
+  }
+
+  @Test
+  public void testThrowExceptionFromNestJava() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_nest_java_throw_exception", Object.class)).remote();
+    try {
+      res.get();
+    } catch (RuntimeException ex) {
+      final String message = ex.getMessage();
+      Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
+      Assert.assertEquals(org.apache.commons.lang3.StringUtils
+          .countMatches(message, "io.ray.runtime.exception.RayTaskException"), 2);
+      Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
+      Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
+      return;
+    }
+    Assert.fail();
   }
 
   public static Object[] pack(int i, String s, double f, Object[] o) {
@@ -225,6 +309,23 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
         "1".getBytes()).remote();
     Assert.assertEquals(res.get(), "3".getBytes());
     return (byte[]) res.get();
+  }
+
+  @SuppressWarnings("ConstantOverflow")
+  public static Object throwException() {
+    return 1 / 0;
+  }
+
+  public static Object throwJavaException() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_java_throw_exception", Object.class)).remote();
+    return res.get();
+  }
+
+  public static Object raisePythonException() {
+    ObjectRef<Object> res = Ray.task(
+        PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class)).remote();
+    return res.get();
   }
 
   public static class TestActor {
