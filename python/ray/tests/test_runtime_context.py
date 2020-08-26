@@ -52,6 +52,7 @@ def test_was_current_actor_reconstructed():
 
     ray.shutdown()
 
+
 def test_runtime_context_interface():
     ray.init()
 
@@ -59,7 +60,7 @@ def test_runtime_context_interface():
     class A(object):
         def current_job_id(self):
             return ray.get_runtime_context().current_job_id
-        
+
         def current_actor_id(self):
             return ray.get_runtime_context().current_actor_id
 

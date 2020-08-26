@@ -30,7 +30,9 @@ class RuntimeContext(object):
             The current driver id in this worker.
         """
         # only worker mode has actor_id
-        assert self.worker.mode == ray.worker.WORKER_MODE, (f"This method is only available when the process is a worker. Current mode: {self.worker.mode}")
+        assert self.worker.mode == ray.worker.WORKER_MODE, (
+            f"This method is only available when the process is a worker. Current mode: {self.worker.mode}"
+        )
         return self.worker.actor_id
 
     @property
@@ -43,6 +45,7 @@ class RuntimeContext(object):
         # TODO: this method should not be called in a normal task.
         actor_info = ray.state.actors(self.current_actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
+
 
 _runtime_context = None
 
