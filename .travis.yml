@@ -126,7 +126,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . ci/keep_alive bash . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . ci/keep_alive . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
         - bash ./java/build-jar-multiplatform.sh linux
         - bash ./java/build-jar-multiplatform.sh multiplatform
         #- bash ./java/build-jar-multiplatform.sh deploy
