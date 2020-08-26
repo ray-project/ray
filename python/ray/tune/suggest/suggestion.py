@@ -304,7 +304,7 @@ class ConcurrencyLimiter(Searcher):
 
     def set_state(self, state):
         self.__dict__.update(state)
-        
+
     def on_pause(self, trial_id):
         self.searcher.on_pause(trial_id)
 
