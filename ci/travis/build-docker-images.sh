@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# This script build docker images for autoscaler.
-# For now, we only build python3.6 images.
+# This script builds docker images on CI.
+# This script MUST be sourced to capture env variables
 set -e
 set -x
 
