@@ -250,7 +250,7 @@
         },
         "metadata": {
             "type": "object",
-            "description": "Metadata that can be used to pass custom arguments."
+            "description": "Metadata field that can be used to store user-defined data in the cluster config. Ray does not interpret these fields."
         },
         "initialization_commands": {
             "$ref": "#/definitions/commands",

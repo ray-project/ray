@@ -118,11 +118,6 @@ cluster_synced_files: []
 # should sync to the worker node continuously
 file_mounts_sync_continuously: False
 
-# Metadata that can be used to pass custom arguments.
-# metadata:
-    # arg1: value1
-    # arg2: value2
-
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
