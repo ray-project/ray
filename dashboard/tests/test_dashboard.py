@@ -14,6 +14,7 @@ import requests
 
 from ray import ray_constants
 from ray.test_utils import (
+    format_web_url,
     wait_for_condition,
     wait_until_server_available,
     run_string_as_driver,
@@ -144,7 +145,7 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    webui_url = format_web_url(webui_url)
 
     timeout_seconds = 10
     start_time = time.time()
@@ -191,7 +192,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    webui_url = format_web_url(webui_url)
 
     target_url = webui_url + "/test/dump"
 

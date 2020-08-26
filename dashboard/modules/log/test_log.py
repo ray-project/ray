@@ -12,7 +12,9 @@ import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
-    wait_until_server_available, )
+    format_web_url,
+    wait_until_server_available,
+)
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
@@ -45,7 +47,7 @@ def test_log(disable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    webui_url = format_web_url(webui_url)
 
     timeout_seconds = 10
     start_time = time.time()

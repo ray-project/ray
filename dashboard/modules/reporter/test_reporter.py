@@ -8,6 +8,7 @@ import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
+    format_web_url,
     RayTestTimeoutException,
     wait_until_server_available,
     wait_for_condition,
@@ -31,7 +32,7 @@ def test_profiling(disable_test_module, shutdown_only):
 
     webui_url = addresses["webui_url"]
     assert (wait_until_server_available(webui_url) is True)
-    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    webui_url = format_web_url(webui_url)
 
     start_time = time.time()
     launch_profiling = None
@@ -69,7 +70,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
     webui_url = addresses["webui_url"]
     assert (wait_until_server_available(webui_url) is True)
-    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    webui_url = format_web_url(webui_url)
 
     def _check_workers():
         try:
