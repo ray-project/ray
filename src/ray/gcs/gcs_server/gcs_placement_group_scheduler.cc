@@ -216,9 +216,12 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   // If schedule success, the decision will be set as schedule_map[bundles[pos]]
   // else will be set ClientID::Nil().
+  // SANG-TODO Move to context
   auto bundle_locations = std::make_shared<BundleLocations>();
   // To count how many scheduler have been return, which include success and failure.
+  // SANG-TODO Move to context
   auto finished_count = std::make_shared<size_t>();
+  // SANG-TODO Move to context
   RAY_CHECK(
       placement_group_leasing_in_progress_.emplace(placement_group->GetPlacementGroupID())
           .second);
@@ -227,12 +230,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   for (auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
     const auto &node_id = selected_nodes[bundle_id];
+    // SANG-TODO Move to context
     RAY_CHECK(node_to_bundles_when_leasing_[node_id].emplace(bundle_id).second);
 
     ReserveResourceFromNode(
         bundle, gcs_node_manager_.GetNode(node_id),
         [this, bundle_id, bundle, bundles, node_id, placement_group, bundle_locations,
          finished_count, failure_callback, success_callback](const Status &status) {
+          // SANG-TODO Move to context
           auto leasing_bundles = node_to_bundles_when_leasing_.find(node_id);
           RAY_CHECK(leasing_bundles != node_to_bundles_when_leasing_.end());
           auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
@@ -244,10 +249,12 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
             node_to_bundles_when_leasing_.erase(leasing_bundles);
           }
 
+          // SANG-TODO Move to context
           if (status.ok()) {
             (*bundle_locations)[bundle_id] = std::make_pair(node_id, bundle);
           }
-
+          
+          // SANG-TODO Move to context
           if (++(*finished_count) == bundles.size()) {
             OnAllBundleSchedulingRequestReturned(placement_group, bundles,
                                                  bundle_locations, failure_callback,
@@ -369,6 +376,7 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
 
+  // SANG-TODO Move to context
   if (placement_group_leasing_in_progress_.find(placement_group_id) ==
           placement_group_leasing_in_progress_.end() ||
       bundle_locations->size() != bundles.size()) {
@@ -400,6 +408,7 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
           ->set_node_id(location.first.Binary());
     }
   }
+  // SANG-TODO Move to context
   // Erase leasing in progress placement group.
   // This could've been removed if the leasing request is cancelled already.
   auto it = placement_group_leasing_in_progress_.find(placement_group_id);
