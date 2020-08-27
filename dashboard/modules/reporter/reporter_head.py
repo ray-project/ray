@@ -37,9 +37,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/launch_profiling")
     async def launch_profiling(self, req) -> aiohttp.web.Response:
-        ip = req.query.get("ip")
-        pid = int(req.query.get("pid"))
-        duration = int(req.query.get("duration"))
+        ip = req.query["ip"]
+        pid = int(req.query["pid"])
+        duration = int(req.query["duration"])
         reporter_stub = self._stubs[ip]
         reply = await reporter_stub.GetProfilingStats(
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
