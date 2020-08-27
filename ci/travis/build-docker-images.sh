@@ -18,19 +18,19 @@ docker_push() {
     fi
 }
 build_and_push_tags() {
-    # $1 image-name (Dockerfile directory)
-    # $2 tag
+    # $1 image-name, also used as the directory where the Dockerfile lives (e.g. base-deps)
+    # $2 tag for image (e.g. hahs of commit)
     for GPU in "" "-gpu" 
     do 
         BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
-        SPECIFIC_NAME="rayproject/$1:$2$GPU"
-        LATEST_NAME="rayproject/$1:latest$GPU"
-        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" -t "$SPECIFIC_NAME" /"$ROOT_DIR"/docker/"$1"
+        FULL_NAME_WITH_TAG="rayproject/$1:$2$GPU"
+        LATEST_FULL_NAME_WITH_TAG="rayproject/$1:latest$GPU"
+        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" -t "$FULL_NAME_WITH_TAG" /"$ROOT_DIR"/docker/"$1"
         
-        docker tag "$SPECIFIC_NAME" "$LATEST_NAME"
+        docker tag "$FULL_NAME_WITH_TAG" "$LATEST_FULL_NAME_WITH_TAG"
 
-        docker_push "$SPECIFIC_NAME"
-        docker_push "$LATEST_NAME"
+        docker_push "$FULL_NAME_WITH_TAG"
+        docker_push "$LATEST_FULL_NAME_WITH_TAG"
     done
 }
 
