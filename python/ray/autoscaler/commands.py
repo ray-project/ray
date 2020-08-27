@@ -255,7 +255,7 @@ def _bootstrap_config(config: Dict[str, Any],
     provider_cls = importer(config["provider"])
 
     with cli_logger.timed(  # todo: better message
-            "Bootstraping {} config",
+            "Bootstrapping {} config",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
