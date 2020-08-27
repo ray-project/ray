@@ -233,7 +233,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            runner = self._setup_remote_runner(trial, reuse_allowed)
+            runner = self._setup_remote_runner(trial)
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
