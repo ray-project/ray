@@ -29,6 +29,19 @@ NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
 
+class _ActorClassCache:
+    def __init__(self):
+        self._cache = {}
+
+    def get(self, trainable_cls):
+        if trainable_cls not in self._cache:
+            remote_cls = ray.remote(trainable_cls)
+            self._cache[trainable_cls] = remote_cls
+        return self._cache[trainable_cls]
+
+
+_class_cache = _ActorClassCache()
+
 
 class _LocalWrapper:
     def __init__(self, result):
@@ -151,13 +164,13 @@ class RayTrialExecutor(TrialExecutor):
                 self._trial_cleanup.add(trial, actor=self._cached_actor)
             self._cached_actor = None
 
-        cls = ray.remote(
+        _actor_cls = _class_cache.get(trial.get_trainable_cls())
+        full_actor_class = _actor_cls.options(
             num_cpus=trial.resources.cpu,
             num_gpus=trial.resources.gpu,
-            memory=trial.resources.memory,
-            object_store_memory=trial.resources.object_store_memory,
-            resources=trial.resources.custom_resources)(
-                trial.get_trainable_cls())
+            memory=trial.resources.memory or None,
+            object_store_memory=trial.resources.object_store_memory or None,
+            resources=trial.resources.custom_resources)
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
@@ -187,7 +200,7 @@ class RayTrialExecutor(TrialExecutor):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
 
         with self._change_working_directory(trial):
-            return cls.remote(**kwargs)
+            return full_actor_class.remote(**kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
