@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, Multidiscrete, Space
+from gym.spaces import Discrete, MultiDiscrete, Space
 from typing import Optional, Tuple, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -91,7 +91,7 @@ class Curiosity(Exploration):
         """
         if framework != "torch":
             raise ValueError("Only torch is currently supported for Curiosity")
-        elif not isinstance(action_space, (Discrete, Multidiscrete)):
+        elif not isinstance(action_space, (Discrete, MultiDiscrete)):
             raise ValueError(
                 "Only (Multi)Discrete action spaces supported for Curiosity "
                 "so far!")

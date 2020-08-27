@@ -2,12 +2,14 @@ from collections import deque
 import gym
 import gym_minigrid
 import numpy as np
-import ray
 import sys
 import unittest
 
+import ray
+from ray import tune
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    framework_iterator
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
 
@@ -44,7 +46,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
                        np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
                                 np.array(self.y_positions) - self.init_y) ** 2))
                     self.x_y_delta_buffer.append(max_diff)
-                    print("100 average delta-x/y={}".format(np.mean(self.x_y_delta_buffer)))
+                    print("100-average dist travelled={}".format(
+                        np.mean(self.x_y_delta_buffer)))
                     self.x_positions = []
                     self.y_positions = []
                 self.init_x = self.agent_pos[0]
@@ -169,6 +172,7 @@ class TestCuriosity(unittest.TestCase):
 
     def test_curiosity_on_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()
+        config["env"] = "mini-grid"
         config["env_config"] = {
             "name": "MiniGrid-Empty-16x16-v0",
             "framestack": 1,  # seems to work even w/o framestacking
@@ -195,20 +199,15 @@ class TestCuriosity(unittest.TestCase):
             }
         }
 
-        reward_threshold = 0.1
-        max_num_iterations = 25
+        min_reward = 0.1
+        stop = {
+            "training_iteration": 25,
+            "episode_reward_mean": 0.8, #TODO: min_reward
+        }
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.PPOTrainer(config=config, env="mini-grid")
-            num_iterations_to_success = max_num_iterations
-            for num_iterations_to_success in range(max_num_iterations):
-                result = trainer.train()
-                print(result)
-                if result["episode_reward_mean"] > reward_threshold:
-                    print("Learnt after {} iters!".format(
-                        num_iterations_to_success))
-                    break
-            trainer.stop()
-            self.assertTrue(num_iterations_to_success < max_num_iterations - 1)
+            results = tune.run(
+                "PPO", config=config, stop=stop, checkpoint_freq=1, verbose=1)
+            check_learning_achieved(results, min_reward)
 
 
 if __name__ == "__main__":
