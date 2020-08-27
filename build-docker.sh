@@ -19,6 +19,9 @@ case $key in
     --build-dev)
     BUILD_DEV=YES
     ;;
+    --build-examples)
+    BUILD_EXAMPLES=YES
+    ;;
     --shas-only)
     # output the SHA sum of each build. This is useful for scripting tests, 
     # especially when builds of different versions are running on the same machine. 
@@ -31,7 +34,7 @@ case $key in
     exit 1
     ;;
     *)
-    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-dev ] [ --wheel-to-use ]"
+    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-dev ] [ --build-examples ] [ --wheel-to-use ]"
     exit 1
 esac
 shift
@@ -65,6 +68,15 @@ if [ $BUILD_DEV ]; then
         docker build --no-cache -t rayproject/development docker/development
     fi
     rm ./docker/development/ray.tar ./docker/development/git-rev
+fi
+
+if [ $BUILD_EXAMPLES ]; then 
+    if [ $OUTPUT_SHA ]; then
+        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/examples docker/examples)
+        echo "rayproject/examples:latest SHA:$IMAGE_SHA"
+    else
+        docker build $NO_CACHE -t rayproject/examples docker/examples
+    fi
 fi
 
 rm -rf "$WHEEL_DIR"
