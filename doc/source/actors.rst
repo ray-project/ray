@@ -152,7 +152,7 @@ Note that this method of termination will wait until any previously submitted
 tasks finish executing. If you want to terminate an actor immediately, you can
 call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
 and any pending tasks to fail. Any exit handlers installed in the actor using
-``atexit`` will be called.
+``atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
