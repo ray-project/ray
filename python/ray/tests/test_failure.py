@@ -30,7 +30,7 @@ def test_failed_task(ray_start_regular, error_pubsub):
     def throw_exception_fct2():
         raise Exception("Test function 2 intentionally failed.")
 
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def throw_exception_fct3(x):
         raise Exception("Test function 3 intentionally failed.")
 

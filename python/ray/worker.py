@@ -1783,7 +1783,7 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def make_decorator(num_return_vals=None,
+def make_decorator(num_returns=None,
                    num_cpus=None,
                    num_gpus=None,
                    memory=None,
@@ -1809,13 +1809,12 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries, placement_group,
-                placement_group_bundle_index)
+                memory, object_store_memory, resources, num_returns, max_calls,
+                max_retries, placement_group, placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
-            if num_return_vals is not None:
-                raise TypeError("The keyword 'num_return_vals' is not "
+            if num_returns is not None:
+                raise TypeError("The keyword 'num_returns' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
@@ -1850,7 +1849,7 @@ def remote(*args, **kwargs):
 
     It can also be used with specific keyword arguments:
 
-    * **num_return_vals:** This is only for *remote functions*. It specifies
+    * **num_returns:** This is only for *remote functions*. It specifies
       the number of object refs returned by the remote function invocation.
     * **num_cpus:** The quantity of CPU cores to reserve for this task or for
       the lifetime of the actor.
@@ -1892,7 +1891,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
 
@@ -1907,7 +1906,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
         g = f.options(num_gpus=2, max_calls=None)
@@ -1933,15 +1932,15 @@ def remote(*args, **kwargs):
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
+                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
                     "'max_calls', or 'max_restarts', like "
-                    "'@ray.remote(num_return_vals=2, "
+                    "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals",
+            "num_returns",
             "num_cpus",
             "num_gpus",
             "memory",
@@ -1966,7 +1965,7 @@ def remote(*args, **kwargs):
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
     # Handle other arguments.
-    num_return_vals = kwargs.get("num_return_vals")
+    num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
     max_restarts = kwargs.get("max_restarts")
     max_task_retries = kwargs.get("max_task_retries")
@@ -1975,7 +1974,7 @@ def remote(*args, **kwargs):
     max_retries = kwargs.get("max_retries")
 
     return make_decorator(
-        num_return_vals=num_return_vals,
+        num_returns=num_returns,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,

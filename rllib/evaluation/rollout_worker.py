@@ -619,7 +619,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch
 
     @DeveloperAPI
-    @ray.method(num_return_vals=2)
+    @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate future."""
         batch = self.sample()

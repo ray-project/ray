@@ -64,12 +64,12 @@ def test_submit_api(shutdown_only):
     def g():
         return ray.get_gpu_ids()
 
-    assert f._remote([0], num_return_vals=0) is None
-    id1 = f._remote(args=[1], num_return_vals=1)
+    assert f._remote([0], num_returns=0) is None
+    id1 = f._remote(args=[1], num_returns=1)
     assert ray.get(id1) == [0]
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    id1, id2 = f._remote(args=[2], num_returns=2)
     assert ray.get([id1, id2]) == [0, 1]
-    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    id1, id2, id3 = f._remote(args=[3], num_returns=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
         g._remote(args=[], num_cpus=1, num_gpus=1,
@@ -107,7 +107,7 @@ def test_submit_api(shutdown_only):
     ray.get(a2.method._remote())
 
     id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+        args=["test"], kwargs={"b": 2}, num_returns=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
