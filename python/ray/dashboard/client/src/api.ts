@@ -147,7 +147,12 @@ export type RayletWorkerStats = {
 };
 
 export enum ActorState {
-  Invalid = -1,
+  // These two are virtual states that we air because there is
+  // an existing task to create an actor
+  Infeasible = -2,
+  PendingResources = -1,
+  // These are real actor states that you can read about in the
+  // Ray docs.
   DependenciesUnready = 0,
   PendingCreation = 1,
   Alive = 2,
@@ -155,7 +160,7 @@ export enum ActorState {
   Dead = 4,
 }
 
-export type ActorInfo = FullActorInfo | PartialActorInfo;
+export type ActorInfo = FullActorInfo | ActorTaskInfo;
 
 export type FullActorInfo = {
   actorId: string;
@@ -185,12 +190,11 @@ export type FullActorInfo = {
   webuiDisplay?: Record<string, string>;
 };
 
-export type PartialActorInfo = {
+export type ActorTaskInfo = {
   actorId?: string;
   actorTitle?: string;
   requiredResources?: { [key: string]: number };
-  state: ActorState.Invalid;
-  invalidStateType?: InvalidStateType;
+  state: ActorState.Infeasible | ActorState.PendingResources;
 };
 
 // eslint-disable-next-line
@@ -200,10 +204,8 @@ export function isFullActorInfo(
   // Lint disabled because arrow functions don't play well with type guards.
   // This function is used to determine what kind of information we have about
   // a given actor in a response based on its state.
-  return actorInfo.state !== ActorState.Invalid;
+  return actorInfo.state !== ActorState.Infeasible && actorInfo.state !== ActorState.PendingResources;
 }
-
-export type InvalidStateType = "infeasibleActor" | "pendingActor";
 
 export type ActorGroupSummary = {
   stateToCount: { [state in ActorState]: number };

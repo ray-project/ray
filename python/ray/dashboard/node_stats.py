@@ -165,8 +165,12 @@ class NodeStats(threading.Thread):
                                          invalid_state_type):
                 actor_id = ray.utils.binary_to_hex(
                     b64decode(task[task_spec_type]["actorId"]))
-                task["state"] = -1
-                task["invalidStateType"] = invalid_state_type
+                if invalid_state_type == "pendingActor":
+                    task["state"] = -1
+                elif invalid_state_type == "infeasibleActor":
+                    task["state"] = -2
+                else:
+                    raise ValueError(f"Invalid argument invalid_state_type={invalid_state_time}")
                 task["actorTitle"] = task["functionDescriptor"][
                     "pythonFunctionDescriptor"]["className"]
                 format_reply_id(task)
