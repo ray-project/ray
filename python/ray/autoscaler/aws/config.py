@@ -277,6 +277,23 @@ def _configure_key_pair(config):
     if "ssh_private_key" in config["auth"]:
         _set_config_info(keypair_src="config")
 
+        # If the key is not configured via the cloudinit
+        # UserData, it should be configured via KeyName or
+        # else we will risk starting a node that we cannot
+        # SSH into:
+
+        if "UserData" not in config["head_node"]:
+            cli_logger.doassert(  # todo: verify schema beforehand?
+                "KeyName" in config["head_node"],
+                "`KeyName` missing for head node.")  # todo: err msg
+            assert "KeyName" in config["head_node"]
+
+        if "UserData" not in config["worker_nodes"]:
+            cli_logger.doassert(
+                "KeyName" in config["worker_nodes"],
+                "`KeyName` missing for worker nodes.")  # todo: err msg
+            assert "KeyName" in config["worker_nodes"]
+
         return config
 
     _set_config_info(keypair_src="default")
