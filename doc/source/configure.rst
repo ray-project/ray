@@ -117,27 +117,23 @@ Ports configurations
 --------------------
 Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
 
-Head Node
+All Nodes
 ~~~~~~~~~
-- ``--port``: Port of GCS (Redis).
-- ``--node-manager-port``: Raylet port for node manager.
-- ``--object-manager-port``: Raylet port for object manager.
-- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating to GCS.
+- ``--node-manager-port``: Raylet port for node manager. Default: Random value.
+- ``--object-manager-port``: Raylet port for object manager. Default: Random value.
 
-All ports between this two number should be open.
+The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
-- ``--min-worker-port``: Minimum port number worker can be bound to.
-- ``--max-worker-port``: Maximum port number worker can be bound to.
+- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
 
-Worker Node
+Head Node
 ~~~~~~~~~~~
-- ``--node-manager-port``: Raylet port for node manager.
-- ``--object-manager-port``: Raylet port for object manager.
+In addition to ports specified above, the head node needs to open several more ports.
 
-All ports between this two number should be open.
-
-- ``--min-worker-port``: Minimum port number worker can be bound to.
-- ``--max-worker-port``: Maximum port number worker can be bound to.
+- ``--port``: Port of GCS. Default: 6379.
+- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
 
 Redis Port Authentication
 -------------------------
