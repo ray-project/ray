@@ -31,11 +31,10 @@ RUN apt-get update -y && apt-get upgrade -y \
         cython==0.29.0 \
         numpy==1.15.4 \
         psutil \
-        blist \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
-    # We install cmake temporarily to get psutil and blist
+    # We install cmake temporarily to get psutil
     && apt-get autoremove cmake -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean 
