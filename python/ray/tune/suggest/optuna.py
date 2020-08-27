@@ -1,7 +1,11 @@
 import logging
 import pickle
+from typing import Dict
 
 from ray.tune.result import TRAINING_ITERATION
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Uniform
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils import flatten_dict
 
 try:
     import optuna as ot
@@ -147,3 +151,42 @@ class OptunaSearch(Searcher):
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
             self._ot_trials, self._ot_study = save_object
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec)
+        domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if not domain_vars and not grid_vars:
+            return []
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to an Optuna search space.")
+
+        values = []
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            if isinstance(domain, Float) and domain.has_sampler(LogUniform):
+                value = param.suggest_loguniform(par, domain.min, domain.max)
+            elif isinstance(domain, Float) and domain.has_sampler(Uniform):
+                value = param.suggest_uniform(par, domain.min, domain.max)
+            elif isinstance(domain,
+                            Integer) and domain.has_sampler(LogUniform):
+                value = param.suggest_int(
+                    par, domain.min, domain.max, log=True)
+            elif isinstance(domain, Integer) and domain.has_sampler(Uniform):
+                value = param.suggest_int(
+                    par, domain.min, domain.max, log=False)
+            elif isinstance(domain,
+                            Categorical) and domain.has_sampler(Uniform):
+                value = param.suggest_categorical(par, domain.categories)
+            else:
+                raise ValueError(
+                    "Optuna search does not support parameters of type "
+                    "{} with samplers of type {}".format(
+                        type(domain), type(domain.sampler)))
+            values.append(value)
+
+        return values
