@@ -29,11 +29,32 @@ NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
 
+
 class _ActorClassCache:
+    """Caches actor classes.
+
+    ray.remote is a registration call. It sends the serialized object to the
+    key value store (redis), and will be fetched at an arbitrary worker
+    later. It does not use any Ray scheduling resources
+
+    Later, class.remote() actually creates the remote actor. This
+    instance will be instantiated on some arbitrary machine,
+    according to the underlying Ray scheduler.
+
+    Without this cache, you would register the same serialized object
+    over and over again. Naturally, since redis doesn’t spill to disk,
+    this can easily nuke the redis instance (and basically blow up Ray).
+    This instead allows us to register once and only once.
+
+    Note that we assume there can be multiple trainables in the
+    system at once.
+    """
+
     def __init__(self):
         self._cache = {}
 
     def get(self, trainable_cls):
+        """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
         if trainable_cls not in self._cache:
             remote_cls = ray.remote(trainable_cls)
             self._cache[trainable_cls] = remote_cls
