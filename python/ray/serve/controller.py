@@ -180,6 +180,7 @@ class ServeController:
                                 self.http_port))
                 router = HTTPProxyActor.options(
                     name=router_name,
+                    lifetime="detached",
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
@@ -391,6 +392,7 @@ class ServeController:
         replica_name = format_actor_name(replica_tag, self.instance_name)
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
+            lifetime="detached",
             max_restarts=-1,
             max_task_retries=-1,
             **backend_info.replica_config.ray_actor_options).remote(
