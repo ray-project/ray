@@ -315,7 +315,7 @@ py_test(
     name = "test_horovod",
     size = "medium",
     srcs = ["tests/test_horovod.py"],
-    tags = ["exclusive", "example", "pytorch"],
+    tags = ["exclusive", "example", "py37"],
     deps = [":tune_lib"],
 )
 
