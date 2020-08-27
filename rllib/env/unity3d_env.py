@@ -203,6 +203,8 @@ class Unity3DEnv(MultiAgentEnv):
             "3DBall": Box(float("-inf"), float("inf"), (8, )),
             # 3DBallHard.
             "3DBallHard": Box(float("-inf"), float("inf"), (45, )),
+            # Pyramids.
+            "Pyramids": Box(float("-inf"), float("inf"), (4, )),
             # SoccerStrikersVsGoalie.
             "Goalie": Box(float("-inf"), float("inf"), (738, )),
             "Striker": TupleSpace([
@@ -223,6 +225,8 @@ class Unity3DEnv(MultiAgentEnv):
             # 3DBallHard.
             "3DBallHard": Box(
                 float("-inf"), float("inf"), (2, ), dtype=np.float32),
+            # Pyramids.
+            "Pyramids": MultiDiscrete([5]),
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),

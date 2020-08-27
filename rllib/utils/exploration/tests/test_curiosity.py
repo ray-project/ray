@@ -174,8 +174,7 @@ class TestCuriosity(unittest.TestCase):
             "framestack": 1,  # seems to work even w/o framestacking
         }
         config["horizon"] = 40  # Make it impossible to reach goal by chance.
-        config["num_envs_per_worker"] = 10
-        config["model"]["fcnet_hiddens"] = [512]
+        config["num_envs_per_worker"] = 8
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True

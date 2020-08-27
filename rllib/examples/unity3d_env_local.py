@@ -33,12 +33,12 @@ parser.add_argument(
     type=str,
     default="3DBall",
     choices=[
-        "3DBall", "3DBallHard", "SoccerStrikersVsGoalie", "Tennis",
+        "3DBall", "3DBallHard", "Pyramids", "SoccerStrikersVsGoalie", "Tennis",
         "VisualHallway", "Walker"
     ],
     help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
-    "SoccerStrikersVsGoalie|Tennis|VisualHallway|Walker` (feel free to add "
-    "more and PR!)")
+         "Pyramids|SoccerStrikersVsGoalie|Tennis|VisualHallway|Walker`"
+         "(feel free to add more and PR!)")
 parser.add_argument(
     "--file-name",
     type=str,
@@ -60,7 +60,7 @@ parser.add_argument("--stop-timesteps", type=int, default=10000000)
 parser.add_argument(
     "--horizon",
     type=int,
-    default=200,
+    default=3000,
     help="The max. number of `step()`s for any episode (per agent) before "
     "it'll be reset again automatically.")
 parser.add_argument("--torch", action="store_true")
@@ -107,13 +107,27 @@ if __name__ == "__main__":
         "model": {
             "fcnet_hiddens": [512, 512],
         },
-        "framework": "tf",
+        "framework": "tf" if args.env != "Pyramids" else "torch",
         "no_done_at_end": True,
         # If no executable is provided (use Unity3D editor), do not evaluate,
         # b/c the editor only allows one connection at a time.
         "evaluation_interval": 10 if args.file_name else 0,
         "evaluation_num_episodes": 1,
     }
+    # Switch on Curiosity based exploration for Pyramids env
+    # (not solvable otherwise).
+    if args.env == "Pyramids":
+        config["exploration_config"] = {
+            "type": "Curiosity",
+            "lr": 0.0005,
+            "feature_net_config": {
+                "fcnet_hiddens": [256, 256],
+                "fcnet_activation": "relu",
+            },
+            "sub_exploration": {
+                "type": "StochasticSampling",
+            }
+        }
 
     stop = {
         "training_iteration": args.stop_iters,
