@@ -119,7 +119,7 @@ class Unity3DEnv(MultiAgentEnv):
 
         # Set only the required actions (from the DecisionSteps) in Unity3D.
         all_agents = []
-        for behavior_name in self.unity_env.get_behavior_names():
+        for behavior_name in self.unity_env.behavior_specs:
             for agent_id in self.unity_env.get_steps(behavior_name)[
                     0].agent_id_to_index.keys():
                 key = behavior_name + "_{}".format(agent_id)
@@ -166,7 +166,7 @@ class Unity3DEnv(MultiAgentEnv):
         obs = {}
         rewards = {}
         infos = {}
-        for behavior_name in self.unity_env.get_behavior_names():
+        for behavior_name in self.unity_env.behavior_specs:
             decision_steps, terminal_steps = self.unity_env.get_steps(
                 behavior_name)
             # Important: Only update those sub-envs that are currently
