@@ -56,7 +56,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
         await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-        logger.info("Subscribed to %s", reporter_key)
+        logger.info(f"Subscribed to {reporter_key}")
 
         async for sender, msg in receiver.iter():
             try:
