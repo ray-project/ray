@@ -104,7 +104,8 @@ class Monitor:
                 for resource_demand_pb in list(
                         resource_load_by_shape.resource_demands):
                     request_shape = dict(resource_demand_pb.shape)
-                    for _ in range(resource_demand_pb.num_ready_requests_queued):
+                    for _ in range(
+                            resource_demand_pb.num_ready_requests_queued):
                         waiting_bundles.append(request_shape)
                     for _ in range(
                             resource_demand_pb.num_infeasible_requests_queued):
