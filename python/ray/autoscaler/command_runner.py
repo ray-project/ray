@@ -436,7 +436,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 if the command fails (exits with a code other than 0).
 
         Raises:
-            ProcessRunnerError if using new log style and disabled login shells.
+            ProcessRunnerError if using new log style and disabled
+                login shells.
             click.ClickException if using login shells.
         """
         try:
