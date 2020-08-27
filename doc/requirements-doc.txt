@@ -24,7 +24,7 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-sphinx_rtd_theme
+sphinx-book-theme
 tabulate
 uvicorn
 werkzeug
