@@ -85,6 +85,14 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any([-4 < s < 4 for s in samples]))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testQuantized(self):
+        bounded_positive = tune.sample.Float(1e-4, 1e-1)
+        samples = bounded_positive.loguniform().quantized(5e-4).sample(size=10)
+
+        for sample in samples:
+            factor = sample / 5e-4
+            self.assertAlmostEqual(factor, round(factor), places=10)
+
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler

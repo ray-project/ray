@@ -1,6 +1,7 @@
 import logging
 import random
 from copy import copy
+from numbers import Number
 from typing import Callable, Dict, Iterator, List, Optional, \
     Sequence, \
     Union
@@ -14,8 +15,8 @@ logger = logging.getLogger(__name__)
 class Domain:
     sampler = None
 
-    def set_sampler(self, sampler):
-        if self.sampler:
+    def set_sampler(self, sampler, allow_override=False):
+        if self.sampler and not allow_override:
             raise ValueError("You can only choose one sampler for parameter "
                              "domains. Existing sampler for parameter {}: "
                              "{}. Tried to add {}".format(
@@ -46,6 +47,11 @@ class Float(Domain):
     def __init__(self, min=float("-inf"), max=float("inf")):
         self.min = min
         self.max = max
+
+    def quantized(self, q: Number):
+        new = copy(self)
+        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
+        return new
 
     def normal(self, mean=0., sd=1.):
         new = copy(self)
@@ -83,6 +89,11 @@ class Integer(Domain):
     def __init__(self, min, max):
         self.min = min
         self.max = max
+
+    def quantized(self, q: Number):
+        new = copy(self)
+        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
+        return new
 
     def uniform(self):
         new = copy(self)
@@ -135,7 +146,11 @@ class Function(Domain):
 
 
 class Sampler:
-    pass
+    def sample(self,
+               domain: Domain,
+               spec: Optional[Union[List[Dict], Dict]] = None,
+               size: int = 1):
+        raise NotImplementedError
 
 
 class Uniform(Sampler):
@@ -249,6 +264,22 @@ class Normal(Sampler):
                 "Allowed types: {}".format(domain.__class__.__name__, [Float]))
 
 
+class Quantized(Sampler):
+    def __init__(self, sampler: Sampler, q: Number):
+        self.sampler = sampler
+        self.q = q
+
+    def sample(self,
+               domain: Domain,
+               spec: Optional[Union[List[Dict], Dict]] = None,
+               size: int = 1):
+        values = self.sampler.sample(domain, spec, size)
+        quantized = np.round(np.divide(values, self.q)) * self.q
+        if len(quantized) == 1:
+            return quantized[0]
+        return list(quantized)
+
+
 class Grid(Sampler):
     def sample(self,
                domain: Domain,
@@ -276,16 +307,44 @@ def uniform(min, max):
     return Float(min, max).uniform()
 
 
+def quniform(min, max, q):
+    """Sample a quantized float value uniformly between ``min`` and ``max``.
+
+    Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
+    ``np.random.uniform(1, 10))``
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+
+    """
+    return Float(min, max).uniform().quantized(q)
+
+
 def loguniform(min, max, base=10):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
         min (float): Lower boundary of the output interval (e.g. 1e-4)
         max (float): Upper boundary of the output interval (e.g. 1e-2)
-        base (float): Base of the log. Defaults to 10.
+        base (int): Base of the log. Defaults to 10.
 
     """
     return Float(min, max).loguniform(base)
+
+
+def qloguniform(min, max, q, base=10):
+    """Sugar for sampling in different orders of magnitude.
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+
+    Args:
+        min (float): Lower boundary of the output interval (e.g. 1e-4)
+        max (float): Upper boundary of the output interval (e.g. 1e-2)
+        q (float): Quantization number. The result will be rounded to an
+            integer increment of this value.
+        base (int): Base of the log. Defaults to 10.
+
+    """
+    return Float(min, max).loguniform(base).quantized(q)
 
 
 def choice(categories):
@@ -327,3 +386,27 @@ def randn(mean: float = 0.,
 
     """
     return Float(min, max).normal(mean, sd)
+
+
+def qrandn(q: float,
+           mean: float = 0.,
+           sd: float = 1.,
+           min: float = float("-inf"),
+           max: float = float("inf")):
+    """Sample a float value normally with ``mean`` and ``sd``.
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+
+    Will truncate the normal distribution at ``min`` and ``max`` to avoid
+    oversampling the border regions.
+
+    Args:
+        q (float): Quantization number. The result will be rounded to an
+            integer increment of this value.
+        mean (float): Mean of the normal distribution. Defaults to 0.
+        sd (float): SD of the normal distribution. Defaults to 1.
+        min (float): Minimum bound. Defaults to -inf.
+        max (float): Maximum bound. Defaults to inf.
+
+    """
+    return Float(min, max).normal(mean, sd).quantized(q)
