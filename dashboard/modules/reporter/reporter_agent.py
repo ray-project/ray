@@ -239,8 +239,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 await aioredis_client.publish(
                     "{}{}".format(reporter_consts.REPORTER_PREFIX,
                                   self._hostname), jsonify_asdict(stats))
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 

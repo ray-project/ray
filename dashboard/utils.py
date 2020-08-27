@@ -415,8 +415,8 @@ def async_loop_forever(interval_seconds):
             while True:
                 try:
                     await coro(*args, **kwargs)
-                except Exception as ex:
-                    logger.exception(ex)
+                except Exception:
+                    logger.exception(f"Error looping coroutine {coro}.")
                 await asyncio.sleep(interval_seconds)
 
         return _looper

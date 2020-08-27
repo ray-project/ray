@@ -113,8 +113,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 else:
                     raise Exception(
                         f"Failed to GetAllActorInfo: {reply.status.message}")
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error Getting all actor info from GCS.")
                 await asyncio.sleep(stats_collector_consts.
                                     RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
 
@@ -127,8 +127,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     pubsub_message.data)
                 DataSource.actors[binary_to_hex(actor_info.actor_id)] = \
                     actor_table_data_to_dict(actor_info)
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error receiving actor info.")
 
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
@@ -142,8 +142,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     node_manager_pb2.GetNodeStatsRequest(), timeout=2)
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[ip] = reply_dict
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception(f"Error updating node stats of {ip}.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

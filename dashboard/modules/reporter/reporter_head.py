@@ -63,5 +63,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 _, data = msg
                 data = json.loads(ray.utils.decode(data))
                 DataSource.node_physical_stats[data["ip"]] = data
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception(
+                    "Error receiving node physical stats from reporter agent.")

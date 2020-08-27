@@ -115,8 +115,8 @@ class DashboardHead:
                     dict(zip(node_hostnames, node_ips)))
                 DataSource.ip_to_hostname.reset(
                     dict(zip(node_ips, node_hostnames)))
-            except aiogrpc.AioRpcError as ex:
-                logger.exception(ex)
+            except aiogrpc.AioRpcError:
+                logger.exception("Got AioRpcError when updating nodes.")
                 self._gcs_rpc_error_counter += 1
                 if self._gcs_rpc_error_counter > \
                         dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
@@ -125,8 +125,8 @@ class DashboardHead:
                         self._gcs_rpc_error_counter,
                         dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
                     sys.exit(-1)
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error updating nodes.")
             finally:
                 await asyncio.sleep(
                     dashboard_consts.UPDATE_NODES_INTERVAL_SECONDS)
@@ -199,8 +199,8 @@ class DashboardHead:
                 co = await dashboard_utils.NotifyQueue.get()
                 try:
                     await co
-                except Exception as e:
-                    logger.exception(e)
+                except Exception:
+                    logger.exception(f"Error notifying coroutine {co}")
 
         async def _purge_data():
             """Purge data in datacenter."""
@@ -209,8 +209,8 @@ class DashboardHead:
                     dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
                 try:
                     await DataOrganizer.purge()
-                except Exception as e:
-                    logger.exception(e)
+                except Exception:
+                    logger.exception("Error purging data.")
 
         modules = self._load_modules()
 
