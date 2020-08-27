@@ -1,6 +1,6 @@
 # The examples Docker image adds dependencies needed to run the examples
 
-FROM ray-project/deploy
+FROM rayproject/ray:latest
 
 # This updates numpy to 1.14 and mutes errors from other libraries
 RUN conda install -y numpy

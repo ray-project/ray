@@ -1,7 +1,7 @@
 # The deploy Docker image build a self-contained Ray instance suitable
 # for end users.
 
-FROM ray-project/base-deps
+FROM rayproject/ray-deps:latest
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
 RUN cd /ray && git init && ./ci/travis/install-bazel.sh --system
