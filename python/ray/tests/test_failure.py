@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import sys
@@ -908,12 +907,12 @@ def test_raylet_crash_when_get(ray_start_regular):
 
 
 def test_connect_with_disconnected_node(shutdown_only):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 50,
         "raylet_heartbeat_timeout_milliseconds": 10,
-    })
+    }
     cluster = Cluster()
-    cluster.add_node(num_cpus=0, _internal_config=config)
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     p = init_error_pubsub()
     errors = get_error_message(p, 1, timeout=5)
@@ -943,9 +942,9 @@ def test_connect_with_disconnected_node(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 5,
         "object_store_memory": 10**8,
-        "_internal_config": json.dumps({
+        "_system_config": {
             "object_store_full_max_retries": 0
-        })
+        }
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
@@ -965,9 +964,7 @@ def test_fill_object_store_exception(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        _internal_config=json.dumps({
-            "object_store_full_max_retries": 0
-        }))
+        _system_config={"object_store_full_max_retries": 0})
 
     @ray.remote
     def expensive_task():
@@ -997,14 +994,14 @@ def test_fill_object_store_exception(shutdown_only):
 
 
 def test_fill_object_store_lru_fallback(shutdown_only):
-    config = json.dumps({
+    config = {
         "free_objects_batch_size": 1,
-    })
+    }
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
         lru_evict=True,
-        _internal_config=config)
+        _system_config=config)
 
     @ray.remote
     def expensive_task():
@@ -1125,13 +1122,13 @@ def test_serialized_id(ray_start_cluster):
                          [(False, False), (False, True), (True, False),
                           (True, True)])
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
-    config = json.dumps({
+    config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-    })
+    }
     cluster = Cluster()
     # Head node with no resources.
-    cluster.add_node(num_cpus=0, _internal_config=config)
+    cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
     # Node to place the parent actor.
     node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})

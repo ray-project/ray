@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
-  // The internal_config is only set on the head node--other nodes get it from GCS.
+  // The system_config is only set on the head node--other nodes get it from GCS.
   if (head_node) {
     // Parse the configuration list.
     std::istringstream config_string(config_list);
@@ -202,7 +202,6 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().fair_queueing_enabled();
         node_manager_config.object_pinning_enabled =
             RayConfig::instance().object_pinning_enabled();
-        node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;

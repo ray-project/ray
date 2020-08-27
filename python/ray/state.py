@@ -251,6 +251,7 @@ class GlobalState:
                     actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
+            "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
         }
         return actor_info
