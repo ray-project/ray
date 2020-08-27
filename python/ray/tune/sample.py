@@ -29,6 +29,12 @@ class Domain:
             sampler = Uniform()
         return sampler.sample(self, spec=spec, size=size)
 
+    def is_grid(self):
+        return isinstance(self._sampler, Grid)
+
+    def is_function(self):
+        return False
+
 
 class Float(Domain):
     def __init__(self, min=float("-inf"), max=float("inf")):
@@ -87,6 +93,17 @@ class Categorical(Domain):
         new.set_sampler(Uniform())
         return new
 
+    def grid(self):
+        new = copy(self)
+        new.set_sampler(Grid())
+        return new
+
+    def __len__(self):
+        return len(self.categories)
+
+    def __getitem__(self, item):
+        return self.categories[item]
+
 
 class Iterative(Domain):
     def __init__(self, iterator: Iterator):
@@ -106,6 +123,9 @@ class Function(Domain):
         new = copy(self)
         new.set_sampler(Uniform())
         return new
+
+    def is_function(self):
+        return True
 
 
 class Sampler:
@@ -129,9 +149,15 @@ class Uniform(Sampler):
                 "Uniform needs a minimum bound"
             assert 0 < domain.max < float("inf"), \
                 "Uniform needs a maximum bound"
-            return np.random.uniform(domain.min, domain.max, size=size)
+            items = np.random.uniform(domain.min, domain.max, size=size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
         elif isinstance(domain, Integer):
-            return np.random.randint(domain.min, domain.max, size=size)
+            items = np.random.randint(domain.min, domain.max, size=size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
         elif isinstance(domain, Categorical):
             choices = []
             for i in range(size):
@@ -179,7 +205,10 @@ class LogUniform(Sampler):
             logmin = np.log(domain.min) / np.log(self.base)
             logmax = np.log(domain.max) / np.log(self.base)
 
-            return self.base**(np.random.uniform(logmin, logmax, size=size))
+            items = self.base**(np.random.uniform(logmin, logmax, size=size))
+            if len(items) == 1:
+                return items[0]
+            return list(items)
         else:
             raise RuntimeError(
                 "LogUniform sampler does not support parameters of type {}. "
@@ -204,99 +233,91 @@ class Normal(Sampler):
                 (domain.max - self.mean) / self.sd,
                 loc=self.mean,
                 scale=self.sd)
-            return dist.rvs(size)
+            items = dist.rvs(size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
         else:
             raise ValueError(
                 "Normal sampler does not support parameters of type {}. "
                 "Allowed types: {}".format(domain.__class__.__name__, [Float]))
 
 
-class sample_from:
+class Grid(Sampler):
+    def sample(self,
+               domain: Domain,
+               spec: Optional[Union[List[Dict], Dict]] = None,
+               size: int = 1):
+        return RuntimeError("Do not call `sample()` on grid.")
+
+
+def sample_from(func):
     """Specify that tune should sample configuration values from this function.
 
     Arguments:
         func: An callable function to draw a sample from.
     """
-
-    def __init__(self, func):
-        self.func = func
-
-    def __str__(self):
-        return "tune.sample_from({})".format(str(self.func))
-
-    def __repr__(self):
-        return "tune.sample_from({})".format(repr(self.func))
+    return Function(func)
 
 
-def function(func):
-    logger.warning(
-        "DeprecationWarning: wrapping {} with tune.function() is no "
-        "longer needed".format(func))
-    return func
+def uniform(min, max):
+    """Sample a float value uniformly between ``min`` and ``max``.
 
-
-class uniform(sample_from):
-    """Wraps tune.sample_from around ``np.random.uniform``.
-
-    ``tune.uniform(1, 10)`` is equivalent to
-    ``tune.sample_from(lambda _: np.random.uniform(1, 10))``
+    Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
+    ``np.random.uniform(1, 10))``
 
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(lambda _: np.random.uniform(*args, **kwargs))
+    return Float(min, max).uniform()
 
 
-class loguniform(sample_from):
+def loguniform(min, max, base=10):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
-        min_bound (float): Lower boundary of the output interval (1e-4)
-        max_bound (float): Upper boundary of the output interval (1e-2)
+        min (float): Lower boundary of the output interval (e.g. 1e-4)
+        max (float): Upper boundary of the output interval (e.g. 1e-2)
         base (float): Base of the log. Defaults to 10.
-    """
-
-    def __init__(self, min_bound, max_bound, base=10):
-        logmin = np.log(min_bound) / np.log(base)
-        logmax = np.log(max_bound) / np.log(base)
-
-        def apply_log(_):
-            return base**(np.random.uniform(logmin, logmax))
-
-        super().__init__(apply_log)
-
-
-class choice(sample_from):
-    """Wraps tune.sample_from around ``random.choice``.
-
-    ``tune.choice([1, 2])`` is equivalent to
-    ``tune.sample_from(lambda _: random.choice([1, 2]))``
 
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(lambda _: random.choice(*args, **kwargs))
+    return Float(min, max).loguniform(base)
 
 
-class randint(sample_from):
-    """Wraps tune.sample_from around ``np.random.randint``.
+def choice(categories):
+    """Sample a categorical value.
 
-    ``tune.randint(10)`` is equivalent to
-    ``tune.sample_from(lambda _: np.random.randint(10))``
+    Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
+    ``random.choice([1, 2])``
 
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(lambda _: np.random.randint(*args, **kwargs))
+    return Categorical(categories).uniform()
 
 
-class randn(sample_from):
-    """Wraps tune.sample_from around ``np.random.randn``.
+def randint(min, max):
+    """Sample an integer value uniformly between ``min`` and ``max``.
 
-    ``tune.randn(10)`` is equivalent to
-    ``tune.sample_from(lambda _: np.random.randn(10))``
+    ``min`` is inclusive, ``max`` is exlcusive.
+
+    Sampling from ``tune.randint(10)`` is equivalent to sampling from
+    ``np.random.randint(10)``
 
     """
+    return Integer(min, max).uniform()
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(lambda _: np.random.randn(*args, **kwargs))
+
+def randn(mean: float = 0.,
+          sd: float = 1.,
+          min: float = float("-inf"),
+          max: float = float("inf")):
+    """Sample a float value normally with ``mean`` and ``sd``.
+
+    Will truncate the normal distribution at ``min`` and ``max`` to avoid
+    oversampling the border regions.
+
+    Args:
+        mean (float): Mean of the normal distribution. Defaults to 0.
+        sd (float): SD of the normal distribution. Defaults to 1.
+        min (float): Minimum bound. Defaults to -inf.
+        max (float): Maximum bound. Defaults to inf.
+
+    """
+    return Float(min, max).normal(mean, sd)

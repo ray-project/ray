@@ -4,7 +4,7 @@ import numpy
 import random
 
 from ray.tune import TuneError
-from ray.tune.sample import sample_from
+from ray.tune.sample import Categorical, Domain, Function
 
 logger = logging.getLogger(__name__)
 
@@ -123,17 +123,17 @@ def _generate_variants(spec):
         return
 
     grid_vars = []
-    lambda_vars = []
+    domain_vars = []
     for path, value in unresolved.items():
-        if callable(value):
-            lambda_vars.append((path, value))
-        else:
+        if value.is_grid():
             grid_vars.append((path, value))
+        else:
+            domain_vars.append((path, value))
     grid_vars.sort()
 
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
-        resolved_vars = _resolve_lambda_vars(resolved_spec, lambda_vars)
+        resolved_vars = _resolve_domain_vars(resolved_spec, domain_vars)
         for resolved, spec in _generate_variants(resolved_spec):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
@@ -160,16 +160,16 @@ def _get_value(spec, path):
     return spec
 
 
-def _resolve_lambda_vars(spec, lambda_vars):
+def _resolve_domain_vars(spec, domain_vars):
     resolved = {}
     error = True
     num_passes = 0
     while error and num_passes < _MAX_RESOLUTION_PASSES:
         num_passes += 1
         error = False
-        for path, fn in lambda_vars:
+        for path, fn in domain_vars:
             try:
-                value = fn(_UnresolvedAccessGuard(spec))
+                value = fn.sample(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:
                 error = e
             except Exception:
@@ -217,13 +217,13 @@ def _is_resolved(v):
 
 
 def _try_resolve(v):
-    if isinstance(v, sample_from):
-        # Function to sample from
-        return False, v.func
+    if isinstance(v, Domain):
+        # Domain to sample from
+        return False, v
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
-        return False, lambda spec: eval(
-            v["eval"], _STANDARD_IMPORTS, {"spec": spec})
+        return False, Function(
+            lambda spec: eval(v["eval"], _STANDARD_IMPORTS, {"spec": spec}))
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
@@ -231,7 +231,7 @@ def _try_resolve(v):
             raise TuneError(
                 "Grid search expected list of values, got: {}".format(
                     grid_values))
-        return False, grid_values
+        return False, Categorical(grid_values).grid()
     return True, v
 
 
