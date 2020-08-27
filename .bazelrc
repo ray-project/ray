@@ -17,6 +17,7 @@ build:msvc --compiler=msvc-cl
 # If we don't hadd them, python's `click` library will raise an error.
 test --action_env=LC_ALL
 test --action_env=LANG
+# some envs needed by tests in pyenv
 test --action_env=VIRTUAL_ENV
 test --action_env=PYENV_VIRTUAL_ENV
 test --action_env=PYENV_VERSION
