@@ -219,7 +219,7 @@ def test_create_backend_idempotent(serve_instance):
     controller = serve.api._get_controller()
 
     replica_config = ReplicaConfig(f)
-    backend_config = BackendConfig({"num_replicas": 1})
+    backend_config = BackendConfig(num_replicas=1)
 
     for i in range(10):
         ray.get(
