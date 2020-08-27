@@ -74,6 +74,7 @@ int main(int argc, char **argv) {
   auto redis_password = std::string(std::string(argv[4]));
   auto session_dir = std::string(std::string(argv[5]));
 
+  /// TODO(Guyang Song): Delete this hard code and get address from redis.
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, redis_password);
   ray::api::DefaultWorker worker(store_socket, raylet_socket, node_manager_port,
                                  gcs_options, session_dir);

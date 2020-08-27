@@ -10,15 +10,17 @@ class ProcessHelper {
  public:
   void RayStart(std::shared_ptr<RayConfig> config);
   void RayStop(std::shared_ptr<RayConfig> config);
-  static std::shared_ptr<ProcessHelper> getInstance() {
-    if (ProcessHelper_ == nullptr) {
-      ProcessHelper_ = std::shared_ptr<ProcessHelper>(new ProcessHelper);
-    }
-    return ProcessHelper_;
+
+  static ProcessHelper &getInstance() {
+    static ProcessHelper processHelper;
+    return processHelper;
   }
 
+  ProcessHelper(ProcessHelper const &) = delete;
+  void operator=(ProcessHelper const &) = delete;
+
  private:
-  static std::shared_ptr<ProcessHelper> ProcessHelper_;
+  ProcessHelper(){};
 };
 }  // namespace api
 }  // namespace ray

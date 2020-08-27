@@ -20,7 +20,7 @@ AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config
     GenerateBaseAddressOfCurrentLibrary();
     runtime = new LocalModeRayRuntime(config);
   } else {
-    ProcessHelper::getInstance()->RayStart(config);
+    ProcessHelper::getInstance().RayStart(config);
     runtime = new NativeRayRuntime(config);
   }
   RAY_CHECK(runtime);
@@ -29,7 +29,7 @@ AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config
 
 void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
   if (config->run_mode == RunMode::CLUSTER) {
-    ProcessHelper::getInstance()->RayStop(config);
+    ProcessHelper::getInstance().RayStop(config);
   }
 }
 

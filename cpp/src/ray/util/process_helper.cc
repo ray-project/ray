@@ -6,11 +6,10 @@
 
 namespace ray {
 namespace api {
-std::shared_ptr<ProcessHelper> ProcessHelper::ProcessHelper_ = nullptr;
 
 static std::string GetSessionDir(std::string redis_ip, int port, std::string password) {
   redisContext *context = redisConnect(redis_ip.c_str(), port);
-  RAY_CHECK(context != NULL && !context->err);
+  RAY_CHECK(context != nullptr && !context->err);
   if (!password.empty()) {
     auto auth_reply = (redisReply *)redisCommand(context, "AUTH %s", password.c_str());
     RAY_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
@@ -18,7 +17,7 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
   }
   auto reply = (redisReply *)redisCommand(context, "GET session_dir");
   RAY_CHECK(reply->type != REDIS_REPLY_ERROR);
-  auto session_dir = std::string(reply->str);
+  std::string session_dir(reply->str);
   freeReplyObject(reply);
   redisFree(context);
   return session_dir;
