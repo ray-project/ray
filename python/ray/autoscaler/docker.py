@@ -7,6 +7,8 @@ except ImportError:  # py2
 
 logger = logging.getLogger(__name__)
 
+DOCKER_MOUNT_PREFIX = "/tmp/ray_tmp_mount"
+
 
 def validate_docker_config(config):
     if "docker" not in config:
@@ -59,7 +61,7 @@ def check_docker_image(cname):
 
 
 def docker_start_cmds(user, image, mount_dict, cname, user_options):
-    mount = {dst: dst for dst in mount_dict}
+    mount = {f"{DOCKER_MOUNT_PREFIX}/{dst}": dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([

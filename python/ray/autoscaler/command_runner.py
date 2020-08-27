@@ -13,6 +13,7 @@ from ray.autoscaler.docker import check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_autoscaler_setup, \
                                   docker_start_cmds, \
+                                  DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
@@ -614,36 +615,33 @@ class DockerCommandRunner(CommandRunnerInterface):
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target):
-        # TODO(ilr) Expose this to before NodeUpdater::sync_file_mounts
-        protected_path = target
-        if target.find("/root") == 0:
-            target = target.replace("/root", "/tmp/root")
+        host_destination = os.path.join(DOCKER_MOUNT_PREFIX, target)
+
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(target.rstrip('/'))}")
-        self.ssh_command_runner.run_rsync_up(source, target)
+            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
+
+        self.ssh_command_runner.run_rsync_up(source, host_destination)
         if self._check_container_status():
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
-                target += "/."
+                host_destination += "/."
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                target, self.container_name,
-                self._docker_expand_user(protected_path)))
+                host_destination, self.container_name,
+                self._docker_expand_user(target)))
 
     def run_rsync_down(self, source, target):
-        protected_path = source
-        if source.find("/root") == 0:
-            source = source.replace("/root", "/tmp/root")
+        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source)
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
-        if protected_path[-1] == "/":
-            protected_path += "."
+            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
+        if source[-1] == "/":
+            source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.container_name, self._docker_expand_user(protected_path),
-            source))
-        self.ssh_command_runner.run_rsync_down(source, target)
+            self.container_name, self._docker_expand_user(source),
+            host_source))
+        self.ssh_command_runner.run_rsync_down(host_source, target)
 
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
@@ -728,6 +726,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                              f"of {image} (which was provided in the YAML")
 
         # Copy bootstrap config & key over
+        # POSSIBLY DEPRECATE BECAUSE THEY ARE BIND MOUNTED NOW
         if as_head:
             for copy_cmd in docker_autoscaler_setup(self.container_name):
                 self.run(copy_cmd, run_env="host")
