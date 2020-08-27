@@ -1,3 +1,4 @@
+from collections import Iterable
 from datetime import timedelta
 import numpy as np
 import logging
@@ -170,7 +171,13 @@ class TorchTrainer:
 
     def __init__(
             self,
+            *,
             training_operator_cls,
+            model_creator=None,
+            data_creator=None,
+            optimizer_creator=None,
+            loss_creator=None,
+            scheduler_creator=None,
             initialization_hook=None,
             config=None,
             num_workers=1,
@@ -183,22 +190,29 @@ class TorchTrainer:
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
+            ddp_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
             num_replicas=None,
             batch_size=None,
             data_loader_args=None,
     ):
+        if model_creator or data_creator or optimizer_creator or \
+            scheduler_creator or loss_creator:
+            raise ValueError(
+                "Creator functions are deprecated. You should create a "
+                "custom TrainingOperator, override setup, and register all "
+                "training state there. See TrainingOperator for more info. "
+                "If you would still like to use creator functions, you can "
+                "do CustomOperator = TrainingOperator(model_creator, "
+                "...) and pass in CustomOperator into TorchTrainer."
+            )
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
-
-        # if not (callable(model_creator) and callable(optimizer_creator)):
-        #     raise ValueError(
-        #         "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -218,16 +232,7 @@ class TorchTrainer:
                 "automatically set a DistributedSampler if a DataLoader is "
                 "returned and num_workers > 1.")
 
-        # self.model_creator = model_creator
-        # self.optimizer_creator = optimizer_creator
-        # self.loss_creator = loss_creator
-        # self.data_creator = data_creator
-        # self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
-
-        # if not training_operator_cls and not loss_creator:
-        #     raise ValueError("If a loss_creator is not provided, you must "
-        #                      "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -256,6 +261,7 @@ class TorchTrainer:
             raise ValueError("apex_args needs to be a dict object.")
 
         self.apex_args = apex_args
+        self.ddp_args = ddp_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
@@ -263,8 +269,8 @@ class TorchTrainer:
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
-        # if scheduler_creator:
-        #     _validate_scheduler_step_freq(scheduler_step_freq)
+        if scheduler_step_freq:
+            _validate_scheduler_step_freq(scheduler_step_freq)
 
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -322,7 +328,8 @@ class TorchTrainer:
             params.update(
                 backend=self.backend,
                 add_dist_sampler=self.add_dist_sampler,
-                wrap_ddp=self.wrap_ddp)
+                ddp_args=self.ddp_args,
+                wrap_ddp=self.wrap_ddp,)
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
@@ -344,14 +351,14 @@ class TorchTrainer:
             # Compute URL for initializing distributed PyTorch
             address = setup_address()
 
-            # Runs the creator functions.
-            # remote_component_setup = [
-            #     worker.setup_components.remote()
-            #     for i, worker in enumerate(self.remote_workers)
-            # ]
-            # self.local_worker.setup_components()
-            # # Get setup tasks in order to throw errors on failure
-            # ray.get(remote_component_setup)
+            # Setup training operators for all workers.
+            remote_operator_setup = [
+                worker.setup_operator.remote()
+                for worker in self.remote_workers
+            ]
+            self.local_worker.setup_operator()
+            # Get setup tasks in order to throw errors on failure
+            ray.get(remote_operator_setup)
 
             # Setup the process group among all workers.
             remote_pgroup_setups = [
@@ -364,14 +371,14 @@ class TorchTrainer:
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_pgroup_setups)
 
-            # Runs code that requires all creator functions to have run.
-            remote_operator_setups = [
-                worker.setup_ddp_and_operator.remote()
+            # Setup distributed components
+            remote_component_setups = [
+                worker.setup_components.remote()
                 for worker in self.remote_workers
             ]
-            self.local_worker.setup_ddp_and_operator()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_operator_setups)
+            self.local_worker.setup_components()
+            # Get setup tasks in order to throw errors on failure.
+            ray.get(remote_component_setups)
 
     def train(self,
               num_steps=None,
@@ -379,7 +386,7 @@ class TorchTrainer:
               reduce_results=True,
               max_retries=3,
               info=None,
-              dataset=None):
+              iterator=None):
         """Runs a training epoch.
 
         Calls `operator.train_epoch()` on N parallel workers simultaneously
@@ -405,8 +412,11 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
-            dataset (Dataset): Optional dataset to train with. If specified,
-                the dataloader passed in via data_creator will be ignored.
+            iterator (Iterable or Dataset): Optional data to train with.
+            Can be any iterable or sgd.utils.Dataset. If this value is
+            passed in, the registered train_loader is ignored. Note that if
+            you pass in a custom iterator for training,
+            sampling/distributed sampling is not handled automatically.
 
         Returns:
             (dict | list) A dictionary of metrics for training.
@@ -416,14 +426,21 @@ class TorchTrainer:
                 length will be equal to ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        assert isinstance(dataset, Dataset) is not None \
-            or self.data_creator, \
-            "Must specify either a data creator or a dataset"
+        if iterator:
+            if isinstance(iterator, Dataset):
+                pass
+            elif isinstance(iterator, Iterable):
+                raise ValueError("Iterables not supported yet. Must pass in "
+                                 "dataset.")
+            else:
+                raise ValueError("Custom iterator must be of type Iterable "
+                                 "or Dataset.")
+
         if self._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self._resize_workers()
         success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
+            num_steps=num_steps, profile=profile, info=info, iterator=iterator)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -437,7 +454,7 @@ class TorchTrainer:
                 num_steps=num_steps,
                 profile=profile,
                 info=info,
-                dataset=dataset)
+                iterator=iterator)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -464,22 +481,25 @@ class TorchTrainer:
                      num_steps=None,
                      profile=False,
                      info=None,
-                     dataset=None):
+                     iterator=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = []
-        if dataset:
-            dataset.set_num_shards(self.max_replicas)
+        if iterator:
+            if isinstance(iterator, Dataset):
+                iterator.set_num_shards(self.max_replicas)
         for i, w in enumerate(self.remote_workers):
             params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
+            if iterator:
+                if isinstance(iterator, Dataset):
+                    params["iterator"] = iterator.get_shard(i)
             stats = w.train_epoch.remote(**params)
             remote_worker_stats.append(stats)
 
         try:
-            if dataset:
-                params["iterator"] = dataset.get_shard(
-                    len(self.remote_workers))
+            if iterator:
+                if isinstance(iterator, Dataset):
+                    params["iterator"] = iterator.get_shard(
+                        len(self.remote_workers))
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:
@@ -532,7 +552,8 @@ class TorchTrainer:
                  num_steps=None,
                  profile=False,
                  reduce_results=True,
-                 info=None):
+                 info=None,
+                 iterator=None):
         """Evaluates the model on the validation data set.
 
         Args:
@@ -546,12 +567,17 @@ class TorchTrainer:
                 selected among the workers. If False, returns a list of dicts.
             info (dict): Optional dictionary passed to the training
                 operator for `validate` and `validate_batch`.
+            iterator (Iterable): Optional iterable to use instead of
+            registered validation_loader. You must handle
+            sampling/distributed sampling on your own if you pass this in.
 
         Returns:
             A dictionary of metrics for validation.
                 You can provide custom metrics by passing in a custom
                 ``training_operator_cls``.
         """
+        if iterator:
+            raise ValueError("Not supported yet.")
         params = dict(num_steps=num_steps, profile=profile, info=info)
 
         remote_worker_stats = [

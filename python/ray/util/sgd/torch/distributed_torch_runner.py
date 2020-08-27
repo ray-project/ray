@@ -34,6 +34,7 @@ class DistributedTorchRunner(TorchRunner):
                  backend="gloo",
                  add_dist_sampler=True,
                  wrap_ddp=False,
+                 ddp_args=None,
                  **kwargs):
         super(DistributedTorchRunner, self).__init__(*args, **kwargs)
         if backend not in ("gloo", "nccl"):
@@ -41,6 +42,7 @@ class DistributedTorchRunner(TorchRunner):
         self.backend = backend
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
+        self.ddp_args = ddp_args or {}
         self.world_rank = None
 
     def setup(self):
@@ -60,6 +62,37 @@ class DistributedTorchRunner(TorchRunner):
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
 
+    def setup_operator(self):
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            world_rank=self.world_rank,
+            use_gpu=self.use_gpu,
+            use_fp16=self.use_fp16,
+            use_tqdm=self.use_tqdm
+        )
+
+    def setup_components(self):
+        """Runs distributed coordination components.
+
+        This helps avoid timeouts due to creator functions (perhaps
+        downloading data or models).
+        """
+        self._try_setup_apex()
+
+        device_ids = None
+        if self.use_gpu and torch.cuda.is_available():
+            device_ids = self.get_device_ids()
+
+        # Wrap dataloaders
+        self._wrap_dataloaders()
+
+        if self.wrap_ddp:
+            self.training_operator._models = [
+                DistributedDataParallel(model, device_ids=device_ids,
+                                        **self.ddp_args)
+                for model in self.training_operator._original_models
+            ]
+
     def setup_ddp_and_operator(self):
         """Runs distributed coordination components.
 
@@ -71,41 +104,15 @@ class DistributedTorchRunner(TorchRunner):
             device_ids = self.get_device_ids()
 
         # Wrap dataloaders
-        #self._wrap_dataloaders()
+        self._wrap_dataloaders()
 
         #training_models = self.models
-        # if self.wrap_ddp:
-        #     # This needs to happen after apex
-        #     training_models = [
-        #         DistributedDataParallel(model, device_ids=device_ids)
-        #         for model in self.models
-        #     ]
-        # self.training_operator = self.training_operator_cls(
-        #     self.config,
-        #     models=training_models,
-        #     optimizers=self.optimizers,
-        #     criterion=self.criterion,
-        #     train_loader=self.train_loader,
-        #     validation_loader=self.validation_loader,
-        #     world_rank=self.world_rank,
-        #     schedulers=self.schedulers,
-        #     device_ids=device_ids,
-        #     use_gpu=self.use_gpu,
-        #     use_fp16=self.use_fp16,
-        #     use_tqdm=self.use_tqdm)
-
-        self.training_operator = self.training_operator_cls(
-            self.config,
-            world_rank=self.world_rank,
-            device_ids=device_ids,
-            use_gpu=self.use_gpu,
-            use_fp16=self.use_fp16,
-            use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
-            wrap_ddp=self.wrap_ddp,
-            wrap_distributed_sampler=True,
-            add_dist_sampler=self.add_dist_sampler
-        )
+        if self.wrap_ddp:
+            # This needs to happen after apex
+            training_models = [
+                DistributedDataParallel(model, device_ids=device_ids)
+                for model in self.models
+            ]
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
@@ -149,23 +156,29 @@ class DistributedTorchRunner(TorchRunner):
             return (isinstance(loader, DataLoader)
                     and not isinstance(loader.dataset, IterableDataset))
 
-        if should_wrap_dataloader(self.train_loader):
+        if self.training_operator.train_loader is not \
+            None and should_wrap_dataloader(
+            self.training_operator.train_loader):
             if self.add_dist_sampler:
-                self.train_loader = with_sampler(self.train_loader)
+                self.training_operator._train_loader = with_sampler(
+                    self.training_operator.train_loader)
 
-        if self.validation_loader is not None and should_wrap_dataloader(
-                self.validation_loader):
+        if self.training_operator.validation_loader is not None and \
+            should_wrap_dataloader(
+                self.training_operator.validation_loader):
             if self.add_dist_sampler:
-                self.validation_loader = with_sampler(self.validation_loader)
+                self.training_operator._validation_loader = with_sampler(
+                    self.training_operator.validation_loader)
 
     def train_epoch(self, **kwargs):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if hasattr(self.train_loader, "sampler") and hasattr(
-                self.train_loader.sampler, "set_epoch"):
-            self.train_loader.sampler.set_epoch(self.epochs)
+        if hasattr(self.training_operator.train_loader, "sampler") and \
+            hasattr(
+                self.training_operator.train_loader.sampler, "set_epoch"):
+            self.training_operator.train_loader.sampler.set_epoch(self.epochs)
         return super(DistributedTorchRunner, self).train_epoch(**kwargs)
 
     def shutdown(self):
