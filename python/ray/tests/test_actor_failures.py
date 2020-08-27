@@ -241,7 +241,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
         def ready(self):
             return
 
-    actor = RestartableActor.options(detached=True).remote()
+    actor = RestartableActor.options(lifetime="detached").remote()
     ray.get(actor.ready.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.

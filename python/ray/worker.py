@@ -477,7 +477,7 @@ def init(
         local_mode=False,
         ignore_reinit_error=False,
         include_dashboard=None,
-        dashboard_host="localhost",
+        dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         job_config=None,
         configure_logging=True,
