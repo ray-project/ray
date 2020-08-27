@@ -9,7 +9,11 @@ import subprocess
 import sys
 import time
 
-from ray.autoscaler.docker import check_docker_running_cmd, with_docker_exec
+from ray.autoscaler.docker import check_docker_running_cmd, \
+                                  check_docker_image, \
+                                  docker_autoscaler_setup, \
+                                  docker_start_cmds, \
+                                  with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
 from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
@@ -565,14 +569,14 @@ class SSHCommandRunner(CommandRunnerInterface):
                 self.ssh_user, self.ssh_ip)
 
 
-class DockerCommandRunner(SSHCommandRunner):
+class DockerCommandRunner(CommandRunnerInterface):
     def __init__(self, docker_config, **common_args):
         self.ssh_command_runner = SSHCommandRunner(**common_args)
-        self.docker_name = docker_config["container_name"]
+        self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self._check_docker_installed()
         self.shutdown = False
+        self.initialized = False
 
     def run(
             self,
@@ -595,7 +599,8 @@ class DockerCommandRunner(SSHCommandRunner):
             cmd = self._docker_expand_user(cmd, any_char=True)
             cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
-                [cmd], container_name=self.docker_name,
+                [cmd],
+                container_name=self.container_name,
                 with_interactive=True)[0]
 
         if self.shutdown:
@@ -622,7 +627,7 @@ class DockerCommandRunner(SSHCommandRunner):
                 # Without it, docker copies the source *into* the target
                 target += "/."
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                target, self.docker_name,
+                target, self.container_name,
                 self._docker_expand_user(protected_path)))
 
     def run_rsync_down(self, source, target):
@@ -636,7 +641,7 @@ class DockerCommandRunner(SSHCommandRunner):
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.docker_name, self._docker_expand_user(protected_path),
+            self.container_name, self._docker_expand_user(protected_path),
             source))
         self.ssh_command_runner.run_rsync_down(source, target)
 
@@ -644,7 +649,7 @@ class DockerCommandRunner(SSHCommandRunner):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
             "ssh", "ssh -tt", 1).strip("\n")
         return inner_str + " docker exec -it {} /bin/bash\n".format(
-            self.docker_name)
+            self.container_name)
 
     def _check_docker_installed(self):
         try:
@@ -665,14 +670,14 @@ class DockerCommandRunner(SSHCommandRunner):
         self.shutdown = True
 
     def _check_container_status(self):
-        no_exist = "not_present"
-        cmd = check_docker_running_cmd(self.docker_name) + " ".join(
-            ["||", "echo", quote(no_exist)])
+        if self.initialized:
+            return True
         output = self.ssh_command_runner.run(
-            cmd, with_output=True).decode("utf-8").strip()
-        if no_exist in output:
-            return False
-        return "true" in output.lower()
+            check_docker_running_cmd(self.container_name),
+            with_output=True).decode("utf-8").strip()
+        # Checks for the false positive where "true" is in the container name
+        return ("true" in output.lower()
+                and "no such object" not in output.lower())
 
     def _docker_expand_user(self, string, any_char=False):
         user_pos = string.find("~")
@@ -680,7 +685,7 @@ class DockerCommandRunner(SSHCommandRunner):
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
                     "docker exec {} env | grep HOME | cut -d'=' -f2".format(
-                        self.docker_name),
+                        self.container_name),
                     with_output=True).decode("utf-8").strip()
 
             if any_char:
@@ -690,3 +695,40 @@ class DockerCommandRunner(SSHCommandRunner):
                 return string.replace("~", self.home_dir, 1)
 
         return string
+
+    def run_init(self, *, as_head, file_mounts):
+        image = self.docker_config.get("image")
+        if image is None:
+            image = self.docker_config.get(
+                f"{'head' if as_head else 'worker'}_image")
+
+        self._check_docker_installed()
+        if self.docker_config.get("pull_before_run", True):
+            assert image, "Image must be included in config if " + \
+                "pull_before_run is specified"
+
+            self.run("docker pull {}".format(image), run_env="host")
+
+        start_command = docker_start_cmds(
+            self.ssh_command_runner.ssh_user, image, file_mounts,
+            self.container_name,
+            self.docker_config.get("run_options", []) + self.docker_config.get(
+                f"{'head' if as_head else 'worker'}_run_options", []))
+
+        if not self._check_container_status():
+            self.run(start_command, run_env="host")
+        else:
+            running_image = self.run(
+                check_docker_image(self.container_name),
+                with_output=True,
+                run_env="host").decode("utf-8").strip()
+            if running_image != image:
+                logger.error(f"A container with name {self.container_name} " +
+                             f"is running image {running_image} instead " +
+                             f"of {image} (which was provided in the YAML")
+
+        # Copy bootstrap config & key over
+        if as_head:
+            for copy_cmd in docker_autoscaler_setup(self.container_name):
+                self.run(copy_cmd, run_env="host")
+        self.initialized = True

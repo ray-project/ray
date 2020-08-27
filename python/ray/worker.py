@@ -107,7 +107,6 @@ class Worker:
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
-        self.actor_task_counter = 0
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -515,7 +514,7 @@ def init(address=None,
          load_code_from_local=False,
          java_worker_options=None,
          use_pickle=True,
-         _internal_config=None,
+         _system_config=None,
          lru_evict=False,
          enable_object_reconstruction=False,
          _metrics_export_port=None,
@@ -631,8 +630,9 @@ def init(address=None,
             module or from the GCS.
         java_worker_options: Overwrite the options to start Java workers.
         use_pickle: Deprecated.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
+        _system_config (dict): Configuration for overriding RayConfig
+            defaults. Used to set system configuration and for experimental Ray
+            core feature flags.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.UnreconstructableError may be thrown. If False, then
@@ -706,8 +706,9 @@ def init(address=None,
 
     raylet_ip_address = node_ip_address
 
-    _internal_config = (json.loads(_internal_config)
-                        if _internal_config else {})
+    _system_config = _system_config or {}
+    if not isinstance(_system_config, dict):
+        raise TypeError("The _system_config must be a dict.")
 
     global _global_node
     if redis_address is None:
@@ -742,7 +743,7 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
             start_initial_python_workers_for_first_job=True,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -798,9 +799,9 @@ def init(address=None,
         if java_worker_options is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "java_worker_options must not be provided.")
-        if _internal_config is not None and len(_internal_config) != 0:
+        if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
+                             "_system_config must not be provided.")
         if lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "lru_evict must not be provided.")
@@ -818,7 +819,7 @@ def init(address=None,
             object_ref_seed=object_ref_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)

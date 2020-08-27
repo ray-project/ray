@@ -2,8 +2,6 @@ import inspect
 import logging
 import weakref
 
-from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
@@ -854,11 +852,6 @@ def modify_class(cls):
             "classes. In Python 2, you must declare the class with "
             "'class ClassName(object):' instead of 'class ClassName:'.")
 
-    if issubclass(cls, Checkpointable) and inspect.isabstract(cls):
-        raise TypeError(
-            "A checkpointable actor class should implement all abstract "
-            "methods in the `Checkpointable` interface.")
-
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
@@ -868,20 +861,6 @@ def modify_class(cls):
             worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
-
-        def __ray_checkpoint__(self):
-            """Save a checkpoint.
-
-            This task saves the current state of the actor, the current task
-            frontier according to the raylet, and the checkpoint index
-            (number of tasks executed so far).
-            """
-            worker = ray.worker.global_worker
-            if not isinstance(self, ray.actor.Checkpointable):
-                raise TypeError(
-                    "__ray_checkpoint__.remote() may only be called on actors "
-                    "that implement ray.actor.Checkpointable")
-            return worker._save_actor_checkpoint()
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
@@ -951,128 +930,3 @@ def exit_actor():
         assert False, "This process should have terminated."
     else:
         raise TypeError("exit_actor called on a non-actor worker.")
-
-
-CheckpointContext = namedtuple(
-    "CheckpointContext",
-    [
-        # Actor's ID.
-        "actor_id",
-        # Number of tasks executed since last checkpoint.
-        "num_tasks_since_last_checkpoint",
-        # Time elapsed since last checkpoint, in milliseconds.
-        "time_elapsed_ms_since_last_checkpoint",
-    ],
-)
-"""A namedtuple that contains information about actor's last checkpoint."""
-
-Checkpoint = namedtuple(
-    "Checkpoint",
-    [
-        # ID of this checkpoint.
-        "checkpoint_id",
-        # The timestamp at which this checkpoint was saved,
-        # represented as milliseconds elapsed since Unix epoch.
-        "timestamp",
-    ],
-)
-"""A namedtuple that represents a checkpoint."""
-
-
-class Checkpointable(metaclass=ABCMeta):
-    """An interface that indicates an actor can be checkpointed."""
-
-    @abstractmethod
-    def should_checkpoint(self, checkpoint_context):
-        """Whether this actor needs to be checkpointed.
-
-        This method will be called after every task. You should implement this
-        callback to decide whether this actor needs to be checkpointed at this
-        time, based on the checkpoint context, or any other factors.
-
-        Args:
-            checkpoint_context: A namedtuple that contains info about last
-                checkpoint.
-
-        Returns:
-            A boolean value that indicates whether this actor needs to be
-            checkpointed.
-        """
-        pass
-
-    @abstractmethod
-    def save_checkpoint(self, actor_id, checkpoint_id):
-        """Save a checkpoint to persistent storage.
-
-        If `should_checkpoint` returns true, this method will be called. You
-        should implement this callback to save actor's checkpoint and the given
-        checkpoint id to persistent storage.
-
-        Args:
-            actor_id: Actor's ID.
-            checkpoint_id: ID of this checkpoint. You should save it together
-                with actor's checkpoint data. And it will be used by the
-                `load_checkpoint` method.
-        Returns:
-            None.
-        """
-        pass
-
-    @abstractmethod
-    def load_checkpoint(self, actor_id, available_checkpoints):
-        """Load actor's previous checkpoint, and restore actor's state.
-
-        This method will be called when an actor is restarted, after
-        actor's constructor.
-        If the actor needs to restore from previous checkpoint, this function
-        should restore actor's state and return the checkpoint ID. Otherwise,
-        it should do nothing and return None.
-        Note, this method must return one of the checkpoint IDs in the
-        `available_checkpoints` list, or None. Otherwise, an exception will be
-        raised.
-
-        Args:
-            actor_id: Actor's ID.
-            available_checkpoints: A list of `Checkpoint` namedtuples that
-                contains all available checkpoint IDs and their timestamps,
-                sorted by timestamp in descending order.
-        Returns:
-            The ID of the checkpoint from which the actor was resumed, or None
-            if the actor should restart from the beginning.
-        """
-        pass
-
-    @abstractmethod
-    def checkpoint_expired(self, actor_id, checkpoint_id):
-        """Delete an expired checkpoint.
-
-        This method will be called when an checkpoint is expired. You should
-        implement this method to delete your application checkpoint data.
-        Note, the maximum number of checkpoints kept in the backend can be
-        configured at `RayConfig.num_actor_checkpoints_to_keep`.
-
-        Args:
-            actor_id: ID of the actor.
-            checkpoint_id: ID of the checkpoint that has expired.
-        Returns:
-            None.
-        """
-        pass
-
-
-def get_checkpoints_for_actor(actor_id):
-    """Get the available checkpoints for the given actor ID, return a list
-    sorted by checkpoint timestamp in descending order.
-    """
-    checkpoint_info = ray.state.state.actor_checkpoint_info(actor_id)
-    if checkpoint_info is None:
-        return []
-    checkpoints = [
-        Checkpoint(checkpoint_id, timestamp) for checkpoint_id, timestamp in
-        zip(checkpoint_info["CheckpointIds"], checkpoint_info["Timestamps"])
-    ]
-    return sorted(
-        checkpoints,
-        key=lambda checkpoint: checkpoint.timestamp,
-        reverse=True,
-    )
