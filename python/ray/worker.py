@@ -385,6 +385,8 @@ def get_gpu_ids(as_str=False):
     Returns:
         A list of GPU IDs.
     """
+    worker = global_worker
+    worker.check_connected()
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
@@ -427,6 +429,9 @@ def get_resource_ids():
         each pair consists of the ID of a resource and the fraction of that
         resource reserved for this worker.
     """
+    worker = global_worker
+    worker.check_connected()
+
     if _mode() == LOCAL_MODE:
         raise RuntimeError("ray.get_resource_ids() currently does not work in "
                            "local_mode.")
@@ -442,8 +447,8 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
-    if _global_node is None:
-        raise RuntimeError("Ray has not been initialized/connected.")
+    worker = global_worker
+    worker.check_connected()
     return _global_node.webui_url
 
 
@@ -1630,6 +1635,7 @@ def wait(object_refs, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+    worker.check_connected()
 
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
@@ -1701,6 +1707,9 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    worker = global_worker
+    worker.check_connected()
+
     return ray.util.named_actors._get_actor(name)
 
 
@@ -1722,11 +1731,11 @@ def kill(actor, no_restart=True):
         no_restart (bool): Whether or not this actor should be restarted if
             it's a restartable actor.
     """
+    worker = global_worker
+    worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
-                         f"Got: {type(actor)}.")
-    worker = ray.worker.global_worker
-    worker.check_connected()
+                         "Got: {}.".format(type(actor)))
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 

@@ -12,9 +12,10 @@ TEST(ProtoBufTest, MessageCommonTest) {
   ray::ActorID actor_id = ray::ActorID::Of(job_id, task_id, 0);
   ray::ActorID peer_actor_id = ray::ActorID::Of(job_id, task_id, 1);
   ObjectID queue_id = ray::ObjectID::FromRandom();
-  
+
   uint8_t data[128];
-  std::shared_ptr<LocalMemoryBuffer> buffer = std::make_shared<LocalMemoryBuffer>(data, 128, true);
+  std::shared_ptr<LocalMemoryBuffer> buffer =
+      std::make_shared<LocalMemoryBuffer>(data, 128, true);
   DataMessage msg(actor_id, peer_actor_id, queue_id, 100, 1000, 2000, buffer, true);
   std::unique_ptr<LocalMemoryBuffer> serilized_buffer = msg.ToBytes();
   std::shared_ptr<DataMessage> msg2 = DataMessage::FromBytes(serilized_buffer->Data());

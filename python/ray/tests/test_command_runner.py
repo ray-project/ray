@@ -114,8 +114,7 @@ def test_docker_command_runner():
         "docker_config": docker_config,
     }
     cmd_runner = DockerCommandRunner(**args)
-    process_runner.assert_has_call("1.2.3.4", "command -v docker")
-    process_runner.clear_history()
+    assert len(process_runner.calls) == 0, "No calls should be made in ctor"
 
     env_vars = {"var1": "quote between this \" and this", "var2": "123"}
     cmd_runner.run("echo hello", environment_variables=env_vars)

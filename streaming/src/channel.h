@@ -195,7 +195,9 @@ class MockConsumer : public ConsumerChannel {
   explicit MockConsumer(std::shared_ptr<Config> &transfer_config,
                         ConsumerChannelInfo &c_channel_info)
       : ConsumerChannel(transfer_config, c_channel_info){};
-  TransferCreationStatus CreateTransferChannel() override { return TransferCreationStatus::PullOk; }
+  TransferCreationStatus CreateTransferChannel() override {
+    return TransferCreationStatus::PullOk;
+  }
   StreamingStatus DestroyTransferChannel() override { return StreamingStatus::OK; }
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override {
