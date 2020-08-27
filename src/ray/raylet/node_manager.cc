@@ -769,7 +769,9 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+      << "monitor. It is mostly because GCS didn't receive heartbeats within timeout "
+      << RayConfig::instance().num_heartbeats_timeout() * RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+      << " ms. It usually happens because your machine has high load that makes raylet slower.";
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
