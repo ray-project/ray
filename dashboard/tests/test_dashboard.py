@@ -57,7 +57,7 @@ cleanup_test_files()
         })
     }],
     indirect=True)
-def test_basic(disable_test_module, ray_start_with_dashboard):
+def test_basic(ray_start_with_dashboard):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
@@ -317,7 +317,7 @@ def test_class_method_route_table(enable_test_module):
     assert "Traceback" in resp["msg"]
 
 
-def test_async_loop_forever(disable_test_module):
+def test_async_loop_forever():
     counter = [0]
 
     @dashboard_utils.async_loop_forever(interval_seconds=0.1)
