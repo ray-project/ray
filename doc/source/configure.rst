@@ -113,6 +113,28 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+Ports configurations
+--------------------
+Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
+
+All Nodes
+~~~~~~~~~
+- ``--node-manager-port``: Raylet port for node manager. Default: Random value.
+- ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+
+The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
+
+- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+
+Head Node
+~~~~~~~~~~~
+In addition to ports specified above, the head node needs to open several more ports.
+
+- ``--port``: Port of GCS. Default: 6379.
+- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
 Redis Port Authentication
 -------------------------
 
