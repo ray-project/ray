@@ -174,6 +174,7 @@ test_python() {
 }
 
 test_cpp() {
+  bazel build --config=ci //cpp:all
   ray start --head --redis-port 6379 --redis-password 5241590000000000
   sleep 10
   ls /tmp/ray/session_latest/logs/
