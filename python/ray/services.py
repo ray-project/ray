@@ -68,7 +68,7 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 
 DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../build/java/*"),
+        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
 ]
 
 # Logger for this module. It should be configured at the entry point
