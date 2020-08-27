@@ -125,7 +125,7 @@ versionwarning_messages = {
     ),
 }
 
-versionwarning_body_selector = "div.document"
+versionwarning_body_selector = "#main-content"
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples",
                       "tune/_tutorials"],  # path to example scripts
