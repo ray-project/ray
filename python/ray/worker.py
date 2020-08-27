@@ -41,7 +41,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
-    RayConnectionError,
+    RaySystemError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -202,8 +202,8 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            raise RayConnectionError("Ray has not been started yet. You can "
-                                     "start Ray with 'ray.init()'.")
+            raise RaySystemError("Ray has not been started yet. You can "
+                                 "start Ray with 'ray.init()'.")
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -635,7 +635,7 @@ def init(address=None,
             core feature flags.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
-            pressure, ray.UnreconstructableError may be thrown. If False, then
+            pressure, ray.ObjectLostError may be thrown. If False, then
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
@@ -643,7 +643,7 @@ def init(address=None,
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
-            reconstructed. If False, then ray.UnreconstructableError will be
+            reconstructed. If False, then ray.ObjectLostError will be
             thrown.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
@@ -1520,7 +1520,7 @@ def get(object_refs, timeout=None):
         A Python object or a list of Python objects.
 
     Raises:
-        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+        GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
@@ -1554,7 +1554,7 @@ def get(object_refs, timeout=None):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
-                if isinstance(value, ray.exceptions.UnreconstructableError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -1752,7 +1752,7 @@ def cancel(object_ref, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a RayCancellationError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task

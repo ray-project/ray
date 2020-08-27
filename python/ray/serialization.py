@@ -13,9 +13,9 @@ from ray.exceptions import (
     PlasmaObjectNotAvailable,
     RayTaskError,
     RayActorError,
-    RayCancellationError,
-    RayWorkerError,
-    UnreconstructableError,
+    TaskCancelledError,
+    WorkerCrashedError,
+    ObjectLostError,
 )
 from ray._raylet import (
     split_buffer,
@@ -265,13 +265,13 @@ class SerializationContext:
                 obj = self._deserialize_msgpack_data(data, metadata)
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
-                return RayWorkerError()
+                return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                return RayCancellationError()
+                return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return UnreconstructableError(
+                return ObjectLostError(
                     ray.ObjectRef(object_ref.binary()))
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \

@@ -101,11 +101,11 @@ import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
     RayError,
-    RayletError,
+    RaySystemError,
     RayTaskError,
     ObjectStoreFullError,
-    RayTimeoutError,
-    RayCancellationError
+    GetTimeoutError,
+    TaskCancelledError
 )
 from ray.utils import decode
 import gc
@@ -143,11 +143,11 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
-        raise RayTimeoutError(message)
+        raise GetTimeoutError(message)
     elif status.IsNotFound():
         raise ValueError(message)
     else:
-        raise RayletError(message)
+        raise RaySystemError(message)
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -481,7 +481,7 @@ cdef execute_task(
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
                 except KeyboardInterrupt as e:
-                    raise RayCancellationError(
+                    raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
                     outputs = (outputs,)
@@ -489,7 +489,7 @@ cdef execute_task(
             # was exiting and was raised after the except block.
             if not check_signals().ok():
                 task_exception = True
-                raise RayCancellationError(
+                raise TaskCancelledError(
                             core_worker.get_current_task_id())
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
