@@ -413,7 +413,7 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                lifetime="default",
+                lifetime=None,
                 placement_group=None,
                 placement_group_bundle_index=-1):
         """Create an actor.
@@ -441,7 +441,7 @@ class ActorClass:
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
                 actor is still alive.
-            lifetime: Either "default", which specifies the actor will fate
+            lifetime: Either `None`, which defaults to the actor will fate
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
@@ -504,12 +504,12 @@ class ActorClass:
                     "a different name or get the existing actor using "
                     f"ray.get_actor('{name}')")
 
-        if lifetime == "default":
+        if lifetime is None:
             detached = False
         elif lifetime == "detached":
             detached = True
         else:
-            raise ValueError("lifetime must be either 'default' or 'detached'")
+            raise ValueError("lifetime must be either `None` or 'detached'")
 
         if placement_group is None:
             placement_group = PlacementGroup.empty()
