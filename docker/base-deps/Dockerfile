@@ -16,6 +16,7 @@ RUN apt-get update -y && apt-get upgrade -y \
         screen \
         rsync \
         openssh-client \
+        gnupg \
     && wget \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
         -O /tmp/miniconda.sh \
@@ -36,5 +37,9 @@ RUN apt-get update -y && apt-get upgrade -y \
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil
     && apt-get autoremove cmake -y \
+    # Install kubectl
+    && wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
+    && touch /etc/apt/sources.list.d/kubernetes.list \
+    && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean 
