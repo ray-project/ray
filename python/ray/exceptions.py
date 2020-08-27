@@ -157,12 +157,12 @@ class RayActorError(RayError):
 
 
 class RaySystemError(RayError):
-    """Indicates that the Ray encountered a system error.
+    """Indicates that Ray encountered a system error.
 
     This exception can be thrown when the raylet is killed.
     """
 
-    def __init__(self, client_exc="unknown"):
+    def __init__(self, client_exc):
         self.client_exc = client_exc
 
     def __str__(self):
