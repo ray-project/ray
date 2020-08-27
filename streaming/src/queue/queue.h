@@ -31,14 +31,18 @@ class Queue {
   /// \param actor_id, the actor id of upstream worker
   /// \param peer_actor_id, the actor id of downstream worker
   /// \param queue_id the unique identification of a pair of queues (upstream and
-  /// downstream). 
-  /// \param size max size of the queue in bytes. 
+  /// downstream).
+  /// \param size max size of the queue in bytes.
   /// \param transport
   /// transport to send items to peer.
-  Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
+  Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
+        uint64_t size, std::shared_ptr<Transport> transport)
       : actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
+        queue_id_(queue_id),
+        max_data_size_(size),
+        data_size_(0),
+        data_size_sent_(0) {
     buffer_queue_.push_back(InvalidQueueItem());
     watershed_iter_ = buffer_queue_.begin();
   }
@@ -98,6 +102,7 @@ class Queue {
   inline ActorID GetActorID() { return actor_id_; }
   inline ActorID GetPeerActorID() { return peer_actor_id_; }
   inline ObjectID GetQueueID() { return queue_id_; }
+
  protected:
   std::list<QueueItem> buffer_queue_;
   std::list<QueueItem>::iterator watershed_iter_;
@@ -201,11 +206,10 @@ class WriterQueue : public Queue {
   /// in the queue, the `less_callback` callback will be called; If the `target_msg_id` is
   /// found in the queue, the `found_callback` callback willbe called.
   /// \param target_msg_id, the target message id to be found.
-  void FindItem(
-      uint64_t target_msg_id, 
-      std::function<void()> greater_callback, 
-      std::function<void()> less_callback,
-      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> equal_callback);
+  void FindItem(uint64_t target_msg_id, std::function<void()> greater_callback,
+                std::function<void()> less_callback,
+                std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)>
+                    equal_callback);
 
  private:
   ActorID actor_id_;
@@ -231,7 +235,8 @@ class ReaderQueue : public Queue {
   /// NOTE: we do not restrict queue size of ReaderQueue
   ReaderQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, std::shared_ptr<Transport> transport)
-      : Queue(actor_id, peer_actor_id, queue_id, std::numeric_limits<uint64_t>::max(), transport),
+      : Queue(actor_id, peer_actor_id, queue_id, std::numeric_limits<uint64_t>::max(),
+              transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
