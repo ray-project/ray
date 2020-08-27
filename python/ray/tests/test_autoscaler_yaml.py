@@ -20,6 +20,7 @@ CONFIG_PATHS += recursive_fnmatch(
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
+            print(f"{config_path}")
             with open(config_path) as f:
                 config = yaml.safe_load(f)
             config = prepare_config(config)
