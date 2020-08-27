@@ -50,10 +50,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = next(iter(change.old.items()))
+            ip, port = change.old
             self._stubs.pop(ip)
         if change.new:
-            ip, node_info = next(iter(change.new.items()))
+            ip, node_info = change.new
             address = "{}:{}".format(ip, int(node_info["nodeManagerPort"]))
             channel = aiogrpc.insecure_channel(address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)

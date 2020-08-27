@@ -27,10 +27,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = next(iter(change.old.items()))
+            ip, port = change.old
             self._stubs.pop(ip)
         if change.new:
-            ip, ports = next(iter(change.new.items()))
+            ip, ports = change.new
             channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub

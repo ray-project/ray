@@ -13,6 +13,7 @@ import pkgutil
 import traceback
 from base64 import b64decode
 from collections.abc import MutableMapping, Mapping
+from collections import namedtuple
 from typing import Any
 
 import aioredis
@@ -349,6 +350,8 @@ class Dict(MutableMapping):
     :note: Only the first level data report change.
     """
 
+    ChangeItem = namedtuple("DictChangeItem", ["key", "value"])
+
     def __init__(self, *args, **kwargs):
         self._data = dict(*args, **kwargs)
         self.signal = Signal(self)
@@ -358,10 +361,14 @@ class Dict(MutableMapping):
         self._data[key] = value
         if len(self.signal) and old != value:
             if old is None:
-                co = self.signal.send(Change(owner=self, new={key: value}))
+                co = self.signal.send(
+                    Change(owner=self, new=Dict.ChangeItem(key, value)))
             else:
                 co = self.signal.send(
-                    Change(owner=self, old={key: old}, new={key: value}))
+                    Change(
+                        owner=self,
+                        old=Dict.ChangeItem(key, old),
+                        new=Dict.ChangeItem(key, value)))
             NotifyQueue.put(co)
 
     def __getitem__(self, item):
@@ -370,7 +377,8 @@ class Dict(MutableMapping):
     def __delitem__(self, key):
         old = self._data.pop(key, None)
         if len(self.signal) and old is not None:
-            co = self.signal.send(Change(owner=self, old={key: old}))
+            co = self.signal.send(
+                Change(owner=self, old=Dict.ChangeItem(key, old)))
             NotifyQueue.put(co)
 
     def __len__(self):

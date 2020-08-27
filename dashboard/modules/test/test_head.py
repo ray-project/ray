@@ -21,12 +21,12 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         DataSource.agents.signal.append(self._update_notified_agents)
 
     async def _update_notified_agents(self, change):
-        if change.new:
-            ip, ports = next(iter(change.new.items()))
-            self._notified_agents[ip] = ports
         if change.old:
-            ip, port = next(iter(change.old.items()))
+            ip, port = change.old
             self._notified_agents.pop(ip)
+        if change.new:
+            ip, ports = change.new
+            self._notified_agents[ip] = ports
 
     @routes.get("/test/route_get")
     async def route_get(self, req) -> aiohttp.web.Response:
