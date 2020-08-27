@@ -105,10 +105,6 @@ raylet::RayletClient::RayletClient(
   std::vector<uint8_t> reply;
   auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
                                           MessageType::RegisterClientReply, &reply, &fbb);
-  if (!status.ok()) {
-    RAY_LOG(INFO) << "E[RayletClient] Unable to register worker with raylet: " << status;
-    exit(0);
-  }
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
