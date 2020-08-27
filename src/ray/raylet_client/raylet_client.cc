@@ -83,7 +83,7 @@ raylet::RayletClient::RayletClient(
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
     const std::string &ip_address, ClientID *raylet_id, int *port,
-    std::unordered_map<std::string, std::string> *internal_config,
+    std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
       worker_id_(worker_id),
@@ -110,12 +110,12 @@ raylet::RayletClient::RayletClient(
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
-  RAY_CHECK(internal_config);
-  auto keys = reply_message->internal_config_keys();
-  auto values = reply_message->internal_config_values();
+  RAY_CHECK(system_config);
+  auto keys = reply_message->system_config_keys();
+  auto values = reply_message->system_config_values();
   RAY_CHECK(keys->size() == values->size());
   for (size_t i = 0; i < keys->size(); i++) {
-    internal_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
+    system_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
   }
 }
 

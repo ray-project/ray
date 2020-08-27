@@ -1,7 +1,6 @@
 import asyncio
 import errno
 import io
-import json
 import fnmatch
 import os
 import subprocess
@@ -282,10 +281,9 @@ def recursive_fnmatch(dirpath, pattern):
     return matches
 
 
-def generate_internal_config_map(**kwargs):
-    internal_config = json.dumps(kwargs)
+def generate_system_config_map(**kwargs):
     ray_kwargs = {
-        "_internal_config": internal_config,
+        "_system_config": kwargs,
     }
     return ray_kwargs
 

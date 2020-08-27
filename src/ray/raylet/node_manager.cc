@@ -152,12 +152,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id, const ObjectID &required_object_id) {
             HandleTaskReconstruction(task_id, required_object_id);
           },
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_, object_directory_),
-      task_dependency_manager_(
-          object_manager, reconstruction_policy_, io_service, self_node_id_,
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_),
+          RayConfig::instance().object_timeout_milliseconds(), self_node_id_, gcs_client_,
+          object_directory_),
+      task_dependency_manager_(object_manager, reconstruction_policy_),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -1262,16 +1259,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> internal_config_keys;
-    std::vector<std::string> internal_config_values;
+    std::vector<std::string> system_config_keys;
+    std::vector<std::string> system_config_values;
     for (auto kv : initial_config_.raylet_config) {
-      internal_config_keys.push_back(kv.first);
-      internal_config_values.push_back(kv.second);
+      system_config_keys.push_back(kv.first);
+      system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, internal_config_keys),
-        string_vec_to_flatbuf(fbb, internal_config_values));
+        string_vec_to_flatbuf(fbb, system_config_keys),
+        string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -2112,18 +2109,6 @@ void NodeManager::ScheduleTasks(
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetTasks(TaskState::PLACEABLE).size() == 0);
-}
-
-bool NodeManager::CheckDependencyManagerInvariant() const {
-  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the queues.
-  for (const auto &task_id : pending_task_ids) {
-    if (!local_queues_.HasTask(task_id)) {
-      return false;
-    }
-  }
-  // TODO(atumanov): perform the check in the opposite direction.
-  return true;
 }
 
 void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {

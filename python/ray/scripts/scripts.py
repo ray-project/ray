@@ -358,10 +358,10 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--internal-config",
+    "--system-config",
     default=None,
     type=json.loads,
-    help="Do NOT use this. This is for debugging/development purposes ONLY.")
+    help="Override system configuration defaults.")
 @click.option(
     "--load-code-from-local",
     is_flag=True,
@@ -394,9 +394,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config,
-          lru_evict, enable_object_reconstruction, metrics_export_port,
-          log_new_style, log_color, verbose):
+          java_worker_options, load_code_from_local, system_config, lru_evict,
+          enable_object_reconstruction, metrics_export_port, log_new_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -508,7 +508,8 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        _internal_config=internal_config,
+        _system_config=json.loads(system_config)
+        if system_config else system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)

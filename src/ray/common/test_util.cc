@@ -124,7 +124,7 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
       ray::JoinPaths(ray::GetUserTempDir(), "gcs_server" + ObjectID::FromRandom().Hex());
   std::vector<std::string> cmdargs(
       {TEST_GCS_SERVER_EXEC_PATH, "--redis_address=" + redis_address, "--redis_port=6379",
-       "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
+       "--config_list=object_timeout_milliseconds,2000"});
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -153,7 +153,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &store_socket_name,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, store_socket_name,
                               raylet_socket_name, std::to_string(port)}),
-       "--config_list=initial_reconstruction_timeout_milliseconds,2000"});
+       "--config_list=object_timeout_milliseconds,2000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
