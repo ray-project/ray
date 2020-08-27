@@ -3,7 +3,6 @@ This file defines the common pytest fixtures used in current directory.
 """
 
 from contextlib import contextmanager
-import json
 import pytest
 import subprocess
 
@@ -19,22 +18,22 @@ def shutdown_only():
     ray.shutdown()
 
 
-def get_default_fixure_internal_config():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
+def get_default_fixure_system_config():
+    system_config = {
+        "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
         "object_store_full_max_retries": 3,
         "object_store_full_initial_delay_ms": 100,
-    })
-    return internal_config
+    }
+    return system_config
 
 
 def get_default_fixture_ray_kwargs():
-    internal_config = get_default_fixure_internal_config()
+    system_config = get_default_fixure_system_config()
     ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
-        "_internal_config": internal_config,
+        "_system_config": system_config,
     }
     return ray_kwargs
 
@@ -125,8 +124,8 @@ def _ray_start_cluster(**kwargs):
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
-        if i > 0 and "_internal_config" in init_kwargs:
-            del init_kwargs["_internal_config"]
+        if i > 0 and "_system_config" in init_kwargs:
+            del init_kwargs["_system_config"]
         remote_nodes.append(cluster.add_node(**init_kwargs))
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
@@ -164,10 +163,10 @@ def ray_start_cluster_2_nodes(request):
 def ray_start_object_store_memory(request):
     # Start the Ray processes.
     store_size = request.param
-    internal_config = get_default_fixure_internal_config()
+    system_config = get_default_fixure_system_config()
     init_kwargs = {
         "num_cpus": 1,
-        "_internal_config": internal_config,
+        "_system_config": system_config,
         "object_store_memory": store_size,
     }
     ray.init(**init_kwargs)
@@ -208,12 +207,12 @@ def call_ray_stop_only():
 
 @pytest.fixture()
 def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
+    system_config = {
+        "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-    })
+    }
     cluster = ray.cluster_utils.Cluster(
-        head_node_args={"_internal_config": internal_config})
+        head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)

@@ -1,15 +1,72 @@
 from typing import (List, Dict)
 
 import ray
+from ray._raylet import PlacementGroupID, ObjectRef
 
 
 class PlacementGroup:
     """A handle to a placement group.
+
+    Args:
+        id: Placement group id.
+        bundles: List of bundles.
     """
 
-    def __init__(self, id, bundle_count):
+    @staticmethod
+    def empty():
+        return PlacementGroup(PlacementGroupID.nil(), [])
+
+    def __init__(self, id: PlacementGroupID, bundles: List[Dict[str, float]]):
         self.id = id
-        self.bundle_count = bundle_count
+        self.bundles = bundles
+
+    def ready(self) -> ObjectRef:
+        """Returns an object ID to check ready status."""
+        worker = ray.worker.global_worker
+        worker.check_connected()
+
+        @ray.remote(num_cpus=0, max_calls=0)
+        def bundle_reservation_check(placement_group):
+            return placement_group
+
+        assert len(self.bundles) != 0, (
+            "ready() cannot be called on placement group object with a "
+            f"bundle length == 0, current bundle length: {len(self.bundles)}")
+
+        # Select the first bundle to schedule a dummy task.
+        # Since the placement group creation will be atomic, it is sufficient
+        # to schedule a single task.
+        bundle_index = 0
+        bundle = self.bundles[bundle_index]
+
+        resource_name, value = self._get_none_zero_resource(bundle)
+        num_cpus = 0
+        num_gpus = 0
+        resources = None
+        if resource_name == "CPU":
+            num_cpus = value
+        elif resource_name == "GPU":
+            num_gpus = value
+        else:
+            resources[resource_name] = value
+
+        return bundle_reservation_check.options(
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            placement_group=self,
+            placement_group_bundle_index=bundle_index,
+            resources=resources).remote(self)
+
+    @property
+    def bundle_count(self):
+        return len(self.bundles)
+
+    def _get_none_zero_resource(self, bundle: List[Dict]):
+        for key, value in bundle.items():
+            if value > 0:
+                value = min(value, 0.001)
+                return key, value
+        assert False, "This code should be unreachable."
 
 
 def placement_group(bundles: List[Dict[str, float]],
@@ -37,10 +94,18 @@ def placement_group(bundles: List[Dict[str, float]],
         raise ValueError(
             "The type of bundles must be list, got {}".format(bundles))
 
+    # Validate bundles
+    for bundle in bundles:
+        if (len(bundle) == 0 or all(resource_value == 0
+                                    for resource_value in bundle.values())):
+            raise ValueError(
+                "Bundles cannot be an empty dictionary or "
+                f"resources with only 0 values. Bundles: {bundles}")
+
     placement_group_id = worker.core_worker.create_placement_group(
         name, bundles, strategy)
 
-    return PlacementGroup(placement_group_id, len(bundles))
+    return PlacementGroup(placement_group_id, bundles)
 
 
 def remove_placement_group(placement_group):

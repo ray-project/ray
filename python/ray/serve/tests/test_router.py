@@ -162,12 +162,6 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
 
 
 async def test_router_use_max_concurrency(serve_instance):
-    # The VisibleRouter::get_queues method needs to pickle queries
-    # so we register serializer here. In regular code path, query
-    # serialization is done by Serve manually for performance.
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     signal = SignalActor.remote()
 
     @ray.remote
