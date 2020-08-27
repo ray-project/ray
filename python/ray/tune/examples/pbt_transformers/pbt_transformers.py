@@ -2,7 +2,7 @@ import os
 
 import ray
 from ray.tune import CLIReporter
-from ray.tune.integration.wandb import wandb_mixin
+from ray.tune.integration.wandb import wandb_mixin  # noqa: F401
 from ray.tune.schedulers import PopulationBasedTraining
 
 from ray import tune
