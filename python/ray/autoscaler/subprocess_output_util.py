@@ -233,6 +233,10 @@ def _run_and_process_output(cmd,
     # See implementation note #1
 
     if use_login_shells:
+        if stdout_file is None:
+            stdout_file = sys.stdout
+        if stderr_file is None:
+            stderr_file = sys.stderr
         return subprocess.check_call(
             cmd,
             # See implementation note #2
