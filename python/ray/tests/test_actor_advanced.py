@@ -643,7 +643,7 @@ assert ray.get(handle.ping.remote()) == "pong"
     detached_actor = ray.get_actor("actor")
 
     # Must raise an exception since lifetime is not detached.
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(Exception):
         ray.get(detached_actor.ping.remote())
 
 
