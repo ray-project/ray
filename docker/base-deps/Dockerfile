@@ -12,11 +12,12 @@ RUN apt-get update -y && apt-get upgrade -y \
         git \
         wget \
         cmake \
+        $(if [ "$AUTOSCALER" == "autoscaler" ]; then echo \
         tmux \
         screen \
         rsync \
         openssh-client \
-        gnupg \
+        gnupg; fi) \
     && wget \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
         -O /tmp/miniconda.sh \
@@ -36,10 +37,14 @@ RUN apt-get update -y && apt-get upgrade -y \
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil
-    && apt-get autoremove cmake -y \
-    # Install kubectl
-    && wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
-    && touch /etc/apt/sources.list.d/kubernetes.list \
-    && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
+    && apt-get autoremove -y cmake \
+    # Either install kubectl or remove wget 
+    $(if [ "$AUTOSCALER" == "autoscaler" ]; \
+    then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
+        && touch /etc/apt/sources.list.d/kubernetes.list \
+        && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \ 
+        && apt-get update && apt-get install kubectl; \
+    else apt-get autoremove -y wget; \
+    fi;) \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean 
