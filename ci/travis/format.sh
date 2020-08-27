@@ -107,10 +107,16 @@ FLAKE8_IGNORES="--ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605"
 FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
 shellcheck_scripts() {
+  if [ -n "$NO_SHELLCHECK" ]; then
+    return
+  fi
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
 
 shellcheck_bazel() {
+  if [ -n "$NO_SHELLCHECK" ]; then
+    return
+  fi
   "${ROOT}"/ci/travis/bazel.py shellcheck "mnemonic(\"Genrule\", deps(//:*))" shellcheck "${SHELLCHECK_FLAGS[@]}" "${SHELLCHECK_BAZEL_FLAGS[@]}" "$@"
 }
 
