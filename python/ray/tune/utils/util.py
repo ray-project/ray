@@ -3,6 +3,7 @@ import logging
 import inspect
 import threading
 import time
+import types
 from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
@@ -398,6 +399,71 @@ def validate_save_restore(trainable_cls,
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
+
+
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargs(train_func)
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use checkpointing if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) workers."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
+
+
+def convert_to_args(func):
+    """Support function"""
+
+    use_config_single = detect_config_single(func)
+    use_checkpoint_function = detect_checkpoint_function(func)
+    if use_config_single:
+
+        def wrapper_trainable(config):
+            args = types.SimpleNamespace(**config)
+            return func(args)
+    elif use_checkpoint_function:
+
+        def wrapper_trainable(config, checkpoint_dir=None):
+            args = types.SimpleNamespace(**config)
+            return func(args, checkpoint_dir=checkpoint_dir)
+    else:
+        raise ValueError(
+            "Invalid signature. Provide one of the following signatures: "
+            "\n 'def func(args)' or 'def func(args, checkpoint_dir=None)'.")
 
 
 if __name__ == "__main__":
