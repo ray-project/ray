@@ -77,7 +77,7 @@ def _make_future_unwrapper(client_futures: List[asyncio.Future],
 class Router:
     """A router that routes request to available workers."""
 
-    async def setup(self, name, instance_name=None):
+    async def setup(self, name, controller_name):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -128,8 +128,7 @@ class Router:
         # the controller. We use a "pull-based" approach instead of pushing
         # them from the controller so that the router can transparently recover
         # from failure.
-        serve.init(name=instance_name)
-        self.controller = serve.api._get_controller()
+        self.controller = ray.get_actor(controller_name)
 
         traffic_policies = ray.get(
             self.controller.get_traffic_policies.remote())

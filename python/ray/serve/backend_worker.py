@@ -104,10 +104,7 @@ def create_backend_worker(func_or_class):
                      backend_tag,
                      replica_tag,
                      init_args,
-                     backend_config: BackendConfig,
-                     instance_name=None):
-            serve.init(name=instance_name)
-
+                     backend_config: BackendConfig):
             if is_function:
                 _callable = func_or_class
             else:

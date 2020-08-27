@@ -89,13 +89,12 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, instance_name, http_host, http_port,
+    async def __init__(self, controller_name, http_host, http_port,
                        _http_middlewares):
-        # Unique name of the serve instance managed by this actor. Used to
-        # namespace child actors and checkpoints.
-        self.instance_name = instance_name
+        # Name of this controller actor.
+        self.controller_name = controller_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=instance_name)
+        self.kv_store = RayInternalKVStore(namespace=controller_name)
         # path -> (endpoint, methods).
         self.routes = dict()
         # backend -> BackendInfo.
@@ -167,7 +166,7 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -187,7 +186,7 @@ class ServeController:
                     node_id,
                     self.http_host,
                     self.http_port,
-                    instance_name=self.instance_name,
+                    controller_name=self.controller_name,
                     _http_middlewares=self._http_middlewares)
 
             self.routers[node_id] = router
@@ -273,7 +272,7 @@ class ServeController:
 
         for node_id in router_node_ids:
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
@@ -283,7 +282,7 @@ class ServeController:
         for backend_tag, replica_tags in self.replicas.items():
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
-                                                 self.instance_name)
+                                                 self.controller_name)
                 self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
@@ -384,7 +383,7 @@ class ServeController:
             replica_tag, backend_tag))
         backend_info = self.backends[backend_tag]
 
-        replica_name = format_actor_name(replica_tag, self.instance_name)
+        replica_name = format_actor_name(replica_tag, self.controller_name)
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
             max_restarts=-1,
@@ -393,8 +392,7 @@ class ServeController:
                 backend_tag,
                 replica_tag,
                 backend_info.replica_config.actor_init_args,
-                backend_info.backend_config,
-                instance_name=self.instance_name)
+                backend_info.backend_config)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle

@@ -74,18 +74,6 @@ class RayServeHandle:
             shard_key=shard_key,
         )
 
-    def get_traffic_policy(self):
-        controller = serve.api._get_controller()
-        return ray.get(
-            controller.get_traffic_policy.remote(self.endpoint_name))
-
     def __repr__(self):
-        return """
-RayServeHandle(
-    Endpoint="{endpoint_name}",
-    Traffic={traffic_policy}
-)
-""".format(
-            endpoint_name=self.endpoint_name,
-            traffic_policy=self.get_traffic_policy(),
-        )
+        return "RayServeHandle(endpoint=\"{endpoint_name}\")".format(
+            endpoint_name=self.endpoint_name)

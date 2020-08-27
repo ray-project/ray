@@ -12,19 +12,15 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
     ray.init(num_cpus=36)
-    serve.init()
-    yield
+    yield serve.start(detached=True)
 
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
-    serve.init()
-    yield
-    # Re-init if necessary.
-    serve.init()
-    controller = serve.api._get_controller()
+    yield _shared_serve_instance
+    controller = _shared_serve_instance._controller
     # Clear all state between tests to avoid naming collisions.
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
-        serve.delete_endpoint(endpoint)
+        _shared_serve_instance.delete_endpoint(endpoint)
     for backend in ray.get(controller.get_all_backends.remote()):
-        serve.delete_backend(backend)
+        _shared_serve_instance.delete_backend(backend)
