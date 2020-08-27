@@ -107,7 +107,6 @@ class Worker:
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
-        self.actor_task_counter = 0
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -499,7 +498,7 @@ def init(
         _lru_evict=False,
         _metrics_export_port=None,
         _object_spilling_config=None,
-        _internal_config=None):
+        _system_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -599,7 +598,7 @@ def init(
             development, and the API is subject to change.
         _object_spilling_config (str): The configuration json string for object
             spilling I/O worker.
-        _internal_config (str): JSON configuration for overriding
+        _system_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
@@ -645,8 +644,9 @@ def init(
                                "'ignore_reinit_error=True' or by calling "
                                "'ray.shutdown()' prior to 'ray.init()'.")
 
-    _internal_config = (json.loads(_internal_config)
-                        if _internal_config else {})
+    _system_config = _system_config or {}
+    if not isinstance(_system_config, dict):
+        raise TypeError("The _system_config must be a dict.")
 
     global _global_node
     if redis_address is None:
@@ -679,7 +679,7 @@ def init(
             load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
             start_initial_python_workers_for_first_job=True,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -705,12 +705,12 @@ def init(
         if object_store_memory is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "object_store_memory must not be provided.")
+        if _system_config is not None and len(_system_config) != 0:
+            raise ValueError("When connecting to an existing cluster, "
+                             "_system_config must not be provided.")
         if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
-                             "lru_evict must not be provided.")
-        if _internal_config is not None and len(_internal_config) != 0:
-            raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
+                             "_lru_evict must not be provided.")
         if enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -725,7 +725,7 @@ def init(
             object_ref_seed=None,
             temp_dir=_temp_dir,
             load_code_from_local=_load_code_from_local,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
