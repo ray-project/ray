@@ -640,10 +640,10 @@ assert ray.get(handle.ping.remote()) == "pong"
 
     # Creates and kills actor once the driver exits.
     run_string_as_driver(driver_script)
-    detached_actor = ray.get_actor("actor")
 
     # Must raise an exception since lifetime is not detached.
     with pytest.raises(Exception):
+        detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
 
 
