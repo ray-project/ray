@@ -4,6 +4,7 @@ from ray import serve
 from ray.serve.config import BackendConfig, ReplicaConfig
 from pydantic import ValidationError
 
+
 def test_backend_config_validation():
     # Test unknown key.
     with pytest.raises(ValidationError):

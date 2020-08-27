@@ -51,7 +51,8 @@ class BackendConfig(BaseModel):
             # timeout is default zero seconds, then we keep the existing
             # behavior to allow at most max batch size queries.
             if values["is_blocking"] and values["batch_wait_timeout"] == 0:
-                if "max_batch_size" in values and values["max_batch_size"] is not None:
+                if ("max_batch_size" in values
+                        and values["max_batch_size"] is not None):
                     v = 2 * values["max_batch_size"]
                 else:
                     v = 8
@@ -65,7 +66,8 @@ class BackendConfig(BaseModel):
             # Batch inference mode: user specifies non zero timeout to wait for
             # full batch. We will use 2*max_batch_size to perform double
             # buffering to keep the replica busy.
-            if ("max_batch_size" in values and values["max_batch_size"] is not None
+            if ("max_batch_size" in values
+                    and values["max_batch_size"] is not None
                     and values["batch_wait_timeout"] > 0):
                 v = 2 * values["max_batch_size"]
         print(v)

@@ -178,9 +178,7 @@ async def test_task_runner_custom_method_batch(serve_instance):
     PRODUCER_NAME = "producer"
 
     backend_config = BackendConfig(
-        max_batch_size=4,
-        batch_wait_timeout=2,
-        accepts_batches=True)
+        max_batch_size=4, batch_wait_timeout=2, accepts_batches=True)
     worker = setup_worker(
         CONSUMER_NAME, Batcher, backend_config=backend_config)
 
@@ -229,9 +227,7 @@ async def test_task_runner_perform_batch(serve_instance):
     PRODUCER_NAME = "producer"
 
     config = BackendConfig(
-        max_batch_size=2,
-        batch_wait_timeout=10, 
-        accepts_batches=True)
+        max_batch_size=2, batch_wait_timeout=10, accepts_batches=True)
 
     worker = setup_worker(CONSUMER_NAME, batcher, backend_config=config)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
