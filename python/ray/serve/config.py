@@ -70,7 +70,6 @@ class BackendConfig(BaseModel):
                     and values["max_batch_size"] is not None
                     and values["batch_wait_timeout"] > 0):
                 v = 2 * values["max_batch_size"]
-        print(v)
         return v
 
 
