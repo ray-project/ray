@@ -115,12 +115,10 @@ def _clean_value(value):
         return str(value).replace("/", "_")
 
 
-def _generate_variants(spec):
-    spec = copy.deepcopy(spec)
+def parse_spec_vars(spec):
     unresolved = _unresolved_values(spec)
     if not unresolved:
-        yield {}, spec
-        return
+        return [], []
 
     grid_vars = []
     domain_vars = []
@@ -130,6 +128,17 @@ def _generate_variants(spec):
         else:
             domain_vars.append((path, value))
     grid_vars.sort()
+
+    return domain_vars, grid_vars
+
+
+def _generate_variants(spec):
+    spec = copy.deepcopy(spec)
+    domain_vars, grid_vars = parse_spec_vars(spec)
+
+    if not domain_vars and not grid_vars:
+        yield {}, spec
+        return
 
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
@@ -148,7 +157,7 @@ def _generate_variants(spec):
             yield resolved_vars, spec
 
 
-def _assign_value(spec, path, value):
+def assign_value(spec, path, value):
     for k in path[:-1]:
         spec = spec[k]
     spec[path[-1]] = value
@@ -167,16 +176,17 @@ def _resolve_domain_vars(spec, domain_vars):
     while error and num_passes < _MAX_RESOLUTION_PASSES:
         num_passes += 1
         error = False
-        for path, fn in domain_vars:
+        for path, domain in domain_vars:
             try:
-                value = fn.sample(_UnresolvedAccessGuard(spec))
+                value = domain.sample(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:
                 error = e
             except Exception:
                 raise ValueError(
-                    "Failed to evaluate expression: {}: {}".format(path, fn))
+                    "Failed to evaluate expression: {}: {}".format(
+                        path, domain))
             else:
-                _assign_value(spec, path, value)
+                assign_value(spec, path, value)
                 resolved[path] = value
     if error:
         raise error
@@ -203,7 +213,7 @@ def _grid_search_generator(unresolved_spec, grid_vars):
     while value_indices[-1] < len(grid_vars[-1][1]):
         spec = copy.deepcopy(unresolved_spec)
         for i, (path, values) in enumerate(grid_vars):
-            _assign_value(spec, path, values[value_indices[i]])
+            assign_value(spec, path, values[value_indices[i]])
         yield spec
         if grid_vars:
             done = increment(0)

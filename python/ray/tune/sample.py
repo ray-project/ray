@@ -12,25 +12,31 @@ logger = logging.getLogger(__name__)
 
 
 class Domain:
-    _sampler = None
+    sampler = None
 
     def set_sampler(self, sampler):
-        if self._sampler:
+        if self.sampler:
             raise ValueError("You can only choose one sampler for parameter "
                              "domains. Existing sampler for parameter {}: "
                              "{}. Tried to add {}".format(
-                                 self.__class__.__name__, self._sampler,
+                                 self.__class__.__name__, self.sampler,
                                  sampler))
-        self._sampler = sampler
+        self.sampler = sampler
+
+    def has_sampler(self, cls):
+        sampler = self.sampler
+        if not sampler:
+            sampler = Uniform()
+        return isinstance(sampler, cls)
 
     def sample(self, spec=None, size=1):
-        sampler = self._sampler
+        sampler = self.sampler
         if not sampler:
             sampler = Uniform()
         return sampler.sample(self, spec=spec, size=size)
 
     def is_grid(self):
-        return isinstance(self._sampler, Grid)
+        return isinstance(self.sampler, Grid)
 
     def is_function(self):
         return False
@@ -75,7 +81,7 @@ class Float(Domain):
 
 class Integer(Domain):
     def __init__(self, min, max):
-        self.min = min,
+        self.min = min
         self.max = max
 
     def uniform(self):

@@ -85,6 +85,36 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any([-4 < s < 4 for s in samples]))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testConvertOptuna(self):
+        from ray.tune.suggest.optuna import OptunaSearch, param
+        from optuna.samplers import RandomSampler
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = OptunaSearch.convert_search_space(config)
+        optuna_config = [
+            param.suggest_categorical("a", [2, 3, 4]),
+            param.suggest_int("b/x", 0, 5),
+            param.suggest_loguniform("b/z", 1e-4, 1e-2)
+        ]
+
+        sampler1 = RandomSampler(seed=1234)
+        searcher1 = OptunaSearch(space=converted_config, sampler=sampler1)
+
+        sampler2 = RandomSampler(seed=1234)
+        searcher2 = OptunaSearch(space=optuna_config, sampler=sampler2)
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+
 
 if __name__ == "__main__":
     import pytest
