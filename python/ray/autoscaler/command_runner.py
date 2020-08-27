@@ -434,6 +434,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
+
+        Raises:
+            ProcessRunnerError if using new log style and disabled login shells.
+            click.ClickException if using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.
@@ -462,9 +466,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                     "Command failed: \n\n  {}\n".format(quoted_cmd)) \
                     from None
             else:
-                raise click.ClickException(
-                    "SSH command Failed. See above for the output from the"
-                    " failure.") from None
+                raise click.ClickException("SSH command failed") from None
 
     def run(
             self,
