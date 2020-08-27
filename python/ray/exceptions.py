@@ -195,10 +195,9 @@ class ObjectLostError(RayError):
         self.object_ref = object_ref
 
     def __str__(self):
-        return (
-            f"Object {self.object_ref.hex()} is lost "
-            "(either LRU evicted or lost due to node failure) and "
-            "cannot be reconstructed.")
+        return (f"Object {self.object_ref.hex()} is lost "
+                "(either LRU evicted or lost due to node failure) and "
+                "cannot be reconstructed.")
 
 
 class GetTimeoutError(RayError):

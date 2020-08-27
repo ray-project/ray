@@ -356,8 +356,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
             return True
         except ray.exceptions.RayActorError:
             return False
-        except (ray.exceptions.RayTaskError,
-                ray.exceptions.ObjectLostError):
+        except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
             return True
 
     wait_for_condition(probe)

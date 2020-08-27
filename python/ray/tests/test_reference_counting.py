@@ -501,8 +501,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.WorkerCrashedError,
-            ray.exceptions.ObjectLostError):
+    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
         assert failure
     del child_return_id
 
