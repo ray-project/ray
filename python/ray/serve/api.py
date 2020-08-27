@@ -201,7 +201,7 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
 
 @_ensure_connected
 def update_backend_config(backend_tag: str,
-                          config_options: Dict[str, Any]) -> None:
+                          config_options: Union[Backend, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -221,8 +221,11 @@ def update_backend_config(backend_tag: str,
             that will be sent to a replica of this backend
             without receiving a response.
     """
-    if not isinstance(config_options, dict):
-        raise ValueError("config_options must be a dictionary.")
+    # TODO(architkulkarni): put BackendConfig copy/update logic here
+    if not isinstance(config_options, BackendConfig) or not isinstance(
+            config_options, dict):
+        raise TypeError(
+            "config_options must be a BackendConfig or dictionary.")
     ray.get(
         controller.update_backend_config.remote(backend_tag, config_options))
 
@@ -242,7 +245,7 @@ def create_backend(backend_tag: str,
                    func_or_class: Union[Callable, Type[Callable]],
                    *actor_init_args: Any,
                    ray_actor_options: Optional[Dict] = None,
-                   config: Optional[Dict[str, Any]] = None) -> None:
+                   config: Union[BackendConfig, Optional[Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
@@ -255,7 +258,8 @@ def create_backend(backend_tag: str,
             initialization method.
         ray_actor_options (optional): options to be passed into the
             @ray.remote decorator for the backend actor.
-        config (optional): configuration options for this backend.
+        config (optional): configuration options for this backend. Either a
+            BackendConfig, or a dictionary.
             Supported options:
             - "num_replicas": number of worker processes to start up that will
             handle requests to this backend.
@@ -275,15 +279,22 @@ def create_backend(backend_tag: str,
 
     if config is None:
         config = {}
-    if not isinstance(config, dict):
-        raise TypeError("config must be a dictionary.")
+    if not isinstance(config, BackendConfig) and not isinstance(config, dict):
+        raise TypeError("config must be a BackendConfig or a dictionary.")
 
     replica_config = ReplicaConfig(
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
-    backend_config = BackendConfig(
-        **config,
-        accepts_batches=replica_config.accepts_batches,
-        is_blocking=replica_config.is_blocking)
+    if isinstance(config, dict):
+        backend_config = BackendConfig(
+            **config,
+            accepts_batches=replica_config.accepts_batches,
+            is_blocking=replica_config.is_blocking)
+    elif isinstance(config, BackendConfig):
+        backend_config = config.copy(
+            update={
+                "accepts_batches": replica_config.accepts_batches,
+                "is_blocking": replica_config.is_blocking
+            })
 
     ray.get(
         controller.create_backend.remote(backend_tag, backend_config,

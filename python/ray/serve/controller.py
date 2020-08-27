@@ -723,8 +723,8 @@ class ServeController:
             ])
             await self._remove_pending_endpoints()
 
-    async def create_backend(self, backend_tag, backend_config,
-                             replica_config):
+    async def create_backend(self, backend_tag: str, backend_config: BackendConfig,
+                             replica_config: ReplicaConfig):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             # Ensures this method is idempotent.
@@ -801,15 +801,21 @@ class ServeController:
             await self._stop_pending_replicas()
             await self._remove_pending_backends()
 
-    async def update_backend_config(self, backend_tag, config_options):
+    async def update_backend_config(self, backend_tag, config_options: Union[BackendConfig, Dict[str, Any]]):
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (backend_tag in self.backends
                     ), "Backend {} is not registered.".format(backend_tag)
-            assert isinstance(config_options, dict)
+            assert isinstance(config_options, BackendConfig) or isinstance(config_options, dict)
 
-            self.backends[backend_tag].backend_config.update(config_options)
-            backend_config = self.backends[backend_tag].backend_config
+            if isinstance(config_options, BackendConfig):
+                update_data = config_options.dict(exclude_unset=True)
+            elif isinstance(config_options, dict):
+                update_data = config_options
+
+            stored_backend_config = self.backends[backend_tag].backend_config
+            backend_config = stored_backend_config.copy(update=update_data)
+            self.backends[backend_tag].backend_config = backend_config
 
             # Scale the replicas with the new configuration.
             self._scale_replicas(backend_tag, backend_config.num_replicas)

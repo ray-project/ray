@@ -31,7 +31,8 @@ class BackendConfig(BaseModel):
     class Config:
         validate_assignment = True
         extra = "forbid"
-
+        allow_mutation = False
+        
     @validator("max_batch_size")
     def must_accept_batches(cls, v, values):
         if ("accepts_batches" in values and not values["accepts_batches"]
