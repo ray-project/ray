@@ -1494,7 +1494,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                         source = -1
                         for m, cand in enumerate(trials):
                             if cand.trainable_name == trials[
-                                i].restored_checkpoint:
+                                    i].restored_checkpoint:
                                 source = m
                                 break
                         assert source >= 0
@@ -1513,28 +1513,28 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # next_perturb_sync = 13
 
         # Next block
-        trial_step(0, 17, -10) # 20
-        trial_step(2, 15, -20) # 20
-        trial_step(3, 16, 0) # 20
-        trial_step(1, 7, 1, synced=True) # 18
+        trial_step(0, 17, -10)  # 20
+        trial_step(2, 15, -20)  # 20
+        trial_step(3, 16, 0)  # 20
+        trial_step(1, 7, 1, synced=True)  # 18
 
         # 2 <-- 1, new_t=11+7=18
         # next_perturb_sync = 20
 
         # Next block
-        trial_step(2, 13, 0) # 31
-        trial_step(3, 14, 10) # 34
-        trial_step(0, 11, -1) # 31
+        trial_step(2, 13, 0)  # 31
+        trial_step(3, 14, 10)  # 34
+        trial_step(0, 11, -1)  # 31
         trial_step(1, 12, 0, synced=True)  # 30
 
         # 0 <-- 3, new_t=11+9+14=34
         # next_perturb_sync = 34
 
         # Next block
-        trial_step(0, 6, 20) # 40
-        trial_step(3, 9, -40) # 43
-        trial_step(2, 8, -50) # 39
-        trial_step(1, 7, 30, synced=True) # 37
+        trial_step(0, 6, 20)  # 40
+        trial_step(3, 9, -40)  # 43
+        trial_step(2, 8, -50)  # 39
+        trial_step(1, 7, 30, synced=True)  # 37
 
         # 2 <-- 1, new_t=18+13+8=37
         # next_perturb_sync = 43

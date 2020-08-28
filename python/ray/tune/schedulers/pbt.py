@@ -389,7 +389,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 self._next_perturbation_sync = max(
                     self._next_perturbation_sync + self._perturbation_interval,
                     max_last_train_time)
-            
+
             return TrialScheduler.PAUSE
 
     def _perturb_trial(self, trial, trial_runner, upper_quantile,
