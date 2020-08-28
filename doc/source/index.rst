@@ -206,14 +206,12 @@ Academic Papers
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   projects.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
    :caption: Ray Observability
 
-   ray-dashboard.rst
    ray-metrics.rst
 
 .. toctree::

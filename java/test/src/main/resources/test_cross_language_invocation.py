@@ -84,6 +84,35 @@ def py_func_pass_python_actor_handle():
 
 
 @ray.remote
+def py_func_python_raise_exception():
+    1 / 0
+
+
+@ray.remote
+def py_func_java_throw_exception():
+    f = ray.java_function("io.ray.test.CrossLanguageInvocationTest",
+                          "throwException")
+    r = f.remote()
+    return ray.get(r)
+
+
+@ray.remote
+def py_func_nest_python_raise_exception():
+    f = ray.java_function("io.ray.test.CrossLanguageInvocationTest",
+                          "raisePythonException")
+    r = f.remote()
+    return ray.get(r)
+
+
+@ray.remote
+def py_func_nest_java_throw_exception():
+    f = ray.java_function("io.ray.test.CrossLanguageInvocationTest",
+                          "throwJavaException")
+    r = f.remote()
+    return ray.get(r)
+
+
+@ray.remote
 class Counter(object):
     def __init__(self, value):
         self.value = int(value)

@@ -700,6 +700,7 @@ class _MockTrial(Trial):
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
+        self.custom_dirname = None
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):

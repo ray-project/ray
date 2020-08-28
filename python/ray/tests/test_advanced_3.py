@@ -2,7 +2,6 @@
 import glob
 import logging
 import os
-import json
 import sys
 import socket
 import time
@@ -19,7 +18,7 @@ from ray import resource_spec
 import setproctitle
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +62,34 @@ def test_load_balancing(ray_start_cluster):
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
+def test_local_scheduling_first(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_cpus = 8
+    # Disable worker caching.
+    cluster.add_node(
+        num_cpus=num_cpus,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+        })
+    cluster.add_node(num_cpus=num_cpus)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        time.sleep(0.01)
+        return ray.worker.global_worker.node.unique_id
+
+    def local():
+        return ray.get(f.remote()) == ray.worker.global_worker.node.unique_id
+
+    # Wait for a worker to get started.
+    wait_for_condition(local)
+
+    # Check that we are scheduling locally while there are resources available.
+    for i in range(20):
+        assert local()
+
+
 def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -94,21 +121,6 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 def test_global_state_api(shutdown_only):
-
-    error_message = ("The ray global state API cannot be used "
-                     "before ray.init has been called.")
-
-    with pytest.raises(Exception, match=error_message):
-        ray.objects()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.actors()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.nodes()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.jobs()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
@@ -196,7 +208,7 @@ class CaptureOutputAndError:
 
 
 def test_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=True)
+    ray.init(num_cpus=1, _log_to_driver=True)
 
     @ray.remote
     def f():
@@ -221,7 +233,7 @@ def test_logging_to_driver(shutdown_only):
 
 
 def test_not_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=False)
+    ray.init(num_cpus=1, _log_to_driver=False)
 
     @ray.remote
     def f():
@@ -258,23 +270,6 @@ def test_workers(shutdown_only):
     worker_ids = set()
     while len(worker_ids) != num_workers:
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
-
-
-def test_specific_job_id():
-    dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
-
-    # in driver
-    assert dummy_driver_id == ray.worker.global_worker.current_job_id
-
-    # in worker
-    @ray.remote
-    def f():
-        return ray.worker.global_worker.current_job_id
-
-    assert dummy_driver_id == ray.get(f.remote())
-
-    ray.shutdown()
 
 
 def test_object_ref_properties():
@@ -319,9 +314,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.init(
         num_cpus=1,
         object_store_memory=int(10**8),
-        _internal_config=json.dumps({
-            "object_pinning_enabled": 0
-        }))
+        _system_config={"object_pinning_enabled": 0})
 
     @ray.remote
     def f():
@@ -387,23 +380,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_socket_dir_not_existing(shutdown_only):
-    if sys.platform != "win32":
-        random_name = ray.ObjectRef.from_random().hex()
-        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                              "tests", random_name)
-        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                               "raylet_socket")
-        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
-
-        @ray.remote
-        def foo(x):
-            time.sleep(1)
-            return 2 * x
-
-        ray.get([foo.remote(i) for i in range(2)])
-
-
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
     node_manager_address = None
     node_manager_port = None
@@ -434,15 +410,6 @@ def test_non_ascii_comment(ray_start_regular):
     assert ray.get(f.remote()) == 1
 
 
-def test_shutdown_disconnect_global_state():
-    ray.init(num_cpus=0)
-    ray.shutdown()
-
-    with pytest.raises(Exception) as e:
-        ray.objects()
-    assert str(e.value).endswith("ray.init has been called.")
-
-
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
@@ -463,13 +430,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary))
-
-    # weakref put
-    y_id = ray.put(obj, weakref=True)
-    for _ in range(10):
-        ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(y_id)
 
 
 def test_decorated_function(ray_start_regular):
@@ -603,11 +563,7 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
     assert len(ray.objects()) == 0
 
     @ray.remote

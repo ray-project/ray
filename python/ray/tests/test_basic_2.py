@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import logging
 import sys
 import threading
@@ -333,19 +332,16 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-def test_internal_config_when_connecting(ray_start_cluster):
-    config = json.dumps({
-        "object_pinning_enabled": 0,
-        "initial_reconstruction_timeout_milliseconds": 200
-    })
+def test_system_config_when_connecting(ray_start_cluster):
+    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
-        _internal_config=config, object_store_memory=100 * 1024 * 1024)
+        _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
 
-    # Specifying _internal_config when connecting to a cluster is disallowed.
+    # Specifying _system_config when connecting to a cluster is disallowed.
     with pytest.raises(ValueError):
-        ray.init(address=cluster.address, _internal_config=config)
+        ray.init(address=cluster.address, _system_config=config)
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)
@@ -368,25 +364,6 @@ def test_get_multiple(ray_start_regular_shared):
     indices += indices
     results = ray.get([object_refs[i] for i in indices])
     assert results == indices
-
-
-def test_get_multiple_experimental(ray_start_regular_shared):
-    object_refs = [ray.put(i) for i in range(10)]
-
-    object_refs_tuple = tuple(object_refs)
-    assert ray.experimental.get(object_refs_tuple) == list(range(10))
-
-    object_refs_nparray = np.array(object_refs)
-    assert ray.experimental.get(object_refs_nparray) == list(range(10))
-
-
-def test_get_dict(ray_start_regular_shared):
-    d = {str(i): ray.put(i) for i in range(5)}
-    for i in range(5, 10):
-        d[str(i)] = i
-    result = ray.experimental.get(d)
-    expected = {str(i): i for i in range(10)}
-    assert result == expected
 
 
 def test_get_with_timeout(ray_start_regular_shared):
