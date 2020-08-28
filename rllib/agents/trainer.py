@@ -491,6 +491,11 @@ class Trainer(Trainable):
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
         num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
+
+        # `num_gpus`=None: Set it to as many as we actually have available.
+        if cf["num_gpus"] is None:
+            cf["num_gpus"] = ray.available_resources().get("GPU", 0)
+
         # TODO(ekl): add custom resources here once tune supports them
         return Resources(
             cpu=cf["num_cpus_for_driver"],
@@ -1064,21 +1069,6 @@ class Trainer(Trainable):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if "policy_graphs" in config["multiagent"]:
-            deprecation_warning("policy_graphs", "policies")
-            # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop(
-                "policy_graphs")
-        if config["num_gpus"] is None:
-            config["num_gpus"] = len(ray.get_gpu_ids())
-        if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=None|0|1|..", error=True)
-        if "gpu_fraction" in config:
-            deprecation_warning(
-                "gpu_fraction", "num_gpus=<fraction>", error=True)
-        if "use_gpu_for_workers" in config:
-            deprecation_warning(
-                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(

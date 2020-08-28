@@ -1008,14 +1008,15 @@ class RolloutWorker(ParallelIteratorWorker):
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
                 with tf1.variable_scope(name):
-                    # Explicitly no GPUs should be used: Make sure tf doesn't.
-                    if merged_conf["num_gpus"] == 0 or not ray.get_gpu_ids():
+                    if ray.get_gpu_ids():
+                        logger.info("TFPolicy running on default device.")
+                        policy_map[name] = cls(
+                            obs_space, act_space, merged_conf)
+                    else:
+                        logger.info("TFPolicy running on CPU.")
                         with tf.device("cpu"):
                             policy_map[name] = cls(obs_space, act_space,
                                 merged_conf)
-                    else:
-                        policy_map[name] = cls(
-                            obs_space, act_space, merged_conf)
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
 

@@ -147,6 +147,7 @@ class TFPolicy(Policy):
         self._is_training = self._get_is_training_placeholder()
         self._is_exploring = explore if explore is not None else \
             tf1.placeholder_with_default(True, (), name="is_exploring")
+
         self._sampled_action_logp = sampled_action_logp
         self._sampled_action_prob = (tf.math.exp(self._sampled_action_logp)
                                      if self._sampled_action_logp is not None
