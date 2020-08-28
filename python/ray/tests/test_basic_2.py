@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import logging
 import sys
 import threading
@@ -333,19 +332,16 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-def test_internal_config_when_connecting(ray_start_cluster):
-    config = json.dumps({
-        "object_pinning_enabled": 0,
-        "initial_reconstruction_timeout_milliseconds": 200
-    })
+def test_system_config_when_connecting(ray_start_cluster):
+    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
-        _internal_config=config, object_store_memory=100 * 1024 * 1024)
+        _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
 
-    # Specifying _internal_config when connecting to a cluster is disallowed.
+    # Specifying _system_config when connecting to a cluster is disallowed.
     with pytest.raises(ValueError):
-        ray.init(address=cluster.address, _internal_config=config)
+        ray.init(address=cluster.address, _system_config=config)
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)

@@ -69,7 +69,7 @@ class ClusterStarter {
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions,
-        "--internal-config=" + new Gson().toJson(config)
+        "--system-config=" + new Gson().toJson(config)
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
