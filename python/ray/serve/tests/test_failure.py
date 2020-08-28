@@ -183,7 +183,8 @@ def test_worker_replica_failure(serve_instance):
     temp_path = os.path.join(tempfile.gettempdir(),
                              serve.utils.get_random_letters())
     serve.create_backend("replica_failure", Worker, temp_path)
-    serve.update_backend_config("replica_failure", BackendConfig(num_replicas=2))
+    serve.update_backend_config(
+        "replica_failure", BackendConfig(num_replicas=2))
     serve.create_endpoint(
         "replica_failure", backend="replica_failure", route="/replica_failure")
 

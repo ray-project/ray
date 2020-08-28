@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 import os
 import random
 import time
@@ -61,8 +61,9 @@ class TrafficPolicy:
         else:
             self.shadow_dict[backend] = proportion
 
+
 class BackendInfo(BaseModel):
-    # TODO(architkulkarni): Add type hint for worker_class after upgrading 
+    # TODO(architkulkarni): Add type hint for worker_class after upgrading
     # cloudpickle and adding types to RayServeWrappedWorker
     worker_class: Any
     backend_config: BackendConfig
@@ -72,6 +73,7 @@ class BackendInfo(BaseModel):
         # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
         # model
         arbitrary_types_allowed = True
+
 
 @ray.remote
 class ServeController:
@@ -751,7 +753,8 @@ class ServeController:
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
             self.backends[backend_tag] = BackendInfo(
-                worker_class=backend_worker, backend_config=backend_config,
+                worker_class=backend_worker,
+                backend_config=backend_config,
                 replica_config=replica_config)
             if backend_config.autoscaling_config is not None:
                 self.autoscaling_policies[
@@ -830,6 +833,7 @@ class ServeController:
 
             stored_backend_config = self.backends[backend_tag].backend_config
             backend_config = stored_backend_config.copy(update=update_data)
+            backend_config._validate_complete()
             self.backends[backend_tag].backend_config = backend_config
 
             # Scale the replicas with the new configuration.

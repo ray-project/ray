@@ -222,7 +222,7 @@ def update_backend_config(
             that will be sent to a replica of this backend
             without receiving a response.
     """
-    
+
     if not isinstance(config_options, BackendConfig) and not isinstance(
             config_options, dict):
         raise TypeError(
@@ -232,7 +232,7 @@ def update_backend_config(
 
 
 @_ensure_connected
-def get_backend_config(backend_tag: str):
+def get_backend_config(backend_tag: str) -> BackendConfig:
     """Get the backend configuration for a backend tag.
 
     Args:
@@ -297,7 +297,7 @@ def create_backend(
                 "accepts_batches": replica_config.accepts_batches,
                 "is_blocking": replica_config.is_blocking
             })
-
+    backend_config._validate_complete()
     ray.get(
         controller.create_backend.remote(backend_tag, backend_config,
                                          replica_config))

@@ -32,18 +32,19 @@ class BackendConfig(BaseModel):
         validate_assignment = True
         extra = "forbid"
 
-    @validator("max_batch_size")
-    def must_accept_batches(cls, v, values):
-        if ("accepts_batches" in values and not values["accepts_batches"]
-                and v > 1):
+    # This is not a pydantic validator, so that we may skip this method when
+    # creating partially filled BackendConfig objects to pass as updates--for
+    # example, BackendConfig(max_batch_size=5).
+    def _validate_complete(self):
+        if (self.max_batch_size is not None and not self.accepts_batches
+                and self.max_batch_size > 1):
             raise ValueError(
                 "max_batch_size is set in config but the function or "
                 "method does not accept batching. Please use "
                 "@serve.accept_batch to explicitly mark the function or "
                 "method as batchable and takes in list as arguments.")
-        return v
 
-    # TODO(architkulkarni): should be done on client side
+    # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):
         if v is None:

@@ -37,6 +37,7 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
+pydantic
 
 # Requirements for running tests
 blist; platform_system != "Windows"

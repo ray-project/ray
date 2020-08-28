@@ -12,20 +12,21 @@ def test_backend_config_validation():
 
     # Test num_replicas validation.
     BackendConfig(num_replicas=1)
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="type_error"):
         BackendConfig(num_replicas="hello")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="value_error"):
         BackendConfig(num_replicas=-1)
 
     # Test max_batch_size validation.
-    BackendConfig(max_batch_size=10, accepts_batches=True)
-    with pytest.raises(ValidationError):
-        BackendConfig(max_batch_size=10, accepts_batches=False)
-    with pytest.raises(ValidationError):
+    BackendConfig(max_batch_size=10, accepts_batches=True)._validate_complete()
+    with pytest.raises(ValueError):
+        BackendConfig(
+            max_batch_size=10, accepts_batches=False)._validate_complete()
+    with pytest.raises(ValidationError, match="type_error"):
         BackendConfig(max_batch_size="hello")
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="value_error"):
         BackendConfig(max_batch_size=0)
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="value_error"):
         BackendConfig(max_batch_size=-1)
 
 
@@ -47,8 +48,9 @@ def test_backend_config_update():
     # Test batch validation.
     b = BackendConfig(accepts_batches=False)
     b.max_batch_size = 1
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         b.max_batch_size = 2
+        b._validate_complete()
 
     b = BackendConfig(accepts_batches=True)
     b.max_batch_size = 2

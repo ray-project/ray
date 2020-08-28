@@ -13,6 +13,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import format_actor_name, get_random_letters
 from ray.serve.config import BackendConfig
 
+
 def test_e2e(serve_instance):
     serve.init()
 
@@ -251,10 +252,7 @@ def test_updating_config(serve_instance):
     serve.create_backend(
         "bsimple:v1",
         BatchSimple,
-        config={
-            "max_batch_size": 2,
-            "num_replicas": 3
-        })
+        config=BackendConfig(max_batch_size=2, num_replicas=3))
     serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
     controller = serve.api._get_controller()
