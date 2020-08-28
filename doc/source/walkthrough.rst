@@ -253,7 +253,7 @@ Multiple returns
 
     .. code-block:: python
 
-      @ray.remote(num_return_vals=3)
+      @ray.remote(num_returns=3)
       def return_multiple():
           return 1, 2, 3
 

@@ -976,7 +976,7 @@ cdef class CoreWorker:
                     Language language,
                     FunctionDescriptor function_descriptor,
                     args,
-                    int num_return_vals,
+                    int num_returns,
                     resources,
                     int max_retries,
                     PlacementGroupID placement_group_id,
@@ -993,7 +993,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, c_resources)
+                num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1103,7 +1103,7 @@ cdef class CoreWorker:
                           ActorID actor_id,
                           FunctionDescriptor function_descriptor,
                           args,
-                          int num_return_vals,
+                          int num_returns,
                           double num_method_cpus):
 
         cdef:
@@ -1117,7 +1117,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            task_options = CTaskOptions(num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1209,7 +1209,7 @@ cdef class CoreWorker:
             return ray.actor.ActorHandle(language, actor_id,
                                          method_meta.decorators,
                                          method_meta.signatures,
-                                         method_meta.num_return_vals,
+                                         method_meta.num_returns,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
@@ -1217,7 +1217,7 @@ cdef class CoreWorker:
             return ray.actor.ActorHandle(language, actor_id,
                                          {},  # method decorators
                                          {},  # method signatures
-                                         {},  # method num_return_vals
+                                         {},  # method num_returns
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
                                          worker.current_session_and_job)
