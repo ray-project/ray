@@ -94,6 +94,7 @@ def init(name: Optional[str] = None,
 
     controller = ServeController.options(
         name=controller_name,
+        lifetime="detached",
         max_restarts=-1,
         max_task_retries=-1,
     ).remote(name, http_host, http_port, _http_middlewares)

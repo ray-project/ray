@@ -213,7 +213,6 @@ Academic Papers
    :maxdepth: -1
    :caption: Ray Observability
 
-   ray-dashboard.rst
    ray-metrics.rst
 
 .. toctree::
