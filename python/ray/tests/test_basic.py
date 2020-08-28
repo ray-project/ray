@@ -111,6 +111,60 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+def test_invalid_arguments(shutdown_only):
+    ray.init(num_cpus=2)
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'num_return_vals' only accepts 0 or a"
+                " positive integer"):
+
+            @ray.remote(num_return_vals=opt)
+            def g1():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_retries' only accepts 0, -1 or a"
+                " positive integer"):
+
+            @ray.remote(max_retries=opt)
+            def g2():
+                return 1
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_calls' only accepts 0 or a positive"
+                " integer"):
+
+            @ray.remote(max_calls=opt)
+            def g3():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_restarts' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_restarts=opt)
+            class A1:
+                x = 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_task_retries' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_task_retries=opt)
+            class A2:
+                x = 1
+
+
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 

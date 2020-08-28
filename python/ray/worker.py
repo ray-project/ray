@@ -1665,7 +1665,21 @@ def make_decorator(num_return_vals=None,
             if max_task_retries is not None:
                 raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
-
+            if num_return_vals is not None and (not isinstance(
+                    num_return_vals, int) or num_return_vals < 0):
+                raise ValueError(
+                    "The keyword 'num_return_vals' only accepts 0 or a"
+                    " positive integer")
+            if max_retries is not None and (not isinstance(max_retries, int)
+                                            or max_retries < -1):
+                raise ValueError(
+                    "The keyword 'max_retries' only accepts 0, -1 or a"
+                    " positive integer")
+            if max_calls is not None and (not isinstance(max_calls, int)
+                                          or max_calls < 0):
+                raise ValueError(
+                    "The keyword 'max_calls' only accepts 0 or a positive"
+                    " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
@@ -1679,7 +1693,16 @@ def make_decorator(num_return_vals=None,
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
                                 "allowed for actors.")
-
+            if max_restarts is not None and (not isinstance(max_restarts, int)
+                                             or max_restarts < -1):
+                raise ValueError(
+                    "The keyword 'max_restarts' only accepts -1, 0 or a"
+                    " positive integer")
+            if max_task_retries is not None and (not isinstance(
+                    max_task_retries, int) or max_task_retries < -1):
+                raise ValueError(
+                    "The keyword 'max_task_retries' only accepts -1, 0 or a"
+                    " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
                                         max_restarts, max_task_retries)
