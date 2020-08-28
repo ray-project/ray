@@ -66,11 +66,6 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
-DEFAULT_JAVA_WORKER_CLASSPATH = [
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
-]
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -1360,10 +1355,9 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options)
-            if java_worker_options else ["-classpath", default_cp],
+            if java_worker_options else [],
             redis_address,
             node_manager_port,
             plasma_store_name,
