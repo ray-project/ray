@@ -5,7 +5,6 @@ import inspect
 import logging
 import numpy as np
 import os
-import pwd
 import signal
 import subprocess
 import sys
@@ -18,6 +17,10 @@ import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 import psutil
+
+pwd = None
+if sys.platform != "win32":
+    import pwd
 
 logger = logging.getLogger(__name__)
 
@@ -784,6 +787,8 @@ def try_to_symlink(symlink_path, target_path):
 
 
 def get_user():
+    if pwd is None:
+        return ""
     try:
         return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
