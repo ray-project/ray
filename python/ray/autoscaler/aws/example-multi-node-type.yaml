@@ -30,11 +30,15 @@ available_node_types:
             InstanceType: p2.xlarge
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
     gpu_8_ondemand:
         node_config:
             InstanceType: p2.8xlarge
         resources: {"CPU": 32, "GPU": 8}
         max_workers: 2
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
 
 # Specify the node type of the head node (as configured above).
 head_node_type: cpu_4_ondemand
