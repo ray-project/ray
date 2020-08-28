@@ -43,7 +43,7 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
         "vf_share_layers": True,
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,  # no parallelism
         "env_config": {

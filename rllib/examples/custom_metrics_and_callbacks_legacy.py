@@ -74,7 +74,7 @@ if __name__ == "__main__":
                 "on_postprocess_traj": on_postprocess_traj,
             },
             "framework": "tf",
-            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
             "num_gpus": FORCED_NUM_GPUS,
         },
         return_trials=True)

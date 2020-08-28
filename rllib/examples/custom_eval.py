@@ -140,7 +140,7 @@ if __name__ == "__main__":
         "horizon": 20,
         "log_level": "INFO",
 
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
 
         # Training rollouts will be collected using just the learner

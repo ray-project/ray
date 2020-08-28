@@ -63,7 +63,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     config = {
         "env": RockPaperScissors,
         "gamma": 0.9,
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "num_envs_per_worker": 4,

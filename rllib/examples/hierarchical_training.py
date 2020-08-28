@@ -94,7 +94,7 @@ if __name__ == "__main__":
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
             "framework": "torch" if args.torch else "tf",
-            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
             "num_gpus": FORCED_NUM_GPUS,
         }
 

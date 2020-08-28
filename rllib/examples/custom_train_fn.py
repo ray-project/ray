@@ -44,7 +44,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = {
         "lr": 0.01,
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "framework": "torch" if args.torch else "tf",

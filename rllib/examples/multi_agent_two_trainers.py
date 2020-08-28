@@ -83,7 +83,7 @@ if __name__ == "__main__":
             },
             "gamma": 0.95,
             "n_step": 3,
-            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
             "num_gpus": FORCED_NUM_GPUS,
             "framework": "torch" if args.torch or args.mixed_torch_tf else "tf"
         })

@@ -87,7 +87,7 @@ if __name__ == "__main__":
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
         "callbacks": FillInActions,
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
         "num_workers": 0,
         "multiagent": {

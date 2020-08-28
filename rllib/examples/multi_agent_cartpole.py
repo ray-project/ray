@@ -75,7 +75,7 @@ if __name__ == "__main__":
             "num_agents": args.num_agents,
         },
         "simple_optimizer": args.simple,
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
         "num_sgd_iter": 10,
         "multiagent": {

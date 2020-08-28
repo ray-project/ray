@@ -140,7 +140,7 @@ if __name__ == "__main__":
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
         "framework": "torch" if args.torch else "tf",
-        # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+        # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": FORCED_NUM_GPUS,
     }
 

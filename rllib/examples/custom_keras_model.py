@@ -124,7 +124,7 @@ if __name__ == "__main__":
                 "log_level": "INFO",
                 "env": "BreakoutNoFrameskip-v4"
                 if args.use_vision_network else "CartPole-v0",
-                # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+                # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
                 "num_gpus": FORCED_NUM_GPUS,
                 "callbacks": {
                     "on_train_result": check_has_custom_metric,

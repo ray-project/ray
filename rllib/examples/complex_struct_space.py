@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "env": SimpleRPG,
             "rollout_fragment_length": 1,
             "train_batch_size": 2,
-            # Use GPUs iff `RAY_FORCE_NUM_GPUS` env var set to > 0.
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
             "num_gpus": FORCED_NUM_GPUS,
             "num_workers": 0,
             "model": {
