@@ -41,8 +41,8 @@ class BackendConfig(BaseModel):
             raise ValueError(
                 "max_batch_size is set in config but the function or "
                 "method does not accept batching. Please use "
-                "@serve.accept_batch to explicitly mark that the function or method "
-                "accepts a list of requests as an argument.")
+                "@serve.accept_batch to explicitly mark that the function or "
+                "method accepts a list of requests as an argument.")
 
     # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
