@@ -258,7 +258,7 @@ class Node:
 
         def merge_resources(env_dict, params_dict):
             """Separates special case params and merges two dictionaries, picking from the
-            second in the event of a conflict. Also emit a warning on every
+            first in the event of a conflict. Also emit a warning on every
             conflict.
             """
             num_cpus = env_dict.pop("CPU", None)
