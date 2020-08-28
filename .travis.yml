@@ -434,7 +434,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
+    script: bash build_docker_images.sh
     skip_cleanup: true
     on:
       repo: ray-project/ray
