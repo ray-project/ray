@@ -48,7 +48,7 @@ class Float(Domain):
 
     def quantized(self, q: Number):
         new = copy(self)
-        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
+        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
         return new
 
     def normal(self, mean=0., sd=1.):
@@ -90,7 +90,7 @@ class Integer(Domain):
 
     def quantized(self, q: Number):
         new = copy(self)
-        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
+        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
         return new
 
     def uniform(self):
@@ -266,6 +266,12 @@ class Quantized(Sampler):
     def __init__(self, sampler: Sampler, q: Number):
         self.sampler = sampler
         self.q = q
+
+    def get_sampler(self):
+        sampler = self.sampler
+        if not sampler:
+            sampler = Uniform()
+        return sampler
 
     def sample(self,
                domain: Domain,

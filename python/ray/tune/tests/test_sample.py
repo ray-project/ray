@@ -150,6 +150,41 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
+    def testConvertBayesOpt(self):
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        with self.assertRaises(ValueError):
+            converted_config = BayesOptSearch.convert_search_space(config)
+
+        config = {
+            "b": {
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        bayesopt_config = {
+            "b/z": (1e-4, 1e-2)
+        }
+
+        converted_config = BayesOptSearch.convert_search_space(config)
+
+        searcher1 = BayesOptSearch(space=converted_config, metric="none")
+        searcher2 = BayesOptSearch(space=bayesopt_config, metric="none")
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
