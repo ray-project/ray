@@ -81,7 +81,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of GPUs to allocate to the trainer process. Note that not all
     # algorithms can take advantage of trainer GPUs. This can be fractional
     # (e.g., 0.3 GPUs).
-    "num_gpus": 0,
+    # None (default): Use all available GPUs.
+    # 0: Will not use any GPUs, even if one is available.
+    "num_gpus": None,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
@@ -584,32 +586,6 @@ class Trainer(Trainable):
         self.config = Trainer.merge_trainer_configs(self._default_config,
                                                     config)
 
-        # Check and resolve DL framework settings.
-        if "use_pytorch" in self.config and \
-                self.config["use_pytorch"] != DEPRECATED_VALUE:
-            deprecation_warning("use_pytorch", "framework=torch", error=False)
-            if self.config["use_pytorch"]:
-                self.config["framework"] = "torch"
-            self.config.pop("use_pytorch")
-        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning("eager", "framework=tfe", error=False)
-            if self.config["eager"]:
-                self.config["framework"] = "tfe"
-            self.config.pop("eager")
-
-        # Enable eager/tracing support.
-        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
-            if self.config["framework"] == "tf2" and tfv < 2:
-                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
-            if not tf1.executing_eagerly():
-                tf1.enable_eager_execution()
-            logger.info("Executing eagerly, with eager_tracing={}".format(
-                self.config["eager_tracing"]))
-        if tf1 and not tf1.executing_eagerly() and \
-                self.config["framework"] != "torch":
-            logger.info("Tip: set framework=tfe or the --eager flag to enable "
-                        "TensorFlow eager execution")
-
         if self.config["normalize_actions"]:
             inner = self.env_creator
 
@@ -1093,8 +1069,10 @@ class Trainer(Trainable):
             # Backwards compatibility.
             config["multiagent"]["policies"] = config["multiagent"].pop(
                 "policy_graphs")
+        if config["num_gpus"] is None:
+            config["num_gpus"] = len(ray.get_gpu_ids())
         if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=0|1", error=True)
+            deprecation_warning("gpu", "num_gpus=None|0|1|..", error=True)
         if "gpu_fraction" in config:
             deprecation_warning(
                 "gpu_fraction", "num_gpus=<fraction>", error=True)
