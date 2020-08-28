@@ -5,6 +5,7 @@ import inspect
 import logging
 import numpy as np
 import os
+import pwd
 import signal
 import subprocess
 import sys
@@ -780,3 +781,10 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_user():
+    try:
+        return pwd.getpwuid(os.getuid())[0]
+    except:
+        return ""
