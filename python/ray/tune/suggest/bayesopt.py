@@ -3,6 +3,12 @@ from collections import defaultdict
 import logging
 import pickle
 import json
+from typing import Dict
+
+from ray.tune.sample import Float, Quantized
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils.util import unflatten_dict
+
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
 except ImportError:
@@ -214,7 +220,7 @@ class BayesOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = config
 
         # Return a deep copy of the mapping
-        return copy.deepcopy(config)
+        return unflatten_dict(config)
 
     def register_analysis(self, analysis):
         """Integrate the given analysis into the gaussian process.
@@ -283,3 +289,43 @@ class BayesOptSearch(Searcher):
             (self.optimizer, self._buffered_trial_results,
              self._total_random_search_trials,
              self._config_counter) = pickle.load(f)
+
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to an BayesOpt search space.")
+
+        if resolved_vars:
+            raise ValueError(
+                "BeaysOpt does not support fixed parameters. Please find a "
+                "different way to pass constants to your training function.")
+
+        def resolve_value(domain):
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                logger.warning("BayesOpt search does not support quantization. "
+                               "Dropped quantization.")
+                sampler = sampler.get_sampler()
+
+            if isinstance(domain, Float):
+                if domain.sampler != None:
+                    logger.warning(
+                        "BayesOpt does not support specific sampling methods. "
+                        "The {} sampler will be dropped.".format(
+                            sampler))
+                    return (domain.min, domain.max)
+
+            raise ValueError("BayesOpt does not support parameters of type "
+                             "`{}`".format(type(domain).__name__))
+
+        bounds = {}
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            bounds[par] = resolve_value(domain)
+        return bounds
