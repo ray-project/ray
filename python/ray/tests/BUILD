@@ -102,7 +102,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_stress_faiure.py",
+    "test_stress_failure.py",
     "test_failure.py"
   ],
   size = "large",
