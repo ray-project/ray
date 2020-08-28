@@ -38,6 +38,8 @@ In 1.0, Ray supports multiple cluster node types. In this mode of operation, the
 
 The concept of a cluster node type encompasses both the physical instance type (e.g., AWS p3.8xl GPU nodes vs m4.16xl CPU nodes), as well as other attributes (e.g., IAM role, the machine image, etc). Custom resources can be specified for each node type so that Ray is aware of the demand for specific node types at the application level (e.g., a task may request to be placed on a machine with a specific role or machine image via custom resource).
 
+Multi node type autoscaling operates in conjunction with the basic autoscaler. You may want to configure the basic autoscaler accordingly to act convervatively (i.e., set ``target_utilization_fraction: 1.0``).
+
 An example of configuring multiple node types is as follows `(full example) <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-multi-node-type.yaml>`__:
 
 .. code::
