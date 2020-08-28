@@ -147,10 +147,10 @@ def test_comprehensive(ray_start_regular, use_force):
 
     ray.cancel(a, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a, 10)
+        ray.get(a, timeout=10)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a2, 10)
+        ray.get(a2, timeout=10)
 
     signaler.send.remote()
 
@@ -250,12 +250,12 @@ def test_remote_cancel(ray_start_regular, use_force):
     inner = ray.get(outer)[0]
 
     with pytest.raises(RayTimeoutError):
-        ray.get(inner, 1)
+        ray.get(inner, timeout=1)
 
     ray.cancel(inner, force=use_force)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(inner, 10)
+        ray.get(inner, timeout=10)
 
 
 if __name__ == "__main__":
