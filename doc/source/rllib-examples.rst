@@ -16,48 +16,48 @@ Tuned Examples
 Training Workflows
 ------------------
 
-- `Custom training workflows <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__:
+- `Custom training workflows <https://github.com/ray-project/ray/tree/master/rllib/examples/custom_train_fn.py>`__:
    Example of how to use Tune's support for custom training functions to implement custom training workflows.
 - `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
    Example of how to adjust the configuration of an environment over time.
-- `Custom metrics <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__:
+- `Custom metrics <https://github.com/ray-project/ray/tree/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
-- `Using policy evaluators directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/policy_evaluator_custom_workflow.py>`__:
+- `Using policy evaluators directly for control over the whole training workflow <https://github.com/ray-project/ray/tree/master/rllib/examples/policy_evaluator_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
 
 Custom Envs and Models
 ----------------------
 
-- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__:
+- `Registering a custom env and model <https://github.com/ray-project/ray/tree/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
-- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_loss.py>`__:
+- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/tree/master/rllib/examples/custom_loss.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Subprocess environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tests/test_env_with_subprocess.py>`__:
+- `Subprocess environment <https://github.com/ray-project/ray/tree/master/rllib/tests/test_env_with_subprocess.py>`__:
    Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/batch_norm_model.py>`__:
+- `Batch normalization <https://github.com/ray-project/ray/tree/master/rllib/examples/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
-- `Parametric actions <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_action_cartpole.py>`__:
+- `Parametric actions <https://github.com/ray-project/ray/tree/master/rllib/examples/parametric_action_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
 
 Serving and Offline
 -------------------
 - `CartPole server <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/serving>`__:
    Example of online serving of predictions for a simple CartPole policy.
-- `Saving experiences <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/saving_experiences.py>`__:
+- `Saving experiences <https://github.com/ray-project/ray/tree/master/rllib/examples/saving_experiences.py>`__:
    Example of how to externally generate experience batches in RLlib-compatible format.
 
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Two-step game <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/twostep_game.py>`__:
+- `Two-step game <https://github.com/ray-project/ray/tree/master/rllib/examples/twostep_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
-- `Hand-coded policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_custom_policy.py>`__:
+- `Hand-coded policy <https://github.com/ray-project/ray/tree/master/rllib/examples/multiagent_custom_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
-- `Weight sharing between policies <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_cartpole.py>`__:
+- `Weight sharing between policies <https://github.com/ray-project/ray/tree/master/rllib/examples/multiagent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-- `Multiple trainers <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_two_trainers.py>`__:
+- `Multiple trainers <https://github.com/ray-project/ray/tree/master/rllib/examples/multiagent_two_trainers.py>`__:
    Example of alternating training between two DQN and PPO trainers.
-- `Hierarchical training <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/hierarchical_training.py>`__:
+- `Hierarchical training <https://github.com/ray-project/ray/tree/master/rllib/examples/hierarchical_training.py>`__:
    Example of hierarchical training using the multi-agent API.
 - `PPO with centralized value function <https://github.com/ray-project/ray/pull/3642/files>`__:
    Example of customizing PPO to include a centralized value function, including a runnable script that demonstrates cooperative CartPole.
