@@ -17,6 +17,7 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    serialization.rst
    memory-management.rst
    troubleshooting.rst
+   ray-dashboard.rst
    advanced.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst

@@ -45,6 +45,7 @@ DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
+DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -84,6 +85,7 @@ int main(int argc, char *argv[]) {
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
+  const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -182,9 +184,14 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
         }
-        if (python_worker_command.empty() && java_worker_command.empty()) {
-          RAY_CHECK(0) << "Either Python worker command or Java worker command should be "
-                          "provided.";
+        if (!cpp_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
+        }
+        if (python_worker_command.empty() && java_worker_command.empty() &&
+            cpp_worker_command.empty()) {
+          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+                         << "should be provided";
         }
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;

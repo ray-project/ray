@@ -90,6 +90,10 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
         state.num_workers_per_process =
             RayConfig::instance().num_workers_per_process_java();
         break;
+      case Language::CPP:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_cpp();
+        break;
       default:
         RAY_LOG(FATAL) << "The number of workers per process for "
                        << Language_Name(entry.first) << " worker is not set.";
