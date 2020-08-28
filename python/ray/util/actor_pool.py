@@ -10,7 +10,9 @@ class ActorPool:
     Examples:
         >>> a1, a2 = Actor.remote(), Actor.remote()
         >>> pool = ActorPool([a1, a2])
-        >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+        >>> results = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4])
+        >>> for r in results:
+        ...     print(r)
         [2, 4, 6, 8]
     """
 
@@ -52,7 +54,10 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> results = pool.map(lambda a, v: a.double.remote(v),
+            ...                    [1, 2, 3, 4])
+            >>> for r in results:
+            ...     print(r)
             [2, 4, 6, 8]
         """
         for v in values:
@@ -79,7 +84,10 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> results = pool.map_unordered(lambda a, v: a.double.remote(v),
+            ...                              [1, 2, 3, 4])
+            >>> for r in results:
+            ...     print(r)
             [6, 2, 4, 8]
         """
         for v in values:
