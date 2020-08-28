@@ -84,7 +84,7 @@ def _with_environment_variables(cmd: str,
 
     as_strings = []
     for key, val in environment_variables.items():
-        val = json.dumps(val, separators=(',', ':'))
+        val = json.dumps(val, separators=(",", ":"))
         s = "export {}={};".format(key, quote(val))
         as_strings.append(s)
     all_vars = "".join(as_strings)
@@ -94,7 +94,6 @@ def _with_environment_variables(cmd: str,
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 

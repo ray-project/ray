@@ -4,7 +4,6 @@ from ray.autoscaler.command_runner import SSHCommandRunner, \
     _with_environment_variables, DockerCommandRunner
 from getpass import getuser
 import hashlib
-import json
 
 auth_config = {
     "ssh_user": "ray",
