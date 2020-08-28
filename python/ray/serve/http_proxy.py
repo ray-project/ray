@@ -6,7 +6,6 @@ import uvicorn
 
 import ray
 from ray.exceptions import RayTaskError
-from ray import serve
 from ray.serve.context import TaskContext
 from ray.experimental import metrics
 from ray.serve.request_params import RequestMetadata

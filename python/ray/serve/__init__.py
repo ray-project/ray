@@ -1,4 +1,4 @@
-from ray.serve.api import accept_batch, Client, connect, start
+from ray.serve.api import (accept_batch, Client, connect, start)  # noqa: F401
 
 __all__ = [
     "accept_batch",

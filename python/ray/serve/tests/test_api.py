@@ -8,7 +8,7 @@ import requests
 import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
-from ray.serve import constants
+from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import format_actor_name, get_random_letters
 
@@ -623,7 +623,8 @@ def test_shutdown():
 
     def check_dead():
         for actor_name in [
-                client._controller_name, format_actor_name(actor_name, client._controller_name)
+                client._controller_name,
+                format_actor_name(SERVE_PROXY_NAME, client._controller_name)
         ]:
             try:
                 ray.get_actor(actor_name)

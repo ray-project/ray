@@ -92,8 +92,12 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-async def __init__(self, controller_name: str, http_host: str, http_port: str,
-                   _http_middlewares: List[Any], detached: bool = False):
+    async def __init__(self,
+                       controller_name: str,
+                       http_host: str,
+                       http_port: str,
+                       _http_middlewares: List[Any],
+                       detached: bool = False):
         self.detached = detached
         # Name of this controller actor.
         self.controller_name = controller_name
@@ -396,8 +400,7 @@ async def __init__(self, controller_name: str, http_host: str, http_port: str,
             max_restarts=-1,
             max_task_retries=-1,
             **backend_info.replica_config.ray_actor_options).remote(
-                backend_tag,
-                replica_tag,
+                backend_tag, replica_tag,
                 backend_info.replica_config.actor_init_args,
                 backend_info.backend_config)
         # TODO(edoakes): we should probably have a timeout here.

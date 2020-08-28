@@ -1,5 +1,3 @@
-import ray
-from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.exceptions import RayServeException
 from ray.serve.request_params import RequestMetadata

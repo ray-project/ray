@@ -8,7 +8,6 @@ import pickle
 from ray.exceptions import RayTaskError
 
 import ray
-from ray import serve
 from ray.experimental import metrics
 from ray.serve.endpoint_policy import RandomEndpointPolicy
 from ray.serve.utils import logger, chain_future

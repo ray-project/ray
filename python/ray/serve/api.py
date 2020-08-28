@@ -24,7 +24,10 @@ def _ensure_connected(f: Callable) -> Callable:
 
 
 class Client:
-    def __init__(self, controller, controller_name, detached=False):
+    def __init__(self,
+                 controller: ActorHandle,
+                 controller_name: str,
+                 detached: bool = False):
         self._controller = controller
         self._controller_name = controller_name
         self._detached = detached
@@ -36,8 +39,8 @@ class Client:
     def shutdown(self) -> None:
         """Completely shut down the connected Serve instance.
 
-        Shuts down all processes and deletes all state associated with the Serve
-        instance that's currently connected to (via serve.init).
+        Shuts down all processes and deletes all state associated with the
+        instance.
         """
         if self._controller is not None:
             ray.get(self._controller.shutdown.remote())
@@ -56,12 +59,12 @@ class Client:
         Args:
             endpoint_name (str): A name to associate to with the endpoint.
             backend (str, required): The backend that will serve requests to
-                this endpoint. To change this or split traffic among backends, use
-                `serve.set_traffic`.
-            route (str, optional): A string begin with "/". HTTP server will use
-                the string to match the path.
-            methods(List[str], optional): The HTTP methods that are valid for this
-                endpoint.
+                this endpoint. To change this or split traffic among backends,
+                use `serve.set_traffic`.
+            route (str, optional): A string begin with "/". HTTP server will
+                use the string to match the path.
+            methods(List[str], optional): The HTTP methods that are valid for
+                this endpoint.
         """
         if backend is None:
             raise TypeError("backend must be specified when creating "
@@ -177,15 +180,15 @@ class Client:
                 @ray.remote decorator for the backend actor.
             config (optional): configuration options for this backend.
                 Supported options:
-                - "num_replicas": number of worker processes to start up that will
-                handle requests to this backend.
+                - "num_replicas": number of worker processes to start up that
+                will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
                 be processed in one batch by this backend.
                 - "batch_wait_timeout": time in seconds that backend replicas
                 will wait for a full batch of requests before processing a
                 partial batch.
-                - "max_concurrent_queries": the maximum number of queries that will
-                be sent to a replica of this backend without receiving a
+                - "max_concurrent_queries": the maximum number of queries that
+                will be sent to a replica of this backend without receiving a
                 response.
         """
         if backend_tag in self.list_backends():

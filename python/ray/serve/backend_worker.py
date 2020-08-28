@@ -11,7 +11,6 @@ import time
 import ray
 from ray.async_compat import sync_to_async
 
-from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
