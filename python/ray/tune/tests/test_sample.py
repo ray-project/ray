@@ -93,6 +93,43 @@ class SearchSpaceTest(unittest.TestCase):
             factor = sample / 5e-4
             self.assertAlmostEqual(factor, round(factor), places=10)
 
+    def testConvertHyperOpt(self):
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        from hyperopt import hp
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = HyperOptSearch.convert_search_space(config)
+        hyperopt_config = {
+            "a": hp.choice("a", [2, 3, 4]),
+            "b": {
+                "x": hp.randint("x", 5),
+                "y": 4,
+                "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
+            }
+        }
+
+        searcher1 = HyperOptSearch(
+            space=converted_config, random_state_seed=1234)
+        searcher2 = HyperOptSearch(
+            space=hyperopt_config, random_state_seed=1234)
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertEqual(config1["b"]["y"], 4)
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
@@ -124,6 +161,11 @@ class SearchSpaceTest(unittest.TestCase):
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertEqual(config1["b"]["y"], 4)
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
 
 
 if __name__ == "__main__":
