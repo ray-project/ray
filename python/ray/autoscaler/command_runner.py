@@ -736,11 +736,13 @@ class DockerCommandRunner(CommandRunnerInterface):
                 active_remote_mounts = [
                     mnt["Destination"] for mnt in active_mounts
                 ]
-                cli_logger.error(active_remote_mounts)
                 for remote, local in file_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
                         cli_logger.error(
+                            "Please ray stop & restart cluster to "
+                            f"allow mount {remote}:{local} to take hold")
+                        cli_logger.old_error(
                             "Please ray stop & restart cluster to "
                             f"allow mount {remote}:{local} to take hold")
             except json.JSONDecodeError:
