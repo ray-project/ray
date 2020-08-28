@@ -226,8 +226,7 @@ def update_backend_config(
             without receiving a response.
     """
 
-    if not isinstance(config_options, BackendConfig) and not isinstance(
-            config_options, dict):
+    if not isinstance(config_options, (BackendConfig, dict)):
         raise TypeError(
             "config_options must be a BackendConfig or dictionary.")
     ray.get(
@@ -250,7 +249,8 @@ def create_backend(
         func_or_class: Union[Callable, Type[Callable]],
         *actor_init_args: Any,
         ray_actor_options: Optional[Dict] = None,
-        config: Union[BackendConfig, Optional[Dict[str, Any]]] = None) -> None:
+        config: "Optional[Union[BackendConfig, Dict[str, Any]]]" = None
+) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
@@ -284,7 +284,7 @@ def create_backend(
 
     if config is None:
         config = {}
-    if not isinstance(config, BackendConfig) and not isinstance(config, dict):
+    if not isinstance(config, (BackendConfig, dict)):
         raise TypeError("config must be a BackendConfig or a dictionary.")
 
     replica_config = ReplicaConfig(

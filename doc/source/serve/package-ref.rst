@@ -6,6 +6,8 @@ Basic APIs
 .. autofunction:: ray.serve.init
 .. autofunction:: ray.serve.shutdown
 .. autoclass:: ray.serve.BackendConfig
+    :members:
+    :undoc-members:
 .. autofunction:: ray.serve.create_backend
 .. autofunction:: ray.serve.create_endpoint
 
