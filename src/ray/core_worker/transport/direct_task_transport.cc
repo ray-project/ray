@@ -77,7 +77,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
-        if (!AllPipelinesToWorkersFull(scheduling_key_entry)) {
+        if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
           // The pipelines to the current workers are not full yet, so we don't need more
           // workers.
 
@@ -88,7 +88,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-            if (!PipelineToWorkerFull(lease_entry)) {
+            if (!lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
               OnWorkerIdle(active_worker_addr, scheduling_key, false,
                            lease_entry.assigned_resources);
               // If we find a worker with a non-full pipeline, all we need to do is to
@@ -149,7 +149,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       // Decrement the number of active workers consuming tasks from the queue associated
       // with the current scheduling_key
       scheduling_key_entry.active_workers.erase(addr);
-      if (scheduling_key_entry.CanDelete()) {
+      if (scheduling_key_entry.CanDelete() ) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);
@@ -166,7 +166,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
-    while (!current_queue.empty() && !PipelineToWorkerFull(lease_entry)) {
+    while (!current_queue.empty() && !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
       auto task_spec = current_queue.front();
       lease_entry
           .tasks_in_flight++;  // Increment the number of tasks in flight to the worker
@@ -221,16 +221,9 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
             // should already have been removed from our local state, so we no
             // longer need to cancel.
             CancelWorkerLeaseIfNeeded(scheduling_key);
-          } else {
-            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-            if (scheduling_key_entry.CanDelete()) {
-              // We can safely remove the entry keyed by scheduling_key from the
-              // scheduling_key_entries_ hashmap.
-              scheduling_key_entries_.erase(scheduling_key);
-            }
-          }
+          } 
         });
-  }
+  } 
 }
 
 std::shared_ptr<WorkerLeaseInterface>
@@ -280,7 +273,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks
-  if (!AllPipelinesToWorkersFull(scheduling_key_entry)) {
+  if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
     // The pipelines to the current workers are not full yet, so we don't need more
     // workers.
 
@@ -290,7 +283,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
   TaskID task_id = resource_spec.TaskId();
-  RAY_LOG(DEBUG) << "Lease requested " << task_id;
   lease_client->RequestWorkerLease(
       resource_spec, [this, scheduling_key](const Status &status,
                                             const rpc::RequestWorkerLeaseReply &reply) {
@@ -302,7 +294,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         auto lease_client = std::move(pending_lease_request.first);
         const auto task_id = pending_lease_request.second;
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
-
+        
         if (status.ok()) {
           if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
@@ -352,7 +344,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   bool is_actor = task_spec.IsActorTask();
   bool is_actor_creation = task_spec.IsActorCreationTask();
 
-  RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
@@ -430,6 +421,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     // This cancels tasks that have completed dependencies and are awaiting
     // a worker lease.
     if (!scheduled_tasks.empty()) {
+
       for (auto spec = scheduled_tasks.begin(); spec != scheduled_tasks.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduled_tasks.erase(spec);
@@ -452,6 +444,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       // No executing tasks, so cancelling is a noop.
+      if (scheduling_key_entry.CanDelete() ) {
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
+        scheduling_key_entries_.erase(scheduling_key);
+      }
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.

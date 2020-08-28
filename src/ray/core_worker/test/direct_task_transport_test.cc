@@ -365,6 +365,9 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -395,6 +398,9 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -446,6 +452,9 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -490,11 +499,10 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
-
   // Task 3 finishes, the worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
-
+  
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -504,6 +512,9 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
@@ -560,6 +571,9 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
@@ -613,6 +627,9 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -657,6 +674,9 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
@@ -691,6 +711,9 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -749,6 +772,9 @@ TEST(DirectTaskTransportTest, TestSpillback) {
     ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
     ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
   }
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
@@ -813,6 +839,9 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
     ASSERT_EQ(remote_client.second->num_leases_canceled, 0);
     ASSERT_FALSE(remote_client.second->ReplyCancelWorkerLease());
   }
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 // Helper to run a test that checks that 'same1' and 'same2' are treated as the same
@@ -830,7 +859,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
                                           store, task_finisher, ClientID::Nil(),
                                           kLongTimeout, actor_creator);
-
+  
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
   ASSERT_TRUE(submitter.SubmitTask(different).ok());
@@ -841,13 +870,16 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   // Another worker is requested because same2 is pending.
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   // same1 runs successfully. Worker isn't returned.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  // taske1_2 is pushed.
+  // same2 is pushed.
   ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);  
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
 
   // different is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
@@ -858,11 +890,20 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-
+  
   // different runs successfully. Worker is returned.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, ClientID::Nil(), true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
@@ -983,6 +1024,9 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestKillExecutingTask) {
@@ -1032,6 +1076,9 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestKillPendingTask) {
@@ -1061,6 +1108,12 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+
+  // Trigger reply to RequestWorkerLease to remove the canceled pending lease request
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil(), true));
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestKillResolvingTask) {
@@ -1092,6 +1145,9 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
@@ -1162,6 +1218,9 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
@@ -1237,6 +1296,9 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
@@ -1411,6 +1473,9 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries()); 
 }
 
 }  // namespace ray

@@ -86,6 +86,15 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
                           bool force_kill);
 
+  /// Check that the scheduling_key_entries_ hashmap is empty. Can be used at the end of 
+  /// a unit test (or normal program) to check that we are not leaking memory
+  bool CheckNoSchedulingKeyEntries() const {
+    if (scheduling_key_entries_.size() != 0) {
+      RAY_LOG(INFO) << "size: " << scheduling_key_entries_.size();
+    }
+    return scheduling_key_entries_.size() == 0;
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -200,14 +209,12 @@ class CoreWorkerDirectTaskSubmitter {
           tasks_in_flight(tasks_in_flight),
           assigned_resources(assigned_resources),
           scheduling_key(scheduling_key) {}
-  };
 
-  // Check whether the pipeline to the worker associated with a LeaseEntry is full. This
-  // method is declared outside the LeaseEntry struct so that we can access the
-  // max_tasks_in_flight_per_worker_ const.
-  bool PipelineToWorkerFull(LeaseEntry &lease_entry) {
-    return lease_entry.tasks_in_flight == max_tasks_in_flight_per_worker_;
-  }
+    // Check whether the pipeline to the worker associated with a LeaseEntry is full.
+    bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
+      return tasks_in_flight == max_tasks_in_flight_per_worker;
+    }
+  };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
   absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry> worker_to_lease_entry_
@@ -229,23 +236,23 @@ class CoreWorkerDirectTaskSubmitter {
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
-    bool CanDelete() {
+    bool CanDelete() const {
       if (!pending_lease_request.first && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
+      
       return false;
+    }
+
+    // Check whether the pipelines to the active workers associated with a
+    // SchedulingKeyEntry are all full. 
+    bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
+      return total_tasks_in_flight == (active_workers.size() * max_tasks_in_flight_per_worker);
     }
   };
 
-  // Check whether the pipelines to the active workers associated with a
-  // SchedulingKeyEntry are all full. This function is defined outside of the
-  // SchedulingKeyEntry struct so that we can access the max_tasks_in_flight_per_worker_
-  // const.
-  bool AllPipelinesToWorkersFull(SchedulingKeyEntry &scheduling_key_entry) {
-    return scheduling_key_entry.total_tasks_in_flight ==
-           (scheduling_key_entry.active_workers.size() * max_tasks_in_flight_per_worker_);
-  }
+  
 
   // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct
   // with the queue of tasks belonging to that SchedulingKey, together with the other
