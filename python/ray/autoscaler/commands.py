@@ -273,7 +273,11 @@ def _bootstrap_config(config: Dict[str, Any],
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
                      keep_min_workers: bool):
-    """Destroys all nodes of a Ray cluster described by a config json."""
+    """Destroys all nodes of a Ray cluster described by a config json.
+
+    Args:
+        config_file: None
+    """
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
