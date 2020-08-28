@@ -199,6 +199,37 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
 
+Named Actors
+------------
+
+An actor can be given a globally unique name via ``.options(name="some_name")``,
+which allows you to retrieve the actor from any job in the Ray cluster via
+``ray.get_actor("some_name")``. This can be useful if you cannot directly
+pass the actor handle to the task that needs it, or if you are trying to
+access an actor launched by another driver.
+
+Actor Lifetimes
+---------------
+
+Separately, actor lifetimes can be decoupled from the job, allowing an actor to
+persist even after the driver process of the job exits.
+
+.. code-block:: python
+
+  counter = Counter.options(name="CounterActor", lifetime="detached").remote()
+
+The CounterActor will be kept alive even after the driver running above script
+exits. Therefore it is possible to run the following script in a different
+driver:
+
+.. code-block:: python
+
+  counter = ray.get_actor("CounterActor")
+  print(ray.get(counter.get_counter.remote()))
+
+Note that the lifetime option is decoupled from the name. If we only specified
+the name without specifying ``lifetime="detached"``, then the CounterActor can
+only be retrieved as long as the original driver is still running.
 
 Actor Pool
 ----------

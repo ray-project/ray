@@ -472,15 +472,15 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_2 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=1,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_3 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=2,
-        detached=True).remote()
+        lifetime="detached").remote()
     ray.get(actor_1.value.remote())
     ray.get(actor_2.value.remote())
     ray.get(actor_3.value.remote())
@@ -491,15 +491,15 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     actor_4 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_5 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=1,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_6 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=2,
-        detached=True).remote()
+        lifetime="detached").remote()
     ray.get(actor_4.value.remote())
     ray.get(actor_5.value.remote())
     ray.get(actor_6.value.remote())

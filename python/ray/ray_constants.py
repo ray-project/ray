@@ -36,6 +36,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
