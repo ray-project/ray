@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 import random
 import unittest
 import numpy as np
@@ -215,7 +216,6 @@ class _MockTrialRunner():
         self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
-        print(action)
         if action == TrialScheduler.CONTINUE:
             pass
         elif action == TrialScheduler.PAUSE:
@@ -708,7 +708,7 @@ class _MockTrial(Trial):
 
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, "checkpoint", None)
+        return Checkpoint(Checkpoint.MEMORY, self.trainable_name, None)
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -1288,7 +1288,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             perturbation_interval=5,
             log_config=True,
             step_once=False,
-            synch=True,
+            synch=False,
             hyperparam_mutations={
                 "float_factor": lambda: 100.0,
                 "int_factor": _Counter(1000)
@@ -1400,6 +1400,176 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # same as the playback history
         for i, trial in enumerate(trials):
             if trial.trial_id == "1":  # Did not exploit anything
+                continue
+
+            replay = PopulationBasedTrainingReplay(
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trial.trial_id)))
+            analysis = tune.run(
+                Playback,
+                scheduler=replay,
+                stop={TRAINING_ITERATION: trial_state[i].step})
+
+            replayed = analysis.trials[0].last_result["replayed"]
+            self.assertSequenceEqual(trial_state[i].history, replayed)
+
+        # Trial 1 did not exploit anything and should raise an error
+        with self.assertRaises(ValueError):
+            replay = PopulationBasedTrainingReplay(
+                os.path.join(tmpdir,
+                             "pbt_policy_{}.txt".format(trials[1].trial_id)))
+            tune.run(
+                Playback,
+                scheduler=replay,
+                stop={TRAINING_ITERATION: trial_state[1].step})
+
+        shutil.rmtree(tmpdir)
+
+    def testReplaySynch(self):
+        # Returns unique increasing parameter mutations
+        class _Counter:
+            def __init__(self, start=0):
+                self.count = start - 1
+
+            def __call__(self, *args, **kwargs):
+                self.count += 1
+                return self.count
+
+        pbt, runner = self.basicSetup(
+            num_trials=4,
+            perturbation_interval=5,
+            log_config=True,
+            step_once=False,
+            synch=True,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": _Counter(1000)
+            })
+        trials = runner.get_trials()
+        tmpdir = tempfile.mkdtemp()
+
+        # Internal trial state to collect the real PBT history
+        class _TrialState:
+            def __init__(self, config):
+                self.step = 0
+                self.config = config
+                self.history = []
+
+            def forward(self, t):
+                while self.step < t:
+                    self.history.append(self.config)
+                    self.step += 1
+
+        trial_state = []
+        for i, trial in enumerate(trials):
+            trial.local_dir = tmpdir
+            trial.last_result = {TRAINING_ITERATION: 0}
+            trial_state.append(_TrialState(trial.config))
+
+        # Helper function to simulate stepping trial k a number of steps,
+        # and reporting a score at the end
+        def trial_step(k, steps, score, synced=False):
+            res = result(trial_state[k].step + steps, score)
+
+            trials[k].last_result = res
+            trial_state[k].forward(res[TRAINING_ITERATION])
+
+            trials[k].status = Trial.RUNNING
+            if not synced:
+                action = pbt.on_trial_result(runner, trials[k], res)
+                runner.process_action(trials[k], action)
+                return
+            else:
+                # Reached synchronization point
+                old_configs = [trial.config for trial in trials]
+                action = pbt.on_trial_result(runner, trials[k], res)
+                runner.process_action(trials[k], action)
+                new_configs = [trial.config for trial in trials]
+
+                for i in range(len(trials)):
+                    old_config = old_configs[i]
+                    new_config = new_configs[i]
+                    if old_config != new_config:
+                        # Copy history from source trial
+                        source = -1
+                        for m, cand in enumerate(trials):
+                            if cand.trainable_name == trials[
+                                i].restored_checkpoint:
+                                source = m
+                                break
+                        assert source >= 0
+                        trial_state[i].history = trial_state[
+                            source].history.copy()
+                        trial_state[i].step = trial_state[source].step
+                        trial_state[i].config = new_config.copy()
+
+        # Initial steps
+        trial_step(0, 10, 0)
+        trial_step(1, 11, 10)
+        trial_step(2, 12, 0)
+        trial_step(3, 13, -1, synced=True)
+
+        # 3 <-- 1, new_t 11
+        # next_perturb_sync = 13
+
+        # Next block
+        trial_step(0, 17, -10) # 20
+        trial_step(2, 15, -20) # 20
+        trial_step(3, 16, 0) # 20
+        trial_step(1, 7, 1, synced=True) # 18
+
+        # 2 <-- 1, new_t=11+7=18
+        # next_perturb_sync = 20
+
+        # Next block
+        trial_step(2, 13, 0) # 31
+        trial_step(3, 14, 10) # 34
+        trial_step(0, 11, -1) # 31
+        trial_step(1, 12, 0, synced=True)  # 30
+
+        # 0 <-- 3, new_t=11+9+14=34
+        # next_perturb_sync = 34
+
+        # Next block
+        trial_step(0, 6, 20) # 40
+        trial_step(3, 9, -40) # 43
+        trial_step(2, 8, -50) # 39
+        trial_step(1, 7, 30, synced=True) # 37
+
+        # 2 <-- 1, new_t=18+13+8=37
+        # next_perturb_sync = 43
+
+        # Playback trainable to collect configs at each step
+        class Playback(Trainable):
+            def setup(self, config):
+                self.config = config
+                self.replayed = []
+                self.iter = 0
+
+            def step(self):
+                self.iter += 1
+                self.replayed.append(self.config)
+                return {
+                    "reward": 0,
+                    "done": False,
+                    "replayed": self.replayed,
+                    TRAINING_ITERATION: self.iter
+                }
+
+            def reset_config(self, new_config):
+                self.config = new_config
+                return True
+
+            def save_checkpoint(self, tmp_checkpoint_dir):
+                return tmp_checkpoint_dir
+
+            def load_checkpoint(self, checkpoint):
+                pass
+
+        # Loop through all trials and check if PBT history is the
+        # same as the playback history
+        for i, trial in enumerate(trials):
+            if trial.trial_id in ["1"]:  # Did not exploit anything
                 continue
 
             replay = PopulationBasedTrainingReplay(
