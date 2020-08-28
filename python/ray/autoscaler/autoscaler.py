@@ -60,18 +60,6 @@ class StandardAutoscaler:
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config["provider"],
-                                          self.config["cluster_name"])
-
-        # Check whether we can enable the resource demand scheduler.
-        if "available_node_types" in self.config:
-            self.available_node_types = self.config["available_node_types"]
-            self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.available_node_types,
-                self.config["max_workers"])
-        else:
-            self.available_node_types = None
-            self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -299,6 +287,19 @@ class StandardAutoscaler:
             self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
+
+            self.provider = get_node_provider(self.config["provider"],
+                                            self.config["cluster_name"])
+            # Check whether we can enable the resource demand scheduler.
+            if "available_node_types" in self.config:
+                self.available_node_types = self.config["available_node_types"]
+                self.resource_demand_scheduler = ResourceDemandScheduler(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"])
+            else:
+                self.available_node_types = None
+                self.resource_demand_scheduler = None
+
         except Exception as e:
             if errors_fatal:
                 raise e
