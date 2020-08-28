@@ -31,6 +31,15 @@ py_test_module_list(
     "test_global_gc.py",
     "test_iter.py",
     "test_joblib.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -54,7 +63,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z"],
   deps = ["//:ray_lib"],
 )
 

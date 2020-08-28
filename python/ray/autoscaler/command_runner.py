@@ -16,8 +16,8 @@ from ray.autoscaler.docker import check_docker_running_cmd, \
                                   with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
-                                                   ProcessRunnerError)
+from ray.autoscaler.subprocess_output_util import (
+    run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -434,6 +434,11 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
+
+        Raises:
+            ProcessRunnerError if using new log style and disabled
+                login shells.
+            click.ClickException if using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.
@@ -459,12 +464,12 @@ class SSHCommandRunner(CommandRunnerInterface):
 
             if exit_on_fail:
                 raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd)) \
-                    from None
+                    "Command failed:\n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise click.ClickException(
-                    "SSH command Failed. See above for the output from the"
-                    " failure.") from None
+                fail_msg = "SSH command failed."
+                if is_output_redirected():
+                    fail_msg += " See above for the output from the failure."
+                raise click.ClickException(fail_msg) from None
 
     def run(
             self,

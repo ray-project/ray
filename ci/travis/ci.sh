@@ -173,6 +173,7 @@ test_python() {
 }
 
 test_cpp() {
+  bazel build --config=ci //cpp:all
   bazel test --config=ci //cpp:all --build_tests_only
 }
 

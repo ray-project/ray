@@ -30,6 +30,40 @@ DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
 
 
+class _ActorClassCache:
+    """Caches actor classes.
+
+    ray.remote is a registration call. It sends the serialized object to the
+    key value store (redis), and will be fetched at an arbitrary worker
+    later. Registration does not use any Ray scheduling resources.
+
+    Later, class.remote() actually creates the remote actor. The
+    actor will be instantiated on some arbitrary machine,
+    according to the underlying Ray scheduler.
+
+    Without this cache, you would register the same serialized object
+    over and over again. Naturally, since redis doesn’t spill to disk,
+    this can easily nuke the redis instance (and basically blow up Ray).
+    This cache instead allows us to register once and only once.
+
+    Note that we assume there can be multiple trainables in the
+    system at once.
+    """
+
+    def __init__(self):
+        self._cache = {}
+
+    def get(self, trainable_cls):
+        """Gets the wrapped trainable_cls, otherwise calls ray.remote."""
+        if trainable_cls not in self._cache:
+            remote_cls = ray.remote(trainable_cls)
+            self._cache[trainable_cls] = remote_cls
+        return self._cache[trainable_cls]
+
+
+_class_cache = _ActorClassCache()
+
+
 class _LocalWrapper:
     def __init__(self, result):
         self._result = result
@@ -151,13 +185,13 @@ class RayTrialExecutor(TrialExecutor):
                 self._trial_cleanup.add(trial, actor=self._cached_actor)
             self._cached_actor = None
 
-        cls = ray.remote(
+        _actor_cls = _class_cache.get(trial.get_trainable_cls())
+        full_actor_class = _actor_cls.options(
             num_cpus=trial.resources.cpu,
             num_gpus=trial.resources.gpu,
-            memory=trial.resources.memory,
-            object_store_memory=trial.resources.object_store_memory,
-            resources=trial.resources.custom_resources)(
-                trial.get_trainable_cls())
+            memory=trial.resources.memory or None,
+            object_store_memory=trial.resources.object_store_memory or None,
+            resources=trial.resources.custom_resources)
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
@@ -187,7 +221,7 @@ class RayTrialExecutor(TrialExecutor):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
 
         with self._change_working_directory(trial):
-            return cls.remote(**kwargs)
+            return full_actor_class.remote(**kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
