@@ -117,7 +117,9 @@ def test_basic(ray_start_with_dashboard):
 
     logger.info("Test agent register is OK.")
     wait_for_condition(lambda: _search_agent(raylet_proc.children()))
-    assert dashboard_proc.status() == psutil.STATUS_RUNNING
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING
+    ]
     agent_proc = _search_agent(raylet_proc.children())
     agent_pid = agent_proc.pid
 
