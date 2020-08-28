@@ -86,7 +86,7 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
                           bool force_kill);
 
-  /// Check that the scheduling_key_entries_ hashmap is empty. Can be used at the end of 
+  /// Check that the scheduling_key_entries_ hashmap is empty. Can be used at the end of
   /// a unit test (or normal program) to check that we are not leaking memory
   bool CheckNoSchedulingKeyEntries() const {
     if (scheduling_key_entries_.size() != 0) {
@@ -241,18 +241,17 @@ class CoreWorkerDirectTaskSubmitter {
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
-      
+
       return false;
     }
 
     // Check whether the pipelines to the active workers associated with a
-    // SchedulingKeyEntry are all full. 
+    // SchedulingKeyEntry are all full.
     bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
-      return total_tasks_in_flight == (active_workers.size() * max_tasks_in_flight_per_worker);
+      return total_tasks_in_flight ==
+             (active_workers.size() * max_tasks_in_flight_per_worker);
     }
   };
-
-  
 
   // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct
   // with the queue of tasks belonging to that SchedulingKey, together with the other
