@@ -88,9 +88,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Check that the scheduling_key_entries_ hashmap is empty. Can be used at the end of
   /// a unit test (or normal program) to check that we are not leaking memory
-  bool CheckNoSchedulingKeyEntries() const {
-    return scheduling_key_entries_.empty();
-  }
+  bool CheckNoSchedulingKeyEntries() const { return scheduling_key_entries_.empty(); }
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
