@@ -7,7 +7,7 @@ import json
 import traceback
 import copy
 import logging
-import datetime
+from datetime import datetime
 import time
 from typing import Dict
 import re
@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 PYCLASSNAME_RE = re.compile(r"(.+)\(")
 def group_actors_by_python_class(actors):
     groups = defaultdict(list)
-    for actor in actors:
+    for actor in actors.values():
         if not actor.get("actorTitle"):
             groups["Unknown Class"].append(actor)
         else:
             match = PYCLASSNAME_RE.search(actor["actorTitle"])
             if match:
-                class_name = match.groups()[1]
+                class_name = match.groups()[0]
                 groups[class_name].append(actor)
             else:
                 groups["Unknown Class"].append(actor)
@@ -34,19 +34,20 @@ def group_actors_by_python_class(actors):
 
 def get_actor_group_stats(group):
     group_stats = {}
-    state_to_count = defaultdict(0)
+    state_to_count = defaultdict(lambda: 0)
     pending_tasks = 0
     executed_tasks = 0
     min_timestamp = math.inf
     num_timestamps = 0
-    total_timestamps = 0
+    sum_timestamps = 0
+    now = datetime.now().timestamp() / 1000 # We record seconds
     for actor in group:
         state_to_count[actor["state"]] += 1
         if "timestamp" in actor:
             if actor["timestamp"] < min_timestamp:
                 min_timestamp = actor["timestamp"]
             num_timestamps += 1
-            total_timestamps += actor["timestamp"]
+            sum_timestamps += now - actor["timestamp"]
         if "pending_tasks" in actor:
             pending_tasks += actor["pending_tasks"]
         if "executed_tasks" in actor:
@@ -54,8 +55,8 @@ def get_actor_group_stats(group):
     
     return {
         "stateToCount": state_to_count,
-        "avgLifetime": total_timestamps / num_timestamps,
-        "maxLifetime": datetime.utcnow().timestamp() - min_timestamp,
+        "avgLifetime": sum_timestamps / num_timestamps if num_timestamps != 0 else 0,
+        "maxLifetime": now - min_timestamp,
         "numPendingTasks": pending_tasks,
         "numExecutedTasks": executed_tasks,
     }
@@ -102,13 +103,17 @@ class NodeStats(threading.Thread):
 
     def _insert_log_counts(self):
         for ip, logs_by_pid in self._logs.items():
-            hostname = self._ip_to_hostname[ip]
+            hostname = self._ip_to_hostname.get(ip)
+            if not hostname or not hostname in self._node_stats:
+                continue
             logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
             self._node_stats[hostname]["log_count"] = logs_by_pid
 
     def _insert_error_counts(self):
         for ip, errs_by_pid in self._errors.items():
-            hostname = self._ip_to_hostname[ip]
+            hostname = self._ip_to_hostname.get(ip)
+            if not hostname or not hostname in self._node_stats:
+                continue
             errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
             self._node_stats[hostname]["error_count"] = errs_by_pid
 
@@ -119,7 +124,7 @@ class NodeStats(threading.Thread):
 
             return True
 
-        now = to_unix_time(datetime.datetime.utcnow())
+        now = to_unix_time(datetime.utcnow())
         self._node_stats = {
             k: v
             for k, v in self._node_stats.items() if current(v["now"], now)
@@ -186,12 +191,13 @@ class NodeStats(threading.Thread):
                                          "pendingActor")
         actor_groups = group_actors_by_python_class(actors)
         stats_by_group = { name: get_actor_group_stats(group)
-         for name, group in actor_groups }
+         for name, group in actor_groups.items() }
         
+        response_data = {}
         for name, group in actor_groups.items():
-            api_data[name] = {"entries": actors,
-                              "summary": stats_by_group[group_name]}
-        return api_data
+            response_data[name] = {"entries": group,
+                              "summary": stats_by_group[name]}
+        return response_data
 
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]

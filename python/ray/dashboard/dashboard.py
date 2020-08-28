@@ -140,7 +140,7 @@ class DashboardController(BaseDashboardController):
                 for line in lines:
                     to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
-        return {"nodes": D, "actor_groups": actor_groups}
+        return {"nodes": D, "actorGroups": actor_groups}
 
     def get_ray_config(self):
         try:

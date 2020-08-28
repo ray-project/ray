@@ -4,13 +4,22 @@ import {
   Input,
   InputLabel,
   Typography,
-  Paper,
+  Box,
+  makeStyles,
+  createStyles,
+  Theme,
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from 'react-redux';
 import { useDebounce } from "use-debounce";
 import { StoreState } from "../../../store";
 import ActorClassGroups from "./ActorClassGroups";
+
+const useLogicalViewStyles = makeStyles((theme: Theme) => createStyles({
+  container: {
+    marginBottom: theme.spacing(1)
+  }
+}));
 
 const actorClassMatchesSearch = (actorClass: string, nameFilter: string): boolean => {
   const loweredNameFilter = nameFilter.toLowerCase();
@@ -23,15 +32,16 @@ const rayletInfoSelector = (state: StoreState) =>
 const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");
   const [debouncedNameFilter] = useDebounce(nameFilter, 500);
+  const classes = useLogicalViewStyles();
   const rayletInfo = useSelector(rayletInfoSelector);
-  if (rayletInfo === null) {
+  if (rayletInfo === null || !rayletInfo.actorGroups) {
     return <Typography color="textSecondary">Loading...</Typography>;
   };
   const actorGroups = debouncedNameFilter === ""
     ? Object.entries(rayletInfo.actorGroups)
     : Object.entries(rayletInfo.actorGroups).filter(([key, _]) => actorClassMatchesSearch(key, debouncedNameFilter));
   return (
-    <Paper elevation={2}>
+    <Box className={classes.container}>
       {actorGroups.length === 0 ? (
         <Typography color="textSecondary">No actors found.</Typography>
       ) : (
@@ -51,7 +61,7 @@ const LogicalView: React.FC = () => {
             <ActorClassGroups actorGroups={Object.fromEntries(actorGroups)} />
           </>
         )}
-    </Paper>
+    </Box>
   );
 };
 
