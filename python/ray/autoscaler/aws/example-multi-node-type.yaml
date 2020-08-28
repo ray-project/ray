@@ -18,16 +18,11 @@ available_node_types:
             InstanceType: m4.xlarge
         resources: {"CPU": 4}
         max_workers: 5
-    cpu_4_spot:
-        node_config:
-            InstanceType: m4.xlarge
-            InstanceMarketOptions:
-                MarketType: spot
-        resources: {"CPU": 4}
-        max_workers: 20
-    cpu_16_ondemand:
+    cpu_16_spot:
         node_config:
             InstanceType: m4.4xlarge
+            InstanceMarketOptions:
+                MarketType: spot
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
     gpu_1_ondemand:
