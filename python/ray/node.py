@@ -273,6 +273,7 @@ class Node:
         env_resources = {}
         env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
         if env_string:
+            print(f"env string {env_string}")
             env_resources = json.loads(env_string)
 
         if not self._resource_spec:
