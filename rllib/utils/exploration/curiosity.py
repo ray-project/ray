@@ -1,4 +1,5 @@
 from gym.spaces import Discrete, MultiDiscrete, Space
+import numpy as np
 from typing import Optional, Tuple, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -108,6 +109,9 @@ class Curiosity(Exploration):
         self.forward_net_hiddens = forward_net_hiddens
         self.forward_net_activation = forward_net_activation
 
+        self.action_dim = self.action_space.n if isinstance(
+            self.action_space, Discrete) else np.sum(self.action_space.nvec)
+
         self.beta = beta
         self.eta = eta
         self.lr = lr
@@ -129,10 +133,10 @@ class Curiosity(Exploration):
 
         self._curiosity_inverse_fcnet = self._create_fc_net(
             [2 * self.feature_dim] + list(self.inverse_net_hiddens) +
-            [self.action_space.n], self.inverse_net_activation)
+            [self.action_dim], self.inverse_net_activation)
 
         self._curiosity_forward_fcnet = self._create_fc_net(
-            [self.feature_dim + self.action_space.n
+            [self.feature_dim + self.action_dim
              ] + list(forward_net_hiddens) + [self.feature_dim],
             self.forward_net_activation)
 

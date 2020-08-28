@@ -202,7 +202,7 @@ class TestCuriosity(unittest.TestCase):
         min_reward = 0.1
         stop = {
             "training_iteration": 25,
-            "episode_reward_mean": 0.8, #TODO: min_reward
+            "episode_reward_mean": min_reward,
         }
         for _ in framework_iterator(config, frameworks="torch"):
             results = tune.run(
