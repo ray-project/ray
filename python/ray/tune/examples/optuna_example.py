@@ -33,7 +33,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(configure_logging=False)
+    ray.init(_configure_logging=False)
 
     space = [
         param.suggest_uniform("width", 0, 20),
