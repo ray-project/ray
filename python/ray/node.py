@@ -283,8 +283,8 @@ class Node:
             logger.info(f"Autosaler overriding resources: {env_resources}.")
 
         if not self._resource_spec:
-            num_cpus, num_gpus, memory, object_store_memory, resources = merge_resources(
-                env_resources, self._ray_params.resources)
+            num_cpus, num_gpus, memory, object_store_memory, resources = \
+                merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus
                 if num_cpus is None else num_cpus, self._ray_params.num_gpus
