@@ -22,7 +22,7 @@ matrix:
   include:
     - os: linux
       env:
-        - PYTHON=3.6 SMALL_LARGE_TESTS=1
+        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -34,7 +34,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 MED_TEST_A_TO_J=1
+        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -49,7 +49,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 MED_TEST_K_TO_Z=1
+        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -78,7 +78,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 SMALL_LARGE_TESTS=1
+        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -91,7 +91,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 MED_TEST_A_TO_J=1
+        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -107,7 +107,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 MED_TEST_K_TO_Z=1
+        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
