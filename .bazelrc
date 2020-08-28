@@ -14,7 +14,7 @@ build:macos --force_pic
 build:clang-cl --compiler=clang-cl
 build:msvc --compiler=msvc-cl
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
-# If we don't hadd them, python's `click` library will raise an error.
+# If we don't add them, python's `click` library will raise an error.
 test --action_env=LC_ALL
 test --action_env=LANG
 # some envs needed by tests in pyenv
