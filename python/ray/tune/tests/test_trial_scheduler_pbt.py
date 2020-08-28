@@ -52,7 +52,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch):
+    def synchSetup(self, synch, param=[10, 20, 30]):
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
@@ -62,7 +62,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
             hyperparam_mutations={"c": lambda: 1},
             synch=synch)
 
-        param_a = MockParam([10, 20, 30])
+        param_a = MockParam(param)
 
         random.seed(100)
         np.random.seed(100)
@@ -86,6 +86,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
+        self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
+
+    def testSynchPassLast(self):
+        analysis = self.synchSetup(True, param=[30, 20, 10])
         self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
 
 
