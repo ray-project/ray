@@ -11,7 +11,7 @@ from ray.test_utils import wait_for_condition
 from ray.serve import constants
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import format_actor_name, get_random_letters
-
+from ray.serve.config import BackendConfig
 
 def test_e2e(serve_instance):
     serve.init()
@@ -261,7 +261,7 @@ def test_updating_config(serve_instance):
     old_replica_tag_list = ray.get(
         controller._list_replicas.remote("bsimple:v1"))
 
-    serve.update_backend_config("bsimple:v1", {"max_batch_size": 5})
+    serve.update_backend_config("bsimple:v1", BackendConfig(max_batch_size=5))
     new_replica_tag_list = ray.get(
         controller._list_replicas.remote("bsimple:v1"))
     new_all_tag_list = []

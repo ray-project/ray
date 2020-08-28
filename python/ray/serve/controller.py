@@ -3,6 +3,8 @@ from collections import defaultdict, namedtuple
 import os
 import random
 import time
+from typing import Union, Dict, Any
+from pydantic import BaseModel
 
 import ray
 import ray.cloudpickle as pickle
@@ -14,6 +16,7 @@ from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
+from ray.serve.config import BackendConfig, ReplicaConfig
 
 import numpy as np
 
@@ -58,10 +61,17 @@ class TrafficPolicy:
         else:
             self.shadow_dict[backend] = proportion
 
+class BackendInfo(BaseModel):
+    # TODO(architkulkarni): Add type hint for worker_class after upgrading 
+    # cloudpickle and adding types to RayServeWrappedWorker
+    worker_class: Any
+    backend_config: BackendConfig
+    replica_config: ReplicaConfig
 
-BackendInfo = namedtuple("BackendInfo",
-                         ["worker_class", "backend_config", "replica_config"])
-
+    class Config:
+        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
+        # model
+        arbitrary_types_allowed = True
 
 @ray.remote
 class ServeController:
@@ -723,7 +733,8 @@ class ServeController:
             ])
             await self._remove_pending_endpoints()
 
-    async def create_backend(self, backend_tag: str, backend_config: BackendConfig,
+    async def create_backend(self, backend_tag: str,
+                             backend_config: BackendConfig,
                              replica_config: ReplicaConfig):
         """Register a new backend under the specified tag."""
         async with self.write_lock:
@@ -740,7 +751,8 @@ class ServeController:
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
             self.backends[backend_tag] = BackendInfo(
-                backend_worker, backend_config, replica_config)
+                worker_class=backend_worker, backend_config=backend_config,
+                replica_config=replica_config)
             if backend_config.autoscaling_config is not None:
                 self.autoscaling_policies[
                     backend_tag] = BasicAutoscalingPolicy(
@@ -801,12 +813,15 @@ class ServeController:
             await self._stop_pending_replicas()
             await self._remove_pending_backends()
 
-    async def update_backend_config(self, backend_tag, config_options: Union[BackendConfig, Dict[str, Any]]):
+    async def update_backend_config(
+            self, backend_tag,
+            config_options: Union[BackendConfig, Dict[str, Any]]):
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (backend_tag in self.backends
                     ), "Backend {} is not registered.".format(backend_tag)
-            assert isinstance(config_options, BackendConfig) or isinstance(config_options, dict)
+            assert isinstance(config_options, BackendConfig) or isinstance(
+                config_options, dict)
 
             if isinstance(config_options, BackendConfig):
                 update_data = config_options.dict(exclude_unset=True)

@@ -200,8 +200,9 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
 
 
 @_ensure_connected
-def update_backend_config(backend_tag: str,
-                          config_options: Union[Backend, Dict[str, Any]]) -> None:
+def update_backend_config(
+        backend_tag: str,
+        config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -221,8 +222,8 @@ def update_backend_config(backend_tag: str,
             that will be sent to a replica of this backend
             without receiving a response.
     """
-    # TODO(architkulkarni): put BackendConfig copy/update logic here
-    if not isinstance(config_options, BackendConfig) or not isinstance(
+    
+    if not isinstance(config_options, BackendConfig) and not isinstance(
             config_options, dict):
         raise TypeError(
             "config_options must be a BackendConfig or dictionary.")
@@ -241,11 +242,12 @@ def get_backend_config(backend_tag: str):
 
 
 @_ensure_connected
-def create_backend(backend_tag: str,
-                   func_or_class: Union[Callable, Type[Callable]],
-                   *actor_init_args: Any,
-                   ray_actor_options: Optional[Dict] = None,
-                   config: Union[BackendConfig, Optional[Dict[str, Any]]] = None) -> None:
+def create_backend(
+        backend_tag: str,
+        func_or_class: Union[Callable, Type[Callable]],
+        *actor_init_args: Any,
+        ray_actor_options: Optional[Dict] = None,
+        config: Union[BackendConfig, Optional[Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
