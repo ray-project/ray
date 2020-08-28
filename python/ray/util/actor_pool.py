@@ -54,7 +54,7 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> results = pool.map(lambda a, v: a.double.remote(v),
+            >>> results = pool.map(lambda a, v: a.double.remote(v),\
             ...                    [1, 2, 3, 4])
             >>> for r in results:
             ...     print(r)
@@ -84,7 +84,7 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> results = pool.map_unordered(lambda a, v: a.double.remote(v),
+            >>> results = pool.map_unordered(lambda a, v: a.double.remote(v),\
             ...                              [1, 2, 3, 4])
             >>> for r in results:
             ...     print(r)
