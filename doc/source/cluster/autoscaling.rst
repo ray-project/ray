@@ -58,7 +58,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
                 InstanceType: m4.4xlarge
                 InstanceMarketOptions:
                     MarketType: spot
-            resources: {"CPU": 16, "Custom1": 1}
+            resources: {"CPU": 16, "Custom1": 1, "is_spot": 1}
             max_workers: 10
         gpu_1_ondemand:
             node_config:
