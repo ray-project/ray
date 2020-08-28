@@ -66,6 +66,11 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
+# Location of the cpp default worker executables.
+DEFAULT_WORKER_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+
 DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
@@ -1374,6 +1379,19 @@ def start_raylet(redis_address,
     else:
         java_worker_command = []
 
+    if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
+        cpp_worker_command = build_cpp_worker_command(
+            "",
+            redis_address,
+            node_manager_port,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+        )
+    else:
+        cpp_worker_command = []
+
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
         sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
@@ -1438,6 +1456,7 @@ def start_raylet(redis_address,
         f"--config_list={config_str}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
+        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1557,6 +1576,36 @@ def build_java_worker_command(
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+
+    return command
+
+
+def build_cpp_worker_command(
+        cpp_worker_options,
+        redis_address,
+        node_manager_port,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+        session_dir,
+):
+    """This method assembles the command used to start a CPP worker.
+
+    Args:
+        cpp_worker_options (list): The command options for CPP worker.
+        redis_address (str): Redis address of GCS.
+        plasma_store_name (str): The name of the plasma store socket to connect
+           to.
+        raylet_name (str): The name of the raylet socket to create.
+        redis_password (str): The password of connect to redis.
+        session_dir (str): The path of this session.
+    Returns:
+        The command string for starting CPP worker.
+    """
+    command = [
+        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
+        str(node_manager_port), redis_password, session_dir
+    ]
 
     return command
 

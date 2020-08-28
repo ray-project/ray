@@ -333,13 +333,13 @@ matrix:
       env:
         - TESTSUITE=cpp_worker
         - PYTHON=3.6
+        - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init
       before_script:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_cpp
-
 script:
   # raylet integration tests (core_worker_tests included in bazel tests below)
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
