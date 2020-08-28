@@ -492,6 +492,7 @@ class PopulationBasedTraining(FIFOScheduler):
                                       self._hyperparam_mutations)
         if trial.status == Trial.PAUSED:
             # If trial is paused we update it with a new checkpoint.
+            # When the trial is started again, the new checkpoint is used.
             if not self._synch:
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
