@@ -5,7 +5,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.id.ActorId;
 import java.util.ArrayList;
 import java.util.List;
@@ -143,7 +142,7 @@ public class MultiThreadingTest extends BaseTest {
     final ActorHandle<Echo> fooActor = Ray.actor(Echo::new).remote();
     return new Runnable[]{
         () -> Ray.put(1),
-        () -> Ray.get(fooObject.getId(), fooObject.getType()),
+        () -> Ray.get(ImmutableList.of(fooObject)),
         fooObject::get,
         () -> Ray.wait(ImmutableList.of(fooObject)),
         Ray::getRuntimeContext,
@@ -189,7 +188,7 @@ public class MultiThreadingTest extends BaseTest {
         try {
           // It wouldn't be OK to run them in another thread if not wrapped the runnable.
           for (Runnable runnable : runnables) {
-            Assert.expectThrows(RayException.class, runnable::run);
+            Assert.expectThrows(RuntimeException.class, runnable::run);
           }
         } catch (Throwable ex) {
           throwable[0] = ex;

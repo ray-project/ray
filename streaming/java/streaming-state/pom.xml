@@ -5,12 +5,13 @@
     <parent>
         <artifactId>ray-streaming</artifactId>
         <groupId>io.ray</groupId>
-        <version>0.1-SNAPSHOT</version>
+        <version>0.9.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.ray</groupId>
     <artifactId>streaming-state</artifactId>
+    <name>ray streaming state</name>
+    <description>ray streaming state</description>
 
     <dependencyManagement>
         <dependencies>

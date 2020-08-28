@@ -30,6 +30,8 @@
 #include <unistd.h>
 #endif
 
+#include <string.h>
+
 #include <algorithm>
 #include <atomic>
 #include <fstream>
@@ -38,9 +40,42 @@
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
+#ifdef __APPLE__
+extern char **environ;
+
+// macOS dosn't come with execvpe.
+// https://stackoverflow.com/questions/7789750/execve-with-path-search
+int execvpe(const char *program, char *const argv[], char *const envp[]) {
+  char **saved = environ;
+  int rc;
+  environ = const_cast<char **>(envp);
+  rc = execvp(program, argv);
+  environ = saved;
+  return rc;
+}
+#endif
+
 namespace ray {
+
+bool EnvironmentVariableLess::operator()(char a, char b) const {
+  // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
+  // It should be changed when Process adds Unicode support on Windows.
+  return std::less<char>()(tolower(a), tolower(b));
+}
+
+bool EnvironmentVariableLess::operator()(const std::string &a,
+                                         const std::string &b) const {
+  bool result;
+#ifdef _WIN32
+  result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
+#else
+  result = a < b;
+#endif
+  return result;
+}
 
 class ProcessFD {
   pid_t pid_;
@@ -60,11 +95,27 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvp(const char *argv[], std::error_code &ec, bool decouple) {
+  static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
+                            const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
+    ProcessEnvironment new_env;
+    for (char *const *e = environ; *e; ++e) {
+      RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+      const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
+      RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+      new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
+    }
+    for (const auto &item : env) {
+      new_env[item.first] = item.second;
+    }
+    std::string new_env_block;
+    for (const auto &item : new_env) {
+      new_env_block += item.first + '=' + item.second + '\0';
+    }
 #ifdef _WIN32
+
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
     for (size_t i = 0; argv[i]; ++i) {
@@ -86,7 +137,10 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        RAY_UNUSED(
+            new_env_block.c_str());  // Ensure there's a final terminator for Windows
+        char *const envp = &new_env_block[0];
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
           break;
         }
@@ -102,6 +156,13 @@ class ProcessFD {
       pid = -1;
     }
 #else
+    std::vector<char *> new_env_ptrs;
+    for (size_t i = 0; i < new_env_block.size(); i += strlen(&new_env_block[i]) + 1) {
+      new_env_ptrs.push_back(&new_env_block[i]);
+    }
+    new_env_ptrs.push_back(static_cast<char *>(NULL));
+    char **envp = &new_env_ptrs[0];
+
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
     int pipefds[2];  // Create pipe to get PID & track lifetime
@@ -127,7 +188,8 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvp(argv[0], const_cast<char *const *>(argv));
+        execvpe(argv[0], const_cast<char *const *>(argv),
+                const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -274,23 +336,24 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec,
-                 bool decouple) {
+Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
+                 const ProcessEnvironment &env) {
   (void)io_service;
-  ProcessFD procfd = ProcessFD::spawnvp(argv, ec, decouple);
+  ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
 }
 
-std::error_code Process::Call(const std::vector<std::string> &args) {
+std::error_code Process::Call(const std::vector<std::string> &args,
+                              const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), NULL, ec, true);
+  Process proc(&*argv.begin(), NULL, ec, true, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
@@ -322,14 +385,15 @@ bool Process::IsValid() const { return GetId() != -1; }
 
 std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
                                                    bool decouple,
-                                                   const std::string &pid_file) {
+                                                   const std::string &pid_file,
+                                                   const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple);
+  Process proc(&*argv.begin(), NULL, error, decouple, env);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
     file << proc.GetId() << std::endl;

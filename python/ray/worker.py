@@ -20,6 +20,7 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
+import ray.job_config
 import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
@@ -52,6 +53,7 @@ from ray.utils import (_random_string, check_oversized_pickle, is_cython,
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
+IO_WORKER_MODE = 3
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -105,7 +107,6 @@ class Worker:
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
-        self.actor_task_counter = 0
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -294,8 +295,8 @@ class Worker:
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
-                    "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectRef.".format(object_ref))
+                    f"Attempting to call `get` on the value {object_ref}, "
+                    "which is not an ray.ObjectRef.")
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
@@ -372,7 +373,7 @@ class Worker:
         sys.exit(0)
 
 
-def get_gpu_ids():
+def get_gpu_ids(as_str=False):
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -383,12 +384,17 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
+    worker = global_worker
+    worker.check_connected()
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = [
-        resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
-    ]
+    assigned_ids = []
+    for resource, assignment in all_resource_ids.items():
+        # Handle both normal and placement group GPU resources.
+        if resource == "GPU" or resource.startswith("GPU_group_"):
+            for resource_id, _ in assignment:
+                assigned_ids.append(resource_id)
     # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
     # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
     # returned).
@@ -399,7 +405,17 @@ def get_gpu_ids():
         # Give all GPUs in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_gpus = global_worker.node.get_resource_spec().num_gpus
-            return global_worker.original_gpu_ids[:max_gpus]
+            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
+
+    if not as_str:
+        from ray.util.debug import log_once
+        if log_once("ray.get_gpu_ids.as_str"):
+            logger.warning(
+                "ray.get_gpu_ids() will return a list of strings by default"
+                " in a future version of Ray for compatibility with CUDA. "
+                "To enable the forward-compatible behavior, use "
+                "`ray.get_gpu_ids(as_str=True)`.")
+        assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
 
     return assigned_ids
 
@@ -412,6 +428,9 @@ def get_resource_ids():
         each pair consists of the ID of a resource and the fraction of that
         resource reserved for this worker.
     """
+    worker = global_worker
+    worker.check_connected()
+
     if _mode() == LOCAL_MODE:
         raise RuntimeError("ray.get_resource_ids() currently does not work in "
                            "local_mode.")
@@ -427,8 +446,8 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
-    if _global_node is None:
-        raise RuntimeError("Ray has not been initialized/connected.")
+    worker = global_worker
+    worker.check_connected()
     return _global_node.webui_url
 
 
@@ -450,13 +469,12 @@ def print_failed_task(task_status):
         task_status (Dict): A dictionary containing the name, operationid, and
             error message for a failed task.
     """
-    logger.error("""
+    logger.error(f"""
       Error: Task failed
-        Function Name: {}
-        Task ID: {}
-        Error Message: \n{}
-    """.format(task_status["function_name"], task_status["operationid"],
-               task_status["error_message"]))
+        Function Name: {task_status["function_name"]}
+        Task ID: {task_status["operationid"]}
+        Error Message: \n{task_status["error_message"]}
+    """)
 
 
 def init(address=None,
@@ -483,9 +501,10 @@ def init(address=None,
          huge_pages=False,
          include_java=False,
          include_dashboard=None,
-         dashboard_host="localhost",
+         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
          dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
+         job_config=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
@@ -495,9 +514,11 @@ def init(address=None,
          load_code_from_local=False,
          java_worker_options=None,
          use_pickle=True,
-         _internal_config=None,
+         _system_config=None,
          lru_evict=False,
-         enable_object_reconstruction=False):
+         enable_object_reconstruction=False,
+         _metrics_export_port=None,
+         object_spilling_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -588,6 +609,7 @@ def init(address=None,
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_id: The ID of this job.
+        job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
@@ -608,8 +630,9 @@ def init(address=None,
             module or from the GCS.
         java_worker_options: Overwrite the options to start Java workers.
         use_pickle: Deprecated.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
+        _system_config (dict): Configuration for overriding RayConfig
+            defaults. Used to set system configuration and for experimental Ray
+            core feature flags.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.UnreconstructableError may be thrown. If False, then
@@ -622,6 +645,11 @@ def init(address=None,
             created the object. Arguments to the task will be recursively
             reconstructed. If False, then ray.UnreconstructableError will be
             thrown.
+        _metrics_export_port(int): Port number Ray exposes system metrics
+            through a Prometheus endpoint. It is currently under active
+            development, and the API is subject to change.
+        object_spilling_config (str): The configuration json string for object
+            spilling I/O worker.
 
     Returns:
         Address information about the started processes.
@@ -678,8 +706,9 @@ def init(address=None,
 
     raylet_ip_address = node_ip_address
 
-    _internal_config = (json.loads(_internal_config)
-                        if _internal_config else {})
+    _system_config = _system_config or {}
+    if not isinstance(_system_config, dict):
+        raise TypeError("The _system_config must be a dict.")
 
     global _global_node
     if redis_address is None:
@@ -713,9 +742,12 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
-            _internal_config=_internal_config,
+            start_initial_python_workers_for_first_job=True,
+            _system_config=_system_config,
             lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction)
+            enable_object_reconstruction=enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port,
+            object_spilling_config=object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -767,9 +799,9 @@ def init(address=None,
         if java_worker_options is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "java_worker_options must not be provided.")
-        if _internal_config is not None and len(_internal_config) != 0:
+        if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
+                             "_system_config must not be provided.")
         if lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "lru_evict must not be provided.")
@@ -787,9 +819,10 @@ def init(address=None,
             object_ref_seed=object_ref_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction)
+            enable_object_reconstruction=enable_object_reconstruction,
+            metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
             head=False,
@@ -803,7 +836,8 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        job_config=job_config)
 
     for hook in _post_init_hooks:
         hook()
@@ -926,7 +960,7 @@ def _set_log_file(file_name, worker_pid, old_obj, setter_func):
     # and stderr are heavily buffered resulting in seemingly lost logging
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
-    setter_func(open_log(fileno, closefd=False))
+    setter_func(open_log(fileno, unbuffered=True, closefd=False))
 
     return os.path.abspath(f.name)
 
@@ -1009,6 +1043,8 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
 
+            print_file = sys.stderr if data["is_err"] else sys.stdout
+
             def color_for(data):
                 if data["pid"] == "raylet":
                     return colorama.Fore.YELLOW
@@ -1017,17 +1053,21 @@ def print_logs(redis_client, threads_stopped, job_id):
 
             if data["ip"] == localhost:
                 for line in data["lines"]:
-                    print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            colorama.Style.RESET_ALL, line),
+                        file=print_file)
             else:
                 for line in data["lines"]:
-                    print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, color_for(data), data["pid"],
-                        data["ip"], colorama.Style.RESET_ALL, line))
+                    print(
+                        "{}{}(pid={}, ip={}){} {}".format(
+                            colorama.Style.DIM, color_for(data), data["pid"],
+                            data["ip"], colorama.Style.RESET_ALL, line),
+                        file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("print_logs: {}".format(e))
+        logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1062,10 +1102,9 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             if threads_stopped.is_set():
                 break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-            logger.debug("Suppressing error from worker: {}".format(error))
+            logger.debug(f"Suppressing error from worker: {error}")
         else:
-            logger.error(
-                "Possible unhandled error from worker: {}".format(error))
+            logger.error(f"Possible unhandled error from worker: {error}")
 
 
 def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
@@ -1089,16 +1128,11 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = str(
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")).encode("ascii")
-    worker.error_message_pubsub_client.subscribe(error_pubsub_channel)
-    # worker.error_message_pubsub_client.psubscribe("*")
+    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
         # Get the errors that occurred before the call to subscribe.
-        error_messages = ray.errors()
-        for error_message in error_messages:
-            logger.error(error_message)
 
         while True:
             # Exit if we received a signal that we should stop.
@@ -1109,10 +1143,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            gcs_entry = ray.gcs_utils.GcsEntry.FromString(msg["data"])
-            assert len(gcs_entry.entries) == 1
+            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
             error_data = ray.gcs_utils.ErrorTableData.FromString(
-                gcs_entry.entries[0])
+                pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1127,7 +1160,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("listen_error_messages_raylet: {}".format(e))
+        logger.error(f"listen_error_messages_raylet: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1147,7 +1180,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            job_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1160,6 +1194,7 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        job_config (ray.job_config.JobConfig): The job configuration.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1180,7 +1215,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode is WORKER_MODE:
+    if mode in (WORKER_MODE, IO_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1234,7 +1269,7 @@ def connect(node,
         import __main__ as main
         driver_name = (main.__file__
                        if hasattr(main, "__file__") else "INTERACTIVE MODE")
-    elif mode == WORKER_MODE:
+    elif mode == WORKER_MODE or mode == IO_WORKER_MODE:
         # Check the RedirectOutput key in Redis and based on its value redirect
         # worker output and error to their own files.
         # This key is set in services.py when Redis is started.
@@ -1265,22 +1300,15 @@ def connect(node,
         int(redis_port),
         node.redis_password,
     )
-
+    if job_config is None:
+        job_config = ray.job_config.JobConfig()
+    serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
-        (mode == SCRIPT_MODE or mode == LOCAL_MODE),
-        node.plasma_store_socket_name,
-        node.raylet_socket_name,
-        job_id,
-        gcs_options,
-        node.get_logs_dir_path(),
-        node.node_ip_address,
-        node.node_manager_port,
-        node.raylet_ip_address,
-        (mode == LOCAL_MODE),
-        driver_name,
-        log_stdout_file_path,
-        log_stderr_file_path,
-    )
+        mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
+        gcs_options, node.get_logs_dir_path(), node.node_ip_address,
+        node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
+        driver_name, log_stdout_file_path, log_stderr_file_path,
+        serialized_job_config, node.metrics_agent_port)
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1290,7 +1318,7 @@ def connect(node,
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
-            "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
+            f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -1456,8 +1484,8 @@ def show_in_webui(message, key="", dtype="text"):
     worker.check_connected()
 
     acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
-        acceptable_dtypes)
+    assert dtype in acceptable_dtypes, (
+        f"dtype accepts only: {acceptable_dtypes}")
 
     message_wrapped = {"message": message, "dtype": dtype}
     message_encoded = json.dumps(message_wrapped).encode()
@@ -1608,6 +1636,7 @@ def wait(object_refs, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+    worker.check_connected()
 
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
@@ -1625,18 +1654,17 @@ def wait(object_refs, num_returns=1, timeout=None):
             "ray.ObjectRef")
 
     if not isinstance(object_refs, list):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got {}".format(
-                type(object_refs)))
+        raise TypeError("wait() expected a list of ray.ObjectRef, "
+                        f"got {type(object_refs)}")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
-                         "Received {}".format(timeout))
+                         f"Received {timeout}")
 
     for object_ref in object_refs:
         if not isinstance(object_ref, ObjectRef):
             raise TypeError("wait() expected a list of ray.ObjectRef, "
-                            "got list containing {}".format(type(object_ref)))
+                            f"got list containing {type(object_ref)}")
 
     worker.check_connected()
     # TODO(swang): Check main thread.
@@ -1680,6 +1708,9 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    worker = global_worker
+    worker.check_connected()
+
     return ray.util.named_actors._get_actor(name)
 
 
@@ -1701,11 +1732,11 @@ def kill(actor, no_restart=True):
         no_restart (bool): Whether or not this actor should be restarted if
             it's a restartable actor.
     """
+    worker = global_worker
+    worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
-    worker = ray.worker.global_worker
-    worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
@@ -1737,7 +1768,7 @@ def cancel(object_ref, force=False):
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            "Got: {}.".format(type(object_ref)))
+            f"Got: {type(object_ref)}.")
     return worker.core_worker.cancel_task(object_ref, force)
 
 
@@ -1762,7 +1793,9 @@ def make_decorator(num_return_vals=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None):
+                   worker=None,
+                   placement_group=None,
+                   placement_group_bundle_index=-1):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1777,7 +1810,8 @@ def make_decorator(num_return_vals=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries)
+                max_calls, max_retries, placement_group,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1848,6 +1882,11 @@ def remote(*args, **kwargs):
       number of times that the remote function should be rerun when the worker
       process executing it crashes unexpectedly. The minimum valid value is 0,
       the default is 4 (default), and a value of -1 indicates infinite retries.
+    * **placement_group**: the placement group this task belongs to,
+        or None if it doesn't belong to any group.
+    * **placement_group_bundle_index**: the index of the bundle
+        if the task belongs to a placement group, which may be -1 to indicate
+        any available bundle.
 
     This can be done as follows:
 
@@ -1912,6 +1951,8 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
+            "placement_group",
+            "placement_group_bundle_index",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1919,8 +1960,7 @@ def remote(*args, **kwargs):
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
-                        "dictionary, but received type {}.".format(
-                            type(resources)))
+                        f"dictionary, but received type {type(resources)}.")
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."

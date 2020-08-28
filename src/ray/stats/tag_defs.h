@@ -20,6 +20,8 @@
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
 
+static const TagKeyType ComponentKey = TagKeyType::Register("Component");
+
 static const TagKeyType JobNameKey = TagKeyType::Register("JobName");
 
 static const TagKeyType CustomKey = TagKeyType::Register("CustomKey");
@@ -35,7 +37,5 @@ static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
 static const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
 
 static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
-
-static const TagKeyType ValueTypeKey = TagKeyType::Register("ValueType");
 
 static const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");

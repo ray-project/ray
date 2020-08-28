@@ -13,7 +13,7 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, LEARNER_INFO, \
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.types import PolicyID, SampleBatchType, ModelGradients
+from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
 logger = logging.getLogger(__name__)
 

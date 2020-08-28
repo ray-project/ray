@@ -4,45 +4,10 @@ import {
   Grid,
   makeStyles,
   Theme,
-  Tooltip,
 } from "@material-ui/core";
 import React from "react";
 import { ActorState, InvalidStateType } from "../../../api";
-
-type LabeledDatumProps = {
-  label: string;
-  datum: any;
-  tooltip?: string;
-};
-
-const useLabeledDatumStyles = makeStyles({
-  label: {
-    textDecorationLine: "underline",
-    textDecorationColor: "#a6c3e3",
-    textDecorationThickness: "1px",
-    textDecorationStyle: "dotted",
-    cursor: "help",
-  },
-});
-
-const LabeledDatum: React.FC<LabeledDatumProps> = ({
-  label,
-  datum,
-  tooltip,
-}) => {
-  const classes = useLabeledDatumStyles();
-  const innerHtml = (
-    <Grid container item xs={6}>
-      <Grid item xs={6}>
-        <span className={classes.label}>{label}</span>
-      </Grid>
-      <Grid item xs={6}>
-        <span>{datum}</span>
-      </Grid>
-    </Grid>
-  );
-  return tooltip ? <Tooltip title={tooltip}>{innerHtml}</Tooltip> : innerHtml;
-};
+import LabeledDatum from "../../../common/LabeledDatum";
 
 type ActorStateReprProps = {
   state: ActorState;
@@ -77,18 +42,28 @@ const actorStateReprStyles = makeStyles((theme: Theme) =>
 
 const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, ist }) => {
   const classes = actorStateReprStyles();
-  const { Alive, Dead, Creating, Restarting, Invalid } = ActorState;
+  const {
+    Alive,
+    Dead,
+    PendingCreation,
+    Restarting,
+    DependenciesUnready,
+    Invalid,
+  } = ActorState;
   switch (state) {
     case Invalid:
+      console.log(ist);
       if (ist === "infeasibleActor") {
         return <div className={classes.infeasible}>Infeasible</div>;
       }
       if (ist === "pendingActor") {
-        return <div className={classes.pending}>Pending Resources</div>;
+        return <div className={classes.pending}>Pending</div>;
       }
       return <div className={classes.unknown}>Unknown</div>;
-    case Creating:
+    case PendingCreation:
       return <div className={classes.creating}>Creating</div>;
+    case DependenciesUnready:
+      return <div className={classes.creating}>Dependencies Unready</div>;
     case Alive:
       return <div className={classes.alive}>Alive</div>;
     case Restarting:

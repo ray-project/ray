@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 
@@ -80,9 +79,6 @@ class Cluster:
             "min_worker_port": 0,
             "max_worker_port": 0,
         }
-        if "_internal_config" in node_args:
-            node_args["_internal_config"] = json.loads(
-                node_args["_internal_config"])
         ray_params = ray.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
@@ -203,8 +199,8 @@ class Cluster:
                 return
             else:
                 logger.debug(
-                    "{} nodes are currently registered, but we are expecting "
-                    "{}".format(len(live_clients), expected))
+                    f"{len(live_clients)} nodes are currently registered, "
+                    f"but we are expecting {expected}")
                 time.sleep(0.1)
         raise TimeoutError("Timed out while waiting for nodes to join.")
 

@@ -22,13 +22,14 @@
 # (problems: 10min timeout, not respecting ray/ci/keep_alive.sh, or even
 # `travis_wait n`, etc..).
 
-# Our travis.yml file executes all these tests in 6 different jobs, which are:
+# Our travis.yml file executes all these tests in 7 different jobs, which are:
 # 1) everything in a) using tf2.x
 # 2) everything in a) using tf1.x
-# 3) everything in b) c) d) and e)
-# 4) everything in g)
-# 5) f), BUT only those tagged `tests_dir_A` to `tests_dir_L`
-# 6) f), BUT only those tagged `tests_dir_M` to `tests_dir_Z`
+# 3) everything in a) using torch
+# 4) everything in b) c) d) and e)
+# 5) everything in g)
+# 6) f), BUT only those tagged `tests_dir_A` to `tests_dir_[some letter]`
+# 7) f), BUT only those tagged `tests_dir_[some letter]` to `tests_dir_Z`
 
 
 # --------------------------------------------------------------------
@@ -389,13 +390,13 @@ py_test(
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
 
-# APEXTrainer (DQN)
-py_test(
-    name = "test_apex_dqn",
-    tags = ["agents_dir"],
-    size = "large",
-    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
-)
+## APEXTrainer (DQN)
+#py_test(
+#    name = "test_apex_dqn",
+#    tags = ["agents_dir"],
+#    size = "large",
+#    srcs = ["agents/dqn/tests/test_apex_dqn.py"]
+#)
 
 # APEXDDPGTrainer
 py_test(
@@ -479,7 +480,7 @@ py_test(
 py_test(
     name = "test_maml",
     tags = ["agents_dir"],
-    size = "small",
+    size = "medium",
     srcs = ["agents/maml/tests/test_maml.py"]
 )
 
@@ -1024,6 +1025,22 @@ py_test(
     srcs = ["models/tests/test_attention_nets.py"]
 )
 
+
+# --------------------------------------------------------------------
+# Evaluation components
+# rllib/evaluation/
+#
+# Tag: evaluation
+# --------------------------------------------------------------------
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
+
+
 # --------------------------------------------------------------------
 # Optimizers and Memories
 # rllib/execution/
@@ -1065,6 +1082,13 @@ py_test(
 #
 # Tag: utils
 # --------------------------------------------------------------------
+
+py_test(
+    name = "test_curiosity",
+    tags = ["utils"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
 
 py_test(
     name = "test_explorations",
@@ -1224,12 +1248,12 @@ py_test(
     srcs = ["tests/test_filters.py"]
 )
 
-py_test(
-    name = "tests/test_ignore_worker_failure",
-    tags = ["tests_dir", "tests_dir_I"],
-    size = "large",
-    srcs = ["tests/test_ignore_worker_failure.py"]
-)
+#py_test(
+#    name = "tests/test_ignore_worker_failure",
+#    tags = ["tests_dir", "tests_dir_I"],
+#    size = "large",
+#    srcs = ["tests/test_ignore_worker_failure.py"]
+#)
 
 py_test(
     name = "tests/test_io",
@@ -1296,13 +1320,27 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
+# Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout",
+    name = "test_rollout_no_learning",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     data = ["train.py", "rollout.py"],
-    srcs = ["tests/test_rollout.py"]
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple"]
+)
+
+# Test train/rollout scripts (and confirm `rllib rollout` performance is same
+# as the final one from the `rllib train` run).
+py_test(
+    name = "test_rollout_w_learning",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutLearntPolicy"]
 )
 
 py_test(
@@ -1321,14 +1359,14 @@ py_test(
     args = ["TestSupportedMultiAgentPG"]
 )
 
-py_test(
-    name = "tests/test_supported_multi_agent_off_policy",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["tests_dir", "tests_dir_S"],
-    size = "medium",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentOffPolicy"]
-)
+#py_test(
+#    name = "tests/test_supported_multi_agent_off_policy",
+#    main = "tests/test_supported_multi_agent.py",
+#    tags = ["tests_dir", "tests_dir_S"],
+#    size = "medium",
+#    srcs = ["tests/test_supported_multi_agent.py"],
+#    args = ["TestSupportedMultiAgentOffPolicy"]
+#)
 
 py_test(
     name = "tests/test_supported_spaces_pg",
@@ -1445,7 +1483,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1454,7 +1492,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_torch",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--torch", "--run=DDPG", "--stop-iters=1"]
 )

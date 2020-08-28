@@ -51,7 +51,7 @@ public abstract class BaseMultiLanguageTest {
     }
   }
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass(alwaysRun = true, inheritGroups = false)
   public void setUp() {
     // Delete existing socket files.
     for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
@@ -84,7 +84,7 @@ public abstract class BaseMultiLanguageTest {
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions,
-        "--internal-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
+        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
@@ -106,7 +106,7 @@ public abstract class BaseMultiLanguageTest {
     return ImmutableMap.of();
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterClass(alwaysRun = true, inheritGroups = false)
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();

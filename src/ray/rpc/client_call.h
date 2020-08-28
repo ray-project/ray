@@ -15,9 +15,10 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
-#include "absl/synchronization/mutex.h"
 
+#include <boost/asio.hpp>
+
+#include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 

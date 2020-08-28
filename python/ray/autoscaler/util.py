@@ -9,7 +9,7 @@ from typing import Any, Dict
 import ray
 import ray.services as services
 from ray.autoscaler.node_provider import get_default_config
-from ray.autoscaler.docker import dockerize_if_needed
+from ray.autoscaler.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -56,13 +56,41 @@ def validate_config(config: Dict[str, Any]) -> None:
     try:
         jsonschema.validate(config, schema)
     except jsonschema.ValidationError as e:
-        raise jsonschema.ValidationError(message=e.message) from None
+        raise e from None
+
+    # Detect out of date defaults. This happens when the autoscaler that filled
+    # out the default values is older than the version of the autoscaler that
+    # is running on the cluster.
+    if "cluster_synced_files" not in config:
+        raise RuntimeError(
+            "Missing 'cluster_synced_files' field in the cluster "
+            "configuration. This is likely due to the Ray version running "
+            "in the cluster {ray_version} is greater than the Ray version "
+            "running on your laptop. Please try updating Ray on your local "
+            "machine and make sure the versions match.".format(
+                ray_version=ray.__version__))
+
+    if "available_node_types" in config:
+        if "head_node_type" not in config:
+            raise ValueError(
+                "You must specify `head_node_type` if `available_node_types "
+                "is set.")
+        if config["head_node_type"] not in config["available_node_types"]:
+            raise ValueError(
+                "`head_node_type` must be one of `available_node_types`.")
+        if "worker_default_node_type" not in config:
+            raise ValueError("You must specify `worker_default_node_type` if "
+                             "`available_node_types is set.")
+        if (config["worker_default_node_type"] not in config[
+                "available_node_types"]):
+            raise ValueError("`worker_default_node_type` must be one of "
+                             "`available_node_types`.")
 
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
-    dockerize_if_needed(with_defaults)
+    validate_docker_config(with_defaults)
     return with_defaults
 
 
@@ -91,8 +119,17 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
+    # For hashing, we replace the path to the key with the
+    # key itself. This is to make sure the hashes are the
+    # same even if keys live at different locations on different
+    # machines.
+    full_auth = auth.copy()
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        if key_type in auth:
+            with open(os.path.expanduser(auth[key_type])) as key:
+                full_auth[key_type] = key.read()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 
@@ -103,6 +140,7 @@ _hash_cache = {}
 
 
 def hash_runtime_conf(file_mounts,
+                      cluster_synced_files,
                       extra_objs,
                       generate_file_mounts_contents_hash=False):
     """Returns two hashes, a runtime hash and file_mounts_content hash.
@@ -111,20 +149,22 @@ def hash_runtime_conf(file_mounts,
     contents have changed. It is used at launch time (ray up) to determine if
     a restart is needed.
 
-    The file_mounts_content hash is used to determine if the file_mounts
-    contents have changed. It is used at monitor time to determine if
-    additional file syncing is needed.
+    The file_mounts_content hash is used to determine if the file_mounts or
+    cluster_synced_files contents have changed. It is used at monitor time to
+    determine if additional file syncing is needed.
     """
     runtime_hasher = hashlib.sha1()
     contents_hasher = hashlib.sha1()
 
-    def add_content_hashes(path):
+    def add_content_hashes(path, allow_non_existing_paths: bool = False):
         def add_hash_of_file(fpath):
             with open(fpath, "rb") as f:
                 for chunk in iter(lambda: f.read(2**20), b""):
                     contents_hasher.update(chunk)
 
         path = os.path.expanduser(path)
+        if allow_non_existing_paths and not os.path.exists(path):
+            return
         if os.path.isdir(path):
             dirs = []
             for dirpath, _, filenames in os.walk(path):
@@ -146,15 +186,28 @@ def hash_runtime_conf(file_mounts,
     if conf_str not in _hash_cache or generate_file_mounts_contents_hash:
         for local_path in sorted(file_mounts.values()):
             add_content_hashes(local_path)
-        contents_hash = contents_hasher.hexdigest()
+        head_node_contents_hash = contents_hasher.hexdigest()
 
         # Generate a new runtime_hash if its not cached
+        # The runtime hash does not depend on the cluster_synced_files hash
+        # because we do not want to restart nodes only if cluster_synced_files
+        # contents have changed.
         if conf_str not in _hash_cache:
             runtime_hasher.update(conf_str)
-            runtime_hasher.update(contents_hash.encode("utf-8"))
+            runtime_hasher.update(head_node_contents_hash.encode("utf-8"))
             _hash_cache[conf_str] = runtime_hasher.hexdigest()
 
-    else:
-        contents_hash = None
+        # Add cluster_synced_files to the file_mounts_content hash
+        if cluster_synced_files is not None:
+            for local_path in sorted(cluster_synced_files):
+                # For cluster_synced_files, we let the path be non-existant
+                # because its possible that the source directory gets set up
+                # anytime over the life of the head node.
+                add_content_hashes(local_path, allow_non_existing_paths=True)
 
-    return (_hash_cache[conf_str], contents_hash)
+        file_mounts_contents_hash = contents_hasher.hexdigest()
+
+    else:
+        file_mounts_contents_hash = None
+
+    return (_hash_cache[conf_str], file_mounts_contents_hash)

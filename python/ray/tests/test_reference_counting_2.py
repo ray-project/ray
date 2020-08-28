@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import logging
 import os
 import signal
@@ -20,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def one_worker_100MiB(request):
-    config = json.dumps({
+    config = {
         "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
-        "initial_reconstruction_timeout_milliseconds": 1000,
-    })
+        "object_timeout_milliseconds": 1000,
+    }
     yield ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
-        _internal_config=config)
+        _system_config=config)
     ray.shutdown()
 
 

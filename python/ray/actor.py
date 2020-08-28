@@ -2,14 +2,15 @@ import inspect
 import logging
 import weakref
 
-from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
+from ray.experimental.placement_group import PlacementGroup, \
+    check_placement_group_index
+
 from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor, gcs_actor_service_enabled
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)
@@ -93,9 +94,8 @@ class ActorMethod:
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
-                        "of running 'object.{}()', try "
-                        "'object.{}.remote()'.".format(self._method_name,
-                                                       self._method_name))
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
@@ -155,9 +155,9 @@ class ActorClassMethodMetadata(object):
 
     def __init__(self):
         class_name = type(self).__name__
-        raise TypeError("{} can not be constructed directly, "
-                        "instead of running '{}()', try '{}.create()'".format(
-                            class_name, class_name, class_name))
+        raise TypeError(f"{class_name} can not be constructed directly, "
+                        f"instead of running '{class_name}()', "
+                        f"try '{class_name}.create()'")
 
     @classmethod
     def reset_cache(cls):
@@ -285,13 +285,14 @@ class ActorClass:
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError("Attempted to define subclass '{}' of actor "
-                                "class '{}'. Inheriting from actor classes is "
-                                "not currently supported. You can instead "
-                                "inherit from a non-actor base class and make "
-                                "the derived class an actor class (with "
-                                "@ray.remote).".format(
-                                    name, base.__ray_metadata__.class_name))
+                raise TypeError(
+                    f"Attempted to define subclass '{name}' of actor "
+                    f"class '{base.__ray_metadata__.class_name}'. "
+                    "Inheriting from actor classes is "
+                    "not currently supported. You can instead "
+                    "inherit from a non-actor base class and make "
+                    "the derived class an actor class (with "
+                    "@ray.remote).")
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -309,9 +310,8 @@ class ActorClass:
             Exception: Always.
         """
         raise TypeError("Actors cannot be instantiated directly. "
-                        "Instead of '{}()', use '{}.remote()'.".format(
-                            self.__ray_metadata__.class_name,
-                            self.__ray_metadata__.class_name))
+                        f"Instead of '{self.__ray_metadata__.class_name}()', "
+                        f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
@@ -322,16 +322,16 @@ class ActorClass:
                 "_ray_from_function_descriptor"
         ]:
             if hasattr(modified_class, attribute):
-                logger.warning("Creating an actor from class {} overwrites "
-                               "attribute {} of that class".format(
-                                   modified_class.__name__, attribute))
+                logger.warning("Creating an actor from class "
+                               f"{modified_class.__name__} overwrites "
+                               f"attribute {attribute} of that class")
 
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
             pass
 
-        name = "ActorClass({})".format(modified_class.__name__)
+        name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
@@ -411,9 +411,9 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
-                detached=False,
-                placement_group_id=None,
-                placement_group_bundle_index=None):
+                lifetime=None,
+                placement_group=None,
+                placement_group_bundle_index=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -436,12 +436,18 @@ class ActorClass:
                 concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
-            name: The globally unique name for the actor.
-            detached: DEPRECATED.
-            placement_group_id: the placement group this actor belongs to,
+            name: The globally unique name for the actor, which can be used
+                to retrieve the actor via ray.get_actor(name) as long as the
+                actor is still alive.
+            lifetime: Either `None`, which defaults to the actor will fate
+                share with its creator and will be deleted once its refcount
+                drops to zero, or "detached", which means the actor will live
+                as a global object independent of the creator.
+            placement_group: the placement group this actor belongs to,
                 or None if it doesn't belong to any group.
             placement_group_bundle_index: the index of the bundle
-                if the actor belongs to a placement group.
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
 
         Returns:
             A handle to the newly created actor.
@@ -469,18 +475,12 @@ class ActorClass:
             raise ValueError("max_concurrency must be >= 1")
 
         worker = ray.worker.global_worker
-        if worker.mode is None:
-            raise RuntimeError("Actors cannot be created before ray.init() "
-                               "has been called.")
-
-        if detached:
-            logger.warning("The detached flag is deprecated. To create a "
-                           "detached actor, use the name parameter.")
+        worker.check_connected()
 
         if name is not None:
             if not isinstance(name, str):
-                raise TypeError("name must be None or a string, "
-                                "got: '{}'.".format(type(name)))
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
             if name == "":
                 raise ValueError("Actor name cannot be an empty string.")
 
@@ -496,17 +496,22 @@ class ActorClass:
                 pass
             else:
                 raise ValueError(
-                    "The name {name} is already taken. Please use "
+                    f"The name {name} is already taken. Please use "
                     "a different name or get the existing actor using "
-                    "ray.get_actor('{name}')".format(name=name))
+                    f"ray.get_actor('{name}')")
+
+        if lifetime is None:
+            detached = False
+        elif lifetime == "detached":
             detached = True
         else:
-            detached = False
+            raise ValueError("lifetime must be either `None` or 'detached'")
 
-        if placement_group_id is not None and placement_group_bundle_index is \
-           None:
-            raise ValueError("The placement_group_id is set."
-                             "But the bundle_index is not set.")
+        if placement_group is None:
+            placement_group = PlacementGroup.empty()
+
+        check_placement_group_index(placement_group,
+                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -578,10 +583,8 @@ class ActorClass:
             detached,
             name if name is not None else "",
             is_asyncio,
-            placement_group_id
-            if placement_group_id is not None else ray.PlacementGroupID.nil(),
-            placement_group_bundle_index
-            if placement_group_bundle_index is not None else -1,
+            placement_group.id,
+            placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 
@@ -595,9 +598,6 @@ class ActorClass:
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
-
-        if name is not None and not gcs_actor_service_enabled():
-            ray.util.named_actors._register_actor(name, actor_handle)
 
         return actor_handle
 
@@ -740,8 +740,8 @@ class ActorHandle:
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError("'{}' object has no attribute '{}'".format(
-                type(self).__name__, item))
+            raise AttributeError(f"'{type(self).__name__}' object has "
+                                 f"no attribute '{item}'")
         if item in ["__ray_terminate__", "__ray_checkpoint__"]:
 
             class FakeActorMethod(object):
@@ -752,9 +752,8 @@ class ActorHandle:
                         format(item, item))
 
                 def remote(self, *args, **kwargs):
-                    logger.warning(
-                        "Actor method {} is not supported by cross language."
-                        .format(item))
+                    logger.warning(f"Actor method {item} is not "
+                                   "supported by cross language.")
 
             return FakeActorMethod()
 
@@ -772,9 +771,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return "Actor({}, {})".format(
-            self._ray_actor_creation_function_descriptor.class_name,
-            self._actor_id.hex())
+        return (f"Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name},"
+                f"{self._actor_id.hex()})")
 
     @property
     def _actor_id(self):
@@ -858,11 +857,6 @@ def modify_class(cls):
             "classes. In Python 2, you must declare the class with "
             "'class ClassName(object):' instead of 'class ClassName:'.")
 
-    if issubclass(cls, Checkpointable) and inspect.isabstract(cls):
-        raise TypeError(
-            "A checkpointable actor class should implement all abstract "
-            "methods in the `Checkpointable` interface.")
-
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
@@ -872,20 +866,6 @@ def modify_class(cls):
             worker = ray.worker.global_worker
             if worker.mode != ray.LOCAL_MODE:
                 ray.actor.exit_actor()
-
-        def __ray_checkpoint__(self):
-            """Save a checkpoint.
-
-            This task saves the current state of the actor, the current task
-            frontier according to the raylet, and the checkpoint index
-            (number of tasks executed so far).
-            """
-            worker = ray.worker.global_worker
-            if not isinstance(self, ray.actor.Checkpointable):
-                raise TypeError(
-                    "__ray_checkpoint__.remote() may only be called on actors "
-                    "that implement ray.actor.Checkpointable")
-            return worker._save_actor_checkpoint()
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
@@ -955,128 +935,3 @@ def exit_actor():
         assert False, "This process should have terminated."
     else:
         raise TypeError("exit_actor called on a non-actor worker.")
-
-
-CheckpointContext = namedtuple(
-    "CheckpointContext",
-    [
-        # Actor's ID.
-        "actor_id",
-        # Number of tasks executed since last checkpoint.
-        "num_tasks_since_last_checkpoint",
-        # Time elapsed since last checkpoint, in milliseconds.
-        "time_elapsed_ms_since_last_checkpoint",
-    ],
-)
-"""A namedtuple that contains information about actor's last checkpoint."""
-
-Checkpoint = namedtuple(
-    "Checkpoint",
-    [
-        # ID of this checkpoint.
-        "checkpoint_id",
-        # The timestamp at which this checkpoint was saved,
-        # represented as milliseconds elapsed since Unix epoch.
-        "timestamp",
-    ],
-)
-"""A namedtuple that represents a checkpoint."""
-
-
-class Checkpointable(metaclass=ABCMeta):
-    """An interface that indicates an actor can be checkpointed."""
-
-    @abstractmethod
-    def should_checkpoint(self, checkpoint_context):
-        """Whether this actor needs to be checkpointed.
-
-        This method will be called after every task. You should implement this
-        callback to decide whether this actor needs to be checkpointed at this
-        time, based on the checkpoint context, or any other factors.
-
-        Args:
-            checkpoint_context: A namedtuple that contains info about last
-                checkpoint.
-
-        Returns:
-            A boolean value that indicates whether this actor needs to be
-            checkpointed.
-        """
-        pass
-
-    @abstractmethod
-    def save_checkpoint(self, actor_id, checkpoint_id):
-        """Save a checkpoint to persistent storage.
-
-        If `should_checkpoint` returns true, this method will be called. You
-        should implement this callback to save actor's checkpoint and the given
-        checkpoint id to persistent storage.
-
-        Args:
-            actor_id: Actor's ID.
-            checkpoint_id: ID of this checkpoint. You should save it together
-                with actor's checkpoint data. And it will be used by the
-                `load_checkpoint` method.
-        Returns:
-            None.
-        """
-        pass
-
-    @abstractmethod
-    def load_checkpoint(self, actor_id, available_checkpoints):
-        """Load actor's previous checkpoint, and restore actor's state.
-
-        This method will be called when an actor is restarted, after
-        actor's constructor.
-        If the actor needs to restore from previous checkpoint, this function
-        should restore actor's state and return the checkpoint ID. Otherwise,
-        it should do nothing and return None.
-        Note, this method must return one of the checkpoint IDs in the
-        `available_checkpoints` list, or None. Otherwise, an exception will be
-        raised.
-
-        Args:
-            actor_id: Actor's ID.
-            available_checkpoints: A list of `Checkpoint` namedtuples that
-                contains all available checkpoint IDs and their timestamps,
-                sorted by timestamp in descending order.
-        Returns:
-            The ID of the checkpoint from which the actor was resumed, or None
-            if the actor should restart from the beginning.
-        """
-        pass
-
-    @abstractmethod
-    def checkpoint_expired(self, actor_id, checkpoint_id):
-        """Delete an expired checkpoint.
-
-        This method will be called when an checkpoint is expired. You should
-        implement this method to delete your application checkpoint data.
-        Note, the maximum number of checkpoints kept in the backend can be
-        configured at `RayConfig.num_actor_checkpoints_to_keep`.
-
-        Args:
-            actor_id: ID of the actor.
-            checkpoint_id: ID of the checkpoint that has expired.
-        Returns:
-            None.
-        """
-        pass
-
-
-def get_checkpoints_for_actor(actor_id):
-    """Get the available checkpoints for the given actor ID, return a list
-    sorted by checkpoint timestamp in descending order.
-    """
-    checkpoint_info = ray.state.state.actor_checkpoint_info(actor_id)
-    if checkpoint_info is None:
-        return []
-    checkpoints = [
-        Checkpoint(checkpoint_id, timestamp) for checkpoint_id, timestamp in
-        zip(checkpoint_info["CheckpointIds"], checkpoint_info["Timestamps"])
-    ]
-    return sorted(
-        checkpoints,
-        key=lambda checkpoint: checkpoint.timestamp,
-        reverse=True,
-    )

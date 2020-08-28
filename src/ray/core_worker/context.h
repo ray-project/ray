@@ -69,6 +69,7 @@ class WorkerContext {
 
   int GetNextTaskIndex();
 
+  // Returns the next put object index; used to calculate ObjectIDs for puts.
   int GetNextPutIndex();
 
  protected:
