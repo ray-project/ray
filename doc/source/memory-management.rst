@@ -3,8 +3,8 @@ Memory Management
 
 This page describes how memory management works in Ray.
 
-Concept Overview
-~~~~~~~~~~~~~~~~
+Concepts
+~~~~~~~~
 
 There are several ways that Ray applications use memory:
 
