@@ -100,7 +100,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5),
+                "x": tune.sample.Integer(0, 5).quantized(2),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -108,15 +108,17 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config = OptunaSearch.convert_search_space(config)
         optuna_config = [
             param.suggest_categorical("a", [2, 3, 4]),
-            param.suggest_int("b/x", 0, 5),
+            param.suggest_int("b/x", 0, 5, 2),
             param.suggest_loguniform("b/z", 1e-4, 1e-2)
         ]
 
         sampler1 = RandomSampler(seed=1234)
-        searcher1 = OptunaSearch(space=converted_config, sampler=sampler1)
+        searcher1 = OptunaSearch(
+            space=converted_config, sampler=sampler1, config=config)
 
         sampler2 = RandomSampler(seed=1234)
-        searcher2 = OptunaSearch(space=optuna_config, sampler=sampler2)
+        searcher2 = OptunaSearch(
+            space=optuna_config, sampler=sampler2, config=config)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")

@@ -24,16 +24,14 @@ class Domain:
                                  sampler))
         self.sampler = sampler
 
-    def has_sampler(self, cls):
+    def get_sampler(self):
         sampler = self.sampler
         if not sampler:
             sampler = Uniform()
-        return isinstance(sampler, cls)
+        return sampler
 
     def sample(self, spec=None, size=1):
-        sampler = self.sampler
-        if not sampler:
-            sampler = Uniform()
+        sampler = self.get_sampler()
         return sampler.sample(self, spec=spec, size=size)
 
     def is_grid(self):
@@ -50,7 +48,7 @@ class Float(Domain):
 
     def quantized(self, q: Number):
         new = copy(self)
-        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
+        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
     def normal(self, mean=0., sd=1.):
@@ -92,7 +90,7 @@ class Integer(Domain):
 
     def quantized(self, q: Number):
         new = copy(self)
-        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
+        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
     def uniform(self):
