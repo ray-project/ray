@@ -1,10 +1,12 @@
+import copy
 import logging
 import pickle
 from typing import Dict
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.sample import Categorical, Float, Integer, LogUniform, Uniform
-from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
+    Quantized, Uniform
+from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 from ray.tune.utils import flatten_dict
 
 try:
@@ -57,6 +59,10 @@ class OptunaSearch(Searcher):
             minimizing or maximizing the metric attribute.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
+        config (dict): Base config dict that gets overwritten by the Optuna
+            sampling and is returned to each Tune trial. This could e.g.
+            contain static variables or configurations that should be passed
+            to each trial.
 
     Example:
 
@@ -84,6 +90,7 @@ class OptunaSearch(Searcher):
             metric="episode_reward_mean",
             mode="max",
             sampler=None,
+            config=None,
     ):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
@@ -94,6 +101,8 @@ class OptunaSearch(Searcher):
             use_early_stopped_trials=None)
 
         self._space = space
+
+        self._config = config or {}
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
@@ -120,10 +129,11 @@ class OptunaSearch(Searcher):
             self._ot_trials[trial_id] = ot.trial.Trial(self._ot_study,
                                                        ot_trial_id)
         ot_trial = self._ot_trials[trial_id]
-        params = {}
+        params = copy.copy(self._config)
         for (fn, args, kwargs) in self._space:
             param_name = args[0] if len(args) > 0 else kwargs["name"]
-            params[param_name] = getattr(ot_trial, fn)(*args, **kwargs)
+            value = getattr(ot_trial, fn)(*args, **kwargs)  # Call Optuna trial
+            assign_value(params, param_name.split("/"), value)
         return params
 
     def on_trial_result(self, trial_id, result):
@@ -165,28 +175,50 @@ class OptunaSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to an Optuna search space.")
 
+        def resolve_value(par, domain):
+            quantize = None
+
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                quantize = sampler.q
+                sampler = sampler.sampler
+
+            if isinstance(domain, Float):
+                if isinstance(sampler, LogUniform):
+                    if quantize:
+                        logger.warning(
+                            "Optuna does not support both quantization and "
+                            "sampling from LogUniform. Dropped quantization.")
+                    return param.suggest_loguniform(par, domain.min,
+                                                    domain.max)
+                elif isinstance(sampler, Uniform):
+                    if quantize:
+                        return param.suggest_discrete_uniform(
+                            par, domain.min, domain.max, quantize)
+                    return param.suggest_uniform(par, domain.min, domain.max)
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, LogUniform):
+                    if quantize:
+                        logger.warning(
+                            "Optuna does not support both quantization and "
+                            "sampling from LogUniform. Dropped quantization.")
+                    return param.suggest_int(
+                        par, domain.min, domain.max, log=True)
+                elif isinstance(sampler, Uniform):
+                    return param.suggest_int(
+                        par, domain.min, domain.max, step=quantize or 1)
+            elif isinstance(domain, Categorical):
+                if isinstance(sampler, Uniform):
+                    return param.suggest_categorical(par, domain.categories)
+
+            raise ValueError(
+                "Optuna search does not support parameters of type "
+                "`{}` with samplers of type `{}`".format(
+                    type(domain).__name__,
+                    type(domain.sampler).__name__))
+
         values = []
         for path, domain in domain_vars:
             par = "/".join(path)
-            if isinstance(domain, Float) and domain.has_sampler(LogUniform):
-                value = param.suggest_loguniform(par, domain.min, domain.max)
-            elif isinstance(domain, Float) and domain.has_sampler(Uniform):
-                value = param.suggest_uniform(par, domain.min, domain.max)
-            elif isinstance(domain,
-                            Integer) and domain.has_sampler(LogUniform):
-                value = param.suggest_int(
-                    par, domain.min, domain.max, log=True)
-            elif isinstance(domain, Integer) and domain.has_sampler(Uniform):
-                value = param.suggest_int(
-                    par, domain.min, domain.max, log=False)
-            elif isinstance(domain,
-                            Categorical) and domain.has_sampler(Uniform):
-                value = param.suggest_categorical(par, domain.categories)
-            else:
-                raise ValueError(
-                    "Optuna search does not support parameters of type "
-                    "{} with samplers of type {}".format(
-                        type(domain), type(domain.sampler)))
-            values.append(value)
-
+            values.append(resolve_value(par, domain))
         return values
