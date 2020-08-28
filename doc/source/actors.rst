@@ -149,10 +149,12 @@ approach should generally not be necessary as actors are automatically garbage
 collected. The ``ObjectRef`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
-tasks finish executing. If you want to terminate an actor immediately, you can
-call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
-and any pending tasks to fail. Any exit handlers installed in the actor using
-``atexit`` will be called.
+tasks finish executing and then exit the process gracefully with sys.exit. If you
+want to terminate an actor forcefully, you can call ``ray.kill(actor_handle)``.
+This will call the exit syscall from within the actor, causing it to exit
+immediately and any pending tasks to fail. This will not go through the normal
+Python sys.exit teardown logic, so any exit handlers installed in the actor using
+``atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
