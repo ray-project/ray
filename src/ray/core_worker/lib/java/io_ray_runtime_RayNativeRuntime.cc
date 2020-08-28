@@ -105,7 +105,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   RayConfig::instance().initialize(raylet_config);
 
   auto task_execution_callback =
-      [](ray::TaskType task_type, const ray::RayFunction &ray_function,
+      [](ray::TaskType task_type, const std::string task_name,
+         const ray::RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,

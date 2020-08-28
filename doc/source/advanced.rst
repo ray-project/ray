@@ -51,6 +51,20 @@ And vary the number of return values for tasks (and actor methods too):
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 
+And specify a name for the task (and actor methods too) at task submission time:
+
+.. code-block:: python
+
+   @ray.remote
+   def f(x):
+      return x + 1
+
+   obj = f.options(name="special_f").remote(3)
+   assert ray.get(obj) == 4
+
+This name will appear as the task name in the machine view of the dashboard, and will
+appear in the logs.
+
 
 Dynamic Custom Resources
 ------------------------

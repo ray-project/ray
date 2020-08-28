@@ -100,7 +100,25 @@ class ActorMethod:
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _remote(self, args=None, kwargs=None, num_returns=None):
+    def options(self, **options):
+        """Convenience method for executing an actor method call with options.
+        Same arguments as func._remote(), but returns a wrapped function
+        that a non-underscore .remote() can be called on.
+        Examples:
+            # The following two calls are equivalent.
+            >>> my_actor.my_method._remote(args=[x, y], name="foo")
+            >>> my_actor.my_method.options(name="foo").remote(x, y)
+        """
+
+        func_cls = self
+
+        class FuncWrapper:
+            def remote(self, *args, **kwargs):
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return FuncWrapper()
+
+    def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
 
@@ -112,6 +130,7 @@ class ActorMethod:
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
+                name=name,
                 num_returns=num_returns)
 
         # Apply the decorator if there is one.
@@ -317,8 +336,10 @@ class ActorClass:
                                  max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources):
         for attribute in [
-                "remote", "_remote", "_ray_from_modified_class",
-                "_ray_from_function_descriptor"
+                "remote",
+                "_remote",
+                "_ray_from_modified_class",
+                "_ray_from_function_descriptor",
         ]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class "
@@ -679,6 +700,7 @@ class ActorHandle:
                            method_name,
                            args=None,
                            kwargs=None,
+                           name="",
                            num_returns=None):
         """Method execution stub for an actor handle.
 
@@ -691,6 +713,7 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
+            name (str): The name to give the actor method call task.
             num_returns (int): The number of return values for the method.
 
         Returns:
@@ -724,7 +747,7 @@ class ActorHandle:
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
-            list_args, num_returns, self._ray_actor_method_cpus)
+            list_args, name, num_returns, self._ray_actor_method_cpus)
 
         if len(object_refs) == 1:
             object_refs = object_refs[0]
