@@ -1,6 +1,5 @@
 # coding: utf-8
 import io
-import json
 import logging
 import os
 import pickle
@@ -112,6 +111,60 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+def test_invalid_arguments(shutdown_only):
+    ray.init(num_cpus=2)
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'num_return_vals' only accepts 0 or a"
+                " positive integer"):
+
+            @ray.remote(num_return_vals=opt)
+            def g1():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_retries' only accepts 0, -1 or a"
+                " positive integer"):
+
+            @ray.remote(max_retries=opt)
+            def g2():
+                return 1
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_calls' only accepts 0 or a positive"
+                " integer"):
+
+            @ray.remote(max_calls=opt)
+            def g3():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_restarts' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_restarts=opt)
+            class A1:
+                x = 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_task_retries' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_task_retries=opt)
+            class A2:
+                x = 1
+
+
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -206,10 +259,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 
 def test_fair_queueing(shutdown_only):
-    ray.init(
-        num_cpus=1, _internal_config=json.dumps({
-            "fair_queueing_enabled": 1
-        }))
+    ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
 
     @ray.remote
     def h():
@@ -256,6 +306,22 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
+
+
+def test_wait_timing(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        time.sleep(1)
+
+    future = f.remote()
+
+    start = time.time()
+    ready, not_ready = ray.wait([future], timeout=0.2)
+    assert 0.2 < time.time() - start < 0.3
+    assert len(ready) == 0
+    assert len(not_ready) == 1
 
 
 def test_function_descriptor():
@@ -442,36 +508,6 @@ def test_putting_object_that_closes_over_object_ref(
 
     f = Foo()
     ray.put(f)
-
-
-def test_custom_serializers(ray_start_shared_local_modes):
-    class Foo:
-        def __init__(self):
-            self.x = 3
-
-    def custom_serializer(obj):
-        return 3, "string1", type(obj).__name__
-
-    def custom_deserializer(serialized_obj):
-        return serialized_obj, "string2"
-
-    ray.register_custom_serializer(
-        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
-
-    class Bar:
-        def __init__(self):
-            self.x = 3
-
-    ray.register_custom_serializer(
-        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    @ray.remote
-    def f():
-        return Bar()
-
-    assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
 
 def test_keyword_args(ray_start_shared_local_modes):

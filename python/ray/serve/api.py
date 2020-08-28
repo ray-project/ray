@@ -5,7 +5,8 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name, get_random_letters)
+from ray.serve.utils import (block_until_http_ready, format_actor_name,
+                             get_random_letters)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
@@ -20,6 +21,7 @@ def _ensure_connected(f: Callable) -> Callable:
         return f(self, *args, **kwargs)
 
     return check
+
 
 class Client:
     def __init__(self, controller, controller_name, detached=False):
@@ -41,7 +43,6 @@ class Client:
             ray.get(self._controller.shutdown.remote())
             ray.kill(self._controller, no_restart=True)
             self._controller = None
-
 
     @_ensure_connected
     def create_endpoint(self,
@@ -92,14 +93,14 @@ class Client:
         upper_methods = []
         for method in methods:
             if not isinstance(method, str):
-                raise TypeError("methods must be a list of strings, but contained "
-                                "an element of type {}".format(type(method)))
+                raise TypeError(
+                    "methods must be a list of strings, but contained "
+                    "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
         ray.get(
-            self._controller.create_endpoint.remote(endpoint_name, {backend: 1.0}, route,
-                                              upper_methods))
-
+            self._controller.create_endpoint.remote(
+                endpoint_name, {backend: 1.0}, route, upper_methods))
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
@@ -108,7 +109,6 @@ class Client:
         Does not delete any associated backends.
         """
         ray.get(self._controller.delete_endpoint.remote(endpoint))
-
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -119,10 +119,8 @@ class Client:
         """
         return ray.get(self._controller.get_all_endpoints.remote())
 
-
     @_ensure_connected
-    def update_backend_config(self,
-                              backend_tag: str,
+    def update_backend_config(self, backend_tag: str,
                               config_options: Dict[str, Any]) -> None:
         """Update a backend configuration for a backend tag.
 
@@ -146,8 +144,8 @@ class Client:
         if not isinstance(config_options, dict):
             raise ValueError("config_options must be a dictionary.")
         ray.get(
-            self._controller.update_backend_config.remote(backend_tag, config_options))
-
+            self._controller.update_backend_config.remote(
+                backend_tag, config_options))
 
     @_ensure_connected
     def get_backend_config(self, backend_tag: str):
@@ -157,7 +155,6 @@ class Client:
             backend_tag(str): A registered backend.
         """
         return ray.get(self._controller.get_backend_config.remote(backend_tag))
-
 
     @_ensure_connected
     def create_backend(self,
@@ -202,14 +199,15 @@ class Client:
             raise TypeError("config must be a dictionary.")
 
         replica_config = ReplicaConfig(
-            func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
+            func_or_class,
+            *actor_init_args,
+            ray_actor_options=ray_actor_options)
         backend_config = BackendConfig(config, replica_config.accepts_batches,
                                        replica_config.is_blocking)
 
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,
-                                             replica_config))
-
+                                                   replica_config))
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, Dict[str, Any]]:
@@ -219,7 +217,6 @@ class Client:
         """
         return ray.get(self._controller.get_all_backends.remote())
 
-
     @_ensure_connected
     def delete_backend(self, backend_tag: str) -> None:
         """Delete the given backend.
@@ -227,7 +224,6 @@ class Client:
         The backend must not currently be used by any endpoints.
         """
         ray.get(self._controller.delete_backend.remote(backend_tag))
-
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
@@ -248,8 +244,7 @@ class Client:
         """
         ray.get(
             self._controller.set_traffic.remote(endpoint_name,
-                                          traffic_policy_dictionary))
-
+                                                traffic_policy_dictionary))
 
     @_ensure_connected
     def shadow_traffic(self, endpoint_name: str, backend_tag: str,
@@ -269,13 +264,13 @@ class Client:
             proportion (float): The proportion of traffic from 0 to 1.
         """
 
-        if not isinstance(proportion, (float, int)) or not 0 <= proportion <= 1:
+        if not isinstance(proportion,
+                          (float, int)) or not 0 <= proportion <= 1:
             raise TypeError("proportion must be a float from 0 to 1.")
 
         ray.get(
             self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
-                                             proportion))
-
+                                                   proportion))
 
     @_ensure_connected
     def get_handle(self, endpoint_name: str) -> RayServeHandle:
@@ -287,7 +282,8 @@ class Client:
         Returns:
             RayServeHandle
         """
-        assert endpoint_name in ray.get(self._controller.get_all_endpoints.remote())
+        assert endpoint_name in ray.get(
+            self._controller.get_all_endpoints.remote())
 
         # TODO(edoakes): we should choose the router on the same node.
         routers = ray.get(self._controller.get_routers.remote())
@@ -331,14 +327,20 @@ def start(detached: bool = False,
         except ValueError:
             pass
     else:
-        controller_name = format_actor_name(SERVE_CONTROLLER_NAME, get_random_letters())
+        controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
+                                            get_random_letters())
 
     controller = ServeController.options(
-        detached=detached,
         name=controller_name,
+        lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(controller_name, http_host, http_port, _http_middlewares)
+    ).remote(
+        controller_name,
+        http_host,
+        http_port,
+        _http_middlewares,
+        detached=detached)
 
     futures = []
     for node_id in ray.state.node_ids():

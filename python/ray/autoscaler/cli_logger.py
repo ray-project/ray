@@ -535,6 +535,7 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
+
         if self.old_style:
             return
 

@@ -37,13 +37,16 @@ class Query:
         self.shard_key = shard_key
         self.is_shadow_query = is_shadow_query
 
+    def __reduce__(self):
+        return type(self).ray_deserialize, (self.ray_serialize(), )
+
     def ray_serialize(self):
         # NOTE: this method is needed because Query need to be serialized and
         # sent to the replica worker. However, after we send the query to
         # replica worker the async_future is still needed to retrieve the final
         # result. Therefore we need a way to pass the information to replica
         # worker without removing async_future.
-        clone = copy.copy(self).__dict__
+        clone = copy.copy(self.__dict__)
         clone.pop("async_future")
         return pickle.dumps(clone)
 

@@ -77,7 +77,7 @@ async def trial(actors, session, data_size):
 
 
 async def main():
-    ray.init(log_to_driver=False)
+    ray.init(_log_to_driver=False)
     serve.init()
 
     serve.create_backend("backend", backend)

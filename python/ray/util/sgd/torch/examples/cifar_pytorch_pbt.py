@@ -98,7 +98,7 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-    ray.init(address=args.address, log_to_driver=True)
+    ray.init(address=args.address, _log_to_driver=True)
 
     TorchTrainable = TorchTrainer.as_trainable(
         model_creator=ResNet18,

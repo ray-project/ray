@@ -48,7 +48,7 @@ def test_output():
         r"for objects. You can adjust these settings with .*?.", lines[0])
     assert re.match(
         logging_header +
-        r"services.py:\d+ -- View the Ray dashboard at .*?localhost:\d+?.*",
+        r"services.py:\d+ -- View the Ray dashboard at .*?127.0.0.1:\d+?.*",
         lines[1])
 
 
