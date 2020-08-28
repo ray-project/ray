@@ -108,7 +108,7 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   # TODO(ekl) enable again once we support direct call reconstruction
-  tags = ["exclusive", "manual"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 
