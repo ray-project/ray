@@ -3,7 +3,7 @@ from collections import defaultdict
 import os
 import random
 import time
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, List, Tuple
 from pydantic import BaseModel
 
 import ray
@@ -18,7 +18,6 @@ from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
-from typing import Dict, List, Any, Tuple
 
 import numpy as np
 
