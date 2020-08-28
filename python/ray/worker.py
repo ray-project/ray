@@ -532,14 +532,14 @@ def init(
             tells the driver to detect the the cluster, removing the need to
             specify a specific node address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
-            raylet.
+            raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
-            raylet.
+            raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
-            available system memory, subject to a 20GB cap.
+            available system memory.
         local_mode (bool): If true, the code will be executed serially. This
             is useful for debugging.
         ignore_reinit_error: If true, Ray suppresses errors from calling
