@@ -785,6 +785,6 @@ def try_to_symlink(symlink_path, target_path):
 
 def get_user():
     try:
-        return pwd.getpwuid(os.getuid())[0]
+        return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
         return ""
