@@ -29,7 +29,7 @@ The basic autoscaling config settings are as follows:
     target_utilization_fraction: 0.8
 
     # If a node is idle for this many minutes, it will be removed. A node is
-    # considered idle if there are any tasks or actors running on it.
+    # considered idle if there are no tasks or actors running on it.
     idle_timeout_minutes: 5
 
 Multiple Node Type Autoscaling
