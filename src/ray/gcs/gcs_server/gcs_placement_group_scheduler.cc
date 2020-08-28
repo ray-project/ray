@@ -259,7 +259,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     const PlacementGroupID &placement_group_id) {
-  const auto &maybe_bundle_locations = bundle_location_index_.Get(placement_group_id);
+  const auto &maybe_bundle_locations =
+      bundle_location_index_.GetBundleLocations(placement_group_id);
   // If bundle location has been already removed, it means bundles
   // are already destroyed. Do nothing.
   if (!maybe_bundle_locations.has_value()) {
@@ -398,19 +399,20 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
     const PlacementGroupID &placement_group_id) {
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-  bundle_location_index_.UpdateNewNodes(alive_nodes);
+  bundle_location_index_.AddNodes(alive_nodes);
 
   auto node_to_bundles = std::make_shared<absl::flat_hash_map<ClientID, int64_t>>();
   for (const auto &node_it : alive_nodes) {
     const auto &node_id = node_it.first;
-    const auto &bundle_locations_on_node = bundle_location_index_.Get(node_id);
+    const auto &bundle_locations_on_node =
+        bundle_location_index_.GetBundleLocationsOnNode(node_id);
     RAY_CHECK(bundle_locations_on_node)
         << "Bundle locations haven't been registered for node id " << node_id;
     const int bundles_size = bundle_locations_on_node.value()->size();
     node_to_bundles->emplace(node_id, bundles_size);
   }
 
-  auto &bundle_locations = bundle_location_index_.Get(placement_group_id);
+  auto &bundle_locations = bundle_location_index_.GetBundleLocations(placement_group_id);
   return std::unique_ptr<ScheduleContext>(new ScheduleContext(
       std::move(node_to_bundles), bundle_locations, gcs_node_manager_));
 }
@@ -418,7 +420,8 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
 GcsPlacementGroupScheduler::GetBundlesOnNode(const ClientID &node_id) {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_node;
-  const auto &maybe_bundle_locations = bundle_location_index_.Get(node_id);
+  const auto &maybe_bundle_locations =
+      bundle_location_index_.GetBundleLocationsOnNode(node_id);
   if (maybe_bundle_locations.has_value()) {
     const auto &bundle_locations = maybe_bundle_locations.value();
     for (auto &bundle : *bundle_locations) {
@@ -435,12 +438,12 @@ void BundleLocationIndex::AddBundleLocations(
     const PlacementGroupID &placement_group_id,
     std::shared_ptr<BundleLocations> bundle_locations) {
   placement_group_to_bundle_locations_.emplace(placement_group_id, bundle_locations);
-  for (const auto &iter : *bundle_locations) {
-    const auto &location = iter.second;
-    const auto &node_id = location.first;
-    const auto &bundle_sepc = location.second;
-    node_to_leased_bundles_[location.first]->emplace(
-        bundle_sepc->BundleId(), std::make_pair(node_id, bundle_sepc));
+  for (auto iter : *bundle_locations) {
+    const auto &node_id = iter.second.first;
+    if (!node_to_leased_bundles_.contains(node_id)) {
+      node_to_leased_bundles_[node_id] = std::make_shared<BundleLocations>();
+    }
+    node_to_leased_bundles_[node_id]->emplace(iter.first, iter.second);
   }
 }
 
@@ -492,8 +495,8 @@ bool BundleLocationIndex::Erase(const PlacementGroupID &placement_group_id) {
   return true;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations>> BundleLocationIndex::Get(
-    const PlacementGroupID &placement_group_id) {
+const absl::optional<std::shared_ptr<BundleLocations> const>
+BundleLocationIndex::GetBundleLocations(const PlacementGroupID &placement_group_id) {
   auto it = placement_group_to_bundle_locations_.find(placement_group_id);
   if (it == placement_group_to_bundle_locations_.end()) {
     return {};
@@ -501,8 +504,8 @@ const absl::optional<std::shared_ptr<BundleLocations>> BundleLocationIndex::Get(
   return it->second;
 }
 
-const absl::optional<std::shared_ptr<BundleLocations>> BundleLocationIndex::Get(
-    const ClientID &node_id) {
+const absl::optional<std::shared_ptr<BundleLocations> const>
+BundleLocationIndex::GetBundleLocationsOnNode(const ClientID &node_id) {
   auto it = node_to_leased_bundles_.find(node_id);
   if (it == node_to_leased_bundles_.end()) {
     return {};
@@ -510,9 +513,9 @@ const absl::optional<std::shared_ptr<BundleLocations>> BundleLocationIndex::Get(
   return it->second;
 }
 
-void BundleLocationIndex::UpdateNewNodes(
-    const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> &alive_nodes) {
-  for (const auto &iter : alive_nodes) {
+void BundleLocationIndex::AddNodes(
+    const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+  for (const auto &iter : nodes) {
     if (!node_to_leased_bundles_.contains(iter.first)) {
       node_to_leased_bundles_[iter.first] = std::make_shared<BundleLocations>();
     }

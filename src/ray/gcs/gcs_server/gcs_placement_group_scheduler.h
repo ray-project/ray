@@ -153,36 +153,36 @@ class BundleLocationIndex {
 
   /// Erase bundle locations associated with a given node id.
   ///
-  /// \param node_id Placement group id
+  /// \param node_id The id of node.
   /// \return True if succeed. False otherwise.
   bool Erase(const ClientID &node_id);
 
-  /// Erase bundle locations associated with a given placement id.
+  /// Erase bundle locations associated with a given placement group id.
   ///
   /// \param placement_group_id Placement group id
   /// \return True if succeed. False otherwise.
   bool Erase(const PlacementGroupID &placement_group_id);
 
-  /// Get BundleLocation of placaement group id.
+  /// Get BundleLocation of placement group id.
   ///
   /// \param placement_group_id Placement group id of this bundle locations.
   /// \return Bundle locations that are associated with a given placement group id.
-  const absl::optional<std::shared_ptr<BundleLocations>> Get(
+  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
       const PlacementGroupID &placement_group_id);
 
   /// Get BundleLocation of node id.
   ///
-  /// \param placement_group_id Node id of this bundle locations.
+  /// \param node_id Node id of this bundle locations.
   /// \return Bundle locations that are associated with a given node id.
-  const absl::optional<std::shared_ptr<BundleLocations>> Get(const ClientID &node_id);
+  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
+      const ClientID &node_id);
 
   /// Update the index to contain new node information. Should be used only when new node
   /// is added to the cluster.
   ///
   /// \param alive_nodes map of alive nodes.
-  void UpdateNewNodes(
-      const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-          &alive_nodes);
+  void AddNodes(
+      const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes);
 
  private:
   /// Map from node ID to the set of bundles. This is used to lookup bundles at each node
@@ -307,7 +307,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// It is required to know if placement group has been removed or not.
   absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
 
-  /// Index to lookup bundle locations of node or placement group
+  /// Index to lookup bundle locations of node or placement group.
   BundleLocationIndex bundle_location_index_;
 };
 
