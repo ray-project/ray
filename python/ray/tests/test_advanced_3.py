@@ -656,7 +656,8 @@ def test_ray_address_environment_variable(ray_start_cluster):
 def test_ray_resources_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
 
-    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2, \"CPU\":3}"
+    os.environ[
+        "RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2, \"CPU\":3}"
     ray.init(address=address, resources={"custom1": 3, "custom3": 3})
 
     cluster_resources = ray.cluster_resources()
