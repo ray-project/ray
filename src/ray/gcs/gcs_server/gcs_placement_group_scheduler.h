@@ -134,14 +134,15 @@ class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
 /// A data structure that encapsulates information regarding bundle resource leasing
 /// status.
 class LeasingContext {
-  // TODO(sang): Implement in the next PR.
+  LeasingContext() {}
+  ~LeasingContext() = default;
 };
 
 /// A data structure that helps fast bundle location lookup.
 class BundleLocationIndex {
  public:
   BundleLocationIndex() {}
-  ~BundleLocationIndex() {}
+  ~BundleLocationIndex() = default;
 
   /// Add bundle locations to index.
   ///
