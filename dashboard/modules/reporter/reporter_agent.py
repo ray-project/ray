@@ -75,7 +75,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                                            "{}_profiling.txt".format(pid))
         sudo = "sudo" if ray.utils.get_user() != "root" else ""
         process = subprocess.Popen(
-            f"{sudo} $(which py-spy) record -o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
+            (f"{sudo} $(which py-spy) record -o {profiling_file_path} -p {pid}"
+             f" -d {duration} -f speedscope"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
