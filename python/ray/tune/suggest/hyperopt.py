@@ -247,7 +247,7 @@ class HyperOptSearch(Searcher):
     @staticmethod
     def convert_search_space(spec: Dict):
         spec = copy.deepcopy(spec)
-        domain_vars, grid_vars = parse_spec_vars(spec)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
             return []

@@ -116,9 +116,13 @@ def _clean_value(value):
 
 
 def parse_spec_vars(spec):
-    unresolved = _unresolved_values(spec)
+    resolved, unresolved = _split_resolved_unresolved_values(spec)
+    resolved_vars = []
+    for path, value in resolved.items():
+        resolved_vars.append((path, value))
+
     if not unresolved:
-        return [], []
+        return resolved_vars, [], []
 
     grid_vars = []
     domain_vars = []
@@ -129,12 +133,12 @@ def parse_spec_vars(spec):
             domain_vars.append((path, value))
     grid_vars.sort()
 
-    return domain_vars, grid_vars
+    return resolved_vars, domain_vars, grid_vars
 
 
 def _generate_variants(spec):
     spec = copy.deepcopy(spec)
-    domain_vars, grid_vars = parse_spec_vars(spec)
+    _, domain_vars, grid_vars = parse_spec_vars(spec)
 
     if not domain_vars and not grid_vars:
         yield {}, spec
@@ -245,22 +249,37 @@ def _try_resolve(v):
     return True, v
 
 
-def _unresolved_values(spec):
-    found = {}
+def _split_resolved_unresolved_values(spec):
+    resolved_vars = {}
+    unresolved_vars = {}
     for k, v in spec.items():
         resolved, v = _try_resolve(v)
         if not resolved:
-            found[(k, )] = v
+            unresolved_vars[(k, )] = v
         elif isinstance(v, dict):
             # Recurse into a dict
-            for (path, value) in _unresolved_values(v).items():
-                found[(k, ) + path] = value
+            _resolved_children, _unresolved_children = \
+                _split_resolved_unresolved_values(v)
+            for (path, value) in _resolved_children.items():
+                resolved_vars[(k, ) + path] = value
+            for (path, value) in _unresolved_children.items():
+                unresolved_vars[(k, ) + path] = value
         elif isinstance(v, list):
             # Recurse into a list
             for i, elem in enumerate(v):
-                for (path, value) in _unresolved_values({i: elem}).items():
-                    found[(k, ) + path] = value
-    return found
+                _resolved_children, _unresolved_children = \
+                    _split_resolved_unresolved_values({i: elem})
+                for (path, value) in _resolved_children.items():
+                    resolved_vars[(k, ) + path] = value
+                for (path, value) in _unresolved_children.items():
+                    unresolved_vars[(k, ) + path] = value
+        else:
+            resolved_vars[(k, )] = v
+    return resolved_vars, unresolved_vars
+
+
+def _unresolved_values(spec):
+    return _split_resolved_unresolved_values(spec)[1]
 
 
 class _UnresolvedAccessGuard(dict):

@@ -231,6 +231,18 @@ def flatten_dict(dt, delimiter="/"):
     return dt
 
 
+def unflatten_dict(dt, delimiter="/"):
+    """Unflatten dict. Does not support unflattening lists."""
+    out = defaultdict(dict)
+    for key, val in dt.items():
+        path = key.split(delimiter)
+        item = out
+        for k in path[:-1]:
+            item = item[k]
+        item[path[-1]] = val
+    return dict(out)
+
+
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
     """
     Unflatten `flat_key` and iteratively look up in `lookup`. E.g.

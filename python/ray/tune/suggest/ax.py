@@ -1,3 +1,11 @@
+from typing import Dict
+
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
+    Quantized, Uniform
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import unflatten_dict
+
 try:
     import ax
 except ImportError:
@@ -94,7 +102,7 @@ class AxSearch(Searcher):
                 return None
         parameters, trial_index = self._ax.get_next_trial()
         self._live_trial_mapping[trial_id] = trial_index
-        return parameters
+        return unflatten_dict(parameters)
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
@@ -117,3 +125,81 @@ class AxSearch(Searcher):
         metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
         self._ax.complete_trial(
             trial_index=ax_trial_index, raw_data=metric_dict)
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to an Ax search space.")
+
+        values = []
+
+        for path, val in resolved_vars:
+            values.append({
+                "name": "/".join(path),
+                "type": "fixed",
+                "value": val
+            })
+
+        def resolve_value(par, domain):
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                logger.warning("Ax search does not support quantization. "
+                               "Dropped quantization.")
+                sampler = sampler.sampler
+
+            if isinstance(domain, Float):
+                if isinstance(sampler, LogUniform):
+                    return {
+                        "name": par,
+                        "type": "range",
+                        "bounds": [domain.min, domain.max],
+                        "value_type": "float",
+                        "log_scale": True
+                    }
+                elif isinstance(sampler, Uniform):
+                    return {
+                        "name": par,
+                        "type": "range",
+                        "bounds": [domain.min, domain.max],
+                        "value_type": "float",
+                        "log_scale": False
+                    }
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, LogUniform):
+                    return {
+                        "name": par,
+                        "type": "range",
+                        "bounds": [domain.min, domain.max],
+                        "value_type": "int",
+                        "log_scale": True
+                    }
+                elif isinstance(sampler, Uniform):
+                    return {
+                        "name": par,
+                        "type": "range",
+                        "bounds": [domain.min, domain.max],
+                        "value_type": "int",
+                        "log_scale": False
+                    }
+            elif isinstance(domain, Categorical):
+                if isinstance(sampler, Uniform):
+                    return {
+                        "name": par,
+                        "type": "choice",
+                        "values": domain.categories
+                    }
+
+            raise ValueError("Ax search does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
+
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            values.append(resolve_value(par, domain))
+        return values
