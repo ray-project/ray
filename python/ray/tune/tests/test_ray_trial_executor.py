@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import unittest
 
 import ray
@@ -190,9 +189,9 @@ class RayExecutorQueueTest(unittest.TestCase):
             connect=True,
             head_node_args={
                 "num_cpus": 1,
-                "_internal_config": json.dumps({
+                "_system_config": {
                     "num_heartbeats_timeout": 10
-                })
+                }
             })
         # Pytest doesn't play nicely with imports
         _register_all()

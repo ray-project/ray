@@ -396,8 +396,8 @@ class GcsTableStorage {
   }
 
   GcsInternalConfigTable &InternalConfigTable() {
-    RAY_CHECK(internal_config_table_ != nullptr);
-    return *internal_config_table_;
+    RAY_CHECK(system_config_table_ != nullptr);
+    return *system_config_table_;
   }
 
  protected:
@@ -418,7 +418,7 @@ class GcsTableStorage {
   std::unique_ptr<GcsHeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
-  std::unique_ptr<GcsInternalConfigTable> internal_config_table_;
+  std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };
 
 /// \class RedisGcsTableStorage
@@ -447,7 +447,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 
@@ -475,7 +475,7 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     heartbeat_batch_table_.reset(new GcsHeartbeatBatchTable(store_client_));
     profile_table_.reset(new GcsProfileTable(store_client_));
     worker_table_.reset(new GcsWorkerTable(store_client_));
-    internal_config_table_.reset(new GcsInternalConfigTable(store_client_));
+    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
   }
 };
 

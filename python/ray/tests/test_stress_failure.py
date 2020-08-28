@@ -1,4 +1,3 @@
-import json
 import numpy as np
 import os
 import pytest
@@ -23,9 +22,9 @@ def ray_start_reconstruction(request):
             "num_cpus": 1,
             "object_store_memory": plasma_store_memory // num_nodes,
             "redis_max_memory": 10**7,
-            "_internal_config": json.dumps({
-                "initial_reconstruction_timeout_milliseconds": 200
-            })
+            "_system_config": {
+                "object_timeout_milliseconds": 200
+            }
         })
     for i in range(num_nodes - 1):
         cluster.add_node(

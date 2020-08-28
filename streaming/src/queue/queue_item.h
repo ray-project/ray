@@ -33,14 +33,22 @@ class QueueItem {
   /// \param[in] raw whether the data content is raw bytes, only used in some tests.
   QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
             uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false)
-      : seq_id_(seq_id), msg_id_start_(msg_id_start), msg_id_end_(msg_id_end),
+      : seq_id_(seq_id),
+        msg_id_start_(msg_id_start),
+        msg_id_end_(msg_id_end),
         timestamp_(timestamp),
         raw_(raw),
         /*COPY*/ buffer_(std::make_shared<LocalMemoryBuffer>(data, data_size, true)) {}
 
   QueueItem(uint64_t seq_id, std::shared_ptr<LocalMemoryBuffer> buffer,
-            uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false)
-      : seq_id_(seq_id), msg_id_start_(msg_id_start), msg_id_end_(msg_id_end), timestamp_(timestamp), raw_(raw), buffer_(buffer) {}
+            uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end,
+            bool raw = false)
+      : seq_id_(seq_id),
+        msg_id_start_(msg_id_start),
+        msg_id_end_(msg_id_end),
+        timestamp_(timestamp),
+        raw_(raw),
+        buffer_(buffer) {}
 
   QueueItem(std::shared_ptr<DataMessage> data_msg)
       : seq_id_(data_msg->SeqId()),
@@ -112,7 +120,8 @@ class QueueItem {
 
 class InvalidQueueItem : public QueueItem {
  public:
-  InvalidQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0, QUEUE_INVALID_SEQ_ID,
+  InvalidQueueItem()
+      : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0, QUEUE_INVALID_SEQ_ID,
                   QUEUE_INVALID_SEQ_ID) {}
 
  private:

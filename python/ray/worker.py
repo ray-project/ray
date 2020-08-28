@@ -107,7 +107,6 @@ class Worker:
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
-        self.actor_task_counter = 0
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -385,6 +384,8 @@ def get_gpu_ids(as_str=False):
     Returns:
         A list of GPU IDs.
     """
+    worker = global_worker
+    worker.check_connected()
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
@@ -427,6 +428,9 @@ def get_resource_ids():
         each pair consists of the ID of a resource and the fraction of that
         resource reserved for this worker.
     """
+    worker = global_worker
+    worker.check_connected()
+
     if _mode() == LOCAL_MODE:
         raise RuntimeError("ray.get_resource_ids() currently does not work in "
                            "local_mode.")
@@ -442,8 +446,8 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
-    if _global_node is None:
-        raise RuntimeError("Ray has not been initialized/connected.")
+    worker = global_worker
+    worker.check_connected()
     return _global_node.webui_url
 
 
@@ -497,7 +501,7 @@ def init(address=None,
          huge_pages=False,
          include_java=False,
          include_dashboard=None,
-         dashboard_host="localhost",
+         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
          dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
          job_id=None,
          job_config=None,
@@ -510,7 +514,7 @@ def init(address=None,
          load_code_from_local=False,
          java_worker_options=None,
          use_pickle=True,
-         _internal_config=None,
+         _system_config=None,
          lru_evict=False,
          enable_object_reconstruction=False,
          _metrics_export_port=None,
@@ -626,8 +630,9 @@ def init(address=None,
             module or from the GCS.
         java_worker_options: Overwrite the options to start Java workers.
         use_pickle: Deprecated.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
+        _system_config (dict): Configuration for overriding RayConfig
+            defaults. Used to set system configuration and for experimental Ray
+            core feature flags.
         lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.UnreconstructableError may be thrown. If False, then
@@ -701,8 +706,9 @@ def init(address=None,
 
     raylet_ip_address = node_ip_address
 
-    _internal_config = (json.loads(_internal_config)
-                        if _internal_config else {})
+    _system_config = _system_config or {}
+    if not isinstance(_system_config, dict):
+        raise TypeError("The _system_config must be a dict.")
 
     global _global_node
     if redis_address is None:
@@ -737,7 +743,7 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             java_worker_options=java_worker_options,
             start_initial_python_workers_for_first_job=True,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
@@ -793,9 +799,9 @@ def init(address=None,
         if java_worker_options is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "java_worker_options must not be provided.")
-        if _internal_config is not None and len(_internal_config) != 0:
+        if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
+                             "_system_config must not be provided.")
         if lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "lru_evict must not be provided.")
@@ -813,7 +819,7 @@ def init(address=None,
             object_ref_seed=object_ref_seed,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
-            _internal_config=_internal_config,
+            _system_config=_system_config,
             lru_evict=lru_evict,
             enable_object_reconstruction=enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
@@ -1630,6 +1636,7 @@ def wait(object_refs, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+    worker.check_connected()
 
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
@@ -1701,6 +1708,9 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    worker = global_worker
+    worker.check_connected()
+
     return ray.util.named_actors._get_actor(name)
 
 
@@ -1722,11 +1732,11 @@ def kill(actor, no_restart=True):
         no_restart (bool): Whether or not this actor should be restarted if
             it's a restartable actor.
     """
+    worker = global_worker
+    worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
-                         f"Got: {type(actor)}.")
-    worker = ray.worker.global_worker
-    worker.check_connected()
+                         "Got: {}.".format(type(actor)))
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
