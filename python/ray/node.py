@@ -93,9 +93,9 @@ class Node:
                 "The raylet IP address should only be different than the node "
                 "IP address when connecting to an existing raylet; i.e., when "
                 "head=False and connect_only=True.")
-        if ray_params._internal_config and len(
-                ray_params._internal_config) > 0 and (not head
-                                                      and not connect_only):
+        if ray_params._system_config and len(
+                ray_params._system_config) > 0 and (not head
+                                                    and not connect_only):
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
@@ -124,7 +124,7 @@ class Node:
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
-        self._config = ray_params._internal_config or {}
+        self._config = ray_params._system_config or {}
 
         # Enable Plasma Store as a thread by default.
         if "plasma_store_as_thread" not in self._config:
@@ -615,8 +615,11 @@ class Node:
                 if we fail to start the dashboard. Otherwise it will print
                 a warning if we fail to start the dashboard.
         """
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "dashboard", unique=True)
+        if "RAY_USE_NEW_DASHBOARD" in os.environ:
+            stdout_file, stderr_file = None, None
+        else:
+            stdout_file, stderr_file = self.get_log_file_handles(
+                "dashboard", unique=True)
         self._webui_url, process_info = ray.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
@@ -797,7 +800,8 @@ class Node:
 
         self.start_plasma_store()
         self.start_raylet()
-        self.start_reporter()
+        if "RAY_USE_NEW_DASHBOARD" not in os.environ:
+            self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

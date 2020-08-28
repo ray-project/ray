@@ -223,6 +223,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::DRIVER,             // worker_type
         Language::PYTHON,               // langauge
@@ -242,6 +243,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
         nullptr,                        // gc_collect
+        nullptr,                        // spill_objects
+        nullptr,                        // restore_spilled_objects
         nullptr,                        // get_lang_stack
         nullptr,                        // kill_main
         true,                           // ref_counting_enabled

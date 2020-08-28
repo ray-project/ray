@@ -223,7 +223,6 @@ def _run_and_process_output(cmd,
     The code is thus 100% thread-safe as long as the stream readers
     are read-only except for return values and possible exceptions.
     """
-
     stdin_overwrite = subprocess.PIPE
     # This already should be validated in a higher place of the stack.
     assert not (does_allow_interactive() and is_output_redirected()), (
@@ -235,9 +234,9 @@ def _run_and_process_output(cmd,
 
     if use_login_shells:
         if stdout_file is None:
-            stdout_file = subprocess.DEVNULL
+            stdout_file = sys.stdout
         if stderr_file is None:
-            stderr_file = subprocess.DEVNULL
+            stderr_file = sys.stderr
         return subprocess.check_call(
             cmd,
             # See implementation note #2

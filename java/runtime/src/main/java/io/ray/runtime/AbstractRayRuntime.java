@@ -8,7 +8,6 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -81,7 +80,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public <T> T get(ObjectRef<T> objectRef) throws RayException {
+  public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
     List<T> ret = get(ImmutableList.of(objectRef));
     return ret.get(0);
   }

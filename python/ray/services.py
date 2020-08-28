@@ -66,6 +66,11 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
+# Location of the cpp default worker executables.
+DEFAULT_WORKER_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+
 DEFAULT_JAVA_WORKER_CLASSPATH = [
     os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
@@ -1160,8 +1165,14 @@ def start_dashboard(require_dashboard,
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        dashboard_dir = "new_dashboard"
+    else:
+        dashboard_dir = "dashboard"
+
     dashboard_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
+        os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
+        "dashboard.py")
     command = [
         sys.executable,
         "-u",
@@ -1368,6 +1379,19 @@ def start_raylet(redis_address,
     else:
         java_worker_command = []
 
+    if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
+        cpp_worker_command = build_cpp_worker_command(
+            "",
+            redis_address,
+            node_manager_port,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+        )
+    else:
+        cpp_worker_command = []
+
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
         sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
@@ -1398,6 +1422,23 @@ def start_raylet(redis_address,
         start_worker_command.append(
             f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
+    # Create agent command
+    agent_command = [
+        sys.executable,
+        "-u",
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "new_dashboard/agent.py"),
+        "--redis-address={}".format(redis_address),
+        "--node-manager-port={}".format(node_manager_port),
+        "--object-store-name={}".format(plasma_store_name),
+        "--raylet-name={}".format(raylet_name),
+        "--temp-dir={}".format(temp_dir),
+    ]
+
+    if redis_password is not None and len(redis_password) != 0:
+        agent_command.append("--redis-password={}".format(redis_password))
+
     command = [
         RAYLET_EXECUTABLE,
         f"--raylet_socket_name={raylet_name}",
@@ -1415,6 +1456,7 @@ def start_raylet(redis_address,
         f"--config_list={config_str}",
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
+        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1424,6 +1466,9 @@ def start_raylet(redis_address,
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        command.append("--agent_command={}".format(
+            subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
         plasma_directory, object_store_memory = determine_plasma_store_config(
@@ -1531,6 +1576,36 @@ def build_java_worker_command(
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+
+    return command
+
+
+def build_cpp_worker_command(
+        cpp_worker_options,
+        redis_address,
+        node_manager_port,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+        session_dir,
+):
+    """This method assembles the command used to start a CPP worker.
+
+    Args:
+        cpp_worker_options (list): The command options for CPP worker.
+        redis_address (str): Redis address of GCS.
+        plasma_store_name (str): The name of the plasma store socket to connect
+           to.
+        raylet_name (str): The name of the raylet socket to create.
+        redis_password (str): The password of connect to redis.
+        session_dir (str): The path of this session.
+    Returns:
+        The command string for starting CPP worker.
+    """
+    command = [
+        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
+        str(node_manager_port), redis_password, session_dir
+    ]
 
     return command
 
