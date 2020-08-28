@@ -1,4 +1,3 @@
-import os
 import logging
 try:  # py3
     from shlex import quote
@@ -80,17 +79,3 @@ def docker_start_cmds(user, image, mount_dict, cname, user_options):
         mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
     return " ".join(docker_run)
-
-
-def docker_autoscaler_setup(cname):
-    cmds = []
-    for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
-        # needed because docker doesn't allow relative paths
-        base_path = os.path.basename(path)
-        cmds.append("docker cp {path} {cname}:{dpath}".format(
-            path=path, dpath=base_path, cname=cname))
-        cmds.extend(
-            with_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
-                container_name=cname))
-    return cmds

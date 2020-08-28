@@ -11,7 +11,6 @@ import time
 
 from ray.autoscaler.docker import check_docker_running_cmd, \
                                   check_docker_image, \
-                                  docker_autoscaler_setup, \
                                   docker_start_cmds, \
                                   DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
@@ -614,14 +613,14 @@ class DockerCommandRunner(CommandRunnerInterface):
             with_output=with_output,
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
-    def run_rsync_up(self, source, target):
+    def run_rsync_up(self, source, target, file_mount):
         host_destination = os.path.join(DOCKER_MOUNT_PREFIX, target)
 
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
 
         self.ssh_command_runner.run_rsync_up(source, host_destination)
-        if self._check_container_status():
+        if self._check_container_status() and not file_mount:
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
@@ -630,7 +629,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 host_destination, self.container_name,
                 self._docker_expand_user(target)))
 
-    def run_rsync_down(self, source, target):
+    def run_rsync_down(self, source, target, file_mount):
         host_source = os.path.join(DOCKER_MOUNT_PREFIX, source)
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
@@ -638,9 +637,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
-        self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.container_name, self._docker_expand_user(source),
-            host_source))
+        if not file_mount:
+            self.ssh_command_runner.run("docker cp {}:{} {}".format(
+                self.container_name, self._docker_expand_user(source),
+                host_source))
         self.ssh_command_runner.run_rsync_down(host_source, target)
 
     def remote_shell_command_str(self):
@@ -725,9 +725,4 @@ class DockerCommandRunner(CommandRunnerInterface):
                              f"is running image {running_image} instead " +
                              f"of {image} (which was provided in the YAML")
 
-        # Copy bootstrap config & key over
-        # POSSIBLY DEPRECATE BECAUSE THEY ARE BIND MOUNTED NOW
-        if as_head:
-            for copy_cmd in docker_autoscaler_setup(self.container_name):
-                self.run(copy_cmd, run_env="host")
         self.initialized = True

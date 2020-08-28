@@ -184,7 +184,7 @@ class NodeUpdater:
                 self.cmd_runner.run(
                     "mkdir -p {}".format(os.path.dirname(remote_path)),
                     run_env="host")
-                sync_cmd(local_path, remote_path)
+                sync_cmd(local_path, remote_path, file_mount=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -413,19 +413,25 @@ class NodeUpdater:
 
                         raise click.ClickException("Start command failed.")
 
-    def rsync_up(self, source, target):
+    def rsync_up(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_up(source, target)
+        if isinstance(self.cmd_runner, DockerCommandRunner):
+            self.cmd_runner.run_rsync_up(source, target, file_mount=file_mount)
+        else:
+            self.cmd_runner.run_rsync_up(source, target)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
-    def rsync_down(self, source, target):
+    def rsync_down(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_down(source, target)
+        if isinstance(self.cmd_runner, DockerCommandRunner):
+            self.cmd_runner.run_rsync_up(source, target, file_mount=file_mount)
+        else:
+            self.cmd_runner.run_rsync_up(source, target)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))
 
