@@ -6,7 +6,7 @@ Cluster Autoscaling
 Basics
 ------
 
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit (in the cluster config). When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
+The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up to the specified ``max_workers`` limit (specified in the cluster config). When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
 The default idle timeout is 5 minutes, which can be set in the cluster config. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
 
@@ -25,7 +25,7 @@ The basic autoscaling config settings are as follows:
     # usage. For example, if a cluster of 10 nodes is 100% busy and
     # target_utilization is 0.8, it would resize the cluster to 13. This fraction
     # can be decreased to increase the aggressiveness of upscaling.
-    # This max value allowed is 1.0, which is the most conservative setting.
+    # The max value allowed is 1.0, which is the most conservative setting.
     target_utilization_fraction: 0.8
 
     # If a node is idle for this many minutes, it will be removed. A node is
@@ -35,17 +35,17 @@ The basic autoscaling config settings are as follows:
 Multiple Node Type Autoscaling
 ------------------------------
 
-In 1.0, Ray supports multiple cluster node types. In this mode of operation, the scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and specifically tries to add nodes that can fulfill these resource demands. This enables precise, rapid scale up as the autoscaler has more visibility into the backlog of work and resource shapes.
+Ray supports multiple node types in a single cluster. In this mode of operation, the scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and tries to add the minimum set of nodes that can fulfill these resource demands. This enables precise, rapid scale up compared to looking only at resource utilization, as the autoscaler also has visiblity into the aggregate resource load.
 
 The concept of a cluster node type encompasses both the physical instance type (e.g., AWS p3.8xl GPU nodes vs m4.16xl CPU nodes), as well as other attributes (e.g., IAM role, the machine image, etc). `Custom resources <configure.html>`__ can be specified for each node type so that Ray is aware of the demand for specific node types at the application level (e.g., a task may request to be placed on a machine with a specific role or machine image via custom resource).
 
-Multi node type autoscaling operates in conjunction with the basic autoscaler. You may want to configure the basic autoscaler accordingly to act convervatively (i.e., set ``target_utilization_fraction: 1.0``).
+Multi-node type autoscaling operates in conjunction with the basic autoscaler. You may want to configure the basic autoscaler accordingly to act conservatively (i.e., set ``target_utilization_fraction: 1.0``).
 
 An example of configuring multiple node types is as follows `(full example) <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-multi-node-type.yaml>`__:
 
 .. code::
 
-    # Tell the autoscaler the allowed node types and the resources they provide.
+    # Specify the allowed node types and the resources they provide.
     # The key is the name of the node type, which is just for debugging purposes.
     # The node config specifies the launch config and physical instance type.
     available_node_types:
