@@ -389,7 +389,11 @@ class PopulationBasedTraining(FIFOScheduler):
                 self._next_perturbation_sync = max(
                     self._next_perturbation_sync + self._perturbation_interval,
                     max_last_train_time)
-
+            # In sync mode we should pause all trials once result comes in.
+            # Once a perturbation step happens for all trials, they should
+            # still all be paused.
+            # choose_trial_to_run will then pick the next trial to run out of
+            # the paused trials.
             return TrialScheduler.PAUSE
 
     def _perturb_trial(self, trial, trial_runner, upper_quantile,
@@ -487,6 +491,7 @@ class PopulationBasedTraining(FIFOScheduler):
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
         if trial.status == Trial.PAUSED:
+            # If trial is paused we update it with a new checkpoint.
             if not self._synch:
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
@@ -495,6 +500,9 @@ class PopulationBasedTraining(FIFOScheduler):
             trial.experiment_tag = new_tag
             trial.on_checkpoint(new_state.last_checkpoint)
         else:
+            # If trial is running, we first try to reset it.
+            # If that is unsuccessful, then we have to stop it and start it
+            # again with a new checkpoint.
             reset_successful = trial_executor.reset_trial(
                 trial, new_config, new_tag)
             # TODO(ujvl): Refactor Scheduler abstraction to abstract
