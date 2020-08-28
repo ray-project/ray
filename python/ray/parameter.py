@@ -91,8 +91,9 @@ class RayParams:
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
+        _system_config (dict): Configuration for overriding RayConfig
+            defaults. Used to set system configuration and for experimental Ray
+            core feature flags.
         lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
@@ -128,7 +129,7 @@ class RayParams:
                  worker_path=None,
                  huge_pages=False,
                  include_dashboard=None,
-                 dashboard_host="localhost",
+                 dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
@@ -141,7 +142,7 @@ class RayParams:
                  java_worker_options=None,
                  load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
-                 _internal_config=None,
+                 _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
@@ -188,7 +189,7 @@ class RayParams:
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._internal_config = _internal_config
+        self._system_config = _system_config
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self.object_spilling_config = object_spilling_config
@@ -197,26 +198,27 @@ class RayParams:
         # Set the internal config options for LRU eviction.
         if lru_evict:
             # Turn off object pinning.
-            if self._internal_config is None:
-                self._internal_config = dict()
-            if self._internal_config.get("object_pinning_enabled", False):
+            if self._system_config is None:
+                self._system_config = dict()
+            if self._system_config.get("object_pinning_enabled", False):
                 raise Exception(
                     "Object pinning cannot be enabled if using LRU eviction.")
-            self._internal_config["object_pinning_enabled"] = False
-            self._internal_config["object_store_full_max_retries"] = -1
-            self._internal_config["free_objects_period_milliseconds"] = 1000
+            self._system_config["object_pinning_enabled"] = False
+            self._system_config["object_store_full_max_retries"] = -1
+            self._system_config["free_objects_period_milliseconds"] = 1000
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
             # Turn off object pinning.
-            if self._internal_config is None:
-                self._internal_config = dict()
+            if self._system_config is None:
+                self._system_config = dict()
             if lru_evict:
                 raise Exception(
                     "Object reconstruction cannot be enabled if using LRU "
                     "eviction.")
-            self._internal_config["lineage_pinning_enabled"] = True
-            self._internal_config["free_objects_period_milliseconds"] = -1
+            print(self._system_config)
+            self._system_config["lineage_pinning_enabled"] = True
+            self._system_config["free_objects_period_milliseconds"] = -1
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.

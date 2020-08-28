@@ -270,7 +270,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
                                  required_resources, {}, PlacementGroupID::Nil());
 
   for (int i = 0; i < num_args; i++) {
-    ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i + 1);
+    ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
     spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
   }
 
