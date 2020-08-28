@@ -47,16 +47,22 @@ def with_docker_exec(cmds,
     ]
 
 
-def check_docker_running_cmd(cname):
+def _check_helper(cname, template):
     return " ".join([
-        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||", "true"
+        "docker", "inspect", "-f", f"'{{{{{template}}}}}'", cname, "||", "true"
     ])
+
+
+def check_docker_running_cmd(cname):
+    return _check_helper(cname, ".State.Running")
+
+
+def check_bind_mounts_cmd(cname):
+    return _check_helper(cname, "json .Mounts")
 
 
 def check_docker_image(cname):
-    return " ".join([
-        "docker", "inspect", "-f", "'{{.Config.Image}}'", cname, "||", "true"
-    ])
+    return _check_helper(cname, ".Config.Image")
 
 
 def docker_start_cmds(user, image, mount_dict, cname, user_options):

@@ -3,13 +3,15 @@ from shlex import quote
 from typing import List, Tuple, Dict
 import click
 import hashlib
+import json
 import logging
 import os
 import subprocess
 import sys
 import time
 
-from ray.autoscaler.docker import check_docker_running_cmd, \
+from ray.autoscaler.docker import check_bind_mounts_cmd, \
+                                  check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_start_cmds, \
                                   DOCKER_MOUNT_PREFIX, \
@@ -614,7 +616,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target, file_mount):
-        host_destination = os.path.join(DOCKER_MOUNT_PREFIX, target)
+        host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
+                                        target.lstrip("/"))
 
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
@@ -630,7 +633,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self._docker_expand_user(target)))
 
     def run_rsync_down(self, source, target, file_mount):
-        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source)
+        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
         if source[-1] == "/":
@@ -724,5 +727,22 @@ class DockerCommandRunner(CommandRunnerInterface):
                 logger.error(f"A container with name {self.container_name} " +
                              f"is running image {running_image} instead " +
                              f"of {image} (which was provided in the YAML")
-
+            mounts = self.run(
+                check_bind_mounts_cmd(self.container_name),
+                with_output=True,
+                run_env="host").decode("utf-8").strip()
+            try:
+                active_mounts = json.loads(mounts)
+                active_remote_mounts = [
+                    mnt["Destination"] for mnt in active_mounts
+                ]
+                cli_logger.error(active_remote_mounts)
+                for remote, local in file_mounts.items():
+                    remote = self._docker_expand_user(remote)
+                    if remote not in active_remote_mounts:
+                        cli_logger.error(
+                            "Please ray stop & restart cluster to "
+                            f"allow mount {remote}:{local} to take hold")
+            except json.JSONDecodeError:
+                pass
         self.initialized = True

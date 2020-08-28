@@ -181,9 +181,11 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    run_env="host")
+                if not isinstance(self.cmd_runner, DockerCommandRunner):
+                    # The DockerCommandRunner handles this internally
+                    self.cmd_runner.run(
+                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        run_env="host")
                 sync_cmd(local_path, remote_path, file_mount=True)
 
                 if remote_path not in nolog_paths:
