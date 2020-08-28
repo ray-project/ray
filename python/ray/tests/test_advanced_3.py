@@ -208,7 +208,7 @@ class CaptureOutputAndError:
 
 
 def test_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=True)
+    ray.init(num_cpus=1, _log_to_driver=True)
 
     @ray.remote
     def f():
@@ -233,7 +233,7 @@ def test_logging_to_driver(shutdown_only):
 
 
 def test_not_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, log_to_driver=False)
+    ray.init(num_cpus=1, _log_to_driver=False)
 
     @ray.remote
     def f():
@@ -270,23 +270,6 @@ def test_workers(shutdown_only):
     worker_ids = set()
     while len(worker_ids) != num_workers:
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
-
-
-def test_specific_job_id():
-    dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
-
-    # in driver
-    assert dummy_driver_id == ray.worker.global_worker.current_job_id
-
-    # in worker
-    @ray.remote
-    def f():
-        return ray.worker.global_worker.current_job_id
-
-    assert dummy_driver_id == ray.get(f.remote())
-
-    ray.shutdown()
 
 
 def test_object_ref_properties():
@@ -397,23 +380,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_socket_dir_not_existing(shutdown_only):
-    if sys.platform != "win32":
-        random_name = ray.ObjectRef.from_random().hex()
-        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                              "tests", random_name)
-        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                               "raylet_socket")
-        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
-
-        @ray.remote
-        def foo(x):
-            time.sleep(1)
-            return 2 * x
-
-        ray.get([foo.remote(i) for i in range(2)])
-
-
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
     node_manager_address = None
     node_manager_port = None
@@ -464,13 +430,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary))
-
-    # weakref put
-    y_id = ray.put(obj, weakref=True)
-    for _ in range(10):
-        ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(y_id)
 
 
 def test_decorated_function(ray_start_regular):

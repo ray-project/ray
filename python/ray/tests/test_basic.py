@@ -456,36 +456,6 @@ def test_putting_object_that_closes_over_object_ref(
     ray.put(f)
 
 
-def test_custom_serializers(ray_start_shared_local_modes):
-    class Foo:
-        def __init__(self):
-            self.x = 3
-
-    def custom_serializer(obj):
-        return 3, "string1", type(obj).__name__
-
-    def custom_deserializer(serialized_obj):
-        return serialized_obj, "string2"
-
-    ray.register_custom_serializer(
-        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
-
-    class Bar:
-        def __init__(self):
-            self.x = 3
-
-    ray.register_custom_serializer(
-        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    @ray.remote
-    def f():
-        return Bar()
-
-    assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
-
-
 def test_keyword_args(ray_start_shared_local_modes):
     @ray.remote
     def keyword_fct1(a, b="hello"):

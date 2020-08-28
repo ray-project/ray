@@ -406,7 +406,6 @@ class ActorClass:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                is_direct_call=None,
                 max_concurrency=None,
                 max_restarts=None,
                 max_task_retries=None,
@@ -430,7 +429,6 @@ class ActorClass:
                 this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
-            is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
                 this actor. This only works with direct actor calls. The max
                 concurrency defaults to 1 for threaded execution, and 1000 for
@@ -456,8 +454,6 @@ class ActorClass:
             args = []
         if kwargs is None:
             kwargs = {}
-        if is_direct_call is not None and not is_direct_call:
-            raise ValueError("Non-direct call actors are no longer supported.")
         meta = self.__ray_metadata__
         actor_has_async_methods = len(
             inspect.getmembers(

@@ -145,7 +145,6 @@ class RemoteFunction:
                 args=None,
                 kwargs=None,
                 num_return_vals=None,
-                is_direct_call=None,
                 num_cpus=None,
                 num_gpus=None,
                 memory=None,
@@ -185,8 +184,6 @@ class RemoteFunction:
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
-        if is_direct_call is not None and not is_direct_call:
-            raise ValueError("Non-direct call tasks are no longer supported.")
         if max_retries is None:
             max_retries = self._max_retries
 
