@@ -167,7 +167,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_system_class = LoadClass(env, "java/lang/System");
   java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
 
-  java_ray_exception_class = LoadClass(env, "io/ray/api/exception/RayException");
+  java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
