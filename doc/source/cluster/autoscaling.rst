@@ -71,14 +71,14 @@ An example of configuring multiple node types is as follows `(full example) <htt
             resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
             max_workers: 4
             worker_setup_commands:
-                - pip install tensorflow-gpu
+                - pip install tensorflow-gpu  # Example command.
         gpu_8_ondemand:
             node_config:
                 InstanceType: p2.8xlarge
             resources: {"CPU": 32, "GPU": 8}
             max_workers: 2
             worker_setup_commands:
-                - pip install tensorflow-gpu
+                - pip install tensorflow-gpu  # Example command.
 
     # Specify the node type of the head node (as configured above).
     head_node_type: cpu_4_ondemand
@@ -113,4 +113,4 @@ The ``worker_setup_commands`` field can be used to override the setup and initia
 .. code::
 
     worker_setup_commands:
-        - pip install tensorflow-gpu
+        - pip install tensorflow-gpu  # Example command.
