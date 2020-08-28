@@ -35,16 +35,16 @@ class _ActorClassCache:
 
     ray.remote is a registration call. It sends the serialized object to the
     key value store (redis), and will be fetched at an arbitrary worker
-    later. It does not use any Ray scheduling resources
+    later. Registration does not use any Ray scheduling resources.
 
-    Later, class.remote() actually creates the remote actor. This
-    instance will be instantiated on some arbitrary machine,
+    Later, class.remote() actually creates the remote actor. The
+    actor will be instantiated on some arbitrary machine,
     according to the underlying Ray scheduler.
 
     Without this cache, you would register the same serialized object
     over and over again. Naturally, since redis doesn’t spill to disk,
     this can easily nuke the redis instance (and basically blow up Ray).
-    This instead allows us to register once and only once.
+    This cache instead allows us to register once and only once.
 
     Note that we assume there can be multiple trainables in the
     system at once.

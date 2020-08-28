@@ -17,10 +17,10 @@ def test_spill_objects_manually(shutdown_only):
                 "directory_path": "/tmp"
             }
         },
-        _internal_config=json.dumps({
+        _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
-        }))
+        })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
     pinned_objects = set()
@@ -64,10 +64,10 @@ def test_spill_objects_manually_from_workers(shutdown_only):
                 "directory_path": "/tmp"
             }
         },
-        _internal_config=json.dumps({
+        _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
-        }))
+        })
 
     @ray.remote
     def _worker():
@@ -90,10 +90,10 @@ def test_spill_objects_manually_with_workers(shutdown_only):
                 "directory_path": "/tmp"
             }
         },
-        _internal_config=json.dumps({
+        _system_config={
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
-        }))
+        })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
 
@@ -117,7 +117,7 @@ def test_spill_objects_manually_with_workers(shutdown_only):
                 "directory_path": "/tmp"
             }
         },
-        "_internal_config": json.dumps({
+        "_system_config": json.dumps({
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
         }),
@@ -159,7 +159,7 @@ def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        _internal_config=json.dumps({
+        _system_config=json.dumps({
             "max_io_workers": 4,
             "object_store_full_max_retries": 2,
             "object_store_full_initial_delay_ms": 10,

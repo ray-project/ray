@@ -2,7 +2,6 @@
 import glob
 import logging
 import os
-import json
 import sys
 import socket
 import time
@@ -69,9 +68,9 @@ def test_local_scheduling_first(ray_start_cluster):
     # Disable worker caching.
     cluster.add_node(
         num_cpus=num_cpus,
-        _internal_config=json.dumps({
+        _system_config={
             "worker_lease_timeout_milliseconds": 0,
-        }))
+        })
     cluster.add_node(num_cpus=num_cpus)
     ray.init(address=cluster.address)
 
@@ -332,9 +331,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.init(
         num_cpus=1,
         object_store_memory=int(10**8),
-        _internal_config=json.dumps({
-            "object_pinning_enabled": 0
-        }))
+        _system_config={"object_pinning_enabled": 0})
 
     @ray.remote
     def f():
@@ -607,11 +604,7 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
     assert len(ray.objects()) == 0
 
     @ray.remote
