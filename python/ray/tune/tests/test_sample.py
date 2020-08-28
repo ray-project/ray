@@ -93,6 +93,63 @@ class SearchSpaceTest(unittest.TestCase):
             factor = sample / 5e-4
             self.assertAlmostEqual(factor, round(factor), places=10)
 
+    def testConvertAx(self):
+        from ray.tune.suggest.ax import AxSearch
+        from ax.service.ax_client import AxClient
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = AxSearch.convert_search_space(config)
+        ax_config = [
+            {
+                "name": "a",
+                "type": "choice",
+                "values": [2, 3, 4]
+            },
+            {
+                "name": "b/x",
+                "type": "range",
+                "bounds": [0, 5],
+                "value_type": "int"
+            },
+            {
+                "name": "b/y",
+                "type": "fixed",
+                "value": 4
+            },
+            {
+                "name": "b/z",
+                "type": "range",
+                "bounds": [1e-4, 1e-2],
+                "value_type": "float",
+                "log_scale": True
+            },
+        ]
+
+        client1 = AxClient(random_seed=1234)
+        client1.create_experiment(parameters=converted_config)
+        searcher1 = AxSearch(client1)
+
+        client2 = AxClient(random_seed=1234)
+        client2.create_experiment(parameters=ax_config)
+        searcher2 = AxSearch(client2)
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertEqual(config1["b"]["y"], 4)
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
