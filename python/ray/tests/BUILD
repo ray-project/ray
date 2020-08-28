@@ -22,13 +22,24 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic.py",
     "test_cancel.py",
+    "test_cli.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_dynres.py",
+    "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_iter.py",
     "test_joblib.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
@@ -52,7 +63,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z"],
   deps = ["//:ray_lib"],
 )
 

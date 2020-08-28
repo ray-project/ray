@@ -1,14 +1,44 @@
 import os
+from traceback import format_exception
 
 import colorama
 
 import ray
+import ray.cloudpickle as pickle
+from ray.core.generated.common_pb2 import RayException, Language
 import setproctitle
 
 
 class RayError(Exception):
     """Super class of all ray exception types."""
-    pass
+
+    def to_bytes(self):
+        # Extract exc_info from exception object.
+        exc_info = (type(self), self, self.__traceback__)
+        formatted_exception_string = "\n".join(format_exception(*exc_info))
+        return RayException(
+            language=ray.Language.PYTHON.value(),
+            serialized_exception=pickle.dumps(self),
+            formatted_exception_string=formatted_exception_string
+        ).SerializeToString()
+
+    @staticmethod
+    def from_bytes(b):
+        ray_exception = RayException()
+        ray_exception.ParseFromString(b)
+        if ray_exception.language == ray.Language.PYTHON.value():
+            return pickle.loads(ray_exception.serialized_exception)
+        else:
+            return CrossLanguageError(ray_exception)
+
+
+class CrossLanguageError(RayError):
+    """Raised from another language."""
+
+    def __init__(self, ray_exception):
+        super().__init__("An exception raised from {}:\n{}".format(
+            Language.Name(ray_exception.language),
+            ray_exception.formatted_exception_string))
 
 
 class RayConnectionError(RayError):
@@ -100,9 +130,10 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append("{}{}{} (pid={}, ip={})".format(
-                    colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
-                    self.pid, self.ip))
+                out.append(f"{colorama.Fore.CYAN}"
+                           f"{self.proctitle}"
+                           f"{colorama.Fore.RESET} "
+                           f"(pid={self.pid}, ip={self.ip})")
             elif in_worker:
                 in_worker = False
             elif "ray/worker.py" in line or "ray/function_manager.py" in line:
@@ -178,13 +209,13 @@ class UnreconstructableError(RayError):
 
     def __str__(self):
         return (
-            "Object {} is lost (either LRU evicted or deleted by user) and "
+            f"Object {self.object_ref.hex()} is lost "
+            "(either LRU evicted or deleted by user) and "
             "cannot be reconstructed. Try increasing the object store "
             "memory available with ray.init(object_store_memory=<bytes>) "
             "or setting object store limits with "
-            "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                self.object_ref.hex(),
-                "https://docs.ray.io/en/latest/memory-management.html"))
+            "ray.remote(object_store_memory=<bytes>). "
+            "See also: https://docs.ray.io/en/latest/memory-management.html")
 
 
 class RayTimeoutError(RayError):

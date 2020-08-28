@@ -90,6 +90,10 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
         state.num_workers_per_process =
             RayConfig::instance().num_workers_per_process_java();
         break;
+      case Language::CPP:
+        state.num_workers_per_process =
+            RayConfig::instance().num_workers_per_process_cpp();
+        break;
       default:
         RAY_LOG(FATAL) << "The number of workers per process for "
                        << Language_Name(entry.first) << " worker is not set.";
@@ -284,7 +288,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     }
   }
 
-  std::map<std::string, std::string> env;
+  ProcessEnvironment env;
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
@@ -335,7 +339,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 }
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
-                                 const std::map<std::string, std::string> &env) {
+                                 const ProcessEnvironment &env) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting worker process with command:";

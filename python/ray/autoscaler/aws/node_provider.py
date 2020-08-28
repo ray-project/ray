@@ -330,21 +330,32 @@ class AWSNodeProvider(NodeProvider):
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launching {} nodes",
+                        "Launched {} nodes",
                         count,
                         _tags=dict(subnet_id=subnet_id)):
                     for instance in created:
+                        # NOTE(maximsmol): This is needed for mocking
+                        # boto3 for tests. This is likely a bug in moto
+                        # but AWS docs don't seem to say.
+                        # You can patch moto/ec2/responses/instances.py
+                        # to fix this (add <stateReason> to EC2_RUN_INSTANCES)
+
+                        # The correct value is technically
+                        # {"code": "0", "Message": "pending"}
+                        state_reason = instance.state_reason or {
+                            "Message": "pending"
+                        }
+
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=instance.state_reason["Message"]))
+                                info=state_reason["Message"]))
                         cli_logger.old_info(
                             logger, "NodeProvider: Created instance "
                             "[id={}, name={}, info={}]", instance.instance_id,
-                            instance.state["Name"],
-                            instance.state_reason["Message"])
+                            instance.state["Name"], state_reason["Message"])
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:

@@ -7,6 +7,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
+from ray.rllib.utils.torch_ops import FLOAT_MIN
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -139,7 +140,7 @@ class EpsilonGreedy(Exploration):
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
             random_valid_action_logits = torch.where(
-                q_values == -float("inf"),
+                q_values <= FLOAT_MIN,
                 torch.ones_like(q_values) * 0.0, torch.ones_like(q_values))
             # A random action.
             random_actions = torch.squeeze(
