@@ -185,7 +185,7 @@ class ObjectStoreFullError(RayError):
 
 
 class ObjectLostError(RayError):
-    """Indicates that an object is lost and cannot be reconstructed.
+    """Indicates that an object has been lost due to node failure.
 
     Attributes:
         object_ref: ID of the object.
@@ -195,9 +195,7 @@ class ObjectLostError(RayError):
         self.object_ref = object_ref
 
     def __str__(self):
-        return (f"Object {self.object_ref.hex()} is lost "
-                "(either LRU evicted or lost due to node failure) and "
-                "cannot be reconstructed.")
+        return (f"Object {self.object_ref.hex()} is lost due to node failure.")
 
 
 class GetTimeoutError(RayError):
