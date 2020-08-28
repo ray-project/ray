@@ -1000,7 +1000,7 @@ def test_fill_object_store_lru_fallback(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        lru_evict=True,
+        _lru_evict=True,
         _system_config=config)
 
     @ray.remote

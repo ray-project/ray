@@ -360,7 +360,7 @@ cdef execute_task(
         CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
-    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids(as_str=True))
+    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())

@@ -206,7 +206,6 @@ Academic Papers
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   projects.rst
 
 .. toctree::
    :hidden:

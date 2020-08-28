@@ -315,30 +315,6 @@ def test_numpy_serialization(ray_start_regular):
     assert len(buffers) == 1
 
 
-def test_numpy_subclass_serialization(ray_start_regular):
-    class MyNumpyConstant(np.ndarray):
-        def __init__(self, value):
-            super().__init__()
-            self.constant = value
-
-        def __str__(self):
-            print(self.constant)
-
-    constant = MyNumpyConstant(123)
-
-    def explode(x):
-        raise RuntimeError("Expected error.")
-
-    ray.register_custom_serializer(
-        type(constant), serializer=explode, deserializer=explode)
-
-    try:
-        ray.put(constant)
-        assert False, "Should never get here!"
-    except (RuntimeError, IndexError):
-        print("Correct behavior, proof that customer serializer was used.")
-
-
 def test_numpy_subclass_serialization_pickle(ray_start_regular):
     class MyNumpyConstant(np.ndarray):
         def __init__(self, value):

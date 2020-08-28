@@ -366,25 +366,6 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-def test_get_multiple_experimental(ray_start_regular_shared):
-    object_refs = [ray.put(i) for i in range(10)]
-
-    object_refs_tuple = tuple(object_refs)
-    assert ray.experimental.get(object_refs_tuple) == list(range(10))
-
-    object_refs_nparray = np.array(object_refs)
-    assert ray.experimental.get(object_refs_nparray) == list(range(10))
-
-
-def test_get_dict(ray_start_regular_shared):
-    d = {str(i): ray.put(i) for i in range(5)}
-    for i in range(5, 10):
-        d[str(i)] = i
-    result = ray.experimental.get(d)
-    expected = {str(i): i for i in range(10)}
-    assert result == expected
-
-
 def test_get_with_timeout(ray_start_regular_shared):
     signal = ray.test_utils.SignalActor.remote()
 
