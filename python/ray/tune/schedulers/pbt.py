@@ -389,6 +389,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 self._next_perturbation_sync = max(
                     self._next_perturbation_sync + self._perturbation_interval,
                     max_last_train_time)
+            
             return TrialScheduler.PAUSE
 
     def _perturb_trial(self, trial, trial_runner, upper_quantile,
@@ -485,8 +486,11 @@ class PopulationBasedTraining(FIFOScheduler):
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
-
-        if self._synch:
+        if trial.status == Trial.PAUSED:
+            if not self._synch:
+                raise TuneError("Trials should be paused here only if in "
+                                "synchronous mode. If you encounter this error"
+                                " please raise an issue on Ray Github.")
             trial.config = new_config
             trial.experiment_tag = new_tag
             trial.on_checkpoint(new_state.last_checkpoint)
@@ -519,9 +523,9 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trials = []
         for trial, state in self._trial_state.items():
-            logger.info("Trial {}, state {}".format(trial, state))
+            logger.debug("Trial {}, state {}".format(trial, state))
             if trial.is_finished():
-                logger.info("Trial {} is finished".format(trial))
+                logger.debug("Trial {} is finished".format(trial))
             if state.last_score is not None and not trial.is_finished():
                 trials.append(trial)
         trials.sort(key=lambda t: self._trial_state[t].last_score)
