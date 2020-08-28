@@ -233,8 +233,6 @@ class MAMLLoss(object):
                 a * b for a, b in zip(self.cur_kl_coeff, self.mean_inner_kl)
             ]))
         self.loss = torch.mean(torch.stack(ppo_obj)) + self.inner_kl_loss
-        print("Meta-Loss: ", self.loss.item(), ", Inner KL:",
-              self.inner_kl_loss.item())
 
     def feed_forward(self, obs, policy_vars, policy_config):
         # Hacky for now, reconstruct FC network with adapted weights

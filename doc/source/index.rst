@@ -153,6 +153,7 @@ Academic Papers
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/architecture.rst
    serve/package-ref.rst
 
 .. toctree::
@@ -212,7 +213,6 @@ Academic Papers
    :maxdepth: -1
    :caption: Ray Observability
 
-   ray-dashboard.rst
    ray-metrics.rst
 
 .. toctree::

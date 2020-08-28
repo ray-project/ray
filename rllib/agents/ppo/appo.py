@@ -1,62 +1,65 @@
 from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
-from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents import impala
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
 
 # yapf: disable
 # __sphinx_doc_begin__
-DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
-    # Whether to use V-trace weighted advantages. If false, PPO GAE advantages
-    # will be used instead.
-    "vtrace": False,
+DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
+    impala.DEFAULT_CONFIG,  # See keys in impala.py, which are also supported.
+    {
+        # Whether to use V-trace weighted advantages. If false, PPO GAE
+        # advantages will be used instead.
+        "vtrace": False,
 
-    # == These two options only apply if vtrace: False ==
-    # Should use a critic as a baseline (otherwise don't use value baseline;
-    # required for using GAE).
-    "use_critic": True,
-    # If true, use the Generalized Advantage Estimator (GAE)
-    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": True,
-    # GAE(lambda) parameter
-    "lambda": 1.0,
+        # == These two options only apply if vtrace: False ==
+        # Should use a critic as a baseline (otherwise don't use value
+        # baseline; required for using GAE).
+        "use_critic": True,
+        # If true, use the Generalized Advantage Estimator (GAE)
+        # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+        "use_gae": True,
+        # GAE(lambda) parameter
+        "lambda": 1.0,
 
-    # == PPO surrogate loss options ==
-    "clip_param": 0.4,
+        # == PPO surrogate loss options ==
+        "clip_param": 0.4,
 
-    # == PPO KL Loss options ==
-    "use_kl_loss": False,
-    "kl_coeff": 1.0,
-    "kl_target": 0.01,
+        # == PPO KL Loss options ==
+        "use_kl_loss": False,
+        "kl_coeff": 1.0,
+        "kl_target": 0.01,
 
-    # == IMPALA optimizer params (see documentation in impala.py) ==
-    "rollout_fragment_length": 50,
-    "train_batch_size": 500,
-    "min_iter_time_s": 10,
-    "num_workers": 2,
-    "num_gpus": 0,
-    "num_data_loader_buffers": 1,
-    "minibatch_buffer_size": 1,
-    "num_sgd_iter": 1,
-    "replay_proportion": 0.0,
-    "replay_buffer_num_slots": 100,
-    "learner_queue_size": 16,
-    "learner_queue_timeout": 300,
-    "max_sample_requests_in_flight_per_worker": 2,
-    "broadcast_interval": 1,
-    "grad_clip": 40.0,
-    "opt_type": "adam",
-    "lr": 0.0005,
-    "lr_schedule": None,
-    "decay": 0.99,
-    "momentum": 0.0,
-    "epsilon": 0.1,
-    "vf_loss_coeff": 0.5,
-    "entropy_coeff": 0.01,
-    "entropy_coeff_schedule": None,
-})
+        # == IMPALA optimizer params (see documentation in impala.py) ==
+        "rollout_fragment_length": 50,
+        "train_batch_size": 500,
+        "min_iter_time_s": 10,
+        "num_workers": 2,
+        "num_gpus": 0,
+        "num_data_loader_buffers": 1,
+        "minibatch_buffer_size": 1,
+        "num_sgd_iter": 1,
+        "replay_proportion": 0.0,
+        "replay_buffer_num_slots": 100,
+        "learner_queue_size": 16,
+        "learner_queue_timeout": 300,
+        "max_sample_requests_in_flight_per_worker": 2,
+        "broadcast_interval": 1,
+        "grad_clip": 40.0,
+        "opt_type": "adam",
+        "lr": 0.0005,
+        "lr_schedule": None,
+        "decay": 0.99,
+        "momentum": 0.0,
+        "epsilon": 0.1,
+        "vf_loss_coeff": 0.5,
+        "entropy_coeff": 0.01,
+        "entropy_coeff_schedule": None,
+    },
+    _allow_unknown_configs=True,
+)
 # __sphinx_doc_end__
 # yapf: enable
 

@@ -188,6 +188,8 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+.. _serve-shadow-testing:
+
 Shadow Testing
 --------------
 
@@ -219,6 +221,8 @@ This is demonstrated in the example below, where we create an endpoint serviced 
   # Stop shadowing traffic to the backends.
   serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
   serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
+
+.. _serve-model-composition:
 
 Composing Multiple Models
 =========================
@@ -286,7 +290,7 @@ How do I call an endpoint from Python code?
 use the following  to get a "handle" to that endpoint.
 
 .. code-block:: python
-    
+
     handle = serve.get_handle("api_endpoint")
 
 

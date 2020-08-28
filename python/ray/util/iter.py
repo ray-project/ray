@@ -53,8 +53,8 @@ def from_range(n: int, num_shards: int = 2,
         else:
             end = (i + 1) * shard_size
         generators.append(range(start, end))
-    name = "from_range[{}, shards={}{}]".format(
-        n, num_shards, ", repeat=True" if repeat else "")
+    name = (f"from_range[{n}, shards={num_shards}"
+            f"{', repeat=True' if repeat else ''}]")
     return from_iterators(
         generators,
         repeat=repeat,
@@ -111,7 +111,7 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
         name (str): Optional name to give the iterator.
     """
     if not name:
-        name = "from_actors[shards={}]".format(len(actors))
+        name = f"from_actors[shards={len(actors)}]"
     return ParallelIterator([_ActorSet(actors, [])], name, parent_iterators=[])
 
 
@@ -184,7 +184,7 @@ class ParallelIterator(Generic[T]):
         return repr(self)
 
     def __repr__(self):
-        return "ParallelIterator[{}]".format(self.name)
+        return f"ParallelIterator[{self.name}]"
 
     def _with_transform(self, local_it_fn, name):
         """Helper function to create new Parallel Iterator"""
@@ -290,7 +290,7 @@ class ParallelIterator(Generic[T]):
             ... [0, 1, 2, 3]
         """
         return self._with_transform(lambda local_it: local_it.batch(n),
-                                    ".batch({})".format(n))
+                                    f".batch({n})")
 
     def flatten(self) -> "ParallelIterator[T[0]]":
         """Flatten batches of items into individual items.
@@ -421,8 +421,7 @@ class ParallelIterator(Generic[T]):
         def make_gen_i(i):
             return lambda: base_iterator(num_partitions, i)
 
-        name = self.name + ".repartition[num_partitions={}]".format(
-            num_partitions)
+        name = self.name + f".repartition[num_partitions={num_partitions}]"
 
         generators = [make_gen_i(s) for s in range(num_partitions)]
         worker_cls = ray.remote(ParallelIteratorWorker)
@@ -449,7 +448,7 @@ class ParallelIterator(Generic[T]):
             ... 2
         """
         it = self.batch_across_shards().flatten()
-        it.name = "{}.gather_sync()".format(self)
+        it.name = f"{self}.gather_sync()"
         return it
 
     def batch_across_shards(self) -> "LocalIterator[List[T]]":
@@ -488,7 +487,7 @@ class ParallelIterator(Generic[T]):
                         yield results
                     futures = [a.par_iter_next.remote() for a in active]
 
-        name = "{}.batch_across_shards()".format(self)
+        name = f"{self}.batch_across_shards()"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
     def gather_async(self, batch_ms=0, num_async=1) -> "LocalIterator[T]":
@@ -560,7 +559,7 @@ class ParallelIterator(Generic[T]):
                 if timeout is not None:
                     yield _NextValueNotReady()
 
-        name = "{}.gather_async()".format(self)
+        name = f"{self}.gather_async()"
         local_iter = LocalIterator(base_iterator, SharedMetrics(), name=name)
         return local_iter
 
@@ -576,8 +575,7 @@ class ParallelIterator(Generic[T]):
         """Return an iterator that is the union of this and the other."""
         if not isinstance(other, ParallelIterator):
             raise TypeError(
-                "other must be of type ParallelIterator, got {}".format(
-                    type(other)))
+                f"other must be of type ParallelIterator, got {type(other)}")
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
@@ -585,7 +583,7 @@ class ParallelIterator(Generic[T]):
         # keep an explicit reference to its parent iterator
         return ParallelIterator(
             actor_sets,
-            "ParallelUnion[{}, {}]".format(self, other),
+            f"ParallelUnion[{self}, {other}]",
             parent_iterators=self.parent_iterators + other.parent_iterators)
 
     def select_shards(self,
@@ -608,7 +606,7 @@ class ParallelIterator(Generic[T]):
         new_actor_set = _ActorSet(new_actors, old_actor_set.transforms)
         return ParallelIterator(
             [new_actor_set],
-            "{}.select_shards({} total)".format(self, len(shards_to_keep)),
+            f"{self}.select_shards({len(shards_to_keep)} total)",
             parent_iterators=self.parent_iterators)
 
     def num_shards(self) -> int:
@@ -674,7 +672,7 @@ class ParallelIterator(Generic[T]):
                 except StopIteration:
                     break
 
-        name = self.name + ".shard[{}]".format(shard_index)
+        name = self.name + f".shard[{shard_index}]"
         return LocalIterator(base_iterator, SharedMetrics(), name=name)
 
 
@@ -761,7 +759,7 @@ class LocalIterator(Generic[T]):
         return repr(self)
 
     def __repr__(self):
-        return "LocalIterator[{}]".format(self.name)
+        return f"LocalIterator[{self.name}]"
 
     def transform(self, fn: Callable[[Iterable[T]], Iterable[U]]
                   ) -> "LocalIterator[U]":
@@ -871,7 +869,7 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.shared_metrics,
             self.local_transforms + [apply_batch],
-            name=self.name + ".batch({})".format(n))
+            name=self.name + f".batch({n})")
 
     def flatten(self) -> "LocalIterator[T[0]]":
         def apply_flatten(it):
@@ -1013,7 +1011,7 @@ class LocalIterator(Generic[T]):
                 LocalIterator(
                     make_next(i),
                     self.shared_metrics, [],
-                    name=self.name + ".duplicate[{}]".format(i)))
+                    name=self.name + f".duplicate[{i}]"))
 
         return iterators
 
@@ -1038,8 +1036,7 @@ class LocalIterator(Generic[T]):
         for it in others:
             if not isinstance(it, LocalIterator):
                 raise ValueError(
-                    "other must be of type LocalIterator, got {}".format(
-                        type(it)))
+                    f"other must be of type LocalIterator, got {type(it)}")
 
         active = []
         parent_iters = [self] + list(others)
@@ -1090,8 +1087,7 @@ class LocalIterator(Generic[T]):
         return LocalIterator(
             build_union,
             shared_metrics, [],
-            name="LocalUnion[{}, {}]".format(self, ", ".join(map(str,
-                                                                 others))))
+            name=f"LocalUnion[{self}, {', '.join(map(str, others))}]")
 
 
 class ParallelIteratorWorker(object):

@@ -145,8 +145,8 @@ thus just use the same ``Trainable`` for the replay run.
         scheduler=replay,
         stop={"training_iteration": 100})
 
-DCGAN with Trainable and PBT
-----------------------------
+DCGAN with PBT
+--------------
 
 The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
 models via a training paradigm consisting of two competing modules – a generator and a
@@ -159,7 +159,7 @@ Complete code example at `github <https://github.com/ray-project/ray/tree/master
 
 We define the Generator and Discriminator with standard Pytorch API:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/common.py
    :language: python
    :start-after: __GANmodel_begin__
    :end-before: __GANmodel_end__
@@ -169,22 +169,22 @@ the model candidates. For a GAN network, inception score is arguably the most
 commonly used metric. We trained a mnist classification model (LeNet) and use
 it to inference the generated images and evaluate the image quality.
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/common.py
    :language: python
    :start-after: __INCEPTION_SCORE_begin__
    :end-before: __INCEPTION_SCORE_end__
 
-The ``Trainable`` class includes a Generator and a Discriminator, each with an
-independent learning rate and optimizer.
+We define a training function that includes a Generator and a Discriminator, each with an
+independent learning rate and optimizer. We make sure to implement checkpointing for our training.
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py
    :language: python
-   :start-after: __Trainable_begin__
-   :end-before: __Trainable_end__
+   :start-after: __Train_begin__
+   :end-before: __Train_end__
 
 We specify inception score as the metric and start the tuning:
 
-.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py
+.. literalinclude:: /../../python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__

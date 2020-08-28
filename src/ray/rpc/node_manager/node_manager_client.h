@@ -94,6 +94,9 @@ class NodeManagerWorkerClient
   /// Trigger global GC across the cluster.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
 
+  /// Ask the raylet to spill an object to external storage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
+
  private:
   /// Constructor.
   ///

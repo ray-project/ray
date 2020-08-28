@@ -30,17 +30,19 @@ def function(func):
     return func
 
 
-def uniform(*args, **kwargs):
+class uniform(sample_from):
     """Wraps tune.sample_from around ``np.random.uniform``.
 
     ``tune.uniform(1, 10)`` is equivalent to
     ``tune.sample_from(lambda _: np.random.uniform(1, 10))``
 
     """
-    return sample_from(lambda _: np.random.uniform(*args, **kwargs))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(lambda _: np.random.uniform(*args, **kwargs))
 
 
-def loguniform(min_bound, max_bound, base=10):
+class loguniform(sample_from):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
@@ -48,40 +50,48 @@ def loguniform(min_bound, max_bound, base=10):
         max_bound (float): Upper boundary of the output interval (1e-2)
         base (float): Base of the log. Defaults to 10.
     """
-    logmin = np.log(min_bound) / np.log(base)
-    logmax = np.log(max_bound) / np.log(base)
 
-    def apply_log(_):
-        return base**(np.random.uniform(logmin, logmax))
+    def __init__(self, min_bound, max_bound, base=10):
+        logmin = np.log(min_bound) / np.log(base)
+        logmax = np.log(max_bound) / np.log(base)
 
-    return sample_from(apply_log)
+        def apply_log(_):
+            return base**(np.random.uniform(logmin, logmax))
+
+        super().__init__(apply_log)
 
 
-def choice(*args, **kwargs):
+class choice(sample_from):
     """Wraps tune.sample_from around ``random.choice``.
 
     ``tune.choice([1, 2])`` is equivalent to
     ``tune.sample_from(lambda _: random.choice([1, 2]))``
 
     """
-    return sample_from(lambda _: random.choice(*args, **kwargs))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(lambda _: random.choice(*args, **kwargs))
 
 
-def randint(*args, **kwargs):
+class randint(sample_from):
     """Wraps tune.sample_from around ``np.random.randint``.
 
     ``tune.randint(10)`` is equivalent to
     ``tune.sample_from(lambda _: np.random.randint(10))``
 
     """
-    return sample_from(lambda _: np.random.randint(*args, **kwargs))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(lambda _: np.random.randint(*args, **kwargs))
 
 
-def randn(*args, **kwargs):
+class randn(sample_from):
     """Wraps tune.sample_from around ``np.random.randn``.
 
     ``tune.randn(10)`` is equivalent to
     ``tune.sample_from(lambda _: np.random.randn(10))``
 
     """
-    return sample_from(lambda _: np.random.randn(*args, **kwargs))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(lambda _: np.random.randn(*args, **kwargs))
