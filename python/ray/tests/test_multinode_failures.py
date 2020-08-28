@@ -1,4 +1,3 @@
-import json
 import os
 import signal
 import sys
@@ -145,10 +144,10 @@ def check_components_alive(cluster, component_type, check_component_alive):
     [{
         "num_cpus": 8,
         "num_nodes": 4,
-        "_internal_config": json.dumps({
+        "_system_config": {
             # Raylet codepath is not stable with a shorter timeout.
             "num_heartbeats_timeout": 10
-        }),
+        },
     }],
     indirect=True)
 def test_raylet_failed(ray_start_cluster):

@@ -1,5 +1,4 @@
 import collections
-import json
 import os
 import pytest
 try:
@@ -241,9 +240,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
-            _internal_config=json.dumps({
-                "num_heartbeats_timeout": 1000
-            } if i == 0 else {}))
+            _system_config={"num_heartbeats_timeout": 1000} if i == 0 else {})
     ray.init(address=cluster.address)
 
     @ray.remote

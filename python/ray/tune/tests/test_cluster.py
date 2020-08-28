@@ -1,5 +1,4 @@
 import inspect
-import json
 import time
 import os
 import pytest
@@ -45,9 +44,9 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_internal_config": json.dumps({
+            "_system_config": {
                 "num_heartbeats_timeout": 10
-            })
+            }
         })
     # Pytest doesn't play nicely with imports
     register_trainable("__fake_remote", MockRemoteTrainer)
@@ -74,9 +73,9 @@ def start_connected_emptyhead_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "_internal_config": json.dumps({
+            "_system_config": {
                 "num_heartbeats_timeout": 10
-            })
+            }
         })
     # Pytest doesn't play nicely with imports
     _register_all()
