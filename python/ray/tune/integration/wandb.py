@@ -103,10 +103,18 @@ def _set_api_key(wandb_config):
     if api_key:
         os.environ[WANDB_ENV_VAR] = api_key
     elif not os.environ.get(WANDB_ENV_VAR):
+        try:
+            # Check if user is already logged into wandb.
+            wandb.ensure_configured()
+            if wandb.api.api_key:
+                logger.info("Already logged into W&B.")
+                return
+        except AttributeError:
+            pass
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
-            "variable or pass `api_key` or `api_key_file` in the config".
-            format(WANDB_ENV_VAR))
+            "variable, pass `api_key` or `api_key_file` in the config, "
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):

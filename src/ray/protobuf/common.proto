@@ -100,6 +100,50 @@ message FunctionDescriptor {
   }
 }
 
+// This enum type is used as object's metadata to indicate the object's
+// creating task has failed because of a certain error.
+// TODO(hchen): We may want to make these errors more specific. E.g., we may
+// want to distinguish between intentional and expected actor failures, and
+// between worker process failure and node failure.
+enum ErrorType {
+  // Indicates that a task failed because the worker died unexpectedly while
+  // executing it.
+  WORKER_DIED = 0;
+  // Indicates that a task failed because the actor died unexpectedly before
+  // finishing it.
+  ACTOR_DIED = 1;
+  // Indicates that an object is lost and cannot be restarted.
+  // Note, this currently only happens to actor objects. When the actor's
+  // state is already after the object's creating task, the actor cannot
+  // re-run the task.
+  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
+  // 1) A object that was put by the driver.
+  // 2) The object's creating task is already cleaned up from GCS (this
+  // currently crashes raylet).
+  OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed due to user code failure.
+  TASK_EXECUTION_EXCEPTION = 3;
+  // Indicates that the object has been placed in plasma. This error shouldn't
+  // ever be exposed to user code; it is only used internally to indicate the
+  // result of a direct call has been placed in plasma.
+  OBJECT_IN_PLASMA = 4;
+  // Indicates that an object has been cancelled.
+  TASK_CANCELLED = 5;
+  // Inidicates that creating the GCS service failed to create the actor.
+  ACTOR_CREATION_FAILED = 6;
+}
+
+/// The task exception encapsulates all information about task
+/// execution execeptions.
+message RayException {
+  // Language of this exception.
+  Language language = 1;
+  // The serialized exception.
+  bytes serialized_exception = 2;
+  // The formatted exception string.
+  string formatted_exception_string = 3;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.

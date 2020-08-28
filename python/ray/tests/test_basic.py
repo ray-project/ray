@@ -1,6 +1,5 @@
 # coding: utf-8
 import io
-import json
 import logging
 import os
 import pickle
@@ -206,10 +205,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 
 def test_fair_queueing(shutdown_only):
-    ray.init(
-        num_cpus=1, _internal_config=json.dumps({
-            "fair_queueing_enabled": 1
-        }))
+    ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
 
     @ray.remote
     def h():
@@ -256,6 +252,22 @@ def test_put_get(shutdown_only):
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
+
+
+def test_wait_timing(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        time.sleep(1)
+
+    future = f.remote()
+
+    start = time.time()
+    ready, not_ready = ray.wait([future], timeout=0.2)
+    assert 0.2 < time.time() - start < 0.3
+    assert len(ready) == 0
+    assert len(not_ready) == 1
 
 
 def test_function_descriptor():
