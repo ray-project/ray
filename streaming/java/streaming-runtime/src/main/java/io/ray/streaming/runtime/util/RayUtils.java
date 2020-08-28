@@ -52,6 +52,7 @@ public class RayUtils {
       }
       NodeInfo nodeInfo = new NodeInfo(new UniqueId(nodeIdBytes),
           "localhost" + i, "localhost" + i,
+          "", "", -1,
           true, resources);
       nodeInfos.add(nodeInfo);
     }
