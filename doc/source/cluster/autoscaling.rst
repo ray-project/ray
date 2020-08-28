@@ -28,7 +28,8 @@ The basic autoscaling config settings are as follows:
     # This max value allowed is 1.0, which is the most conservative setting.
     target_utilization_fraction: 0.8
 
-    # If a node is idle for this many minutes, it will be removed.
+    # If a node is idle for this many minutes, it will be removed. A node is
+    # considered idle if there are any tasks or actors running on it.
     idle_timeout_minutes: 5
 
 Multiple Node Type Autoscaling
@@ -36,7 +37,7 @@ Multiple Node Type Autoscaling
 
 In 1.0, Ray supports multiple cluster node types. In this mode of operation, the scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and specifically tries to add nodes that can fulfill these resource demands. This enables precise, rapid scale up as the autoscaler has more visibility into the backlog of work and resource shapes.
 
-The concept of a cluster node type encompasses both the physical instance type (e.g., AWS p3.8xl GPU nodes vs m4.16xl CPU nodes), as well as other attributes (e.g., IAM role, the machine image, etc). Custom resources can be specified for each node type so that Ray is aware of the demand for specific node types at the application level (e.g., a task may request to be placed on a machine with a specific role or machine image via custom resource).
+The concept of a cluster node type encompasses both the physical instance type (e.g., AWS p3.8xl GPU nodes vs m4.16xl CPU nodes), as well as other attributes (e.g., IAM role, the machine image, etc). `Custom resources <configure.html>`__ can be specified for each node type so that Ray is aware of the demand for specific node types at the application level (e.g., a task may request to be placed on a machine with a specific role or machine image via custom resource).
 
 Multi node type autoscaling operates in conjunction with the basic autoscaler. You may want to configure the basic autoscaler accordingly to act convervatively (i.e., set ``target_utilization_fraction: 1.0``).
 
