@@ -12,7 +12,7 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 from knack.util import CLIError
 
-from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.node_provider import NodeProvider, NodeProviderCache
 from ray.autoscaler.azure.config import bootstrap_azure
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -45,7 +45,7 @@ class AzureNodeProvider(NodeProvider):
     immediately to terminated when ``terminate_node`` is called.
     """
 
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config, cluster_name, provider_cache):
         NodeProvider.__init__(self, provider_config, cluster_name)
         kwargs = {}
         if "subscription_id" in provider_config:
@@ -74,7 +74,9 @@ class AzureNodeProvider(NodeProvider):
         self.lock = RLock()
 
         # cache node objects
-        self.cached_nodes = {}
+        self.provider_cache = provider_cache
+        if provider_cache == None:
+            self.provider_cache = NodeProviderCache()
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
@@ -88,8 +90,15 @@ class AzureNodeProvider(NodeProvider):
             resource_group_name=self.provider_config["resource_group"])
 
         nodes = [self._extract_metadata(vm) for vm in filter(match_tags, vms)]
-        self.cached_nodes = {node["name"]: node for node in nodes}
-        return self.cached_nodes
+
+        self.provider_cache.cleanup_by_tags(tag_filters)
+        for node in nodes:
+            # Note: All the operations use "name" as the unique instance id
+            node_id = node["name"]
+            self.provider_cache.set_node(node_id, node)
+            self.provider_cache.set_tags(node_id, node.tags)
+
+        return {node["name"]: node for node in nodes}
 
     def _extract_metadata(self, vm):
         # get tags
@@ -158,7 +167,8 @@ class AzureNodeProvider(NodeProvider):
 
     def node_tags(self, node_id):
         """Returns the tags of the given node (string dict)."""
-        return self._get_cached_node(node_id=node_id)["tags"]
+        self._get_cached_node(node_id=node_id)
+        return self.provider_cache.get_tags(node_id)
 
     def external_ip(self, node_id):
         """Returns the external ip of the given node."""
@@ -227,7 +237,8 @@ class AzureNodeProvider(NodeProvider):
             resource_group_name=self.provider_config["resource_group"],
             vm_name=node_id,
             parameters={"tags": node_tags})
-        self.cached_nodes[node_id]["tags"] = node_tags
+        
+        self.provider_cache.update_tags(node_id, tags)
 
     def terminate_node(self, node_id):
         """Terminates the specified node. This will delete the VM and
@@ -258,6 +269,9 @@ class AzureNodeProvider(NodeProvider):
                 resource_group_name=resource_group, vm_name=node_id).wait()
         except Exception as e:
             logger.warning("Failed to delete VM: {}".format(e))
+        
+        # delete node from cache
+        self.provider_cache.delete_node_and_tags(node_id)
 
         try:
             # delete nic
@@ -286,12 +300,14 @@ class AzureNodeProvider(NodeProvider):
 
     def _get_node(self, node_id):
         self._get_filtered_nodes({})  # Side effect: updates cache
-        return self.cached_nodes[node_id]
+        
+        return self.provider_cache.get_node(node_id)
 
     def _get_cached_node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
-        return self._get_node(node_id=node_id)
+        if self.provider_cache.node_exists(node_id):
+            return self.provider_cache.get_node(node_id)
+
+        return self._get_node(node_id)
 
     @staticmethod
     def bootstrap_config(cluster_config):

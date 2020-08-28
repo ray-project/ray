@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import threading
 from typing import Any, Dict
 
 import yaml
@@ -173,9 +174,10 @@ class NodeProvider:
     immediately to terminated when `terminate_node` is called.
     """
 
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config, cluster_name, provider_cache=None):
         self.provider_config = provider_config
         self.cluster_name = cluster_name
+        self.provider_cache = provider_cache
 
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
@@ -276,3 +278,92 @@ class NodeProvider:
             return DockerCommandRunner(docker_config, **common_args)
         else:
             return SSHCommandRunner(**common_args)
+
+class NodeProviderCache:
+    """Base class for storing cached node information, used to avoid excessive
+    API calls to cloud providers in some cases.
+
+    This implementation stores all information in memory. 
+    """
+
+    def __init__(self):
+        # tag_map is supposed to be the superset of node_map.
+        self.node_map = {}
+        self.tag_map = {}
+        self.lock = threading.Lock()
+
+    def get_node(self, node_id):
+        with lock:
+            return self.node_map.get(node_id)
+
+    def set_node(self, node_id, node):
+        with lock:
+            self.node_map[node_id] = node
+            self.tag_map.setdefault(node_id, {})
+
+    def node_exists(self, node_id):
+        with lock:
+            return node_id in self.node_map
+
+    def get_tags(self, node_id):
+        with lock:
+            return self.tag_map.get(node_id)
+
+    def set_tags(self, node_id, tags):
+        with lock:
+            self.tag_map[node_id] = tags
+
+    def update_tags(self, node_id, tags):
+        with lock:
+            self.tag_map[node_id].update(tags)
+
+    def tags_exists(self, node_id):
+        with lock:
+            return node_id in self.tags_map
+
+    def get_nodes_by_tags(self, tag_filters=None):
+        result = {}
+        with lock:
+            for node_id, tags in self.tag_map.items():
+                tag_match = True
+                for k, v in tag_filters.items():
+                    if tags.get(k) != v:
+                        tag_match = False
+                        break
+                if tag_match:
+                    if node_id in self.node_map:
+                        result[node_id] = copy.deepcopy(node)
+        
+        return result
+
+    def detele_node_and_tags(self, node_id):
+        with lock:
+            if node_id in self.node_map:
+                del self.node_map[node_id]
+            if node_id in self.tag_map:
+                del self.tag_map[node_id]
+
+    def cleanup_by_tags(self, tag_filters=None):
+        to_delete = []
+        with lock:
+            if tag_filters == None or len(tag_filters) == 0:
+                self.node_map = {}
+                self.tag_map = {}
+            else:
+                for node_id, tags in self.node_map.items():
+                    tag_match = True
+                    for k, v in tag_filters.items():
+                        if tags.get(k) != v:
+                            tag_match = False
+                            break
+                    if tag_match:
+                        to_delete.append(node_id)
+                
+                for node_id in to_delete:
+                    if node_id not in self.node_map:
+                        msg = "Node {node_id} does not exist in node cache".format(
+                            node_id=node_id)
+                        raise ValueError(msg)
+                    
+                    del self.node_map[node_id]
+                    def self.tag_map[node_id]

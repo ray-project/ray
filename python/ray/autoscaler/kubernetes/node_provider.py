@@ -21,7 +21,7 @@ def to_label_selector(tags):
 
 
 class KubernetesNodeProvider(NodeProvider):
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config, cluster_name, provider_cache):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cluster_name = cluster_name
         self.namespace = provider_config["namespace"]

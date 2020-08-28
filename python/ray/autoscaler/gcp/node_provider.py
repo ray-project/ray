@@ -3,7 +3,7 @@ from threading import RLock
 import time
 import logging
 
-from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.node_provider import NodeProvider, NodeProviderCache
 from ray.autoscaler.gcp.config import bootstrap_gcp
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
@@ -39,7 +39,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
 
 
 class GCPNodeProvider(NodeProvider):
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config, cluster_name, provider_cache):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()
@@ -48,7 +48,9 @@ class GCPNodeProvider(NodeProvider):
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
-        self.cached_nodes = {}
+        self.provider_cache = provider_cache
+        if provider_cache == None:
+            self.provider_cache = NodeProviderCache()
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -87,8 +89,13 @@ class GCPNodeProvider(NodeProvider):
             ).execute()
 
             instances = response.get("items", [])
-            # Note: All the operations use "name" as the unique instance id
-            self.cached_nodes = {i["name"]: i for i in instances}
+
+            self.provider_cache.cleanup_by_tags(tag_filters)
+            for instance in instances:
+                # Note: All the operations use "name" as the unique instance id
+                node_id = instance["name"]
+                self.provider_cache.set_node(node_id, instance)
+                self.provider_cache.set_tags(node_id, instance["labels"])
 
             return [i["name"] for i in instances]
 
@@ -123,6 +130,8 @@ class GCPNodeProvider(NodeProvider):
                     "labels": dict(node["labels"], **labels),
                     "labelFingerprint": node["labelFingerprint"]
                 }).execute()
+
+            self.provider_cache.set_tags(node_id, tags)
 
             result = wait_for_compute_zone_operation(
                 self.compute, project_id, operation, availability_zone)
@@ -217,14 +226,16 @@ class GCPNodeProvider(NodeProvider):
             result = wait_for_compute_zone_operation(
                 self.compute, project_id, operation, availability_zone)
 
+            self.provider_cache.delete_node_and_tags(node_id)
+
             return result
 
     def _get_node(self, node_id):
         self.non_terminated_nodes({})  # Side effect: updates cache
 
         with self.lock:
-            if node_id in self.cached_nodes:
-                return self.cached_nodes[node_id]
+            if self.provider_cache.node_exists(node_id):
+                return self.provider_cache.get_node(node_id)
 
             instance = self.compute.instances().get(
                 project=self.provider_config["project_id"],
@@ -232,11 +243,13 @@ class GCPNodeProvider(NodeProvider):
                 instance=node_id,
             ).execute()
 
+            self.provider_cache.set_node(node_id, instance)
+
             return instance
 
     def _get_cached_node(self, node_id):
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
+        if self.provider_cache.node_exists(node_id):
+            return self.provider_cache.get_node(node_id)
 
         return self._get_node(node_id)
 

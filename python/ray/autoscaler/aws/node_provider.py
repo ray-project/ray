@@ -8,7 +8,7 @@ import boto3
 import botocore
 from botocore.config import Config
 
-from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.node_provider import NodeProvider, NodeProviderCache
 from ray.autoscaler.aws.config import bootstrap_aws
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE
@@ -49,7 +49,7 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
 
 
 class AWSNodeProvider(NodeProvider):
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config, cluster_name, provider_cache):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)
@@ -67,7 +67,12 @@ class AWSNodeProvider(NodeProvider):
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
 
-        self.tag_cache = {}  # Tags that we believe to actually be on EC2.
+        # Cache of node objects from the last nodes() call. This avoids
+        # excessive DescribeInstances requests.
+        self.provider_cache = provider_cache
+        if provider_cache == None:
+            self.provider_cache = NodeProviderCache()
+
         self.tag_cache_pending = {}  # Tags that we will soon upload.
         self.tag_cache_lock = threading.Lock()
         self.tag_cache_update_event = threading.Event()
@@ -75,10 +80,6 @@ class AWSNodeProvider(NodeProvider):
         self.tag_update_thread = threading.Thread(
             target=self._node_tag_update_loop)
         self.tag_update_thread.start()
-
-        # Cache of node objects from the last nodes() call. This avoids
-        # excessive DescribeInstances requests.
-        self.cached_nodes = {}
 
     def _node_tag_update_loop(self):
         """Update the AWS tags for a cluster periodically.
@@ -96,7 +97,7 @@ class AWSNodeProvider(NodeProvider):
                 for node_id, tags in self.tag_cache_pending.items():
                     for x in tags.items():
                         batch_updates[x].append(node_id)
-                    self.tag_cache[node_id].update(tags)
+                    self.provider_cache.update_tags(node_id, tags)
 
                 self.tag_cache_pending = {}
 
@@ -141,16 +142,18 @@ class AWSNodeProvider(NodeProvider):
                 "Failed to fetch running instances from AWS."):
             nodes = list(self.ec2.instances.filter(Filters=filters))
 
-        # Populate the tag cache with initial information if necessary
+        self.provider_cache.cleanup_by_tags(tag_filters)
+
         for node in nodes:
-            if node.id in self.tag_cache:
+            self.provider_cache.set_node(node.id, node)
+
+            # Populate the tag cache with initial information if necessary
+            if self.provider_cache.tags_exist(node.id):
                 continue
 
-            self.tag_cache[node.id] = from_aws_format(
-                {x["Key"]: x["Value"]
-                 for x in node.tags})
+            tags = from_aws_format({x["Key"]: x["Value"] for x in node.tags})
+            self.provider_cache.set_tags(node.id, tags)
 
-        self.cached_nodes = {node.id: node for node in nodes}
         return [node.id for node in nodes]
 
     def is_running(self, node_id):
@@ -163,8 +166,9 @@ class AWSNodeProvider(NodeProvider):
         return state not in ["running", "pending"]
 
     def node_tags(self, node_id):
+        self._get_cached_node(node_id)
         with self.tag_cache_lock:
-            d1 = self.tag_cache[node_id]
+            d1 = self.provider_cache.get_tags(node_id)
             d2 = self.tag_cache_pending.get(node_id, {})
             return dict(d1, **d2)
 
@@ -192,6 +196,16 @@ class AWSNodeProvider(NodeProvider):
                 self.tag_cache_pending[node_id] = tags
 
             self.tag_cache_update_event.set()
+
+            self.node_provider.set_tags(node_id, tags)
+
+    def create_node_of_type(self, node_config, tags, instance_type, count):
+        assert instance_type is not None
+        node_config["InstanceType"] = instance_type
+        return self.create_node(node_config, tags, count)
+
+    def get_instance_type(self, node_config):
+        return node_config["InstanceType"]
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
@@ -243,9 +257,10 @@ class AWSNodeProvider(NodeProvider):
                 # todo: timed?
                 with cli_logger.group("Stopping instances to reuse"):
                     for node in reuse_nodes:
-                        self.tag_cache[node.id] = from_aws_format(
+                        tags = from_aws_format(
                             {x["Key"]: x["Value"]
                              for x in node.tags})
+                        self.provider_cache.set_tags(node.id, tags)
                         if node.state["Name"] == "stopping":
                             cli_logger.print("Waiting for instance {} to stop",
                                              node.id)
@@ -402,8 +417,8 @@ class AWSNodeProvider(NodeProvider):
         else:
             node.terminate()
 
-        self.tag_cache.pop(node_id, None)
         self.tag_cache_pending.pop(node_id, None)
+        self.provider_cache.delete_node_and_tags(node_id)
 
     def terminate_nodes(self, node_ids):
         if not node_ids:
@@ -448,26 +463,29 @@ class AWSNodeProvider(NodeProvider):
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
         for node_id in node_ids:
-            self.tag_cache.pop(node_id, None)
             self.tag_cache_pending.pop(node_id, None)
+            self.provider_cache.delete_node_and_tags(node_id)
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
         self.non_terminated_nodes({})  # Side effect: updates cache
 
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
+        if self.provider_cache.node_exists(node_id):
+            return self.provider_cache.get_node(node_id)
 
         # Node not in {pending, running} -- retry with a point query. This
         # usually means the node was recently preempted or terminated.
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
         assert len(matches) == 1, "Invalid instance id {}".format(node_id)
+
+        self.provider_cache.set_node(node_id, matches[0])
+
         return matches[0]
 
     def _get_cached_node(self, node_id):
         """Return node info from cache if possible, otherwise fetches it."""
-        if node_id in self.cached_nodes:
-            return self.cached_nodes[node_id]
+        if self.provider_cache.node_exists(node_id):
+            return self.provider_cache.get_node(node_id)
 
         return self._get_node(node_id)
 
