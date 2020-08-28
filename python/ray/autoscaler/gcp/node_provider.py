@@ -39,7 +39,7 @@ def wait_for_compute_zone_operation(compute, project_name, operation, zone):
 
 
 class GCPNodeProvider(NodeProvider):
-    def __init__(self, provider_config, cluster_name, provider_cache):
+    def __init__(self, provider_config, cluster_name, provider_cache=None):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         self.lock = RLock()

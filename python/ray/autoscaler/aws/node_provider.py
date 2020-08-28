@@ -49,7 +49,7 @@ def make_ec2_client(region, max_retries, aws_credentials=None):
 
 
 class AWSNodeProvider(NodeProvider):
-    def __init__(self, provider_config, cluster_name, provider_cache):
+    def __init__(self, provider_config, cluster_name, provider_cache=None):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)

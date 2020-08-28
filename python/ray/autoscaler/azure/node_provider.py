@@ -45,7 +45,7 @@ class AzureNodeProvider(NodeProvider):
     immediately to terminated when ``terminate_node`` is called.
     """
 
-    def __init__(self, provider_config, cluster_name, provider_cache):
+    def __init__(self, provider_config, cluster_name, provider_cache=None):
         NodeProvider.__init__(self, provider_config, cluster_name)
         kwargs = {}
         if "subscription_id" in provider_config:
