@@ -13,9 +13,9 @@ if __name__ == "__main__":
     register_env("waterworld", env_creator)
 
     obs_space = env.observation_space
-    act_space = env.action_space
+    act_spc = env.action_space
 
-    policies = {agent: (None, obs_space, act_space, {}) for agent in env.agents}
+    policies = {agent: (None, obs_space, act_spc, {}) for agent in env.agents}
 
     tune.run(
         "APEX_DDPG",
