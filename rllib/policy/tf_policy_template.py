@@ -10,60 +10,70 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
+from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
 
 
 @DeveloperAPI
 def build_tf_policy(
-        name: str,
-        *,
-        loss_fn: Callable[[
-            Policy, ModelV2, Type[TFActionDistribution], SampleBatch
-        ], Union[TensorType, List[TensorType]]],
-        get_default_config: Optional[Callable[[None],
-                                              TrainerConfigDict]] = None,
-        postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch, Optional[List[SampleBatch]], Optional[
-                "MultiAgentEpisode"]
-        ], SampleBatch]] = None,
-        stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
-            str, TensorType]]] = None,
-        optimizer_fn: Optional[Callable[[
-            Policy, TrainerConfigDict
-        ], "tf.keras.optimizers.Optimizer"]] = None,
-        gradients_fn: Optional[Callable[[
-            Policy, "tf.keras.optimizers.Optimizer", TensorType
-        ], ModelGradients]] = None,
-        apply_gradients_fn: Optional[Callable[[
-            Policy, "tf.keras.optimizers.Optimizer", ModelGradients
-        ], "tf.Operation"]] = None,
-        grad_stats_fn: Optional[Callable[[Policy, SampleBatch, ModelGradients],
-                                         Dict[str, TensorType]]] = None,
-        extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
-        extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
-        validate_spaces: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_loss_init: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], None]] = None,
-        after_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        make_model: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], ModelV2]] = None,
-        action_sampler_fn: Optional[Callable[[TensorType, List[
-            TensorType]], Tuple[TensorType, TensorType]]] = None,
-        action_distribution_fn: Optional[Callable[[
-            Policy, ModelV2, TensorType, TensorType, TensorType
-        ], Tuple[TensorType, type, List[TensorType]]]] = None,
-        mixins: Optional[List[type]] = None,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward: bool = True):
+    name: str,
+    *,
+    loss_fn: Callable[[
+                          Policy, ModelV2, Type[TFActionDistribution],
+                          SampleBatch
+                      ], Union[TensorType, List[TensorType]]],
+    get_default_config: Optional[Callable[[None],
+                                          TrainerConfigDict]] = None,
+    postprocess_fn: Optional[Callable[[
+                                          Policy, SampleBatch,
+                                          Optional[Dict[AgentID, SampleBatch]],
+                                          Optional[
+                                              "MultiAgentEpisode"]
+                                      ], SampleBatch]] = None,
+    stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
+        str, TensorType]]] = None,
+    optimizer_fn: Optional[Callable[[
+                                        Policy, TrainerConfigDict
+                                    ], "tf.keras.optimizers.Optimizer"]] = None,
+    gradients_fn: Optional[Callable[[
+                                        Policy, "tf.keras.optimizers.Optimizer",
+                                        TensorType
+                                    ], ModelGradients]] = None,
+    apply_gradients_fn: Optional[Callable[[
+                                              Policy,
+                                              "tf.keras.optimizers.Optimizer",
+                                              ModelGradients
+                                          ], "tf.Operation"]] = None,
+    grad_stats_fn: Optional[Callable[[Policy, SampleBatch, ModelGradients],
+                                     Dict[str, TensorType]]] = None,
+    extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
+        str, TensorType]]] = None,
+    extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
+        str, TensorType]]] = None,
+    validate_spaces: Optional[Callable[
+        [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+    before_init: Optional[Callable[
+        [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+    before_loss_init: Optional[Callable[[
+                                            Policy, gym.spaces.Space,
+                                            gym.spaces.Space, TrainerConfigDict
+                                        ], None]] = None,
+    after_init: Optional[Callable[
+        [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
+    make_model: Optional[Callable[[
+                                      Policy, gym.spaces.Space,
+                                      gym.spaces.Space, TrainerConfigDict
+                                  ], ModelV2]] = None,
+    action_sampler_fn: Optional[Callable[[TensorType, List[
+        TensorType]], Tuple[TensorType, TensorType]]] = None,
+    action_distribution_fn: Optional[Callable[[
+                                                  Policy, ModelV2, TensorType,
+                                                  TensorType, TensorType
+                                              ], Tuple[TensorType, type, List[
+        TensorType]]]] = None,
+    mixins: Optional[List[type]] = None,
+    get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
+    obs_include_prev_action_reward: bool = True) -> Type[TFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:
@@ -94,9 +104,9 @@ def build_tf_policy(
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
-            List[SampleBatch], MultiAgentEpisode], None]]): Optional callable
-            for post-processing experience batches (called after the
-            super's `postprocess_trajectory` method).
+            Optional[Dict[AgentID, SampleBatch]], MultiAgentEpisode], None]]):
+            Optional callable for post-processing experience batches (called
+            after the parent class' `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],
             Dict[str, TensorType]]]): Optional callable that returns a dict of
             TF tensors to fetch given the policy and batch input tensors. If
@@ -172,7 +182,8 @@ def build_tf_policy(
             previous action and reward in the model input.
 
     Returns:
-        a DynamicTFPolicy instance that uses the specified args
+        Type[DynamicTFPolicy]: A child class of DynamicTFPolicy based on the
+            specified args.
     """
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)

@@ -105,8 +105,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     if isinstance(config["entropy_coeff"], int):
         config["entropy_coeff"] = float(config["entropy_coeff"])
 
-    if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
+    if config["entropy_coeff"] < 0.0:
+        raise DeprecationWarning("entropy_coeff must be >= 0.0")
 
     # SGD minibatch size must be smaller than train_batch_size (b/c
     # we subsample a batch of `sgd_minibatch_size` from the train-batch for
@@ -126,21 +126,20 @@ def validate_config(config: TrainerConfigDict) -> None:
             "Episode truncation is not supported without a value "
             "function. Consider setting batch_mode=complete_episodes.")
 
-    #
-    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
+    # Multi-gpu not supported for PyTorch and tf-eager.
+    if config["framework"] in ["tf2", "tfe", "torch"]:
+        config["simple_optimizer"] = True
+    # Performance warning, if "simple" optimizer used with (static-graph) tf.
+    elif config["simple_optimizer"]:
+        logger.warning(
+            "Using the simple minibatch optimizer. This will significantly "
+            "reduce performance, consider simple_optimizer=False.")
+    # Multi-agent mode and multi-GPU optimizer.
+    elif config["multiagent"]["policies"] and not config["simple_optimizer"]:
         logger.info(
             "In multi-agent mode, policies will be optimized sequentially "
             "by the multi-GPU optimizer. Consider setting "
             "simple_optimizer=True if this doesn't work for you.")
-
-    # Performance warning, if "simple" optimizer used.
-    if config["simple_optimizer"]:
-        logger.warning(
-            "Using the simple minibatch optimizer. This will significantly "
-            "reduce performance, consider simple_optimizer=False.")
-    # Multi-gpu not supported for PyTorch and tf-eager.
-    elif config["framework"] in ["tf2", "tfe", "torch"]:
-        config["simple_optimizer"] = True
 
 
 def get_policy_class(config):
@@ -159,8 +158,13 @@ def get_policy_class(config):
 
 
 class UpdateKL:
-    """Callback to update the KL based on optimization info."""
+    """Callback to update the KL based on optimization info.
 
+    This is used inside the execution_plan function. The Policy must define
+    a `update_kl` method for this to work. This is achieved for PPO via a
+    Policy mixin class (which adds the `update_kl` method),
+    defined in ppo_[tf|torch]_policy.py.
+    """
     def __init__(self, workers):
         self.workers = workers
 
@@ -170,10 +174,12 @@ class UpdateKL:
                 "kl should be nested under policy id key", fetches)
             if pi_id in fetches:
                 assert "kl" in fetches[pi_id], (fetches, pi_id)
+                # Make the actual `Policy.update_kl()` call.
                 pi.update_kl(fetches[pi_id]["kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
+        # Update KL on all trainable policies within the local (trainer) Worker.
         self.workers.local_worker().foreach_trainable_policy(update)
 
 
@@ -227,13 +233,16 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict) -> LocalIterat
     """
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-    # Collect large batches of relevant experiences & standardize.
+    # Collect batches for the trainable policies.
     rollouts = rollouts.for_each(
         SelectExperiences(workers.trainable_policies()))
+    # Concatenate the SampleBatches into one.
     rollouts = rollouts.combine(
         ConcatBatches(min_batch_size=config["train_batch_size"]))
+    # Standardize advantages.
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
+    # Perform one training step on the combined + standardized batch.
     if config["simple_optimizer"]:
         train_op = rollouts.for_each(
             TrainOneStep(
@@ -257,6 +266,7 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict) -> LocalIterat
     # Update KL after each round of training.
     train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
 
+    # Warn about bad reward scales and return training metrics.
     return StandardMetricsReporting(train_op, workers, config) \
         .for_each(lambda result: warn_about_bad_reward_scales(config, result))
 
