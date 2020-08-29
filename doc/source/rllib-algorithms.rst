@@ -28,6 +28,21 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
 =================== ========== ======================= ================== =========== =====================
 
+Multi-Agent only Methods
+
+============================= ========== ======================= ================== =========== =====================
+Algorithm                     Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
+============================= ========== ======================= ================== =========== =====================
+`AlphaZero`_                   torch      **Yes** `+parametric`_  No                 No
+`QMIX`_                        torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
+`MADDPG`_                      tf         **Yes**                 Partial            **Yes**
+`Parameter Sharing`_           Depends on bootstrapped algorithm
+----------------------------- ---------------------------------------------------------------------------------------
+`Fully Independent Learning`_  Depends on bootstrapped algorithm
+----------------------------- ---------------------------------------------------------------------------------------
+`Centralized Critic Methods`_  Depends on bootstrapped algorithm
+============================= =======================================================================================
+
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`+RNN`: rllib-models.html#recurrent-models
 .. _`+autoreg`: rllib-models.html#autoregressive-action-distributions
@@ -564,15 +579,6 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 
 Multi-Agent Methods
 -------------------
-=================== ========== ======================= ================== =========== =====================
-Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
-=================== ========== ======================= ================== =========== =====================
-`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
-`QMIX`_             torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
-`MADDPG`_           tf         **Yes**                 Partial            **Yes**
-`Parameter Sharing`_ Depends on bootstrapped algorithm
-`Fully Independent Learning`_ Depends on bootstrapped algorithm
-`Centralized Critic Methods`_ Depends on bootstrapped algorithm
 
 .. _qmix:
 QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
@@ -623,14 +629,14 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 Parameter Sharing
 -----------------
 
-Parameter Sharing `[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>` and `[paper] <https://arxiv.org/abs/2005.13625>` `[implementation] <github.com/parametersharingmadrl/parametersharingmadrl>` in multi-agent RL is a class of methods that take a base single agent method, and use it to learn a single policy for all agents. As naive as this seems, this is shown to achieve state of the art performance in cooperative games, and parameter sharing good DRL methods is usually how you should start trying to learn a multi-agent problem. An example implementation of this in RLlib is included in the second paper. Additionally, while this seems like can only work for environments with homogeneous agents, this is not the case. The second paper introduces how to do this for every case of heterogeneity, and simple wrappers that apply the methods to [PettingZoo](https://github.com/PettingZoo-Team/PettingZoo) API environments are available in the [SuperSuit](https://github.com/PettingZoo-Team/SuperSuit) package.
+Parameter Sharing `[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>`__ and `[paper] <https://arxiv.org/abs/2005.13625>`__  and  `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__ in multi-agent RL is a class of methods that take a base single agent method, and use it to learn a single policy for all agents. As naive as this seems, this is shown to achieve state of the art performance in cooperative games, and parameter sharing good DRL methods is usually how you should start trying to learn a multi-agent problem. An example implementation of this in RLlib is included in the second paper. Additionally, while this seems like can only work for environments with homogeneous agents, this is not the case. The second paper introduces how to do this for every case of heterogeneity, and simple wrappers that apply the methods to `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__  API environments are available in the `SuperSuit <https://github.com/PettingZoo-Team/SuperSuit>`__ package.
 
 Fully Independent Learning
 --------------------------
-Fully Independent Learning `[implementation] <github.com/parametersharingmadrl/parametersharingmadrl>` is when you have a collection of agents learning independently of each other via single agent methods. This typically works, but is inferior to dedicated multi-agent RL methods. 
+Fully Independent Learning  `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__ is when you have a collection of agents learning independently of each other via single agent methods. This typically works, but is inferior to dedicated multi-agent RL methods.
 
 
 Centralized Critic Methods
 --------------------------
 
-[Implementation] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic> is when you apply parameter share the parameters solely of the critic networks in actor critic methods, allowing for a far greater deal of flexibility than naive parameter sharing by giving each agent a sperate policy network for acting, though with theoretically reduced performance. Note that a centralized critic method based on DDPG is essentially MADDPG, and doing this will be more general and performant than the specialty MADDPG implementation that was uniquely tailored to work on the MPE environments.
+`[Implementation] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__ is when you apply parameter share the parameters solely of the critic networks in actor critic methods, allowing for a far greater deal of flexibility than naive parameter sharing by giving each agent a sperate policy network for acting, though with theoretically reduced performance. Note that a centralized critic method based on DDPG is essentially MADDPG, and doing this will be more general and performant than the specialty MADDPG implementation that was uniquely tailored to work on the MPE environments.

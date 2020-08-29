@@ -1,0 +1,38 @@
+import ray
+from ray import tune
+from ray.tune.registry import register_env
+from ray.rllib.env.pettingzoo_env import PettingZooEnv
+from pettingzoo.sisl import waterworld_v0
+
+if __name__ == "__main__":
+    # RDQN - Rainbow DQN
+    # ADQN - Apex DQN
+    def env_creator(args):
+        return PettingZooEnv(waterworld_v0.env())
+
+    env = env_creator({})
+    register_env("waterworld", env_creator)
+
+    obs_space = env.observation_space
+    act_space = env.action_space
+
+    policies = {agent: (None, obs_space, act_space, {})
+                        for agent in env.agents}
+
+    tune.run(
+        "APEX_DDPG",
+        stop={"episodes_total": 60000},
+        checkpoint_freq=10,
+        config={
+            # Enviroment specific
+            "env": "waterworld",
+            # General
+            "num_gpus": 1,
+            "num_workers": 2,
+            # Method specific
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": (lambda agent_id: agent_id),
+            },
+        },
+    )
