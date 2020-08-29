@@ -48,6 +48,11 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles(
   return ret_bundles;
 }
 
+size_t GcsPlacementGroup::GetBundleSize() const {
+  const auto &bundles = placement_group_table_data_.bundles();
+  return bundles.size();
+}
+
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplacedBundles()
     const {
   const auto &bundles = placement_group_table_data_.bundles();

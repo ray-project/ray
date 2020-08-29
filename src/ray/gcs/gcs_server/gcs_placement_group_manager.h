@@ -75,6 +75,9 @@ class GcsPlacementGroup {
   /// Get the bundles of this placement_group (including unplaced).
   std::vector<std::shared_ptr<BundleSpecification>> GetBundles() const;
 
+  /// Get the size of bundles (including unplaced).
+  size_t GetBundleSize() const;
+
   /// Get the unplaced bundles of this placement group.
   std::vector<std::shared_ptr<BundleSpecification>> GetUnplacedBundles() const;
 
