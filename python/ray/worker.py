@@ -1665,10 +1665,10 @@ def make_decorator(num_returns=None,
             if max_task_retries is not None:
                 raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
-            if num_return_vals is not None and (not isinstance(
-                    num_return_vals, int) or num_return_vals < 0):
+            if num_returns is not None and (not isinstance(num_returns, int)
+                                            or num_returns < 0):
                 raise ValueError(
-                    "The keyword 'num_return_vals' only accepts 0 or a"
+                    "The keyword 'num_returns' only accepts 0 or a"
                     " positive integer")
             if max_retries is not None and (not isinstance(max_retries, int)
                                             or max_retries < -1):
