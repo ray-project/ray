@@ -36,24 +36,10 @@ class _HorovodTrainable(tune.Trainable):
     _ssh_str: str = None
     _ssh_identity_file: str = None
     _timeout_s: int = 30
-    workers: List = None
 
     @property
     def num_workers(self):
         return self._num_nodes * self._num_workers_per_node
-
-    @classmethod
-    def get_node_resources(self):
-        """Get resources per node.
-
-        We implement a node grouping because it seems like
-        our implementation doesn't quite work for imbalanced nodes.
-        Also, colocation performance is typically much better than
-        non-colocated workers.
-        """
-        num_cpus = self._num_cpus_per_worker * self._num_workers_per_node
-        num_gpus = self._num_workers_per_node * int(self._use_gpu)
-        return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 
     def setup(self, config):
         trainable = wrap_function(self.__class__._function)
@@ -65,7 +51,7 @@ class _HorovodTrainable(tune.Trainable):
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
         self._job.start(
-            self.get_node_resources(),
+            self.per_worker_resources(),
             worker_cls=trainable,
             worker_init_args=[
                 config, lambda cfg: logger_creator(cfg, self.logdir)

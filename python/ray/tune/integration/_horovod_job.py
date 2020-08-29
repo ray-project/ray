@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import os
-from typing import List, Dict, Callable
+from typing import Dict, Callable, Any
 import logging
 
 import ray
@@ -58,7 +58,7 @@ def map_blocking(fn, collection):
 
 class HorovodMixin:
     def hostname(self) -> str:
-        # This is probably not the right way to retrieve
+        # TODO: This is probably not the right way to retrieve
         # the intended hostname.
         return ray.services.get_node_ip_address()
 
@@ -231,17 +231,17 @@ class HorovodJob:
         return MiniSettings(
             timeout_s=timeout_s, ssh_identity_file=ssh_identity_file)
 
-    def __init__(self, settings, num_hosts, num_slots, use_gpu):
+    def __init__(self, settings, num_hosts: int = 1, num_slots: int = 1):
         self.settings = settings
         self.num_hosts = num_hosts
         self.num_slots = num_slots
-        self.use_gpu = use_gpu  # can remove if resources has gpu already
 
-    def _create_workers(self, node_resources, worker_cls, worker_init_args):
-        colocator_cls = NodeColocator.options(**self.node_resources)
+    def _create_workers(self, host_resources, worker_cls, worker_init_args):
+        colocator_cls = NodeColocator.options(**host_resources)
         # Create a number of coordinators.
         colocators = [
-            colocator_cls.remote(self.num_slots, self._use_gpu)
+            colocator_cls.remote(
+                self.num_slots, use_gpu=host_resources["num_gpus"] > 0)
             for i in range(self.num_hosts)
         ]
         # We must save a pointer to each colocator to prevent their resource
@@ -260,27 +260,53 @@ class HorovodJob:
         workers = map_blocking(lambda w: w.get_workers.remote(), colocators)
         return sum(workers, [])
 
-    def start(self, node_resources, worker_cls, worker_init_args=None):
+    def _mixin_horovod_worker(self, worker_cls):
+        """Mixes in HorovodMixin if not a current subclass."""
+        if issubclass(worker_cls, HorovodMixin):
+            return worker_cls
+
+        class MixedHorovodWorker(worker_cls, HorovodMixin):
+            pass
+
+        return MixedHorovodWorker
+
+    def start(self,
+              worker_cls: type,
+              worker_init_args=None,
+              cpus_per_worker: int = 1,
+              use_gpu: bool = False):
         """Starts the workers and colocates them on all machines.
 
+            We implement a node grouping because it seems like
+            our implementation doesn't quite work for imbalanced nodes.
+            Also, colocation performance is typically much better than
+            non-colocated workers.
         Args:
-            node_resources: How many resources to bundle on each host.
-            worker_cls: The class that will be created as an actor. This
+            worker_cls (type): The class that will be created as an actor. This
                 will be automatically mixed in with HorovodMixin
                 to allow Horovod to establish its connections and set env
                 vars.
             worker_init_args (List): Arguments to be passed into the
                 worker class upon initialization.
+            cpus_per_worker (int): Number of CPU resources to allocate to
+                each worker.
+            use_gpu (bool): Whether to allocate GPU resources or not.
 
         """
 
-        class MixedHorovodWorker(worker_cls, HorovodMixin):
-            pass
+        def resources_per_host():
+            num_cpus = cpus_per_worker * self.num_slots
+            num_gpus = self.num_slots * int(use_gpu)
+            return dict(num_cpus=num_cpus, num_gpus=num_gpus)
+
+        worker_cls = self._mixin_horovod_worker(worker_cls)
 
         self.coordinator = Coordinator(self.settings)
         worker_init_args = worker_init_args or []
-        self.workers = self._create_workers(MixedHorovodWorker,
-                                            worker_init_args)
+        self.workers = self._create_workers(
+            resources_per_host(),
+            worker_cls=worker_cls,
+            worker_init_args=worker_init_args)
 
         # Update the environment variables.
         ray.get([
@@ -305,8 +331,9 @@ class HorovodJob:
         map_blocking(lambda w: w.update_env_vars.remote(coordinator_envs),
                      self.workers)
 
-    def execute(self, fn: Callable[["ActorHandle"], "ObjectID"],
-                blocking=True):
+    def execute(self,
+                fn: Callable[["ActorHandle"], List["ObjectID"]],
+                blocking: bool = True) -> List:
         """Executes the provided function on all workers.
 
         Args:
@@ -322,20 +349,27 @@ class HorovodJob:
 
     def execute_single(self,
                        fn: Callable[["ActorHandle"], "ObjectID"],
-                       blocking=True):
-        """Executes the provided function on all workers.
+                       blocking: bool = True) -> Any:
+        """Executes the provided function on the rank 0 worker (chief).
 
         Args:
             fn: Target function
             blocking (bool): Whether to execute and block before returning.
                 Otherwise, returns a list of object IDs.
                 TODO: should we always return list of object IDs?
+
+        Returns:
+
         """
         return ray.get(fn(self.workers[0]))
 
     def shutdown(self):
+        """Destroys the provided workers."""
         for colocator in self.colocators:
             del colocator
 
         for worker in self.workers:
             del worker
+
+        self.colocators = []
+        self.workers = []
