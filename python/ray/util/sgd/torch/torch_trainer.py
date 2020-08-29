@@ -293,7 +293,7 @@ class TorchTrainer:
             self.local_worker = TorchRunner(**params)
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
-            self.local_worker.setup()
+            self.local_worker.setup_operator()
         else:
             params.update(
                 backend=self.backend,
@@ -533,12 +533,12 @@ class TorchTrainer:
             return worker_stats
 
     def update_scheduler(self, metric):
-        """Calls ``scheduler.step(metric)`` on all schedulers.
+        """Calls ``scheduler.step(metric)`` on all registered schedulers.
 
         This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
         """
         self.apply_all_operators(
-            lambda op: [sched.step(metric) for sched in op.schedulers])
+            lambda op: [sched.step(metric) for sched in op._schedulers])
 
     def get_model(self):
         """Returns the learned model(s)."""

@@ -77,7 +77,8 @@ class TrainingOperator:
                  apex_args=None,
                  wrap_ddp=False,
                  wrap_distributed_sampler=False,
-                 add_dist_sampler=False):
+                 add_dist_sampler=False,
+                 scheduler_step_freq=None):
         # You are not expected to override this method.
         self._world_rank = world_rank
         self._config = config
@@ -93,6 +94,7 @@ class TrainingOperator:
         self._wrap_ddp = wrap_ddp
         self._wrap_distributed_sampler = wrap_distributed_sampler
         self._add_dist_sampler = add_dist_sampler
+        self._scheduler_step_freq = scheduler_step_freq
 
         self.timers = TimerCollection()
         self.setup(config)
@@ -270,6 +272,12 @@ class TrainingOperator:
             return_vals.append(self._criterion)
 
         if self._schedulers is not None:
+            if self._scheduler_step_freq is None:
+                raise ValueError("scheduler_step_freq passed into "
+                                 "TorchTrainer cannot be None if you "
+                                 "are registering schedulers. Set this to "
+                                 "'manual' if you will be manually stepping "
+                                 "the schedulers.")
             if len(self._schedulers) == 1:
                 return_vals.append(self._schedulers[0])
             else:
@@ -363,14 +371,13 @@ class TrainingOperator:
                     postfix.update(loss=metrics["train_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            if scheduler and batch_info.get(
-                    SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+            if scheduler and self._scheduler_step_freq == SCHEDULER_STEP_BATCH:
                 scheduler.step()
 
             metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
             self.global_step += 1
 
-        if scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        if scheduler and self._scheduler_step_freq == SCHEDULER_STEP_EPOCH:
             scheduler.step()
 
         return metric_meters.summary()

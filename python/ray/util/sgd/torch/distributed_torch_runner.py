@@ -42,9 +42,6 @@ class DistributedTorchRunner(TorchRunner):
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
 
-    def setup(self):
-        raise RuntimeError("Need to call setup commands separately.")
-
     def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
 
@@ -79,7 +76,8 @@ class DistributedTorchRunner(TorchRunner):
             apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
             wrap_distributed_sampler=True,
-            add_dist_sampler=self.add_dist_sampler
+            add_dist_sampler=self.add_dist_sampler,
+            scheduler_step_freq=self.scheduler_step_freq
         )
 
     def get_device_ids(self):

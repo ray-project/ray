@@ -57,60 +57,6 @@ class TorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
-    def _validate_loaders(self, loaders):
-        assert loaders, "Loaders need to be returned in data_creator."
-        if isinstance(loaders, (tuple, list)):
-            if len(loaders) == 1:
-                return loaders, None
-            elif len(loaders) == 2:
-                return loaders
-            else:
-                raise ValueError(
-                    f"Number of loaders must be <= 2. Got {loaders}")
-        # No great way of checking type otherwise
-        return loaders, None
-
-    def _initialize_dataloaders(self):
-        logger.debug("Instantiating dataloaders.")
-        loaders = None
-        if self.serialize_data_creation:
-            logger.debug("Serializing the dataloading process.")
-            with FileLock(
-                    os.path.join(tempfile.gettempdir(), ".raydata.lock")):
-                loaders = self.data_creator(self.config)
-        else:
-            loaders = self.data_creator(self.config)
-        train_loader, val_loader = self._validate_loaders(loaders)
-
-        self.train_loader, self.validation_loader = train_loader, val_loader
-
-    def _create_loss(self):
-        if not self.loss_creator:
-            return
-        logger.debug("Creating loss.")
-        if inspect.isclass(self.loss_creator) and issubclass(
-                self.loss_creator, torch.nn.modules.loss._Loss):
-            self.criterion = self.loss_creator()
-        else:
-            self.criterion = self.loss_creator(self.config)
-
-        if self.use_gpu and torch.cuda.is_available():
-            if hasattr(self.criterion, "cuda"):
-                self.criterion = self.criterion.cuda()
-
-    def _create_schedulers_if_available(self):
-        # Learning rate schedules are optional.
-        if not self.scheduler_creator:
-            return
-        self.schedulers = self.scheduler_creator(self.given_optimizers,
-                                                 self.config)
-
-        if not isinstance(self.schedulers, Iterable):
-            self.schedulers = [self.schedulers]
-
-    def setup(self):
-        """Merges setup_components and setup_operator in one call."""
-        self.setup_operator()
 
     def setup_operator(self):
         """Create the training operator."""
@@ -119,7 +65,8 @@ class TorchRunner:
                                                             use_gpu=self.use_gpu,
                                                             use_fp16=self.use_fp16,
                                                             use_tqdm=self.use_tqdm,
-                                                            apex_args=self.apex_args)
+                                                            apex_args=self.apex_args,
+                                                            scheduler_step_freq=self.scheduler_step_freq)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -142,7 +89,6 @@ class TorchRunner:
         info.update({
             NUM_STEPS: num_steps,
             USE_FP16: self.use_fp16,
-            SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self.timers.record("train_epoch"):
             if iterator is None:

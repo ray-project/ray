@@ -62,16 +62,6 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     assert val_metrics[BATCH_COUNT] == 1
     trainer.shutdown()
 
-
-# def test_resize(ray_start_2_cpus):  # noqa: F811
-#     trainer = TorchTrainer(
-#         training_operator_cls=TestTrainingOperator,
-#         num_workers=1)
-#     trainer.train(num_steps=1)
-#     trainer.max_replicas = 2
-#     results = trainer.train(num_steps=1, reduce_results=False)
-#     assert len(results) == 2
-
 def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
     TestOperator = get_test_operator(Operator)
     trainer = TorchTrainer(
@@ -254,45 +244,45 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                 trainer.shutdown()
 
 
-# @pytest.mark.parametrize("scheduler_freq", ["epoch", "batch", "manual", None])
-# def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
-#     def train_epoch(self, iterator, info):
-#         assert info[SCHEDULER_STEP] == scheduler_freq
-#         return {"done": 1}
-#
-#     def scheduler_creator(optimizer, config):
-#         return torch.optim.lr_scheduler.StepLR(
-#             optimizer, step_size=30, gamma=0.1)
-#
-#     class TestTrainingOperator(TrainingOperator):
-#         def setup(self, config):
-#             model = model_creator(config)
-#             optimizer = optimizer_creator(model, config)
-#             train_loader, val_loader = data_creator(config)
-#             scheduler = scheduler_creator(optimizer, config)
-#             loss = nn.MSELoss()
-#
-#             self.model, self.optimizer, self.criterion, self.scheduler = \
-#                 self.register(
-#                 models=model, optimizers=optimizer,
-#                 criterion=loss, train_loader=train_loader,
-#                 validation_loader=val_loader, schedulers=scheduler)
-#
-#     if scheduler_freq is None:
-#         with pytest.raises(ValueError):
-#             trainer = TorchTrainer(
-#                 config={"custom_func": train_epoch},
-#                 training_operator_cls=TestTrainingOperator,
-#                 scheduler_step_freq=scheduler_freq)
-#     else:
-#         trainer = TorchTrainer(
-#             config={"custom_func": train_epoch},
-#             training_operator_cls=TestTrainingOperator,
-#             scheduler_step_freq=scheduler_freq)
-#
-#         for i in range(3):
-#             trainer.train()
-#         trainer.shutdown()
+@pytest.mark.parametrize("scheduler_freq", ["epoch", "batch", "manual", None])
+def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
+    def train_epoch(self, iterator, info):
+        assert info[SCHEDULER_STEP] == scheduler_freq
+        return {"done": 1}
+
+    def scheduler_creator(optimizer, config):
+        return torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=30, gamma=0.1)
+
+    class TestTrainingOperator(TrainingOperator):
+        def setup(self, config):
+            model = model_creator(config)
+            optimizer = optimizer_creator(model, config)
+            train_loader, val_loader = data_creator(config)
+            scheduler = scheduler_creator(optimizer, config)
+            loss = nn.MSELoss()
+
+            self.model, self.optimizer, self.criterion, self.scheduler = \
+                self.register(
+                models=model, optimizers=optimizer,
+                criterion=loss, train_loader=train_loader,
+                validation_loader=val_loader, schedulers=scheduler)
+
+    if scheduler_freq is None:
+        with pytest.raises(ValueError):
+            trainer = TorchTrainer(
+                config={"custom_func": train_epoch},
+                training_operator_cls=TestTrainingOperator,
+                scheduler_step_freq=scheduler_freq)
+    else:
+        trainer = TorchTrainer(
+            config={"custom_func": train_epoch},
+            training_operator_cls=TestTrainingOperator,
+            scheduler_step_freq=scheduler_freq)
+
+        for i in range(3):
+            trainer.train()
+        trainer.shutdown()
 
 def test_profiling(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(training_operator_cls=Operator)
@@ -490,23 +480,27 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
     trainer.shutdown()
 
 
-# def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
-#     from torch.optim.lr_scheduler import ReduceLROnPlateau
-#
-#     trainer = TorchTrainer(
-#         model_creator=model_creator,
-#         data_creator=data_creator,
-#         optimizer_creator=optimizer_creator,
-#         loss_creator=lambda config: nn.MSELoss(),
-#         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
-#         scheduler_step_freq="manual",
-#         training_operator_cls=_TestingOperator)
-#     trainer.update_scheduler(0.5)
-#     trainer.update_scheduler(0.5)
-#     assert all(
-#         trainer.apply_all_operators(
-#             lambda op: op.schedulers[0].last_epoch == 2))
-#     trainer.shutdown()
+def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+    TestOperator = TrainingOperator.from_creators(model_creator,
+                                                  optimizer_creator,
+                                                  data_creator, scheduler_creator=lambda
+                                                      optimizer,
+                                                      cfg:
+                                                  ReduceLROnPlateau(
+                                                      optimizer), loss_creator=lambda
+                                                      config: nn.MSELoss())
+    TestOperator = get_test_operator(TestOperator)
+    trainer = TorchTrainer(
+        scheduler_step_freq="manual",
+        training_operator_cls=TestOperator)
+    trainer.update_scheduler(0.5)
+    trainer.update_scheduler(0.5)
+    assert all(
+        trainer.apply_all_operators(
+            lambda op: op._schedulers[0].last_epoch == 2))
+    trainer.shutdown()
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
@@ -659,60 +653,63 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
         trainer1.shutdown(force=True)
 
-# def test_resize(ray_start_2_cpus):  # noqa: F811
-#     if not dist.is_available():
-#         return
-#
-#     def single_loader(config):
-#         dataset = LinearDataset(2, 5, size=1000000)
-#         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
-#
-#     step_with_fail = gen_step_with_fail(1)
-#
-#     TestOperator = TrainingOperator.from_creators(model_creator,
-#                                                   optimizer_creator,
-#                                                   single_loader,
-#                                                   loss_creator=lambda
-#                                                       config: nn.MSELoss())
-#     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
-#         trainer1 = TorchTrainer(
-#             training_operator_cls=TestOperator,
-#             config={"batch_size": 100000},
-#             num_workers=2)
-#
-#         @ray.remote
-#         def try_test():
-#             import time
-#             time.sleep(100)
-#
-#         try_test.remote()
-#         trainer1.train(max_retries=1)
-#         assert len(trainer1.remote_workers) == 1
-#
-#         trainer1.shutdown()
+def test_resize(ray_start_2_cpus):  # noqa: F811
+    if not dist.is_available():
+        return
 
-# def test_fail_twice(ray_start_2_cpus):  # noqa: F811
-#     if not dist.is_available():
-#         return
-#
-#     def single_loader(config):
-#         dataset = LinearDataset(2, 5, size=1000000)
-#         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
-#
-#     step_with_fail = gen_step_with_fail(2)
-#
-#     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
-#         trainer1 = TorchTrainer(
-#             model_creator=model_creator,
-#             data_creator=single_loader,
-#             optimizer_creator=optimizer_creator,
-#             config={"batch_size": 100000},
-#             loss_creator=lambda config: nn.MSELoss(),
-#             num_workers=2)
-#
-#         # MAX RETRIES SHOULD BE ON BY DEFAULT
-#         trainer1.train()
-#         trainer1.shutdown()
+    def single_loader(config):
+        dataset = LinearDataset(2, 5, size=1000000)
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
+
+    step_with_fail = gen_step_with_fail(1)
+
+    TestOperator = TrainingOperator.from_creators(model_creator,
+                                                  optimizer_creator,
+                                                  single_loader,
+                                                  loss_creator=lambda
+                                                      config: nn.MSELoss())
+    with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
+        trainer1 = TorchTrainer(
+            training_operator_cls=TestOperator,
+            config={"batch_size": 100000},
+            num_workers=2)
+
+        @ray.remote
+        def try_test():
+            import time
+            time.sleep(100)
+
+        try_test.remote()
+        trainer1.train(max_retries=1)
+        assert len(trainer1.remote_workers) == 1
+
+        trainer1.shutdown()
+
+def test_fail_twice(ray_start_2_cpus):  # noqa: F811
+    if not dist.is_available():
+        return
+
+    def single_loader(config):
+        dataset = LinearDataset(2, 5, size=1000000)
+        return DataLoader(dataset, batch_size=config.get("batch_size", 32))
+
+    step_with_fail = gen_step_with_fail(2)
+
+    TestOperator = TrainingOperator.from_creators(model_creator,
+                                                  optimizer_creator,
+                                                  single_loader,
+                                                  loss_creator=lambda
+                                                      config: nn.MSELoss())
+
+    with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
+        trainer1 = TorchTrainer(
+            training_operator_cls=TestOperator,
+            config={"batch_size": 100000},
+            num_workers=2)
+
+        # MAX RETRIES SHOULD BE ON BY DEFAULT
+        trainer1.train()
+        trainer1.shutdown()
 
 def test_multi_input_model(ray_start_2_cpus):
     def model_creator(config):
