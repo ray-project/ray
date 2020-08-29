@@ -145,7 +145,8 @@ enum class LeasingState {
 /// status.
 class LeasingContext {
  public:
-  LeasingContext(std::shared_ptr<GcsPlacementGroup> placement_group);
+  LeasingContext(std::shared_ptr<GcsPlacementGroup> placement_group,
+                 std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
   ~LeasingContext() = default;
 
   bool MarkLeaseStarted(const ClientID &node_id,
@@ -156,11 +157,18 @@ class LeasingContext {
   bool IsAllLeaseRequestReturned() const;
   bool IsLeasingSucceed() const;
   const std::shared_ptr<GcsPlacementGroup> &GetPlacementGroup() const;
+  const std::vector<std::shared_ptr<BundleSpecification>> &GetUnplacedBundles() const;
   const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
   const LeasingState GetLeasingState() const;
   void MarkPlacementGroupScheduleCancelled();
 
  private:
+  /// Method to update leasing states.
+  ///
+  /// \param leasing_state The state to update.
+  /// \return True if succeeds to update. False otherwise.
+  bool UpdateLeasingState(LeasingState leasing_state);
+  /// Placement group of which this leasing context is associated with.
   std::shared_ptr<GcsPlacementGroup> placement_group_;
   /// Location of bundles that lease requests were sent.
   /// If schedule success, the decision will be set as schedule_map[bundles[pos]]
@@ -176,6 +184,8 @@ class LeasingContext {
   /// TODO(sang): We don't currently handle retry.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
+  /// Unplaced bundle specification for this leasing context.
+  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -306,9 +316,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const rpc::Address &raylet_address);
 
   void OnAllBundleSchedulingRequestReturned(
-      //   const std::shared_ptr<GcsPlacementGroup> &placement_group,
-      //   const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
-      //   const std::shared_ptr<BundleLocations> &bundle_locations,
       const std::shared_ptr<LeasingContext> &leasing_context,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_failure_handler,

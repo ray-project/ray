@@ -214,7 +214,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  auto leasing_context = std::make_shared<LeasingContext>(placement_group);
+  auto leasing_context = std::make_shared<LeasingContext>(placement_group, bundles);
   RAY_CHECK(placement_group_leasing_in_progress_
                 .emplace(placement_group->GetPlacementGroupID(), leasing_context)
                 .second);
@@ -330,9 +330,6 @@ GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_a
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
-    // const std::shared_ptr<GcsPlacementGroup> &placement_group,
-    // const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
-    // const std::shared_ptr<BundleLocations> &bundle_locations,
     const std::shared_ptr<LeasingContext> &leasing_context,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_failure_handler,
@@ -342,7 +339,7 @@ void GcsPlacementGroupScheduler::OnAllBundleSchedulingRequestReturned(
       << "This method can be called only after all bundle scheduling requests are "
          "returend.";
   const auto &placement_group = leasing_context->GetPlacementGroup();
-  const auto &bundles = placement_group->GetBundles();
+  const auto &bundles = leasing_context->GetUnplacedBundles();
   const auto &bundle_locations = leasing_context->GetBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   bundle_location_index_.AddBundleLocations(placement_group_id, bundle_locations);
@@ -504,8 +501,10 @@ void BundleLocationIndex::AddNodes(
   }
 }
 
-LeasingContext::LeasingContext(std::shared_ptr<GcsPlacementGroup> placement_group)
-    : placement_group_(placement_group) {
+LeasingContext::LeasingContext(
+    std::shared_ptr<GcsPlacementGroup> placement_group,
+    std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles)
+    : placement_group_(placement_group), unplaced_bundles_(unplaced_bundles) {
   bundle_locations_ = std::make_shared<BundleLocations>();
 }
 
@@ -523,7 +522,6 @@ void LeasingContext::MarkLeaseReturned(const ClientID &node_id,
   RAY_CHECK(leasing_bundles != node_to_bundles_when_leasing_.end());
   auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
   RAY_CHECK(bundle_iter != leasing_bundles->second.end());
-  returned_count_ += 1;
 
   // Remove the bundle from the leasing map as the reply is returned from the
   // remote node.
@@ -537,22 +535,20 @@ void LeasingContext::MarkLeaseReturned(const ClientID &node_id,
   if (status.ok()) {
     bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
-
+  returned_count_ += 1;
   // If every bundle lease request is returned, mark it as all returned.
-  if (returned_count_ == placement_group_->GetBundleSize()) {
-    leasing_state_ = LeasingState::ALL_RETURNED;
+  if (IsAllLeaseRequestReturned()) {
+    UpdateLeasingState(LeasingState::ALL_RETURNED);
   }
 }
 
 bool LeasingContext::IsAllLeaseRequestReturned() const {
-  return leasing_state_ == LeasingState::ALL_RETURNED;
+  return returned_count_ == unplaced_bundles_.size();
 }
 
 bool LeasingContext::IsLeasingSucceed() const {
-  size_t returned_bundle_locations = bundle_locations_->size();
-  size_t bundle_sizes = placement_group_->GetBundleSize();
-  RAY_CHECK(returned_bundle_locations <= bundle_sizes);
-  return IsAllLeaseRequestReturned() && (returned_bundle_locations == bundle_sizes) &&
+  return IsAllLeaseRequestReturned() &&
+         (bundle_locations_->size() == unplaced_bundles_.size()) &&
          (leasing_state_ != LeasingState::CANCELLED);
 }
 
@@ -564,10 +560,24 @@ const std::shared_ptr<BundleLocations> &LeasingContext::GetBundleLocations() con
   return bundle_locations_;
 }
 
+const std::vector<std::shared_ptr<BundleSpecification>>
+    &LeasingContext::GetUnplacedBundles() const {
+  return unplaced_bundles_;
+}
+
 const LeasingState LeasingContext::GetLeasingState() const { return leasing_state_; }
 
 void LeasingContext::MarkPlacementGroupScheduleCancelled() {
-  leasing_state_ = LeasingState::CANCELLED;
+  UpdateLeasingState(LeasingState::CANCELLED);
+}
+
+bool LeasingContext::UpdateLeasingState(LeasingState leasing_state) {
+  // If the lease was cancelled, we cannot update the state.
+  if (leasing_state_ == LeasingState::CANCELLED) {
+    return false;
+  }
+  leasing_state_ = leasing_state;
+  return true;
 }
 
 }  // namespace gcs
