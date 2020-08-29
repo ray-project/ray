@@ -51,11 +51,15 @@ def train(config):
         net.parameters(),
         lr=args.learning_rate,
     )
+    optimizer = hvd.DistributedOptimizer(optimizer)
 
     num_steps = 50
     print(hvd.size())
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
+    # To ensure consistent initialization across workers,
+    hvd.broadcast_parameters(net.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     start = time.time()
     for step in range(1, num_steps + 1):
@@ -69,12 +73,6 @@ def train(config):
         outputs = net(features)
         loss = torch.nn.MSELoss()(outputs, labels)
         loss.backward()
-        if args.op == "Average":
-            net.param.grad.data = hvd.allreduce(
-                net.param.grad.data, op=hvd.Average)
-        elif args.op == "Adasum":
-            net.param.grad.data = hvd.allreduce(
-                net.param.grad.data, op=hvd.Adasum)
 
         optimizer.step()
         time.sleep(0.1)
@@ -89,12 +87,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode", type=str, default="square", choices=["square", "cubic"])
-    parser.add_argument(
-        "--op",
-        type=str,
-        default="Average",
-        choices=["Average", "Adasum"],
-        dest="op")
     parser.add_argument(
         "--learning_rate", type=float, default=0.1, dest="learning_rate")
     parser.add_argument("--x_max", type=float, default=1., dest="x_max")

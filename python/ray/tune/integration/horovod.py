@@ -1,7 +1,5 @@
-from collections import defaultdict
-from dataclasses import dataclass
 import os
-from typing import List, Dict
+from typing import List
 import logging
 
 import ray
@@ -12,7 +10,9 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration._horovod_job import HorovodMixin
+from ray.tune.integration._horovod_job import HorovodJob, HorovodMixin
+
+logger = logging.getLogger(__name__)
 
 
 def get_rank():
@@ -35,6 +35,7 @@ class _HorovodTrainable(tune.Trainable):
     _finished: bool = False
     _ssh_str: str = None
     _ssh_identity_file: str = None
+    _timeout_s: int = 30
     workers: List = None
 
     @property
@@ -56,10 +57,10 @@ class _HorovodTrainable(tune.Trainable):
 
     def setup(self, config):
         trainable = wrap_function(self.__class__._function)
-        settings = HorovodJob.create_settings(timeout_s, ssh_identity_file,
-                                              ssh_str)
+        settings = HorovodJob.create_settings(
+            self._timeout_s, self._ssh_identity_file, self._ssh_str)
         self._job = HorovodJob(
-            self.settings,
+            settings,
             use_gpu=self._use_gpu,
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
@@ -160,6 +161,7 @@ def DistributedTrainableCreator(func,
         _use_gpu = use_gpu
         _ssh_identity_file = ssh_identity_file
         _ssh_str = sshkeystr
+        _timeout_s = timeout_s
 
         @classmethod
         def default_resource_request(cls, config):

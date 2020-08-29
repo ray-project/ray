@@ -1,3 +1,10 @@
+from collections import defaultdict
+from dataclasses import dataclass
+import os
+from typing import List, Dict
+import logging
+
+import ray
 
 Settings = None
 secret = None
@@ -49,7 +56,6 @@ def map_blocking(fn, collection):
     return ray.get([fn(w) for w in collection])
 
 
-
 class HorovodMixin:
     def hostname(self) -> str:
         # This is probably not the right way to retrieve
@@ -86,17 +92,16 @@ class NodeColocator:
             assert len(gpu_ids) == num_workers, gpu_ids
         self.workers = []
 
-    def create_workers(self, trainable: type, config: dict, logdir: str):
+    def create_workers(self, worker_cls: type, worker_init_args: list):
         """Colocates a number of workers."""
         # Create a node ip resource label so that we can pin
         # all of the child actors to the same node. This ensures
         # colocation and balanced training.
         node_id = f"node:{ray.services.get_node_ip_address()}"
-        remote_cls = ray.remote(trainable)
+        remote_cls = ray.remote(worker_cls)
         remote_cls = remote_cls.options(
             num_cpus=0, num_gpus=0, resources={node_id: 0.01})
 
-        # Create Tune trainable actors.
         self.workers = [
             remote_cls.remote(**worker_init_args)
             for rank in range(self.num_workers)
@@ -194,9 +199,9 @@ class HorovodJob:
         # an autoscaler mechanism for doing this.
         if ssh_str:
             with FileLock(ssh_identity_file + ".lock"):
-                if not os.path.exists(ssh_key_path):
-                    with open(ssh_key_path, "w") as f:
-                        os.chmod(ssh_key_path, 0o600)
+                if not os.path.exists(ssh_identity_file):
+                    with open(ssh_identity_file, "w") as f:
+                        os.chmod(ssh_identity_file, 0o600)
                         f.write(ssh_str)
 
         return MiniSettings(
@@ -207,7 +212,6 @@ class HorovodJob:
         self.num_hosts = num_hosts
         self.num_slots = num_slots
         self.use_gpu = use_gpu  # can remove if resources has gpu already
-        self.worker_cls = worker_cls
 
     def _create_workers(self, node_resources, worker_cls, worker_init_args):
         colocator_cls = NodeColocator.options(**self.node_resources)
@@ -233,13 +237,13 @@ class HorovodJob:
         return sum(workers, [])
 
     def start(self, node_resources, worker_cls, worker_init_args=None):
-
         class MixedHorovodWorker(worker_cls, HorovodMixin):
             pass
 
         self.coordinator = Coordinator(self.settings)
         worker_init_args = worker_init_args or []
-        self.workers = self._create_workers(MixedWorkerClass, worker_init_args)
+        self.workers = self._create_workers(MixedHorovodWorker,
+                                            worker_init_args)
 
         # Update the environment variables.
         ray.get([
