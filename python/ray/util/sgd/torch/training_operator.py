@@ -1,7 +1,12 @@
+import inspect
 import itertools
 import logging
+import os
+import tempfile
+
 import torch
 import torch.nn as nn
+from filelock import FileLock
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
@@ -64,13 +69,7 @@ class TrainingOperator:
 
     def __init__(self,
                  config,
-                 # models,
-                 # optimizers,
-                 # train_loader,
-                 # validation_loader,
                  world_rank,
-                 # criterion=None,
-                 # schedulers=None,
                  device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
@@ -80,21 +79,7 @@ class TrainingOperator:
                  wrap_distributed_sampler=False,
                  add_dist_sampler=False):
         # You are not expected to override this method.
-        # self._models = models  # List of models
-        # assert isinstance(
-        #     models,
-        #     Iterable), (f"Components need to be iterable. Got: {type(models)}")
-        # self._optimizers = optimizers  # List of optimizers
-        # assert isinstance(optimizers, Iterable), (
-        #     f"Components need to be iterable. Got: {type(optimizers)}")
-        # self._train_loader = train_loader
-        # self._validation_loader = validation_loader
         self._world_rank = world_rank
-        # self._criterion = criterion
-        # self._schedulers = schedulers
-        # if schedulers:
-        #     assert isinstance(schedulers, Iterable), (
-        #         f"Components need to be iterable. Got: {type(schedulers)}")
         self._config = config
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
@@ -109,13 +94,6 @@ class TrainingOperator:
         self._wrap_distributed_sampler = wrap_distributed_sampler
         self._add_dist_sampler = add_dist_sampler
 
-        # if type(self) is TrainingOperator:
-        #     for component in (models, schedulers, optimizers):
-        #         if _is_multiple(component):
-        #             raise ValueError(
-        #                 "Need to provide a custom operator subclassing "
-        #                 "TrainingOperator if using multi-scheduler, "
-        #                 "multi-model or multi-optimizer training/validation.")
         self.timers = TimerCollection()
         self.setup(config)
 
@@ -124,7 +102,8 @@ class TrainingOperator:
         self.timers = timers
 
     def setup(self, config):
-        """Override this method to implement custom operator setup.
+        """Override this method to implement custom operator setup. You must
+        self.register here to register training components with Ray SGD.
 
         Args:
             config (dict): Custom configuration value to be passed to
@@ -132,16 +111,76 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self, *, models, optimizers, train_loader, validation_loader,
-                 loss=None, schedulers=None):
+    def register(self, *, models, optimizers, train_loader,
+                 validation_loader, criterion=None, schedulers=None):
+        """Registers parameters with Ray SGD. Also sets up necessary
+        training components (Cuda, DDP, Distributed Sampler, Fp16).
+
+        If more than one model, optimizer, or scheduler is passed in,
+        you should implement your own custom training loop.
+
+        .. code-block:: python
+
+            @override
+            def setup(self, config):
+                model = ...
+                optimizer = ...
+                train_loader = ...
+                val_loader = ...
+                loss = ...
+
+                self.model, self.optimizer, self.train_loader,
+                self.val_loader, self.loss = self.register(models=model,
+                optimizers=optimizer, train_loader=train_loader,
+                validation_loader=validation_loader, criterion=loss)
+
+                # At this point DDP, Cuda, Distributed Sampling, and Fp16
+                # are set up for all our components. We then use self.model,
+                # self.optimizer, etc. in our training loop.
+
+
+        Args:
+            models (torch.nn.Module or Iterable[nn.Module]): Pytorch model or
+                multiple Pytorch models to use for training. If `use_gpu` is
+                True, Cuda is available, and TorchTrainer(..., wrap_ddp=True)
+                models will be wrapped in DDP. If wrap_ddp is False,
+                you should handle DDP for your models in setup.
+            optimizers (torch.optim.Optimizer or Iterable[
+                torch.optim.Optimizer]): Pytorch optimizer or multiple Pytorch
+                optimizers to use for training.
+            train_loader (Iterator): An iterator for training
+                data. If None is explicitly passed in, a Ray SGD Dataset
+                must be passed in through TorchTrainer.train. Ray SGD will
+                automatically use a Distributed Sampler if TorchTrainer(...,
+                add_dist_sampler=True).
+            validation_loader (Iterator): An iterator for validation
+                data. Ray SGD will automatically use a Distributed Sampler
+                if TorchTrainer(..., add_dist_sampler=True).
+            criterion (Callable, optional): Function to return loss
+                metric given features and target. If not provided,
+                must implement a custom training loop.
+            schedulers (torch.optim.lr_scheduler or Iterable[
+                torch.optim.lr_scheduler], optional): A learning rate
+                scheduler or multiple learning rate schedulers.
+
+        Returns:
+            Tuple of model, optimizer, criterion if not None, and scheduler
+            if not None. train_loader and validation_loader are not
+            returned. You should use the iterators passed into train_epoch
+            and validate instead.
+
+        """
+        return_vals = []
         logger.debug("Registering models.")
-        self._models = models
-        if not isinstance(self._models, Iterable):
-            self._models = [self._models]
-        assert all(isinstance(model, nn.Module) for model in self._models), (
-            f"All models must be PyTorch models: {self._models}.")
+        self._original_models = models
+        if not isinstance(self._original_models, Iterable):
+            self._original_models = [self._original_models]
+        assert all(isinstance(model, nn.Module) for model in
+                   self._original_models), (
+            f"All models must be PyTorch models: {self._original_models}.")
         if self.use_gpu and torch.cuda.is_available():
-            self._models = [model.cuda() for model in self._models]
+            self._original_models = [model.cuda() for model in
+                                     self._original_models]
 
         logger.debug("Registering optimizers.")
         self._optimizers = optimizers
@@ -175,7 +214,7 @@ class TrainingOperator:
                 return (isinstance(loader, DataLoader)
                         and not isinstance(loader.dataset, IterableDataset))
 
-            if should_wrap_dataloader(self.train_loader):
+            if should_wrap_dataloader(self._train_loader):
                 if self._add_dist_sampler:
                     self._train_loader = with_sampler(self._train_loader)
 
@@ -192,11 +231,11 @@ class TrainingOperator:
             if not isinstance(self._schedulers, Iterable):
                 self._schedulers = [self._schedulers]
         else:
-            self._schedulers = [None]
+            self._schedulers = None
 
-        if loss:
+        if criterion:
             logger.debug("Registering loss.")
-            self._criterion = loss
+            self._criterion = criterion
             if self.use_gpu and torch.cuda.is_available():
                 if hasattr(self._criterion, "cuda"):
                     self._criterion = self._criterion.cuda()
@@ -207,14 +246,38 @@ class TrainingOperator:
         if self.use_fp16 and amp:
             self._models, self._optimizers = amp.initialize(
                 self._models, self._optimizers, **self._apex_args)
+            self._amp = amp
 
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
             self._models = [DistributedDataParallel(model,
-                                                    device_ids=self.device_ids) for model in self._models]
+                                                    device_ids=self.device_ids) for model in self._original_models]
+        else:
+            self._models = self._original_models
 
-    def train_epoch(self, info, num_steps=None):
+        if len(self._models) == 1:
+            return_vals.append(self._models[0])
+        else:
+            return_vals.append(self._models)
+
+        if len(self._optimizers) == 1:
+            return_vals.append(self._optimizers[0])
+        else:
+            return_vals.append(self._optimizers)
+
+        if self._criterion is not None:
+            return_vals.append(self._criterion)
+
+        if self._schedulers is not None:
+            if len(self._schedulers) == 1:
+                return_vals.append(self._schedulers[0])
+            else:
+                return_vals.append(self._schedulers)
+
+        return tuple(return_vals)
+
+    def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
@@ -253,9 +316,15 @@ class TrainingOperator:
         Returns:
             A dict of metrics from training.
         """
-        iterator = iter(self.train_loader)
-        if num_steps:
-            iterator = itertools.islice(iterator, num_steps)
+        if not hasattr(self, "model"):
+            raise RuntimeError("Either set self.model in setup function or "
+                               "override this method to implement a custom "
+                               "training loop.")
+        model = self.model
+        scheduler = None
+        if hasattr(self, "scheduler"):
+            scheduler = self.scheduler
+
         if self.use_tqdm and self.world_rank == 0:
             desc = ""
             if info is not None and "epoch_idx" in info:
@@ -263,15 +332,22 @@ class TrainingOperator:
                     desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
                 else:
                     desc = f"{info['epoch_idx'] + 1}e"
+
+            # TODO: Implement len for Dataset?
+            total = info[NUM_STEPS]
+            if total is None:
+                if hasattr(iterator, "__len__"):
+                    total = len(iterator)
+
             _progress_bar = tqdm(
-                total=info[NUM_STEPS] or len(self.train_loader),
+                total=total,
                 desc=desc,
                 unit="batch",
                 leave=False)
 
         metric_meters = AverageMeterCollection()
 
-        self.model.train()
+        model.train()
         for batch_idx, batch in enumerate(iterator):
             batch_info = {
                 "batch_idx": batch_idx,
@@ -287,15 +363,15 @@ class TrainingOperator:
                     postfix.update(loss=metrics["train_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            if self.scheduler and batch_info.get(
+            if scheduler and batch_info.get(
                     SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
-                self.scheduler.step()
+                scheduler.step()
 
             metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
             self.global_step += 1
 
-        if self.scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
-            self.scheduler.step()
+        if scheduler and info.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+            scheduler.step()
 
         return metric_meters.summary()
 
@@ -311,9 +387,7 @@ class TrainingOperator:
         automatically.
 
         You can provide custom loss metrics and training operations if you
-        override this method. If overriding this method, you can access model,
-        optimizer, criterion via ``self.model``, ``self.optimizer``,
-        and ``self.criterion``.
+        override this method.
 
         You do not need to override this method if you plan to
         override ``train_epoch``.
@@ -332,6 +406,21 @@ class TrainingOperator:
                 calculate averages.
 
         """
+        if not hasattr(self, "model"):
+            raise RuntimeError("Either set self.model in setup function or "
+                               "override this method to implement a custom "
+                               "training loop.")
+        if not hasattr(self, "optimizer"):
+            raise RuntimeError("Either set self.optimizer in setup function "
+                               "or override this method to implement a custom "
+                               "training loop.")
+        if not hasattr(self, "criterion"):
+            raise RuntimeError("Either set self.criterion in setup function "
+                               "or override this method to implement a custom "
+                               "training loop.")
+        model = self.model
+        optimizer = self.optimizer
+        criterion = self.criterion
         # unpack features into list to support multiple inputs model
         *features, target = batch
         # Create non_blocking tensors for distributed training
@@ -343,33 +432,32 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = self.model(*features)
-            loss = self.criterion(output, target)
+            output = model(*features)
+            loss = criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
             if self.use_fp16:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
             else:
                 loss.backward()
 
         # Call step of optimizer to update model params.
         with self.timers.record("apply"):
-            self.optimizer.step()
+            optimizer.step()
 
         return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
-    def validate(self, info, num_steps=None):
+    def validate(self, val_iterator, info):
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
         over the validation dataloader.
 
-        If overriding this method, you can access model, criterion via
-        ``self.model`` and ``self.criterion``. You also do not need to call
-        ``validate_batch`` if overriding this method.
+        You also do not need to call ``validate_batch`` if overriding this
+        method.
 
         Args:
             val_iterator (iter): Iterable constructed from the
@@ -384,15 +472,15 @@ class TrainingOperator:
                 from ``validate_batch`` and dividing it by the sum of
                 ``num_samples`` from all calls to ``self.validate_batch``.
         """
-        if self._validation_loader is None:
-            raise ValueError("No validation dataloader provided.")
-        val_iterator = iter(self._validation_loader)
-        if num_steps:
-            val_iterator = itertools.islice(val_iterator, num_steps)
+        if not hasattr(self, "model"):
+            raise RuntimeError("Either set self.model in setup function or "
+                               "override this method to implement a custom "
+                               "validation loop.")
+        model = self.model
         metric_meters = AverageMeterCollection()
 
         # switch to evaluate mode
-        self.model.eval()
+        model.eval()
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_iterator):
                 batch_info = {"batch_idx": batch_idx}
@@ -424,6 +512,16 @@ class TrainingOperator:
                 by default, ``validate`` uses "num_samples" to
                 calculate averages.
         """
+        if not hasattr(self, "model"):
+            raise RuntimeError("Either set self.model in setup function or "
+                               "override this method to implement a custom "
+                               "training loop.")
+        if not hasattr(self, "criterion"):
+            raise RuntimeError("Either set self.criterion in setup function "
+                               "or override this method to implement a custom "
+                               "training loop.")
+        model = self.model
+        criterion = self.criterion
         # unpack features into list to support multiple inputs model
         *features, target = batch
         if self.use_gpu:
@@ -435,8 +533,8 @@ class TrainingOperator:
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = self.model(*features)
-            loss = self.criterion(output, target)
+            output = model(*features)
+            loss = criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
@@ -449,42 +547,103 @@ class TrainingOperator:
 
     def state_dict(self):
         """Override this to return a representation of the operator state.
+        Any argument passed into self.register will automatically be saved.
+        Use this method to save any additional state.
 
         Returns:
             dict: The state dict of the operator."""
-        state = {
-            "models": [model.state_dict() for model in self._models],
-            "optimizers": [opt.state_dict() for opt in self._optimizers],
-        }
-
-        if self._schedulers:
-            state.update({
-                "schedulers": [scheduler.state_dict() for scheduler in
-                               self._schedulers]
-            })
-
-        # Check if fp16 is True and if NVIDIA Apex is imported.
-        if self.use_fp16 and amp:
-            state.update({"amp": amp.state_dict()})
-
-        return state
+        pass
 
     def load_state_dict(self, state_dict):
         """Override this to load the representation of the operator state.
+        Anything passed into self.register will automatically be loaded. Use
+        this method to load any additional state.
 
         Args:
             state_dict (dict): State dict as returned by the operator. """
-        for model, model_state_dict in zip(self._models, state_dict["models"]):
-            model.load_state_dict(model_state_dict)
-        for optimizer, opt_state_dict in zip(self._optimizers, state_dict[
-            "optimizers"]):
-            optimizer.load_state_dict(opt_state_dict)
-        if self._schedulers:
-            for scheduler, sched_state_dict in zip(self._schedulers,
-                                                   state_dict["schedulers"]):
-                scheduler.load_state_dict(sched_state_dict)
-        if self.use_fp16 and "amp" in state_dict and amp:
-            amp.load_state_dict(state_dict["amp"])
+        pass
+
+    @staticmethod
+    def from_creators(model_creator, optimizer_creator, data_creator=None,
+                      scheduler_creator=None, loss_creator=None,
+                      serialize_data_creation=True):
+
+        if not (callable(model_creator) and callable(optimizer_creator)):
+            raise ValueError(
+                "Must provide a callable model_creator and optimizer_creator.")
+
+        class CreatorOperator(TrainingOperator):
+            def _validate_loaders(self, loaders):
+                assert loaders, "Loaders need to be returned in data_creator."
+                if isinstance(loaders, (tuple, list)):
+                    if len(loaders) == 1:
+                        return loaders, None
+                    elif len(loaders) == 2:
+                        return loaders
+                    else:
+                        raise ValueError(
+                            f"Number of loaders must be <= 2. Got {loaders}")
+                # No great way of checking type otherwise
+                return loaders, None
+
+            def _initialize_dataloaders(self, config):
+                logger.debug("Instantiating dataloaders.")
+                loaders = None
+                if serialize_data_creation:
+                    logger.debug("Serializing the dataloading process.")
+                    with FileLock(
+                        os.path.join(tempfile.gettempdir(), ".raydata.lock")):
+                        loaders = data_creator(config)
+                else:
+                    loaders = data_creator(config)
+                train_loader, val_loader = self._validate_loaders(loaders)
+
+                return train_loader, val_loader
+
+            def setup(self, config):
+                kwargs = {}
+                logger.debug("Loading data.")
+                train_loader = None
+                validation_loader = None
+                if data_creator and callable(data_creator):
+                    train_loader, validation_loader = \
+                        self._initialize_dataloaders(config)
+
+                kwargs["train_loader"] = train_loader
+                kwargs["validation_loader"] = validation_loader
+
+                logger.debug("Creating model")
+                models = model_creator(config)
+
+                kwargs["models"] = models
+
+                logger.debug("Creating optimizer.")
+                optimizers = optimizer_creator(models, config)
+
+                kwargs["optimizers"] = optimizers
+
+                if scheduler_creator:
+                    logger.debug("Creating scheduler.")
+                    schedulers = scheduler_creator(optimizers, config)
+                    kwargs["schedulers"] = schedulers
+
+                if loss_creator:
+                    logger.debug("Creating loss.")
+                    if inspect.isclass(loss_creator) and issubclass(
+                        loss_creator, torch.nn.modules.loss._Loss):
+                        criterion = loss_creator()
+                    else:
+                        criterion = loss_creator(config)
+                    kwargs["criterion"] = criterion
+
+                state = self.register(**kwargs)
+                self.model, self.optimizer = state[:2]
+                if len(state) == 3:
+                    self.criterion = state[2]
+                if len(state) == 4:
+                    self.scheduler = state[3]
+
+        return CreatorOperator
 
     @property
     def device(self):
@@ -497,56 +656,9 @@ class TrainingOperator:
         return self._config
 
     @property
-    def model(self):
-        """First or only model created by the provided ``model_creator``."""
-        return self._models[0]
-
-    @property
-    def models(self):
-        """List of models created by the provided ``model_creator``."""
-        return self._models
-
-    @property
-    def optimizer(self):
-        """First or only optimizer(s) created by the ``optimizer_creator``."""
-        return self._optimizers[0]
-
-    @property
-    def optimizers(self):
-        """List of optimizers created by the ``optimizer_creator``."""
-        return self._optimizers
-
-    @property
-    def train_loader(self):
-        """Iterable: 1st Dataloader from ``data_creator``.
-        """
-        return self._train_loader
-
-    @property
-    def validation_loader(self):
-        """Iterable: 2nd Dataloader from ``data_creator``."""
-        return self._validation_loader
-
-    @property
     def world_rank(self):
         """int: The rank of the parent runner. Always 0 if not distributed."""
         return self._world_rank
-
-    @property
-    def criterion(self):
-        """Criterion created by the provided ``loss_creator``."""
-        return self._criterion
-
-    @property
-    def scheduler(self):
-        """First or only scheduler(s) created by the ``scheduler_creator``."""
-        if self._schedulers:
-            return self._schedulers[0]
-
-    @property
-    def schedulers(self):
-        """List of schedulers created by the ``scheduler_creator``."""
-        return self._schedulers
 
     @property
     def use_gpu(self):
@@ -572,30 +684,35 @@ class TrainingOperator:
         return self._device_ids
 
 
-class _TestingOperator(TrainingOperator):
-    def train_epoch(self, iterator, info):
-        func = self.config.get("custom_func")
-        if callable(func):
-            return func(self, iterator, info)
-        return {"done": 1}
+def get_test_operator(operator_cls):
+    class _TestingOperator(operator_cls):
+        def train_epoch(self, iterator, info):
+            func = self.config.get("custom_func")
+            if callable(func):
+                return func(self, iterator, info)
+            return {"done": 1}
+    return _TestingOperator
 
+def get_test_metrics_operator(operator_cls):
+    class _TestMetricsOperator(operator_cls):
+        def setup(self, config):
+            super(_TestMetricsOperator, self).setup(config)
+            self._train_scores = config["scores"].copy()
+            self._val_scores = config["val_scores"].copy()
+            self.key = config["key"]
 
-class _TestMetricsOperator(TrainingOperator):
-    def setup(self, config):
-        self._train_scores = config["scores"].copy()
-        self._val_scores = config["val_scores"].copy()
-        self.key = config["key"]
+        def train_batch(self, batch, batch_info=None):
+            metrics = super(_TestMetricsOperator, self).train_batch(
+                batch, batch_info)
+            num_samples = metrics[NUM_SAMPLES]
+            metrics.update({self.key: self._train_scores.pop(0) / num_samples})
+            return metrics
 
-    def train_batch(self, batch, batch_info=None):
-        metrics = super(_TestMetricsOperator, self).train_batch(
-            batch, batch_info)
-        num_samples = metrics[NUM_SAMPLES]
-        metrics.update({self.key: self._train_scores.pop(0) / num_samples})
-        return metrics
+        def validate_batch(self, batch, batch_info=None):
+            metrics = super(_TestMetricsOperator, self).validate_batch(
+                batch, batch_info)
+            num_samples = metrics[NUM_SAMPLES]
+            metrics.update({self.key: self._val_scores.pop(0) / num_samples})
+            return metrics
 
-    def validate_batch(self, batch, batch_info=None):
-        metrics = super(_TestMetricsOperator, self).validate_batch(
-            batch, batch_info)
-        num_samples = metrics[NUM_SAMPLES]
-        metrics.update({self.key: self._val_scores.pop(0) / num_samples})
-        return metrics
+    return _TestMetricsOperator

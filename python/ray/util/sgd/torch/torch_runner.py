@@ -45,12 +45,6 @@ class TorchRunner:
 
         self.timers = utils.TimerCollection()
         self.epochs = 0
-        self.models = None
-        self.optimizers = None
-        self.criterion = None
-        self.schedulers = None
-        self.train_loader = None
-        self.validation_loader = None
         self.training_operator = None
         self.serialize_data_creation = serialize_data_creation
         self.use_gpu = use_gpu
@@ -114,56 +108,12 @@ class TorchRunner:
         if not isinstance(self.schedulers, Iterable):
             self.schedulers = [self.schedulers]
 
-    def _try_setup_apex(self):
-        """Sets up the model for fp16 training via apex if available."""
-        if self.use_fp16 and amp:
-            self.models, self.optimizers = amp.initialize(
-                self.models, self.optimizers, **self.apex_args)
-
     def setup(self):
         """Merges setup_components and setup_operator in one call."""
-        #self.setup_components()
         self.setup_operator()
-
-    def setup_components(self):
-        """Runs the creator functions without any distributed coordination."""
-        logger.debug("Loading data.")
-        if self.data_creator and callable(self.data_creator):
-            self._initialize_dataloaders()
-
-        logger.debug("Creating model")
-        self.models = self.model_creator(self.config)
-        if not isinstance(self.models, Iterable):
-            self.models = [self.models]
-        assert all(isinstance(model, nn.Module) for model in self.models), (
-            f"All models must be PyTorch models: {self.models}.")
-        if self.use_gpu and torch.cuda.is_available():
-            self.models = [model.cuda() for model in self.models]
-
-        logger.debug("Creating optimizer.")
-        self.optimizers = self.optimizer_creator(self.given_models,
-                                                 self.config)
-        if not isinstance(self.optimizers, Iterable):
-            self.optimizers = [self.optimizers]
-
-        self._create_schedulers_if_available()
-        self._try_setup_apex()
-        self._create_loss()
 
     def setup_operator(self):
         """Create the training operator."""
-        # self.training_operator = self.training_operator_cls(
-        #     self.config,
-        #     models=self.models,
-        #     optimizers=self.optimizers,
-        #     criterion=self.criterion,
-        #     train_loader=self.train_loader,
-        #     validation_loader=self.validation_loader,
-        #     world_rank=0,
-        #     schedulers=self.schedulers,
-        #     use_gpu=self.use_gpu,
-        #     use_fp16=self.use_fp16,
-        #     use_tqdm=self.use_tqdm)
         self.training_operator = self.training_operator_cls(self.config,
                                                             world_rank=0,
                                                             use_gpu=self.use_gpu,
@@ -195,20 +145,19 @@ class TorchRunner:
             SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self.timers.record("train_epoch"):
-            # if iterator is None:
-            #     iterator = iter(self.train_loader)
-            # else:
-            #     # Dataset will provide us with a list of tuples but we
-            #     # need two lists.
-            #     def format_batch(batch):
-            #         features, targets = zip(*batch)
-            #         return torch.cat(features), torch.cat(targets)
-            #
-            #     iterator = map(format_batch, iterator)
-            # if num_steps:
-            #     iterator = itertools.islice(iterator, num_steps)
-            #train_stats = self.training_operator.train_epoch(iterator, info)
-            train_stats = self.training_operator.train_epoch(info, num_steps)
+            if iterator is None:
+                iterator = iter(self.train_loader)
+            else:
+                # Dataset will provide us with a list of tuples but we
+                # need two lists.
+                def format_batch(batch):
+                    features, targets = zip(*batch)
+                    return torch.cat(features), torch.cat(targets)
+
+                iterator = map(format_batch, iterator)
+            if num_steps:
+                iterator = itertools.islice(iterator, num_steps)
+            train_stats = self.training_operator.train_epoch(iterator, info)
 
         self.epochs += 1
         # This is so that `epochs` is first in ordering.
@@ -219,20 +168,20 @@ class TorchRunner:
 
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
-        # if self.validation_loader is None:
-        #     raise ValueError("No validation dataloader provided.")
+        if self.validation_loader is None:
+            raise ValueError("No validation dataloader provided. Make sure "
+                             "you pass in a validation_loader to "
+                             "TrainingOperator.register.")
         info = info or {}
         self._toggle_profiling(profile=profile)
+        validation_loader = self.validation_loader
 
         with self.timers.record("validation"):
-            # iterator = self.validation_loader
-            # if num_steps:
-            #     iterator = itertools.islice(
-            #         iter(self.validation_loader), num_steps)
-            # validation_stats = self.training_operator.validate(
-            #     iterator, info=info)
-            validation_stats = self.training_operator.validate(info=info,
-                                                               num_steps=num_steps)
+            iterator = validation_loader
+            if num_steps:
+                iterator = itertools.islice(iterator, num_steps)
+            validation_stats = self.training_operator.validate(
+                iterator, info=info)
         if profile:
             validation_stats.update(profile=self.timers.stats())
         return validation_stats
@@ -251,33 +200,37 @@ class TorchRunner:
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
-            # "models": [model.state_dict() for model in self.models],
-            # "optimizers": [opt.state_dict() for opt in self.optimizers]
+            "models": [model.state_dict() for model in self.models],
+            "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
-        # if self.schedulers:
-        #     state.update({
-        #         "schedulers": [
-        #             scheduler.state_dict() for scheduler in self.schedulers
-        #         ]
-        #     })
+        schedulers = self.schedulers
+        if schedulers:
+            state.update({
+                "schedulers": [
+                    scheduler.state_dict() for scheduler in schedulers
+                ]
+            })
         # Check if fp16 is True and if NVIDIA Apex is imported.
-        # if self.use_fp16 and amp:
-        #     state.update({"amp": amp.state_dict()})
+        if self.use_fp16 and self.training_operator._amp:
+            state.update({"amp": self.training_operator._amp.state_dict()})
         return state
 
     def load_state_dict(self, state):
         """Sets the state of the model."""
-        # for model, state_dict in zip(self.models, state["models"]):
-        #     model.load_state_dict(state_dict)
-        # for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
-        #     optimizer.load_state_dict(state_dict)
-        # if self.schedulers:
-        #     for scheduler, state_dict in zip(self.schedulers,
-        #                                      state["schedulers"]):
-        #         scheduler.load_state_dict(state_dict)
-        #
-        # if self.use_fp16 and "amp" in state and amp:
-        #     amp.load_state_dict(state["amp"])
+        models = self.models
+        for model, state_dict in zip(models, state["models"]):
+            model.load_state_dict(state_dict)
+        optimizers = self.optimizers
+        for optimizer, state_dict in zip(optimizers, state["optimizers"]):
+            optimizer.load_state_dict(state_dict)
+        schedulers = self.schedulers
+        if schedulers:
+            for scheduler, state_dict in zip(schedulers,
+                                             state["schedulers"]):
+                scheduler.load_state_dict(state_dict)
+
+        if self.use_fp16 and "amp" in state and self.training_operator._amp:
+            self.training_operator._amp.load_state_dict(state["amp"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state["operator"])
 
@@ -300,16 +253,35 @@ class TorchRunner:
     def apply_operator(self, fn):
         return fn(self.training_operator)
 
-    def shutdown(self, cleanup=False):
+    def shutdown(self):
         """Attempts to shut down the worker."""
         del self.training_operator
-        del self.validation_loader
-        del self.train_loader
-        del self.criterion
-        del self.optimizers
-        del self.models
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    @property
+    def models(self):
+        return self.training_operator._original_models
+
+    @property
+    def optimizers(self):
+        return self.training_operator._optimizers
+
+    @property
+    def schedulers(self):
+        return self.training_operator._schedulers
+
+    @property
+    def train_loader(self):
+        return self.training_operator._train_loader
+
+    @property
+    def validation_loader(self):
+        return self.training_operator._validation_loader
+
+    @property
+    def criterion(self):
+        return self.training_operator._criterion
 
     @property
     def given_models(self):

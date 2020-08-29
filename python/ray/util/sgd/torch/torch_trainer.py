@@ -49,23 +49,26 @@ class TorchTrainer:
 
     .. code-block:: python
 
-        def model_creator(config):
-            return nn.Linear(1, 1)
+        class MyTrainingOperator(TrainingOperator):
 
+            @override
+            def setup(config):
+                model = nn.Linear(1, 1)
+                optimizer = torch.optim.SGD(
+                    model.parameters(), lr=config.get("lr", 1e-4))
+                loss = torch.nn.MSELoss()
 
-        def optimizer_creator(model, config):
-            return torch.optim.SGD(
-                model.parameters(), lr=config.get("lr", 1e-4))
+                batch_size = config["batch_size"]
+                train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
+                train_loader = DataLoader(train_data, batch_size=batch_size)
+                val_loader = DataLoader(val_data, batch_size=batch_size)
 
-
-        def data_creator(config):
-            batch_size = config["batch_size"]
-            train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
-            train_loader = DataLoader(train_data, batch_size=batch_size)
-            val_loader = DataLoader(val_data, batch_size=batch_size)
-            return train_loader, val_loader
-
-
+                self.model, self.optimizer = self.register(
+                                                    models=model,
+                                                    optimizers=optimizer,
+                                                    train_loader=train_loader,
+                                                    validation_loader=val_loader,
+                                                    criterion=loss)
         trainer = TorchTrainer(
             model_creator=model_creator,
             data_creator=data_creator,
@@ -77,45 +80,7 @@ class TorchTrainer:
         for i in range(4):
             trainer.train()
 
-    The creator functions will execute before distributed coordination and
-    training is setup. This is so that creator functions that download
-    large datasets will not trigger any timeouts.
-
-    The order of operations for creator functions are:
-
-    ``data_creator`` -> ``model_creator`` -> ``optimizer_creator`` ->
-    ``scheduler_creator`` -> ``loss_creator``.
-
     Args:
-        model_creator (dict -> Model(s)): Constructor function that takes in
-            config and returns the model(s) to be optimized. These must be
-            ``torch.nn.Module`` objects. If multiple models are returned,
-            a ``training_operator_cls`` must be specified. You do not need to
-            handle GPU/devices in this function; RaySGD will do that under
-            the hood.
-        data_creator (dict -> Iterable(s)): Constructor function
-            that takes in the passed config and returns one or
-            two Iterable objects. Note that even though two Iterable objects
-            can be returned, only one will be used for training, and the
-            other will be used for validation. If not provided, you must
-            provide a custom TrainingOperator.
-        optimizer_creator ((models, dict) -> optimizers): Constructor
-            function that takes in the return values from
-            ``model_creator`` and the passed config and returns One or
-            more Torch optimizer objects. You do not need to handle
-            GPU/devices in this function; ``RaySGD`` will do that for you.
-        loss_creator (torch.nn.*Loss class | dict -> loss): A constructor
-            function for the training loss. This can be either a function that
-            takes in the provided config for customization or a subclass
-            of ``torch.nn.modules.loss._Loss``, which is most Pytorch
-            loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-            If not provided, you must provide a custom TrainingOperator.
-        scheduler_creator ((optimizers, dict) -> scheduler):
-            A constructor function for the torch scheduler. This is
-            a function that takes in the generated optimizers (from
-            ``optimizer_creator``) provided config for customization.
-            Be sure to set ``scheduler_step_freq`` to increment the
-            scheduler correctly.
         training_operator_cls (type): Custom training operator class
             that subclasses the TrainingOperator class. This class
             will be copied onto all remote workers and used to specify
@@ -170,7 +135,13 @@ class TorchTrainer:
 
     def __init__(
             self,
+            *,
             training_operator_cls,
+            model_creator=None,
+            data_creator=None,
+            optimizer_creator=None,
+            scheduler_creator=None,
+            loss_creator=None,
             initialization_hook=None,
             config=None,
             num_workers=1,
@@ -189,16 +160,23 @@ class TorchTrainer:
             batch_size=None,
             data_loader_args=None,
     ):
+        if model_creator or data_creator or optimizer_creator or \
+            scheduler_creator or loss_creator:
+            raise DeprecationWarning(
+                "Creator functions are deprecated. You should create a "
+                "custom TrainingOperator, override setup, and register all "
+                "training state there. See TrainingOperator for more info. "
+                "If you would still like to use creator functions, you can "
+                "do CustomOperator = TrainingOperator.from_creators("
+                "model_creator, ...) and pass in CustomOperator into TorchTrainer."
+            )
+
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
                  "To run without distributed PyTorch, set 'num_workers=1'. "
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
-
-        # if not (callable(model_creator) and callable(optimizer_creator)):
-        #     raise ValueError(
-        #         "Must provide a callable model_creator and optimizer_creator.")
 
         if num_replicas is not None:
             raise DeprecationWarning(
@@ -211,23 +189,21 @@ class TorchTrainer:
                 "config={ray.util.sgd.utils.BATCH_SIZE: N} to specify a "
                 "batch size to be used across all workers.")
 
+        if serialize_data_creation is True:
+            logging.warning(
+                "serialize_data_creation is deprecated and will be ignored. "
+                "If you require serialized data loading you should use a "
+                "FileLock to load data in TrainingOperator.setup."
+            )
+
         if data_loader_args:
-            raise ValueError(
+            raise DeprecationWarning(
                 "data_loader_args is deprecated. You can return a "
                 "torch.utils.data.DataLoader in data_creator. Ray will "
                 "automatically set a DistributedSampler if a DataLoader is "
                 "returned and num_workers > 1.")
 
-        # self.model_creator = model_creator
-        # self.optimizer_creator = optimizer_creator
-        # self.loss_creator = loss_creator
-        # self.data_creator = data_creator
-        # self.scheduler_creator = scheduler_creator
         self.training_operator_cls = training_operator_cls
-
-        # if not training_operator_cls and not loss_creator:
-        #     raise ValueError("If a loss_creator is not provided, you must "
-        #                      "provide a custom training operator.")
 
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -263,8 +239,8 @@ class TorchTrainer:
         self.local_worker = DeactivatedRunner()
         self.remote_workers = []
 
-        # if scheduler_creator:
-        #     _validate_scheduler_step_freq(scheduler_step_freq)
+        if scheduler_step_freq:
+            _validate_scheduler_step_freq(scheduler_step_freq)
 
         self.scheduler_step_freq = scheduler_step_freq
 
@@ -344,15 +320,6 @@ class TorchTrainer:
             # Compute URL for initializing distributed PyTorch
             address = setup_address()
 
-            # Runs the creator functions.
-            # remote_component_setup = [
-            #     worker.setup_components.remote()
-            #     for i, worker in enumerate(self.remote_workers)
-            # ]
-            # self.local_worker.setup_components()
-            # # Get setup tasks in order to throw errors on failure
-            # ray.get(remote_component_setup)
-
             # Setup the process group among all workers.
             remote_pgroup_setups = [
                 worker.setup_process_group.remote(address, i + 1, num_workers,
@@ -366,10 +333,10 @@ class TorchTrainer:
 
             # Runs code that requires all creator functions to have run.
             remote_operator_setups = [
-                worker.setup_ddp_and_operator.remote()
+                worker.setup_operator.remote()
                 for worker in self.remote_workers
             ]
-            self.local_worker.setup_ddp_and_operator()
+            self.local_worker.setup_operator()
             # Get setup tasks in order to throw errors on failure
             ray.get(remote_operator_setups)
 
