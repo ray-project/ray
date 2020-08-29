@@ -8,7 +8,8 @@ from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.env.repeat_initial_obs_env import RepeatInitialObsEnv
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 from ray.tune import registry
 
 tf1, tf, tfv = try_import_tf()
@@ -43,7 +44,7 @@ if __name__ == "__main__":
         },
         "gamma": 0.99,
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.001,

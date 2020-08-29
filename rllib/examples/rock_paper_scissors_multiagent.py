@@ -18,7 +18,7 @@ from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -64,7 +64,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "env": RockPaperScissors,
         "gamma": 0.9,
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 0,
         "num_envs_per_worker": 4,
         "rollout_fragment_length": 10,

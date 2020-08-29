@@ -23,7 +23,7 @@ from ray.rllib.examples.env.parametric_actions_cartpole import \
 from ray.rllib.examples.models.parametric_actions_model import \
     ParametricActionsModel, TorchParametricActionsModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -61,7 +61,7 @@ if __name__ == "__main__":
             "custom_model": "pa_model",
         },
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 0,
         "framework": "torch" if args.torch else "tf",
     }, **cfg)

@@ -102,6 +102,11 @@ class OverrideDefaultResourceRequest:
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
+
+        # `num_gpus`=None: Set it to as many as we actually have available.
+        if cf["num_gpus"] is None:
+            cf["num_gpus"] = ray.available_resources().get("GPU", 0)
+
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],

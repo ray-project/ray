@@ -11,7 +11,7 @@ from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -121,11 +121,10 @@ if __name__ == "__main__":
         stop={"episode_reward_mean": args.stop},
         config=dict(
             extra_config, **{
-                "log_level": "INFO",
                 "env": "BreakoutNoFrameskip-v4"
                 if args.use_vision_network else "CartPole-v0",
                 # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-                "num_gpus": FORCED_NUM_GPUS,
+                "num_gpus": RLLIB_FORCE_NUM_GPUS,
                 "callbacks": {
                     "on_train_result": check_has_custom_metric,
                 },

@@ -20,7 +20,7 @@ from ray.rllib.examples.models.custom_loss_model import CustomLossModel, \
     TorchCustomLossModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     config = {
         "env": "CartPole-v0",
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 0,
         "model": {
             "custom_model": "custom_loss",
@@ -67,4 +67,4 @@ if __name__ == "__main__":
         "training_iteration": args.stop_iters,
     }
 
-    tune.run("PG", config=config, stop=stop)
+    tune.run("PG", config=config, stop=stop, verbose=1)

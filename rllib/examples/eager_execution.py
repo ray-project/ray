@@ -9,7 +9,8 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 
@@ -58,14 +59,14 @@ MyTrainer = build_trainer(
 )
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 
     config = {
         "env": "CartPole-v0",
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 0,
         "model": {
             "custom_model": "eager_model"
@@ -78,7 +79,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyTrainer, stop=stop, config=config)
+    results = tune.run(MyTrainer, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

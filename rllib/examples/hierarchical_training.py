@@ -31,7 +31,7 @@ from ray import tune
 from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
-from ray.rllib.utils.test_utils import check_learning_achieved, FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
@@ -75,7 +75,6 @@ if __name__ == "__main__":
         config = {
             "env": HierarchicalWindyMazeEnv,
             "num_workers": 0,
-            "log_level": "INFO",
             "entropy_coeff": 0.01,
             "multiagent": {
                 "policies": {
@@ -95,10 +94,10 @@ if __name__ == "__main__":
             },
             "framework": "torch" if args.torch else "tf",
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-            "num_gpus": FORCED_NUM_GPUS,
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
         }
 
-        results = tune.run("PPO", stop=stop, config=config)
+        results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

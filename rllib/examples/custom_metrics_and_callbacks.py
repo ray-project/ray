@@ -15,7 +15,12 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=2000)
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -64,8 +69,6 @@ class MyCallbacks(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stop-iters", type=int, default=2000)
     args = parser.parse_args()
 
     ray.init()
@@ -77,9 +80,9 @@ if __name__ == "__main__":
         config={
             "env": "CartPole-v0",
             "callbacks": MyCallbacks,
-            "framework": "tf",
+            "framework": "torch" if args.torch else "tf",
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-            "num_gpus": FORCED_NUM_GPUS,
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
         },
         return_trials=True)
 

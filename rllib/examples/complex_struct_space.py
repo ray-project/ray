@@ -15,7 +15,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
 from ray.rllib.examples.models.simple_rpg_model import CustomTorchRPGModel, \
     CustomTFRPGModel
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -39,7 +39,7 @@ if __name__ == "__main__":
             "rollout_fragment_length": 1,
             "train_batch_size": 2,
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-            "num_gpus": FORCED_NUM_GPUS,
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
             "num_workers": 0,
             "model": {
                 "custom_model": "my_model",

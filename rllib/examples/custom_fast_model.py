@@ -12,7 +12,7 @@ from ray.tune import sample_from
 from ray.rllib.examples.env.fast_image_env import FastImageEnv
 from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=2)
@@ -34,7 +34,7 @@ if __name__ == "__main__":
             "custom_model": "fast_model"
         },
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
         "num_workers": 2,
         "num_envs_per_worker": 10,
         "num_data_loader_buffers": 1,
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         "broadcast_interval": 50,
         "rollout_fragment_length": 100,
         "train_batch_size": sample_from(
-            lambda spec: 1000 * max(1, spec.config.num_gpus)),
+            lambda spec: 1000 * max(1, spec.config.num_gpus or 1)),
         "fake_sampler": True,
         "framework": "torch" if args.torch else "tf",
     }
@@ -52,6 +52,6 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    tune.run("IMPALA", config=config, stop=stop)
+    tune.run("IMPALA", config=config, stop=stop, verbose=1)
 
     ray.shutdown()

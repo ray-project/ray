@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 
 def on_episode_start(info):
@@ -75,7 +75,7 @@ if __name__ == "__main__":
             },
             "framework": "tf",
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-            "num_gpus": FORCED_NUM_GPUS,
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
         },
         return_trials=True)
 

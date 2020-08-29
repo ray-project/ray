@@ -17,7 +17,7 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-FORCED_NUM_GPUS = int(os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) or None
+RLLIB_FORCE_NUM_GPUS = int(os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) or None
 
 
 def framework_iterator(config=None,

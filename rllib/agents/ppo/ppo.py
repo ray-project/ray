@@ -183,6 +183,7 @@ def execution_plan(workers, config):
                 num_sgd_iter=config["num_sgd_iter"],
                 sgd_minibatch_size=config["sgd_minibatch_size"]))
     else:
+        print("In exec plan num_gpus={}".format(config["num_gpus"])) #TODO
         train_op = rollouts.for_each(
             TrainTFMultiGPU(
                 workers,

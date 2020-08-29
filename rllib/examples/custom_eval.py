@@ -72,7 +72,7 @@ import ray
 from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=0)
@@ -138,10 +138,9 @@ if __name__ == "__main__":
             "corridor_length": 10,
         },
         "horizon": 20,
-        "log_level": "INFO",
 
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-        "num_gpus": FORCED_NUM_GPUS,
+        "num_gpus": RLLIB_FORCE_NUM_GPUS,
 
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two

@@ -15,7 +15,7 @@ from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     tune.run(
         training_workflow,
         resources_per_trial={
-            "gpu": 1 if args.gpu or FORCED_NUM_GPUS else 0,
+            "gpu": 1 if args.gpu or RLLIB_FORCE_NUM_GPUS else 0,
             "cpu": 1,
             "extra_cpu": args.num_workers,
         },

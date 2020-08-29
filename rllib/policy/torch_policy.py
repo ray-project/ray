@@ -25,7 +25,7 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
 
 torch, _ = try_import_torch()
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI

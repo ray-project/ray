@@ -15,7 +15,7 @@ import ray
 from ray.rllib.agents.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
 from ray.rllib.agents.ppo import PPOTrainer, PPOTFPolicy, PPOTorchPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.test_utils import FORCED_NUM_GPUS
+from ray.rllib.utils.test_utils import RLLIB_FORCE_NUM_GPUS
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
             "gamma": 0.95,
             "n_step": 3,
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
-            "num_gpus": FORCED_NUM_GPUS,
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
             "framework": "torch" if args.torch or args.mixed_torch_tf else "tf"
         })
 
