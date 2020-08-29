@@ -646,15 +646,15 @@ def test_multiple_return_values(ray_start_regular_shared):
         def method0(self):
             return 1
 
-        @ray.method(num_return_vals=1)
+        @ray.method(num_returns=1)
         def method1(self):
             return 1
 
-        @ray.method(num_return_vals=2)
+        @ray.method(num_returns=2)
         def method2(self):
             return 1, 2
 
-        @ray.method(num_return_vals=3)
+        @ray.method(num_returns=3)
         def method3(self):
             return 1, 2, 3
 

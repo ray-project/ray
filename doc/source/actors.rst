@@ -54,7 +54,7 @@ Any method of the actor can return multiple object refs with the ``ray.method`` 
     @ray.remote
     class Foo(object):
 
-        @ray.method(num_return_vals=2)
+        @ray.method(num_returns=2)
         def bar(self):
             return 1, 2
 

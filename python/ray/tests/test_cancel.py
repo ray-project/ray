@@ -5,18 +5,18 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import RayCancellationError, RayTaskError, \
-                           RayTimeoutError, RayWorkerError, \
-                           UnreconstructableError
+from ray.exceptions import TaskCancelledError, RayTaskError, \
+                           GetTimeoutError, WorkerCrashedError, \
+                           ObjectLostError
 from ray.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, RayCancellationError, RayWorkerError,
-                UnreconstructableError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError,
+                ObjectLostError)
     else:
-        return (RayTaskError, RayCancellationError)
+        return (RayTaskError, TaskCancelledError)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -50,10 +50,10 @@ def test_cancel_chain(ray_start_regular, use_force):
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(ob)
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(obj1, timeout=.1)
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(obj2, timeout=.1)
 
     signaler2.send.remote()
@@ -249,7 +249,7 @@ def test_remote_cancel(ray_start_regular, use_force):
     outer = remote_wait.remote([sig])
     inner = ray.get(outer)[0]
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(inner, timeout=1)
 
     ray.cancel(inner, force=use_force)

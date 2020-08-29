@@ -23,7 +23,7 @@ def method(*args, **kwargs):
 
         @ray.remote
         class Foo:
-            @ray.method(num_return_vals=2)
+            @ray.method(num_returns=2)
             def bar(self):
                 return 1, 2
 
@@ -32,16 +32,16 @@ def method(*args, **kwargs):
         _, _ = f.bar.remote()
 
     Args:
-        num_return_vals: The number of object refs that should be returned by
+        num_returns: The number of object refs that should be returned by
             invocations of this actor method.
     """
     assert len(args) == 0
     assert len(kwargs) == 1
-    assert "num_return_vals" in kwargs
-    num_return_vals = kwargs["num_return_vals"]
+    assert "num_returns" in kwargs
+    num_returns = kwargs["num_returns"]
 
     def annotate_method(method):
-        method.__ray_num_return_vals__ = num_return_vals
+        method.__ray_num_returns__ = num_returns
         return method
 
     return annotate_method
@@ -58,7 +58,7 @@ class ActorMethod:
     Attributes:
         _actor: A handle to the actor.
         _method_name: The name of the actor method.
-        _num_return_vals: The default number of return values that the method
+        _num_returns: The default number of return values that the method
             invocation should return.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
@@ -72,12 +72,12 @@ class ActorMethod:
     def __init__(self,
                  actor,
                  method_name,
-                 num_return_vals,
+                 num_returns,
                  decorator=None,
                  hardref=False):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
-        self._num_return_vals = num_return_vals
+        self._num_returns = num_returns
         # This is a decorator that is used to wrap the function invocation (as
         # opposed to the function execution). The decorator must return a
         # function that takes in two arguments ("args" and "kwargs"). In most
@@ -100,9 +100,9 @@ class ActorMethod:
     def remote(self, *args, **kwargs):
         return self._remote(args, kwargs)
 
-    def _remote(self, args=None, kwargs=None, num_return_vals=None):
-        if num_return_vals is None:
-            num_return_vals = self._num_return_vals
+    def _remote(self, args=None, kwargs=None, num_returns=None):
+        if num_returns is None:
+            num_returns = self._num_returns
 
         def invocation(args, kwargs):
             actor = self._actor_hard_ref or self._actor_ref()
@@ -112,7 +112,7 @@ class ActorMethod:
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
-                num_return_vals=num_return_vals)
+                num_returns=num_returns)
 
         # Apply the decorator if there is one.
         if self._decorator is not None:
@@ -124,7 +124,7 @@ class ActorMethod:
         return {
             "actor": self._actor_ref(),
             "method_name": self._method_name,
-            "num_return_vals": self._num_return_vals,
+            "num_returns": self._num_returns,
             "decorator": self._decorator,
         }
 
@@ -132,7 +132,7 @@ class ActorMethod:
         self.__init__(
             state["actor"],
             state["method_name"],
-            state["num_return_vals"],
+            state["num_returns"],
             state["decorator"],
             hardref=True)
 
@@ -147,7 +147,7 @@ class ActorClassMethodMetadata(object):
             can be set by attaching the attribute
             "__ray_invocation_decorator__" to the actor method.
         signatures: The signatures of the methods.
-        num_return_vals: The default number of return values for
+        num_returns: The default number of return values for
             each actor method.
     """
 
@@ -182,7 +182,7 @@ class ActorClassMethodMetadata(object):
         # arguments.
         self.decorators = {}
         self.signatures = {}
-        self.num_return_vals = {}
+        self.num_returns = {}
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
@@ -198,11 +198,10 @@ class ActorClassMethodMetadata(object):
             self.signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not is_bound)
             # Set the default number of return values for this method.
-            if hasattr(method, "__ray_num_return_vals__"):
-                self.num_return_vals[method_name] = (
-                    method.__ray_num_return_vals__)
+            if hasattr(method, "__ray_num_returns__"):
+                self.num_returns[method_name] = (method.__ray_num_returns__)
             else:
-                self.num_return_vals[method_name] = (
+                self.num_returns[method_name] = (
                     ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
 
             if hasattr(method, "__ray_invocation_decorator__"):
@@ -589,7 +588,7 @@ class ActorClass:
             actor_id,
             meta.method_meta.decorators,
             meta.method_meta.signatures,
-            meta.method_meta.num_return_vals,
+            meta.method_meta.num_returns,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -617,7 +616,7 @@ class ActorHandle:
             invocation side, whereas a regular decorator can be used to change
             the behavior on the execution side.
         _ray_method_signatures: The signatures of the actor methods.
-        _ray_method_num_return_vals: The default number of return values for
+        _ray_method_num_returns: The default number of return values for
             each method.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
@@ -633,7 +632,7 @@ class ActorHandle:
                  actor_id,
                  method_decorators,
                  method_signatures,
-                 method_num_return_vals,
+                 method_num_returns,
                  actor_method_cpus,
                  actor_creation_function_descriptor,
                  session_and_job,
@@ -643,7 +642,7 @@ class ActorHandle:
         self._ray_original_handle = original_handle
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
-        self._ray_method_num_return_vals = method_num_return_vals
+        self._ray_method_num_returns = method_num_returns
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
         self._ray_is_cross_language = language != Language.PYTHON
@@ -664,7 +663,7 @@ class ActorHandle:
                 method = ActorMethod(
                     self,
                     method_name,
-                    self._ray_method_num_return_vals[method_name],
+                    self._ray_method_num_returns[method_name],
                     decorator=self._ray_method_decorators.get(method_name))
                 setattr(self, method_name, method)
 
@@ -680,7 +679,7 @@ class ActorHandle:
                            method_name,
                            args=None,
                            kwargs=None,
-                           num_return_vals=None):
+                           num_returns=None):
         """Method execution stub for an actor handle.
 
         This is the function that executes when
@@ -692,7 +691,7 @@ class ActorHandle:
             method_name: The name of the actor method to execute.
             args: A list of arguments for the actor method.
             kwargs: A dictionary of keyword arguments for the actor method.
-            num_return_vals (int): The number of return values for the method.
+            num_returns (int): The number of return values for the method.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -725,7 +724,7 @@ class ActorHandle:
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language, self._ray_actor_id, function_descriptor,
-            list_args, num_return_vals, self._ray_actor_method_cpus)
+            list_args, num_returns, self._ray_actor_method_cpus)
 
         if len(object_refs) == 1:
             object_refs = object_refs[0]
@@ -795,7 +794,7 @@ class ActorHandle:
                 "actor_id": self._ray_actor_id,
                 "method_decorators": self._ray_method_decorators,
                 "method_signatures": self._ray_method_signatures,
-                "method_num_return_vals": self._ray_method_num_return_vals,
+                "method_num_returns": self._ray_method_num_returns,
                 "actor_method_cpus": self._ray_actor_method_cpus,
                 "actor_creation_function_descriptor": self.
                 _ray_actor_creation_function_descriptor,
@@ -830,7 +829,7 @@ class ActorHandle:
                 state["actor_id"],
                 state["method_decorators"],
                 state["method_signatures"],
-                state["method_num_return_vals"],
+                state["method_num_returns"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
                 worker.current_session_and_job)

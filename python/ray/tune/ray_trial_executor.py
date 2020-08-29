@@ -8,7 +8,7 @@ import traceback
 from contextlib import contextmanager
 
 import ray
-from ray.exceptions import RayTimeoutError
+from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
@@ -397,7 +397,7 @@ class RayTrialExecutor(TrialExecutor):
                     reset_val = ray.get(
                         trainable.reset.remote(new_config, trial.logdir),
                         timeout=DEFAULT_GET_TIMEOUT)
-                except RayTimeoutError:
+                except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
                     return False
         return reset_val

@@ -14,7 +14,7 @@ auth_config = {
 def test_environment_variable_encoder_strings():
     env_vars = {"var1": "quote between this \" and this", "var2": "123"}
     res = _with_environment_variables("echo hello", env_vars)
-    expected = """export var1='quote between this " and this';export var2=123;echo hello"""  # noqa: E501
+    expected = """export var1='"quote between this \\" and this"';export var2='"123"';echo hello"""  # noqa: E501
     assert res == expected
 
 
@@ -22,7 +22,7 @@ def test_environment_variable_encoder_dict():
     env_vars = {"value1": "string1", "value2": {"a": "b", "c": 2}}
     res = _with_environment_variables("echo hello", env_vars)
 
-    expected = """export value1=string1;export value2='{a: b,c: 2}';echo hello"""  # noqa: E501
+    expected = """export value1='"string1"';export value2='{"a":"b","c":2}';echo hello"""  # noqa: E501
     assert res == expected
 
 
@@ -84,7 +84,7 @@ def test_ssh_command_runner():
         "--login",
         "-c",
         "-i",
-        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'quote between this " and this'"'"';export var2=123;echo helloo'"""  # noqa: E501
+        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo'"""  # noqa: E501
     ]
 
     # Much easier to debug this loop than the function call.
@@ -122,7 +122,7 @@ def test_docker_command_runner():
     # This string is insane because there are an absurd number of embedded
     # quotes. While this is a ridiculous string, the escape behavior is
     # important and somewhat difficult to get right for environment variables.
-    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'quote between this " and this'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2=123;echo hello'"'"'"'"'"'"'"'"''"'"' '"""  # noqa: E501
+    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello'"'"'"'"'"'"'"'"''"'"' '"""  # noqa: E501
 
     expected = [
         "ssh", "-tt", "-i", "8265.pem", "-o", "StrictHostKeyChecking=no", "-o",
@@ -135,6 +135,8 @@ def test_docker_command_runner():
     ]
     # Much easier to debug this loop than the function call.
     for x, y in zip(process_runner.calls[0], expected):
+        print(f"expeted:\t{y}")
+        print(f"actual: \t{x}")
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
 
