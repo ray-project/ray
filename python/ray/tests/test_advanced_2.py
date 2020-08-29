@@ -633,25 +633,6 @@ def save_gpu_ids_shutdown_only():
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
-@pytest.mark.parametrize("as_str", [False, True])
-def test_gpu_ids_as_str(save_gpu_ids_shutdown_only, as_str):
-    allowed_gpu_ids = [4, 5, 6]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-        str(i) for i in allowed_gpu_ids)
-    ray.init()
-
-    @ray.remote
-    def get_gpu_ids(as_str):
-        gpu_ids = ray.get_gpu_ids(as_str)
-        for gpu_id in gpu_ids:
-            if as_str:
-                assert isinstance(gpu_id, str)
-            else:
-                assert isinstance(gpu_id, int)
-
-    ray.get([get_gpu_ids.remote(as_str) for _ in range(10)])
-
-
 def test_specific_gpus(save_gpu_ids_shutdown_only):
     allowed_gpu_ids = [4, 5, 6]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(

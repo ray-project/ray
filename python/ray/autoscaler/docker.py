@@ -8,67 +8,23 @@ except ImportError:  # py2
 logger = logging.getLogger(__name__)
 
 
-def dockerize_if_needed(config):
+def validate_docker_config(config):
     if "docker" not in config:
         return config
 
     docker_image = config["docker"].get("image")
-    docker_pull = config["docker"].get("pull_before_run", True)
     cname = config["docker"].get("container_name")
-    run_options = config["docker"].get("run_options", [])
 
     head_docker_image = config["docker"].get("head_image", docker_image)
-    head_run_options = config["docker"].get("head_run_options", [])
 
     worker_docker_image = config["docker"].get("worker_image", docker_image)
-    worker_run_options = config["docker"].get("worker_run_options", [])
 
-    if not docker_image and not (head_docker_image and worker_docker_image):
-        if cname:
-            logger.warning(
-                "dockerize_if_needed: "
-                "Container name given but no Docker image(s) - continuing...")
-        return config
+    image_present = docker_image or (head_docker_image and worker_docker_image)
+    if (not cname) and (not image_present):
+        return
     else:
-        assert cname, "Must provide container name!"
-    ssh_user = config["auth"]["ssh_user"]
-    docker_mounts = {dst: dst for dst in config["file_mounts"]}
+        assert cname and image_present, "Must provide a container & image name"
 
-    if docker_pull:
-        docker_pull_cmd = "docker pull {}".format(docker_image)
-        config["initialization_commands"].append(docker_pull_cmd)
-        for node_type_config in config.get("available_node_types",
-                                           {}).values():
-            node_type_config["initialization_commands"].append(docker_pull_cmd)
-            pass
-
-    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
-                                          docker_mounts, cname,
-                                          run_options + head_run_options)
-
-    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
-                                            docker_mounts, cname,
-                                            run_options + worker_run_options)
-
-    config["head_setup_commands"] = head_docker_start + (with_docker_exec(
-        config["head_setup_commands"], container_name=cname))
-    config["head_start_ray_commands"] = (
-        docker_autoscaler_setup(cname) + with_docker_exec(
-            config["head_start_ray_commands"], container_name=cname))
-
-    config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
-        config["worker_setup_commands"], container_name=cname))
-    config["worker_start_ray_commands"] = with_docker_exec(
-        config["worker_start_ray_commands"],
-        container_name=cname,
-        env_vars=["RAY_HEAD_IP"])
-
-    for node_type_config in config.get("available_node_types", {}).values():
-        if "worker_setup_commands" in node_type_config:
-            node_type_config["worker_setup_commands"] = worker_docker_start + (
-                with_docker_exec(
-                    node_type_config["worker_setup_commands"],
-                    container_name=cname))
     return config
 
 
@@ -91,11 +47,19 @@ def with_docker_exec(cmds,
 
 
 def check_docker_running_cmd(cname):
-    return " ".join(["docker", "inspect", "-f", "'{{.State.Running}}'", cname])
+    return " ".join([
+        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||", "true"
+    ])
 
 
-def docker_start_cmds(user, image, mount, cname, user_options):
-    cmds = []
+def check_docker_image(cname):
+    return " ".join([
+        "docker", "inspect", "-f", "'{{.Config.Image}}'", cname, "||", "true"
+    ])
+
+
+def docker_start_cmds(user, image, mount_dict, cname, user_options):
+    mount = {dst: dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([
@@ -109,16 +73,11 @@ def docker_start_cmds(user, image, mount, cname, user_options):
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
     user_options_str = " ".join(user_options)
-    # TODO(ilr) Check command type
-    # docker run command
-    docker_check = check_docker_running_cmd(cname) + " || "
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
         mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
-    cmds.append(docker_check + " ".join(docker_run))
-
-    return cmds
+    return " ".join(docker_run)
 
 
 def docker_autoscaler_setup(cname):

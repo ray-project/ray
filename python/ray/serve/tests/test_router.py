@@ -191,7 +191,7 @@ async def test_router_use_max_concurrency(serve_instance):
     second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     # Neither queries should be available
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_query, second_query], timeout=0.2)
 
     # Let's retrieve the router internal state
