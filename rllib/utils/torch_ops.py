@@ -1,3 +1,4 @@
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -66,6 +67,16 @@ def minimize_and_clip(optimizer, clip_val=10):
         for p in param_group["params"]:
             if p.grad is not None:
                 torch.nn.utils.clip_grad_norm_(p.grad, clip_val)
+
+
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return nn.functional.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        !!TODO !!
+        return nn.functional.one_hot(x, space.nvec)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
 def reduce_mean_ignore_inf(x, axis):

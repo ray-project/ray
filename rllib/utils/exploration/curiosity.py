@@ -12,6 +12,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.torch_ops import one_hot
 from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, \
     SampleBatchType
 
@@ -206,10 +207,13 @@ class Curiosity(Exploration):
             torch.cat(
                 [
                     phi.detach(),
-                    F.one_hot(
-                        torch.from_numpy(
+                    one_hot(torch.from_numpy(
                             sample_batch[SampleBatch.ACTIONS]).long(),
-                        num_classes=self.action_space.n).float()
+                            self.action_space)
+                    #F.one_hot(
+                    #    torch.from_numpy(
+                    #        sample_batch[SampleBatch.ACTIONS]).long(),
+                    #    num_classes=self.action_space.n).float()
                 ],
                 dim=-1))
 
