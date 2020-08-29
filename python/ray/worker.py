@@ -480,6 +480,7 @@ def init(
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         job_config=None,
+        configure_logging=True,
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         enable_object_reconstruction=False,
@@ -488,7 +489,6 @@ def init(
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
         _log_to_driver=True,
-        _configure_logging=True,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
@@ -555,10 +555,15 @@ def init(
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
         job_config (ray.job_config.JobConfig): The job configuration.
-        logging_level: Logging level, defaults to logging.INFO.
+        configure_logging: True (default) if configuration of logging is
+            allowed here. Otherwise, the user may want to configure it
+            separately.
+        logging_level: Logging level, defaults to logging.INFO. Ignored unless
+            "configure_logging" is true.
         logging_format: Logging format, defaults to string containing a
             timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details.
+            ray_constants.py for details. Ignored unless "configure_logging"
+            is true.
         enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -571,7 +576,6 @@ def init(
             driver can use in the object store for creating objects.
         _log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        _configure_logging (bool): Can be used to disable logging config.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
@@ -621,7 +625,7 @@ def init(
     else:
         redis_address = None
 
-    if _configure_logging:
+    if configure_logging:
         setup_logger(logging_level, logging_format)
 
     if local_mode:
