@@ -219,7 +219,8 @@ def warn_about_bad_reward_scales(config, result):
     return result
 
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:

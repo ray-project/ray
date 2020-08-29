@@ -63,7 +63,7 @@ def ppo_surrogate_loss(
 
     prev_action_dist = dist_class(
         train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
-    # Make loss functions.
+
     logp_ratio = tf.exp(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
         train_batch[SampleBatch.ACTION_LOGP])
