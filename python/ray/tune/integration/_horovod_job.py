@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import os
-from typing import List, Dict
+from typing import List, Dict, Callable
 import logging
 
 import ray
@@ -192,8 +192,32 @@ class Coordinator:
 
 
 class HorovodJob:
+    """Job class for Horovod + Ray integration.
+
+    Args:
+        settings (horovod.Settings): Configuration for job setup. You can
+            use a standard Horovod Settings object or create one directly
+            from HorovodJob.create_settings.
+        num_hosts (int): Number of machines to execute the job on.
+        num_slots (int): Humber of workers to be placed on each machine.
+        use_gpu (bool): Whether to use GPU for allocation. TODO: this
+            can be removed.
+    """
+
     @classmethod
     def create_settings(cls, timeout_s, ssh_identity_file, ssh_str):
+        """Create a mini setting object.
+
+        Args:
+            timeout_s (int): Tiemout parameter for Gloo rendezvous.
+            ssh_identity_file (str): Path to the identity file to
+                ssh into different hosts on the cluster.
+            ssh_str (str): CAUTION WHEN USING THIS. Private key
+                file contents. Writes the private key to ssh_identity_file.
+
+        Returns:
+            MiniSettings object.
+        """
         from filelock import FileLock
         # Very hacky - maybe instead want to recommend
         # an autoscaler mechanism for doing this.
@@ -237,6 +261,19 @@ class HorovodJob:
         return sum(workers, [])
 
     def start(self, node_resources, worker_cls, worker_init_args=None):
+        """Starts the workers and colocates them on all machines.
+
+        Args:
+            node_resources: How many resources to bundle on each host.
+            worker_cls: The class that will be created as an actor. This
+                will be automatically mixed in with HorovodMixin
+                to allow Horovod to establish its connections and set env
+                vars.
+            worker_init_args (List): Arguments to be passed into the
+                worker class upon initialization.
+
+        """
+
         class MixedHorovodWorker(worker_cls, HorovodMixin):
             pass
 
@@ -268,13 +305,32 @@ class HorovodJob:
         map_blocking(lambda w: w.update_env_vars.remote(coordinator_envs),
                      self.workers)
 
-    def execute(self, fn, blocking=True):
+    def execute(self, fn: Callable[["ActorHandle"], "ObjectID"],
+                blocking=True):
+        """Executes the provided function on all workers.
+
+        Args:
+            fn: Target function
+            blocking (bool): Whether to execute and block before returning.
+                Otherwise, returns a list of object IDs.
+                TODO: should we always return list of object IDs?
+        """
         if blocking:
             return map_blocking(fn, self.workers)
         else:
             return [fn(worker) for worker in self.workers]
 
-    def execute_chief(self, fn):
+    def execute_single(self,
+                       fn: Callable[["ActorHandle"], "ObjectID"],
+                       blocking=True):
+        """Executes the provided function on all workers.
+
+        Args:
+            fn: Target function
+            blocking (bool): Whether to execute and block before returning.
+                Otherwise, returns a list of object IDs.
+                TODO: should we always return list of object IDs?
+        """
         return ray.get(fn(self.workers[0]))
 
     def shutdown(self):

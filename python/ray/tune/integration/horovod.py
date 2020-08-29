@@ -81,7 +81,8 @@ class _HorovodTrainable(tune.Trainable):
 
     def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
-        save_obj = self._job.execute_chief(lambda w: w.save_to_object.remote())
+        save_obj = self._job.execute_single(
+            lambda w: w.save_to_object.remote())
         checkpoint_path = TrainableUtil.create_from_pickle(
             save_obj, checkpoint_dir)
         return checkpoint_path
