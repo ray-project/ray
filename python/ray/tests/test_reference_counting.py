@@ -354,7 +354,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     try:
         ray.get(obj_ref)
         assert not failure
-    except ray.exceptions.WorkerCrashedError:
+    except ray.exceptions.RayWorkerError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -403,7 +403,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
         assert ray.get(tail_oid) is None
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.UnreconstructableError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -501,7 +501,8 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
+    except (ray.exceptions.RayWorkerError,
+            ray.exceptions.UnreconstructableError):
         assert failure
     del child_return_id
 

@@ -41,7 +41,12 @@ class CrossLanguageError(RayError):
             ray_exception.formatted_exception_string))
 
 
-class TaskCancelledError(RayError):
+class RayConnectionError(RayError):
+    """Raised when ray is not yet connected but needs to be."""
+    pass
+
+
+class RayCancellationError(RayError):
     """Raised when this task is cancelled.
 
     Attributes:
@@ -138,7 +143,7 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
-class WorkerCrashedError(RayError):
+class RayWorkerError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
     def __str__(self):
@@ -156,8 +161,8 @@ class RayActorError(RayError):
         return "The actor died unexpectedly before finishing this task."
 
 
-class RaySystemError(RayError):
-    """Indicates that Ray encountered a system error.
+class RayletError(RayError):
+    """Indicates that the Raylet client has errored.
 
     This exception can be thrown when the raylet is killed.
     """
@@ -166,7 +171,7 @@ class RaySystemError(RayError):
         self.client_exc = client_exc
 
     def __str__(self):
-        return f"System error: {self.client_exc}"
+        return f"The Raylet died with this message: {self.client_exc}"
 
 
 class ObjectStoreFullError(RayError):
@@ -179,13 +184,21 @@ class ObjectStoreFullError(RayError):
     def __str__(self):
         return super(ObjectStoreFullError, self).__str__() + (
             "\n"
-            "The local object store is full of objects that are still in "
-            "scope and cannot be evicted. Tip: Use the `ray memory` command "
-            "to list active objects in the cluster.")
+            "The local object store is full of objects that are still in scope"
+            " and cannot be evicted. Try increasing the object store memory "
+            "available with ray.init(object_store_memory=<bytes>). "
+            "You can also try setting an option to fallback to LRU eviction "
+            "when the object store is full by calling "
+            "ray.init(lru_evict=True). See also: "
+            "https://docs.ray.io/en/latest/memory-management.html.")
 
 
-class ObjectLostError(RayError):
-    """Indicates that an object has been lost due to node failure.
+class UnreconstructableError(RayError):
+    """Indicates that an object is lost and cannot be reconstructed.
+
+    Note, this exception only happens for actor objects. If actor's current
+    state is after object's creating task, the actor cannot re-run the task to
+    reconstruct the object.
 
     Attributes:
         object_ref: ID of the object.
@@ -195,10 +208,17 @@ class ObjectLostError(RayError):
         self.object_ref = object_ref
 
     def __str__(self):
-        return (f"Object {self.object_ref.hex()} is lost due to node failure.")
+        return (
+            f"Object {self.object_ref.hex()} is lost "
+            "(either LRU evicted or deleted by user) and "
+            "cannot be reconstructed. Try increasing the object store "
+            "memory available with ray.init(object_store_memory=<bytes>) "
+            "or setting object store limits with "
+            "ray.remote(object_store_memory=<bytes>). "
+            "See also: https://docs.ray.io/en/latest/memory-management.html")
 
 
-class GetTimeoutError(RayError):
+class RayTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
     pass
 
@@ -212,9 +232,9 @@ RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
-    WorkerCrashedError,
+    RayWorkerError,
     RayActorError,
     ObjectStoreFullError,
-    ObjectLostError,
-    GetTimeoutError,
+    UnreconstructableError,
+    RayTimeoutError,
 ]

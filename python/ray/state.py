@@ -48,7 +48,7 @@ class GlobalState:
         """
         if (self.redis_client is None or self.redis_clients is None
                 or self.global_state_accessor is None):
-            raise ray.exceptions.RaySystemError(
+            raise ray.exceptions.RayConnectionError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
 

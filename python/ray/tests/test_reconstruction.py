@@ -110,7 +110,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -159,7 +159,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -215,7 +215,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
         # been evicted.
         try:
             ray.get(result)
-        except ray.exceptions.ObjectLostError:
+        except ray.exceptions.UnreconstructableError:
             pass
 
 
@@ -284,7 +284,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
     # Make sure the actor handle is still usable.
@@ -356,7 +356,8 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
             return True
         except ray.exceptions.RayActorError:
             return False
-        except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
+        except (ray.exceptions.RayTaskError,
+                ray.exceptions.UnreconstructableError):
             return True
 
     wait_for_condition(probe)
@@ -368,7 +369,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
             x = a.dependent_task.remote(obj)
             print(x)
             ray.get(x)
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -428,7 +429,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                     dependent_task.options(resources={
                         "node1": 1
                     }).remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 
@@ -479,7 +480,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.RayTaskError) as e:
             ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.UnreconstructableError):
                 raise e.as_instanceof_cause()
 
 

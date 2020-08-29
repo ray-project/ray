@@ -36,7 +36,7 @@ def test_errors_before_initializing_ray():
         for api_method in api_methods:
             print(api_method)
             with pytest.raises(
-                    ray.exceptions.RaySystemError,
+                    ray.exceptions.RayConnectionError,
                     match="Ray has not been started yet."):
                 api_method()
 
