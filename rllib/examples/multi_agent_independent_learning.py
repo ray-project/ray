@@ -1,4 +1,3 @@
-import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.env.pettingzoo_env import PettingZooEnv
@@ -16,8 +15,7 @@ if __name__ == "__main__":
     obs_space = env.observation_space
     act_space = env.action_space
 
-    policies = {agent: (None, obs_space, act_space, {})
-                        for agent in env.agents}
+    policies = {agent: (None, obs_space, act_space, {}) for agent in env.agents}
 
     tune.run(
         "APEX_DDPG",

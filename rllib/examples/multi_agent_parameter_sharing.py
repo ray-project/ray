@@ -1,4 +1,3 @@
-import ray
 from ray import tune
 from ray.tune.registry import register_env
 from ray.rllib.env.pettingzoo_env import PettingZooEnv
