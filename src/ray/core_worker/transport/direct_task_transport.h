@@ -86,10 +86,11 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
                           bool force_kill);
 
-  /// Check that the scheduling_key_entries_ hashmap is empty by calling the private CheckNoSchedulingKeyEntries function after acquiring the lock.
-  bool CheckNoSchedulingKeyEntriesPublic() { 
+  /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
+  /// CheckNoSchedulingKeyEntries function after acquiring the lock.
+  bool CheckNoSchedulingKeyEntriesPublic() {
     absl::MutexLock lock(&mu_);
-    return scheduling_key_entries_.empty(); 
+    return scheduling_key_entries_.empty();
   }
 
  private:
@@ -141,8 +142,10 @@ class CoreWorkerDirectTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
-  /// Check that the scheduling_key_entries_ hashmap is empty. 
-  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) { return scheduling_key_entries_.empty(); }
+  /// Check that the scheduling_key_entries_ hashmap is empty.
+  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return scheduling_key_entries_.empty();
+  }
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
