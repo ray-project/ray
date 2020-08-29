@@ -199,6 +199,9 @@ RAY_CONFIG(int, num_workers_per_process_python, 1)
 /// Number of workers per Java worker process
 RAY_CONFIG(int, num_workers_per_process_java, 10)
 
+/// Number of workers per CPP worker process
+RAY_CONFIG(int, num_workers_per_process_cpp, 1)
+
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 

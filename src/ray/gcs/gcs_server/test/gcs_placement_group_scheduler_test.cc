@@ -549,6 +549,82 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
   WaitPendingDone(success_placement_groups_, 1);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
+  gcs::BundleLocationIndex bundle_location_index;
+  /// Generate data.
+  const auto node1 = ClientID::FromRandom();
+  const auto node2 = ClientID::FromRandom();
+  rpc::CreatePlacementGroupRequest request_pg1 =
+      Mocker::GenCreatePlacementGroupRequest("pg1");
+  const auto pg1_id = PlacementGroupID::FromBinary(
+      request_pg1.placement_group_spec().placement_group_id());
+  const std::shared_ptr<BundleSpecification> bundle_node1_pg1 =
+      std::make_shared<BundleSpecification>(
+          BundleSpecification(request_pg1.placement_group_spec().bundles(0)));
+  const std::shared_ptr<BundleSpecification> bundle_node2_pg1 =
+      std::make_shared<BundleSpecification>(
+          BundleSpecification(request_pg1.placement_group_spec().bundles(1)));
+  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg1 =
+      std::make_shared<gcs::BundleLocations>();
+  (*bundle_locations_pg1)
+      .emplace(bundle_node1_pg1->BundleId(), std::make_pair(node1, bundle_node1_pg1));
+  (*bundle_locations_pg1)
+      .emplace(bundle_node2_pg1->BundleId(), std::make_pair(node2, bundle_node2_pg1));
+
+  rpc::CreatePlacementGroupRequest request_pg2 =
+      Mocker::GenCreatePlacementGroupRequest("pg2");
+  const auto pg2_id = PlacementGroupID::FromBinary(
+      request_pg2.placement_group_spec().placement_group_id());
+  const std::shared_ptr<BundleSpecification> bundle_node1_pg2 =
+      std::make_shared<BundleSpecification>(
+          BundleSpecification(request_pg2.placement_group_spec().bundles(0)));
+  const std::shared_ptr<BundleSpecification> bundle_node2_pg2 =
+      std::make_shared<BundleSpecification>(
+          BundleSpecification(request_pg2.placement_group_spec().bundles(1)));
+  std::shared_ptr<gcs::BundleLocations> bundle_locations_pg2 =
+      std::make_shared<gcs::BundleLocations>();
+  (*bundle_locations_pg2)[bundle_node1_pg2->BundleId()] =
+      std::make_pair(node1, bundle_node1_pg2);
+  (*bundle_locations_pg2)[bundle_node2_pg2->BundleId()] =
+      std::make_pair(node2, bundle_node2_pg2);
+
+  // Test Addition.
+  bundle_location_index.AddBundleLocations(pg1_id, bundle_locations_pg1);
+  bundle_location_index.AddBundleLocations(pg2_id, bundle_locations_pg2);
+
+  /// Test Get works
+  auto bundle_locations = bundle_location_index.GetBundleLocations(pg1_id).value();
+  ASSERT_TRUE((*bundle_locations).size() == 2);
+  ASSERT_TRUE((*bundle_locations).contains(bundle_node1_pg1->BundleId()));
+  ASSERT_TRUE((*bundle_locations).contains(bundle_node2_pg1->BundleId()));
+  // Make sure pg2 is not in the bundle locations
+  ASSERT_FALSE((*bundle_locations).contains(bundle_node2_pg2->BundleId()));
+
+  auto bundle_locations2 = bundle_location_index.GetBundleLocations(pg2_id).value();
+  ASSERT_TRUE((*bundle_locations2).size() == 2);
+  ASSERT_TRUE((*bundle_locations2).contains(bundle_node1_pg2->BundleId()));
+  ASSERT_TRUE((*bundle_locations2).contains(bundle_node2_pg2->BundleId()));
+
+  auto bundle_on_node1 = bundle_location_index.GetBundleLocationsOnNode(node1).value();
+  ASSERT_TRUE((*bundle_on_node1).size() == 2);
+  ASSERT_TRUE((*bundle_on_node1).contains(bundle_node1_pg1->BundleId()));
+  ASSERT_TRUE((*bundle_on_node1).contains(bundle_node1_pg2->BundleId()));
+
+  auto bundle_on_node2 = bundle_location_index.GetBundleLocationsOnNode(node2).value();
+  ASSERT_TRUE((*bundle_on_node2).size() == 2);
+  ASSERT_TRUE((*bundle_on_node2).contains(bundle_node2_pg1->BundleId()));
+  ASSERT_TRUE((*bundle_on_node2).contains(bundle_node2_pg2->BundleId()));
+
+  /// Test Erase works
+  bundle_location_index.Erase(pg1_id);
+  ASSERT_FALSE(bundle_location_index.GetBundleLocations(pg1_id).has_value());
+  ASSERT_TRUE(bundle_location_index.GetBundleLocations(pg2_id).value()->size() == 2);
+  bundle_location_index.Erase(node1);
+  ASSERT_FALSE(bundle_location_index.GetBundleLocationsOnNode(node1).has_value());
+  ASSERT_TRUE(bundle_location_index.GetBundleLocations(pg2_id).value()->size() == 1);
+  ASSERT_TRUE(bundle_location_index.GetBundleLocationsOnNode(node2).value()->size() == 1);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

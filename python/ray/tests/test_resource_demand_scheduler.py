@@ -366,10 +366,10 @@ class AutoscalingTest(unittest.TestCase):
         # These checks are done separately because we have no guarantees on the
         # order the dict is serialized in.
         runner.assert_has_call("172.0.0.0", "RAY_OVERRIDE_RESOURCES=")
-        runner.assert_has_call("172.0.0.0", "CPU: 2")
+        runner.assert_has_call("172.0.0.0", "\"CPU\":2")
         runner.assert_has_call("172.0.0.1", "RAY_OVERRIDE_RESOURCES=")
-        runner.assert_has_call("172.0.0.1", "CPU: 32")
-        runner.assert_has_call("172.0.0.1", "GPU: 8")
+        runner.assert_has_call("172.0.0.1", "\"CPU\":32")
+        runner.assert_has_call("172.0.0.1", "\"GPU\":8")
 
     def testScaleUpLoadMetrics(self):
         config = MULTI_WORKER_CLUSTER.copy()

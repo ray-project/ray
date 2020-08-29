@@ -335,10 +335,9 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
         return len(errors) > 1
 
     errors = wait_for_errors(p, error_check)
-    assert all(
-        error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-        or "ray.exceptions.UnreconstructableError" in error.error_messages
-        for error in errors)
+    assert all(error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.ObjectLostError" in error.error_messages
+               for error in errors)
 
 
 # NOTE(swang): This test tries to launch 1000 workers and breaks.
