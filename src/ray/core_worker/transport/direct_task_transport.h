@@ -86,9 +86,11 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
                           bool force_kill);
 
-  /// Check that the scheduling_key_entries_ hashmap is empty. Can be used at the end of
-  /// a unit test (or normal program) to check that we are not leaking memory
-  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) { return scheduling_key_entries_.empty(); }
+  /// Check that the scheduling_key_entries_ hashmap is empty by calling the private CheckNoSchedulingKeyEntries function after acquiring the lock.
+  bool CheckNoSchedulingKeyEntriesPublic() { 
+    absl::MutexLock lock(&mu_);
+    return scheduling_key_entries_.empty(); 
+  }
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -138,6 +140,9 @@ class CoreWorkerDirectTaskSubmitter {
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
+
+  /// Check that the scheduling_key_entries_ hashmap is empty. 
+  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) { return scheduling_key_entries_.empty(); }
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;

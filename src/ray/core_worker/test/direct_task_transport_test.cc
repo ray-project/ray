@@ -368,7 +368,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -402,7 +402,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -457,7 +457,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -518,7 +518,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
@@ -578,7 +578,7 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
@@ -635,7 +635,7 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -683,7 +683,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
@@ -721,7 +721,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -783,7 +783,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
@@ -851,7 +851,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 // Helper to run a test that checks that 'same1' and 'same2' are treated as the same
@@ -914,7 +914,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
@@ -1038,7 +1038,7 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestKillExecutingTask) {
@@ -1091,7 +1091,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestKillPendingTask) {
@@ -1127,7 +1127,7 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestKillResolvingTask) {
@@ -1162,7 +1162,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
@@ -1236,7 +1236,7 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
@@ -1315,7 +1315,7 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
@@ -1493,7 +1493,7 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.
-  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntries());
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
 }  // namespace ray
