@@ -169,7 +169,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
-  /// \param internal_config This will be populated with internal config parameters
+  /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
@@ -178,7 +178,7 @@ class RayletClient : public PinObjectsInterface,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *internal_config,
+               std::unordered_map<std::string, std::string> *system_config,
                const std::string &job_config);
 
   /// Connect to the raylet via grpc only.

@@ -18,6 +18,10 @@ import ray.gcs_utils
 import ray.ray_constants as ray_constants
 import psutil
 
+pwd = None
+if sys.platform != "win32":
+    import pwd
+
 logger = logging.getLogger(__name__)
 
 # Linux can bind child processes' lifetimes to that of their parents via prctl.
@@ -780,3 +784,12 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_user():
+    if pwd is None:
+        return ""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except Exception:
+        return ""

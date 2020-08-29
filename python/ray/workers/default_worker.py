@@ -122,13 +122,13 @@ if __name__ == "__main__":
             object_spilling_config = {}
         external_storage.setup_external_storage(object_spilling_config)
 
-    internal_config = {}
+    system_config = {}
     if args.config_list is not None:
         config_list = args.config_list.split(",")
         if len(config_list) > 1:
             i = 0
             while i < len(config_list):
-                internal_config[config_list[i]] = config_list[i + 1]
+                system_config[config_list[i]] = config_list[i + 1]
                 i += 2
 
     raylet_ip_address = args.raylet_ip_address
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
         metrics_agent_port=args.metrics_agent_port,
-        _internal_config=json.dumps(internal_config),
+        _system_config=system_config,
     )
 
     node = ray.node.Node(
