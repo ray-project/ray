@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 import os
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Optional, List
 import logging
 
 import ray
@@ -56,7 +56,7 @@ def map_blocking(fn, collection):
     return ray.get([fn(w) for w in collection])
 
 
-class HorovodMixin:
+class BaseHorovodWorker:
     def hostname(self) -> str:
         # TODO: This is probably not the right way to retrieve
         # the intended hostname.
@@ -70,6 +70,10 @@ class HorovodMixin:
     def env_vars(self):
         """Check the env vars in the actor process."""
         return dict(os.environ)
+
+    def execute(self, func):
+        """Executes an arbitrary function on self."""
+        return func(self)
 
 
 @ray.remote
@@ -205,7 +209,7 @@ class HorovodJob:
     """
 
     @classmethod
-    def create_settings(cls, timeout_s, ssh_identity_file, ssh_str):
+    def create_settings(cls, timeout_s, ssh_identity_file=None, ssh_str=None):
         """Create a mini setting object.
 
         Args:
@@ -218,15 +222,12 @@ class HorovodJob:
         Returns:
             MiniSettings object.
         """
-        from filelock import FileLock
         # Very hacky - maybe instead want to recommend
         # an autoscaler mechanism for doing this.
-        if ssh_str:
-            with FileLock(ssh_identity_file + ".lock"):
-                if not os.path.exists(ssh_identity_file):
-                    with open(ssh_identity_file, "w") as f:
-                        os.chmod(ssh_identity_file, 0o600)
-                        f.write(ssh_str)
+        if ssh_str and not os.path.exists(ssh_identity_file):
+            with open(ssh_identity_file, "w") as f:
+                os.chmod(ssh_identity_file, 0o600)
+                f.write(ssh_str)
 
         return MiniSettings(
             timeout_s=timeout_s, ssh_identity_file=ssh_identity_file)
@@ -260,19 +261,20 @@ class HorovodJob:
         workers = map_blocking(lambda w: w.get_workers.remote(), colocators)
         return sum(workers, [])
 
-    def _mixin_horovod_worker(self, worker_cls):
-        """Mixes in HorovodMixin if not a current subclass."""
-        if issubclass(worker_cls, HorovodMixin):
+    def _mixin_horovod_worker(self, worker_cls=None):
+        """Mixes in BaseHorovodWorker if not a current subclass."""
+        worker_cls = worker_cls or BaseHorovodWorker
+        if issubclass(worker_cls, BaseHorovodWorker):
             return worker_cls
 
-        class MixedHorovodWorker(worker_cls, HorovodMixin):
+        class MixedHorovodWorker(worker_cls, BaseHorovodWorker):
             pass
 
         return MixedHorovodWorker
 
     def start(self,
-              worker_cls: type,
-              worker_init_args=None,
+              worker_cls: type = None,
+              worker_init_args: Optional[List] = None,
               cpus_per_worker: int = 1,
               use_gpu: bool = False):
         """Starts the workers and colocates them on all machines.
@@ -283,7 +285,7 @@ class HorovodJob:
             non-colocated workers.
         Args:
             worker_cls (type): The class that will be created as an actor. This
-                will be automatically mixed in with HorovodMixin
+                will be automatically mixed in with BaseHorovodWorker
                 to allow Horovod to establish its connections and set env
                 vars.
             worker_init_args (List): Arguments to be passed into the
@@ -331,21 +333,29 @@ class HorovodJob:
         map_blocking(lambda w: w.update_env_vars.remote(coordinator_envs),
                      self.workers)
 
+    def run(self, fn: Callable[["worker_cls"], Any]):
+        """Executes an arbitrary function on the remote workers."""
+        return map_blocking(lambda w: w.execute.remote(fn), self.workers)
+
     def execute(self,
                 fn: Callable[["ActorHandle"], List["ObjectID"]],
-                blocking: bool = True) -> List:
+                blocking: bool = True) -> List["ObjectID"]:
         """Executes the provided function on all workers.
 
         Args:
             fn: Target function
             blocking (bool): Whether to execute and block before returning.
                 Otherwise, returns a list of object IDs.
-                TODO: should we always return list of object IDs?
+
+        Returns:
+            List of object IDs.
         """
+        result_ids = [fn(worker) for worker in self.workers]
         if blocking:
-            return map_blocking(fn, self.workers)
-        else:
-            return [fn(worker) for worker in self.workers]
+            remaining = result_ids
+            while remaining:
+                remaining, done = ray.wait(remaining)
+        return result_ids
 
     def execute_single(self,
                        fn: Callable[["ActorHandle"], "ObjectID"],
@@ -356,12 +366,16 @@ class HorovodJob:
             fn: Target function
             blocking (bool): Whether to execute and block before returning.
                 Otherwise, returns a list of object IDs.
-                TODO: should we always return list of object IDs?
 
         Returns:
-
+            ObjectID of the executed function.
         """
-        return ray.get(fn(self.workers[0]))
+        result_id = fn(self.workers[0])
+        if blocking:
+            ray.wait([result_id])
+            return result_id
+        else:
+            return result_id
 
     def shutdown(self):
         """Destroys the provided workers."""
@@ -373,3 +387,13 @@ class HorovodJob:
 
         self.colocators = []
         self.workers = []
+
+
+if __name__ == "__main__":
+    ray.init(address="auto")
+    setting = HorovodJob.create_settings(
+        timeout_s=30, ssh=os.path.expanduser("~/ray_bootstrap_key.pem"))
+    hjob = HorovodJob(setting, num_hosts=1, num_slots=4)
+    hjob.start()
+    hostnames = ray.get(hjob.execute(lambda w: w.hostname.remote()))
+    assert set(hostnames) == 1
