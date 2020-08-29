@@ -195,8 +195,6 @@ def create_or_update_cluster(config_file: str,
         cli_logger.old_style = True
     cli_logger.newline()
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
-    if config["provider"]["type"] != "aws":
-        cli_logger.old_style = False
 
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
@@ -257,7 +255,7 @@ def _bootstrap_config(config: Dict[str, Any],
     provider_cls = importer(config["provider"])
 
     with cli_logger.timed(  # todo: better message
-            "Bootstraping {} config",
+            "Bootstrapping {} config",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
@@ -405,6 +403,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 ray_start_commands=[],
                 runtime_hash="",
                 file_mounts_contents_hash="",
+                is_head_node=False,
                 docker_config=config.get("docker"))
 
             _exec(updater, "ray stop", False, False)
@@ -658,6 +657,7 @@ def get_or_create_head_node(config,
                 process_runner=_runner,
                 runtime_hash=runtime_hash,
                 file_mounts_contents_hash=file_mounts_contents_hash,
+                is_head_node=True,
                 docker_config=config.get("docker"))
             updater.start()
             updater.join()
@@ -822,6 +822,7 @@ def exec_cluster(config_file: str,
             ray_start_commands=[],
             runtime_hash="",
             file_mounts_contents_hash="",
+            is_head_node=True,
             docker_config=config.get("docker"))
 
         is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
@@ -933,13 +934,10 @@ def rsync(config_file: str,
             # and _get_head_node does this too
             nodes = _get_worker_nodes(config, override_cluster_name)
 
-        nodes += [
-            _get_head_node(
-                config,
-                config_file,
-                override_cluster_name,
-                create_if_needed=False)
-        ]
+        head_node = _get_head_node(
+            config, config_file, override_cluster_name, create_if_needed=False)
+
+        nodes += [head_node]
 
         for node_id in nodes:
             updater = NodeUpdaterThread(
@@ -954,6 +952,7 @@ def rsync(config_file: str,
                 ray_start_commands=[],
                 runtime_hash="",
                 file_mounts_contents_hash="",
+                is_head_node=(node_id == head_node),
                 docker_config=config.get("docker"))
             if down:
                 rsync = updater.rsync_down

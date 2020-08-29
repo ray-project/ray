@@ -46,17 +46,11 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.redis_client is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.redis_clients is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.global_state_accessor is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
+        if (self.redis_client is None or self.redis_clients is None
+                or self.global_state_accessor is None):
+            raise ray.exceptions.RaySystemError(
+                "Ray has not been started yet. You can start Ray with "
+                "'ray.init()'.")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -116,9 +110,10 @@ class GlobalState:
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
             raise TimeoutError("Timed out while attempting to initialize the "
-                               "global state. num_redis_shards = {}, "
-                               "redis_shard_addresses = {}".format(
-                                   num_redis_shards, redis_shard_addresses))
+                               "global state. "
+                               f"num_redis_shards = {num_redis_shards}, "
+                               "redis_shard_addresses = "
+                               f"{redis_shard_addresses}")
 
         # Get the rest of the information.
         self.redis_clients = []
@@ -256,6 +251,7 @@ class GlobalState:
                     actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
+            "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
         }
         return actor_info
@@ -848,7 +844,7 @@ state = GlobalState()
 
 
 def jobs():
-    """Get a list of the jobs in the cluster.
+    """Get a list of the jobs in the cluster (for debugging only).
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
@@ -862,7 +858,7 @@ def jobs():
 
 
 def nodes():
-    """Get a list of the nodes in the cluster.
+    """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
         Information about the Ray clients in the cluster.
@@ -903,7 +899,7 @@ def node_ids():
 
 
 def actors(actor_id=None):
-    """Fetch and parse the actor info for one or more actor IDs.
+    """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If

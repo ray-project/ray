@@ -9,12 +9,13 @@ import ray.utils
 from ray.utils import _random_string
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
+    RayError,
     PlasmaObjectNotAvailable,
     RayTaskError,
     RayActorError,
-    RayCancellationError,
-    RayWorkerError,
-    UnreconstructableError,
+    TaskCancelledError,
+    WorkerCrashedError,
+    ObjectLostError,
 )
 from ray._raylet import (
     split_buffer,
@@ -221,10 +222,10 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE:
-            python_objects = []
-        else:
+        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
+        else:
+            python_objects = []
 
         try:
 
@@ -262,17 +263,15 @@ class SerializationContext:
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
                 obj = self._deserialize_msgpack_data(data, metadata)
-                assert isinstance(obj, RayTaskError)
-                return obj
+                return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
-                return RayWorkerError()
+                return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                return RayCancellationError()
+                return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return UnreconstructableError(
-                    ray.ObjectRef(object_ref.binary()))
+                return ObjectLostError(ray.ObjectRef(object_ref.binary()))
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
@@ -347,7 +346,16 @@ class SerializationContext:
             metadata, inband, writer,
             self.get_and_clear_contained_object_refs())
 
-    def _serialize_to_msgpack(self, metadata, value):
+    def _serialize_to_msgpack(self, value):
+        # Only RayTaskError is possible to be serialized here. We don't
+        # need to deal with other exception types here.
+        if isinstance(value, RayTaskError):
+            metadata = str(
+                ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            value = value.to_bytes()
+        else:
+            metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+
         python_objects = []
 
         def _python_serializer(o):
@@ -358,10 +366,10 @@ class SerializationContext:
         msgpack_data = MessagePackSerializer.dumps(value, _python_serializer)
 
         if python_objects:
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
             pickle5_serialized_object = \
                 self._serialize_to_pickle5(metadata, python_objects)
         else:
-            metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
             pickle5_serialized_object = None
 
         return MessagePackSerializedObject(metadata, msgpack_data,
@@ -379,15 +387,7 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
         else:
-            # Only RayTaskError is possible to be serialized here. We don't
-            # need to deal with other exception types here.
-            if isinstance(value, RayTaskError):
-                metadata = str(ErrorType.Value(
-                    "TASK_EXECUTION_EXCEPTION")).encode("ascii")
-            else:
-                metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
-
-            return self._serialize_to_msgpack(metadata, value)
+            return self._serialize_to_msgpack(value)
 
     def register_custom_serializer(self,
                                    cls,
@@ -437,7 +437,7 @@ class SerializationContext:
                 except Exception:
                     raise ValueError(
                         "Failed to use pickle in generating a unique id"
-                        "for '{}'. Provide a unique class_id.".format(cls))
+                        f"for '{cls}'. Provide a unique class_id.")
             else:
                 # In this case, the class ID only needs to be meaningful on
                 # this worker and not across workers.

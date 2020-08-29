@@ -52,7 +52,7 @@ def get_function_descriptor_for_actor_method(
             "")
     else:
         raise NotImplementedError("Cross language remote actor method "
-                                  "not support language {}".format(language))
+                                  f"not support language {language}")
 
 
 def java_function(class_name, function_name):
@@ -66,7 +66,7 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
-        None,  # num_return_vals,
+        None,  # num_returns,
         None,  # max_calls,
         None,  # max_retries
         placement_group=None,
