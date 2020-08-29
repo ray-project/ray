@@ -355,7 +355,7 @@ def test_remove_placement_group(ray_start_cluster):
     # That means this request should fail.
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
         ray.get(a.f.remote(), timeout=3.0)
-    with pytest.raises(ray.exceptions.RayWorkerError):
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(task_ref)
 
 
@@ -576,7 +576,7 @@ def test_pending_placement_group_wait(ray_start_cluster):
     assert len(ready) == 0
     table = ray.experimental.placement_group_table(placement_group)
     assert table["state"] == "PENDING"
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(placement_group.ready(), timeout=0.1)
 
 

@@ -41,7 +41,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
-    RayConnectionError,
+    RaySystemError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -202,8 +202,8 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            raise RayConnectionError("Ray has not been started yet. You can "
-                                     "start Ray with 'ray.init()'.")
+            raise RaySystemError("Ray has not been started yet. You can "
+                                 "start Ray with 'ray.init()'.")
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -568,7 +568,7 @@ def init(
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
-            reconstructed. If False, then ray.UnreconstructableError will be
+            reconstructed. If False, then ray.ObjectLostError will be
             thrown.
         _redis_max_memory: Redis max memory.
         _node_ip_address (str): The IP address of the node that we are on.
@@ -589,7 +589,7 @@ def init(
         _java_worker_options: Overwrite the options to start Java workers.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
-            pressure, ray.UnreconstructableError may be thrown. If False, then
+            pressure, ray.ObjectLostError may be thrown. If False, then
             reference counting will be used to decide which objects are safe
             to evict and when under memory pressure, ray.ObjectStoreFullError
             may be thrown.
@@ -1383,7 +1383,7 @@ def get(object_refs, *, timeout=None):
         A Python object or a list of Python objects.
 
     Raises:
-        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+        GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
@@ -1417,7 +1417,7 @@ def get(object_refs, *, timeout=None):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
-                if isinstance(value, ray.exceptions.UnreconstructableError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -1611,7 +1611,7 @@ def cancel(object_ref, *, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a RayCancellationError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task
@@ -1642,7 +1642,7 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def make_decorator(num_return_vals=None,
+def make_decorator(num_returns=None,
                    num_cpus=None,
                    num_gpus=None,
                    memory=None,
@@ -1682,13 +1682,12 @@ def make_decorator(num_return_vals=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries, placement_group,
-                placement_group_bundle_index)
+                memory, object_store_memory, resources, num_returns, max_calls,
+                max_retries, placement_group, placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
-            if num_return_vals is not None:
-                raise TypeError("The keyword 'num_return_vals' is not "
+            if num_returns is not None:
+                raise TypeError("The keyword 'num_returns' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
@@ -1732,7 +1731,7 @@ def remote(*args, **kwargs):
 
     It can also be used with specific keyword arguments:
 
-    * **num_return_vals:** This is only for *remote functions*. It specifies
+    * **num_returns:** This is only for *remote functions*. It specifies
       the number of object refs returned by the remote function invocation.
     * **num_cpus:** The quantity of CPU cores to reserve for this task or for
       the lifetime of the actor.
@@ -1774,7 +1773,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
 
@@ -1789,7 +1788,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
         g = f.options(num_gpus=2, max_calls=None)
@@ -1815,15 +1814,15 @@ def remote(*args, **kwargs):
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
+                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
                     "'max_calls', or 'max_restarts', like "
-                    "'@ray.remote(num_return_vals=2, "
+                    "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals",
+            "num_returns",
             "num_cpus",
             "num_gpus",
             "memory",
@@ -1848,7 +1847,7 @@ def remote(*args, **kwargs):
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
     # Handle other arguments.
-    num_return_vals = kwargs.get("num_return_vals")
+    num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
     max_restarts = kwargs.get("max_restarts")
     max_task_retries = kwargs.get("max_task_retries")
@@ -1857,7 +1856,7 @@ def remote(*args, **kwargs):
     max_retries = kwargs.get("max_retries")
 
     return make_decorator(
-        num_return_vals=num_return_vals,
+        num_returns=num_returns,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,

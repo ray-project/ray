@@ -422,7 +422,7 @@ def test_register_class(ray_start_2_cpus):
     assert ray.get(h2.remote(10)).value == 10
 
     # Test registering multiple classes with the same name.
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def j():
         class Class0:
             def method0(self):
