@@ -153,7 +153,7 @@ def DistributedTrainableCreator(func,
             with open(ssh_identity_file) as f:
                 sshkeystr = f.read()
 
-    class WrappedDistributedTorchTrainable(_HorovodTrainable):
+    class WrappedHorovodTrainable(_HorovodTrainable):
         _function = func
         _num_nodes = num_nodes
         _num_workers_per_node = num_workers_per_node
@@ -176,7 +176,7 @@ def DistributedTrainableCreator(func,
                 extra_gpu=extra_gpu,
             )
 
-    return WrappedDistributedTorchTrainable
+    return WrappedHorovodTrainable
 
 
 class _MockHorovodTrainable(HorovodMixin, tune.Trainable):
