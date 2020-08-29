@@ -26,7 +26,7 @@ for i in range(num_nodes):
         dashboard_host="0.0.0.0")
 
 ray.init(
-    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
+    address=cluster.address, dashboard_host="0.0.0.0", _log_to_driver=False)
 serve.init()
 
 

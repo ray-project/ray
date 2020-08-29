@@ -91,7 +91,7 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
         ray.get(tail_oid)
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
+    except ray.exceptions.ObjectLostError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -130,7 +130,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
         # Check that the owner dying unpins the object. This should execute on
         # the same worker because there is only one started and the other tasks
         # have finished.
-        with pytest.raises(ray.exceptions.RayWorkerError):
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
             ray.get(exit.remote())
     else:
         # Check that removing the inner ID unpins the object.
@@ -173,7 +173,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
         # Should succeed because inner_oid is pinned if no failure.
         ray.get(pending_oid)
         assert not failure
-    except ray.exceptions.RayWorkerError:
+    except ray.exceptions.WorkerCrashedError:
         assert failure
 
     def ref_not_exists():
@@ -232,7 +232,7 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
         _fill_object_store_and_get(inner_oid)
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
+    except ray.exceptions.ObjectLostError:
         assert failure
 
     inner_oid_bytes = inner_oid.binary()
@@ -311,7 +311,7 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
         def resolve_ref(self):
             assert self.ref is not None
             if failure:
-                with pytest.raises(ray.exceptions.UnreconstructableError):
+                with pytest.raises(ray.exceptions.ObjectLostError):
                     ray.get(self.ref)
             else:
                 ray.get(self.ref)

@@ -76,8 +76,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         duration = request.duration
         profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
                                            f"{pid}_profiling.txt")
+        sudo = "sudo" if ray.utils.get_user() != "root" else ""
         process = await asyncio.create_subprocess_shell(
-            f"sudo $(which py-spy) record "
+            f"{sudo} $(which py-spy) record "
             f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

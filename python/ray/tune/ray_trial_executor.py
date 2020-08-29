@@ -8,7 +8,7 @@ import traceback
 from contextlib import contextmanager
 
 import ray
-from ray.exceptions import RayTimeoutError
+from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
@@ -396,8 +396,8 @@ class RayTrialExecutor(TrialExecutor):
                 try:
                     reset_val = ray.get(
                         trainable.reset.remote(new_config, trial.logdir),
-                        DEFAULT_GET_TIMEOUT)
-                except RayTimeoutError:
+                        timeout=DEFAULT_GET_TIMEOUT)
+                except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
                     return False
         return reset_val
@@ -465,7 +465,7 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = ray.get(trial_future[0], DEFAULT_GET_TIMEOUT)
+            result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
 
         # For local mode
         if isinstance(result, _LocalWrapper):
@@ -734,7 +734,7 @@ class RayTrialExecutor(TrialExecutor):
             with self._change_working_directory(trial):
                 return ray.get(
                     trial.runner.export_model.remote(trial.export_formats),
-                    DEFAULT_GET_TIMEOUT)
+                    timeout=DEFAULT_GET_TIMEOUT)
         return {}
 
     def has_gpus(self):

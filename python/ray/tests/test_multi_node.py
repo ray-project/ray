@@ -448,7 +448,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
-    ray.init(node_ip_address="localhost", address="localhost:6379")
+    ray.init(_node_ip_address="localhost", address="localhost:6379")
 
     @ray.remote
     def f():

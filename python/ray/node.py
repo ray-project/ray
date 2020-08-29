@@ -257,9 +257,15 @@ class Node:
         """Resolve and return the current resource spec for the node."""
 
         def merge_resources(env_dict, params_dict):
-            """Merge two dictionaries, picking from the second in the event of a conflict.
-            Also emit a warning on every conflict.
+            """Separates special case params and merges two dictionaries, picking from the
+            first in the event of a conflict. Also emit a warning on every
+            conflict.
             """
+            num_cpus = env_dict.pop("CPU", None)
+            num_gpus = env_dict.pop("GPU", None)
+            memory = env_dict.pop("memory", None)
+            object_store_memory = env_dict.pop("object_store_memory", None)
+
             result = params_dict.copy()
             result.update(env_dict)
 
@@ -268,19 +274,24 @@ class Node:
                 logger.warning("Autoscaler is overriding your resource:"
                                "{}: {} with {}.".format(
                                    key, params_dict[key], env_dict[key]))
-            return result
+            return num_cpus, num_gpus, memory, object_store_memory, result
 
         env_resources = {}
         env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
         if env_string:
             env_resources = json.loads(env_string)
+            logger.info(f"Autosaler overriding resources: {env_resources}.")
 
         if not self._resource_spec:
-            resources = merge_resources(env_resources,
-                                        self._ray_params.resources)
+            num_cpus, num_gpus, memory, object_store_memory, resources = \
+                merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
-                self._ray_params.num_cpus, self._ray_params.num_gpus,
-                self._ray_params.memory, self._ray_params.object_store_memory,
+                self._ray_params.num_cpus
+                if num_cpus is None else num_cpus, self._ray_params.num_gpus
+                if num_gpus is None else num_gpus, self._ray_params.memory
+                if memory is None else memory,
+                self._ray_params.object_store_memory
+                if object_store_memory is None else object_store_memory,
                 resources, self._ray_params.redis_max_memory).resolve(
                     is_head=self.head, node_ip_address=self.node_ip_address)
         return self._resource_spec
