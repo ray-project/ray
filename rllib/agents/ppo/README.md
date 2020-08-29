@@ -11,6 +11,8 @@ Implementations of:
 
 2) Asynchronous Proximal Policy Optimization (APPO).
 
+    **[Detailed Documentation](https://docs.ray.io/en/latest/rllib-algorithms.html#appo)**
+
     **[Implementation](https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py)**
 
 3) Decentralized Distributed Proximal Policy Optimization (DDPPO)
