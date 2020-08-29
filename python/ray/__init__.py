@@ -91,6 +91,7 @@ import ray.projects  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
+from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
@@ -98,23 +99,14 @@ __commit__ = "{{RAY_COMMIT_SHA}}"
 __version__ = "0.9.0.dev0"
 
 __all__ = [
-    "jobs",
-    "nodes",
-    "actors",
-    "objects",
-    "timeline",
-    "object_transfer_timeline",
-    "cluster_resources",
-    "available_resources",
-    "LOCAL_MODE",
-    "PYTHON_MODE",
-    "SCRIPT_MODE",
-    "WORKER_MODE",
     "__version__",
     "_config",
-    "_get_runtime_context",
+    "get_runtime_context",
     "actor",
+    "actors",
+    "available_resources",
     "cancel",
+    "cluster_resources",
     "connect",
     "disconnect",
     "get",
@@ -125,20 +117,29 @@ __all__ = [
     "init",
     "internal",
     "is_initialized",
+    "java_actor_class",
+    "java_function",
+    "jobs",
+    "kill",
+    "Language",
     "method",
+    "nodes",
+    "objects",
+    "object_transfer_timeline",
     "profile",
     "projects",
     "put",
-    "kill",
     "register_custom_serializer",
     "remote",
     "shutdown",
     "show_in_webui",
-    "wait",
-    "Language",
-    "java_function",
-    "java_actor_class",
+    "timeline",
     "util",
+    "wait",
+    "LOCAL_MODE",
+    "PYTHON_MODE",
+    "SCRIPT_MODE",
+    "WORKER_MODE",
 ]
 
 # ID types

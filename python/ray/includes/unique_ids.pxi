@@ -221,7 +221,7 @@ cdef class JobID(BaseID):
 
     @classmethod
     def from_int(cls, value):
-        assert value < 65536, "Maximum JobID integer is 65535."
+        assert value < 2**32, "Maximum JobID integer is 2**32 - 1."
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod

@@ -116,7 +116,7 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
+  return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
