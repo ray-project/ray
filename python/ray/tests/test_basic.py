@@ -117,10 +117,10 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
                 ValueError,
-                match="The keyword 'num_return_vals' only accepts 0 or a"
+                match="The keyword 'num_returns' only accepts 0 or a"
                 " positive integer"):
 
-            @ray.remote(num_return_vals=opt)
+            @ray.remote(num_returns=opt)
             def g1():
                 return 1
 
