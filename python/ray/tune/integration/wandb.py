@@ -146,7 +146,7 @@ class _WandbLoggingProcess(Process):
     def _handle_result(self, result):
         config_update = result.get("config", {}).copy()
         log = {}
-        flat_result = flatten_dict(result.copy(), delimiter="/")
+        flat_result = flatten_dict(result, delimiter="/")
 
         for k, v in flat_result.items():
             if any(k.startswith(item) for item in self._to_config):
