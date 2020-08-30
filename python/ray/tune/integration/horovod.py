@@ -10,7 +10,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration._horovod_job import HorovodJob, HorovodMixin
+from ray.tune.integration._horovod_job import HorovodJob
 
 logger = logging.getLogger(__name__)
 
@@ -43,34 +43,36 @@ class _HorovodTrainable(tune.Trainable):
 
     def setup(self, config):
         trainable = wrap_function(self.__class__._function)
-
-        with FileLock(self._ssh_identity_file + ".lock"):
+        if self._ssh_identity_file:
+            with FileLock(self._ssh_identity_file + ".lock"):
+                settings = HorovodJob.create_settings(
+                    self._timeout_s, self._ssh_identity_file, self._ssh_str)
+        else:
             settings = HorovodJob.create_settings(
                 self._timeout_s, self._ssh_identity_file, self._ssh_str)
         self._job = HorovodJob(
             settings,
+            cpus_per_worker=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
         self._job.start(
-            self.per_worker_resources(),
-            worker_cls=trainable,
-            worker_init_args=[
+            executable_cls=trainable,
+            executable_args=[
                 config, lambda cfg: logger_creator(cfg, self.logdir)
             ])
 
     def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
-        result = ray.get(self._job.execute(lambda w: w.step.remote()))[0]
+        result = self._job.execute(lambda w: w.step())[0]
         if RESULT_DUPLICATE in result:
             self._finished = True
         return result
 
     def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
-        save_obj = ray.get(
-            self._job.execute_single(lambda w: w.save_to_object.remote()))
+        save_obj = self._job.execute_single(lambda w: w.save_to_object())
         checkpoint_path = TrainableUtil.create_from_pickle(
             save_obj, checkpoint_dir)
         return checkpoint_path
@@ -78,11 +80,10 @@ class _HorovodTrainable(tune.Trainable):
     def load_checkpoint(self, checkpoint_dir):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
         x_id = ray.put(checkpoint_obj)
-        return ray.get(
-            self._job.execute(lambda w: w.restore_from_object.remote(x_id)))
+        return self._job.execute(lambda w: w.restore_from_object(x_id))
 
     def stop(self):
-        self._job.execute(lambda w: w.stop.remote())
+        self._job.execute(lambda w: w.stop())
         self._job.shutdown()
 
 
@@ -167,10 +168,6 @@ def DistributedTrainableCreator(func,
             )
 
     return WrappedHorovodTrainable
-
-
-class _MockHorovodTrainable(HorovodMixin, tune.Trainable):
-    pass
 
 
 def _train_simple(config):

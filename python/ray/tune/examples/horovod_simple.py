@@ -91,13 +91,18 @@ if __name__ == "__main__":
         "--learning_rate", type=float, default=0.1, dest="learning_rate")
     parser.add_argument("--x_max", type=float, default=1., dest="x_max")
     parser.add_argument("--gpu", action="store_true")
-    parser.add_argument("--workers", "-j", type=int, default=1)
+    parser.add_argument("--hosts-per-trial", type=int, default=1)
+    parser.add_argument("--workers-per-host", type=int, default=1)
     args = parser.parse_args()
 
     ray.init(address="auto")  # assumes ray is started with ray up
 
     horovod_trainable = DistributedTrainableCreator(
-        train, use_gpu=True, num_nodes=2, num_workers_per_node=4)
+        train,
+        use_gpu=True,
+        num_nodes=args.hosts_per_trial,
+        num_workers_per_node=args.workers_per_host,
+        replicate_pem=True)
     analysis = tune.run(
         horovod_trainable,
         config={"lr": tune.uniform(0.1, 1)},

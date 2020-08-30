@@ -11,7 +11,7 @@ def test_local(address=None):
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
     hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
     hjob.start()
-    hostnames = ray.get(hjob.execute(lambda w: w.hostname.remote()))
+    hostnames = hjob.execute(lambda _: ray.services.get_node_ip_address())
     assert len(set(hostnames)) == 1, hostnames
     hjob.shutdown()
     assert original_resources == ray.available_resources()
@@ -34,7 +34,7 @@ def test_hvd_init(address=None, hosts=1):
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
     hjob = HorovodJob(setting, num_hosts=hosts, num_slots=4, use_gpu=True)
     hjob.start()
-    result = ray.get(hjob.execute(lambda w: w.execute.remote(simple_fn)))
+    result = hjob.execute(simple_fn)
     assert len(set(result)) == hosts * 4
     hjob.shutdown()
     for i in reversed(range(10)):
@@ -119,7 +119,7 @@ def test_horovod_train(address=None, hosts=1, use_gpu=None):
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
     hjob = HorovodJob(setting, num_hosts=hosts, num_slots=4, use_gpu=True)
     hjob.start()
-    result = ray.get(hjob.execute(lambda w: w.execute.remote(simple_fn)))
+    result = hjob.execute(simple_fn)
     print("Result: ", result)
     assert all(result)
     hjob.shutdown()

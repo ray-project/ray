@@ -4,8 +4,8 @@ import pytest
 import ray
 from ray import tune
 from ray.tune.integration.horovod import (DistributedTrainableCreator,
-                                          _train_simple, NodeColocator,
-                                          HorovodMixin, _MockHorovodTrainable)
+                                          _train_simple)
+from ray.tune.integration._horovod_job import NodeColocator
 
 try:
     import horovod

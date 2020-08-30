@@ -56,6 +56,12 @@ def map_blocking(fn, collection):
 
 
 class BaseHorovodWorker:
+    executable = None
+
+    def __init__(self, world_rank=0, world_size=1):
+        os.environ["HOROVOD_RANK"] = str(world_rank)
+        os.environ["HOROVOD_SIZE"] = str(world_size)
+
     def hostname(self) -> str:
         # TODO: This is probably not the right way to retrieve
         # the intended hostname.
@@ -70,9 +76,19 @@ class BaseHorovodWorker:
         """Check the env vars in the actor process."""
         return dict(os.environ)
 
+    def start_executable(self,
+                         executable_cls=None,
+                         executable_args=None,
+                         executable_kwargs=None):
+        executable_args = executable_args or []
+        executable_kwargs = executable_kwargs or {}
+        if executable_cls:
+            self.executable = executable_cls(*executable_args,
+                                             **executable_kwargs)
+
     def execute(self, func):
         """Executes an arbitrary function on self."""
-        return func(self)
+        return func(self.executable)
 
 
 @ray.remote
@@ -88,26 +104,33 @@ class NodeColocator:
     underlying colocated workers are cuda visible devices.
     """
 
-    def __init__(self, num_workers: int, use_gpu: bool):
-        self.num_workers = num_workers
+    def __init__(self, *, node_rank: int, node_size: int, world_size: int,
+                 use_gpu: bool):
+        self.node_rank = node_rank
+        self.node_size = node_size
+        self.world_size = world_size
         if use_gpu:
             gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == num_workers, gpu_ids
+            assert len(gpu_ids) == node_size, gpu_ids
         self.workers = []
 
-    def create_workers(self, worker_cls: type, worker_init_args: list):
+    def create_workers(self, executable_cls: type, executable_args: list,
+                       executable_kwargs: dict):
         """Colocates a number of workers."""
         # Create a node ip resource label so that we can pin
         # all of the child actors to the same node. This ensures
         # colocation and balanced training.
         node_id = f"node:{ray.services.get_node_ip_address()}"
-        remote_cls = ray.remote(worker_cls)
+        remote_cls = ray.remote(BaseHorovodWorker)
         remote_cls = remote_cls.options(
             num_cpus=0, num_gpus=0, resources={node_id: 0.01})
 
+        world_rank_start = self.node_size * self.node_rank
+
         self.workers = [
-            remote_cls.remote(*worker_init_args)
-            for rank in range(self.num_workers)
+            remote_cls.remote(world_rank=rank, world_size=self.world_size)
+            for rank in range(world_rank_start, world_rank_start +
+                              self.node_size)
         ]
 
         # Propogate cuda visible devices to the underlying
@@ -115,6 +138,12 @@ class NodeColocator:
         gpu_ids = ray.get_gpu_ids()
         for worker, gpu_id in zip(self.workers, gpu_ids):
             worker.update_env_vars.remote({"CUDA_VISIBLE_DEVICES": gpu_id})
+
+        ray.get([
+            worker.start_executable.remote(executable_cls, executable_args,
+                                           executable_kwargs)
+            for worker in self.workers
+        ])
         return node_id
 
     def get_workers(self) -> List:
@@ -223,8 +252,6 @@ class HorovodJob:
         Returns:
             MiniSettings object.
         """
-        # Very hacky - maybe instead want to recommend
-        # an autoscaler mechanism for doing this.
         if ssh_str and not os.path.exists(ssh_identity_file):
             with open(ssh_identity_file, "w") as f:
                 os.chmod(ssh_identity_file, 0o600)
@@ -249,21 +276,27 @@ class HorovodJob:
     def num_workers(self):
         return self.num_hosts * self.num_slots
 
-    def _create_workers(self, host_resources, worker_cls, worker_init_args):
+    def _create_workers(self, host_resources, executable_cls, executable_args,
+                        executable_kwargs):
         colocator_cls = NodeColocator.options(**host_resources)
         # Create a number of coordinators.
         colocators = [
             colocator_cls.remote(
-                self.num_slots, use_gpu=host_resources["num_gpus"] > 0)
-            for i in range(self.num_hosts)
+                node_rank=node_rank,
+                node_size=self.num_slots,
+                world_size=self.num_workers,
+                use_gpu=host_resources["num_gpus"] > 0)
+            for node_rank in range(self.num_hosts)
         ]
         # We must save a pointer to each colocator to prevent their resource
         # allocation from being released, along with their children from
         # going out of scope.
         self.colocators = colocators
+        e_cls, e_args, e_kwargs = (executable_cls, executable_args,
+                                   executable_kwargs)
 
         node_ids = map_blocking(
-            lambda a: a.create_workers.remote(worker_cls, worker_init_args),
+            lambda a: a.create_workers.remote(e_cls, e_args, e_kwargs),
             colocators)
         assert len(set(node_ids)) == len(node_ids), (
             "Colocator actors must "
@@ -273,20 +306,10 @@ class HorovodJob:
         workers = map_blocking(lambda w: w.get_workers.remote(), colocators)
         return sum(workers, [])
 
-    def _mixin_horovod_worker(self, worker_cls=None):
-        """Mixes in BaseHorovodWorker if not a current subclass."""
-        worker_cls = worker_cls or BaseHorovodWorker
-        if issubclass(worker_cls, BaseHorovodWorker):
-            return worker_cls
-
-        class MixedHorovodWorker(worker_cls, BaseHorovodWorker):
-            pass
-
-        return MixedHorovodWorker
-
     def start(self,
-              worker_cls: type = None,
-              worker_init_args: Optional[List] = None):
+              executable_cls: type = None,
+              executable_args: Optional[List] = None,
+              executable_kwargs: Optional[Dict] = None):
         """Starts the workers and colocates them on all machines.
 
             We implement a node grouping because it seems like
@@ -294,11 +317,12 @@ class HorovodJob:
             Also, colocation performance is typically much better than
             non-colocated workers.
         Args:
-            worker_cls (type): The class that will be created as an actor. This
-                will be automatically mixed in with BaseHorovodWorker
-                to allow Horovod to establish its connections and set env
-                vars.
-            worker_init_args (List): Arguments to be passed into the
+            executable_cls (type): The class that will be created within
+                an actor (BaseHorovodWorker). This will allow Horovod
+                to establish its connections and set env vars.
+            executable_args (List): Arguments to be passed into the
+                worker class upon initialization.
+            executable_kwargs (Dict): Keyword arguments to be passed into the
                 worker class upon initialization.
 
         """
@@ -308,14 +332,13 @@ class HorovodJob:
             num_gpus = self.num_slots * int(self.use_gpu)
             return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 
-        worker_cls = self._mixin_horovod_worker(worker_cls)
-
         self.coordinator = Coordinator(self.settings)
-        worker_init_args = worker_init_args or []
+        executable_args = executable_args or []
         self.workers = self._create_workers(
             resources_per_host(),
-            worker_cls=worker_cls,
-            worker_init_args=worker_init_args)
+            executable_cls=executable_cls,
+            executable_args=executable_args,
+            executable_kwargs=executable_kwargs)
 
         # Update the environment variables.
         ray.get([
@@ -340,49 +363,28 @@ class HorovodJob:
         map_blocking(lambda w: w.update_env_vars.remote(coordinator_envs),
                      self.workers)
 
-    def run(self, fn: Callable[["worker_cls"], Any]):
-        """Executes an arbitrary function on the remote workers."""
-        return map_blocking(lambda w: w.execute.remote(fn), self.workers)
-
-    def execute(self,
-                fn: Callable[["ActorHandle"], List["ObjectID"]],
-                blocking: bool = True) -> List["ObjectID"]:
+    def execute(self, fn: Callable[["executable_cls"], Any]) -> List[Any]:
         """Executes the provided function on all workers.
 
         Args:
-            fn: Target function
-            blocking (bool): Whether to execute and block before returning.
-                Otherwise, returns a list of object IDs.
+            fn: Target function to be invoked on every object.
 
         Returns:
-            List of object IDs.
+            Deserialized return values from the target function.
         """
-        result_ids = [fn(worker) for worker in self.workers]
-        if blocking:
-            remaining = result_ids
-            while remaining:
-                done, remaining = ray.wait(remaining)
-        return result_ids
+        return ray.get([worker.execute.remote(fn) for worker in self.workers])
 
     def execute_single(self,
-                       fn: Callable[["ActorHandle"], "ObjectID"],
-                       blocking: bool = True) -> Any:
+                       fn: Callable[["executable_cls"], Any]) -> List[Any]:
         """Executes the provided function on the rank 0 worker (chief).
 
         Args:
-            fn: Target function
-            blocking (bool): Whether to execute and block before returning.
-                Otherwise, returns a list of object IDs.
+            fn: Target function to be invoked on the chief object.
 
         Returns:
-            ObjectID of the executed function.
+            Deserialized return values from the target function.
         """
-        result_id = fn(self.workers[0])
-        if blocking:
-            ray.wait([result_id])
-            return result_id
-        else:
-            return result_id
+        return ray.get(self.workers[0].execute.remote(fn))
 
     def shutdown(self):
         """Destroys the provided workers."""
