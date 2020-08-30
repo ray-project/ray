@@ -384,6 +384,8 @@ message CoreWorkerStats {
   string actor_title = 16;
   // Local reference table.
   repeated ObjectRefInfo object_refs = 17;
+  // Job ID.
+  bytes job_id = 18;
 }
 
 message MetricPoint {

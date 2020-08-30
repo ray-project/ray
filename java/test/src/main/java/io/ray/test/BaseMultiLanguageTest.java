@@ -84,7 +84,7 @@ public abstract class BaseMultiLanguageTest {
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions,
-        "--internal-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
+        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
