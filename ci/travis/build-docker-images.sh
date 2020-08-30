@@ -71,10 +71,10 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray/.whl
-    cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
-    cp "$ROOT_DIR"/python/requirements_ml_ray.txt "$ROOT_DIR"/docker/autoscaler/requirements_ml_ray.txt
-    cp "$ROOT_DIR"/python/requirements_tune.txt "$ROOT_DIR"/docker/autoscaler/requirements_tune.txt
-    cp "$ROOT_DIR"/python/requirements_rllib.txt "$ROOT_DIR"/docker/autoscaler/requirements_rllib.txt
+    cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/ray-ml/requirements.txt
+    cp "$ROOT_DIR"/python/requirements_ml_ray.txt "$ROOT_DIR"/docker/ray-ml/requirements_ml_ray.txt
+    cp "$ROOT_DIR"/python/requirements_tune.txt "$ROOT_DIR"/docker/ray-ml/requirements_tune.txt
+    cp "$ROOT_DIR"/python/requirements_rllib.txt "$ROOT_DIR"/docker/ray-ml/requirements_rllib.txt
 
     build_or_pull_base_images
 
