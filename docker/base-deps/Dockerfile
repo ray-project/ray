@@ -33,6 +33,8 @@ RUN apt-get update -y && apt-get upgrade -y \
         cython==0.29.0 \
         numpy==1.15.4 \
         psutil \
+        blist \ 
+    # blist is needed for numpy (which is re-installed when ray is installed)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
