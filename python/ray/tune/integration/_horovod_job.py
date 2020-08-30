@@ -6,7 +6,6 @@ import logging
 
 import ray
 
-Settings = None
 secret = None
 timeout = None
 hosts = None
@@ -25,7 +24,7 @@ def is_horovod_available():
 
 
 if is_horovod_available():
-    from horovod.runner.common.util import Settings, secret, timeout, hosts
+    from horovod.runner.common.util import secret, timeout, hosts
     from horovod.runner.driver import driver_service
     from horovod.runner.http.http_server import RendezvousServer
 else:
@@ -37,9 +36,9 @@ else:
 class MiniSettings:
     nics: set = None
     verbose: int = 1
-    key = secret.make_secret_key() if secret else None
-    ssh_port = None
-    ssh_identity_file = None
+    key: str = secret.make_secret_key() if secret else None
+    ssh_port: int = None
+    ssh_identity_file: str = None
     timeout_s: int = 300
 
     @property
@@ -107,7 +106,7 @@ class NodeColocator:
             num_cpus=0, num_gpus=0, resources={node_id: 0.01})
 
         self.workers = [
-            remote_cls.remote(**worker_init_args)
+            remote_cls.remote(*worker_init_args)
             for rank in range(self.num_workers)
         ]
 
@@ -130,7 +129,7 @@ class Coordinator:
 
     def __init__(
             self,
-            settings: Settings,
+            settings,
     ):
         self.settings = settings
         self.hostnames_by_rank = defaultdict(list)
@@ -206,6 +205,8 @@ class HorovodJob:
         num_slots (int): Humber of workers to be placed on each machine.
         use_gpu (bool): Whether to use GPU for allocation. TODO: this
             can be removed.
+        cpus_per_worker (int): Number of CPU resources to allocate to
+            each worker.
     """
 
     @classmethod
@@ -228,14 +229,23 @@ class HorovodJob:
             with open(ssh_identity_file, "w") as f:
                 os.chmod(ssh_identity_file, 0o600)
                 f.write(ssh_str)
-
+        # import ipdb; ipdb.set_trace()
         return MiniSettings(
-            timeout_s=timeout_s, ssh_identity_file=ssh_identity_file)
+            ssh_identity_file=ssh_identity_file, timeout_s=timeout_s)
 
-    def __init__(self, settings, num_hosts: int = 1, num_slots: int = 1):
+    def __init__(self, settings, num_hosts: int = 1, num_slots: int = 1,
+              cpus_per_worker: int = 1,
+              use_gpu: bool = False):
         self.settings = settings
         self.num_hosts = num_hosts
         self.num_slots = num_slots
+        self.cpus_per_worker = cpus_per_worker
+        self.use_gpu = use_gpu
+
+    @property
+    def num_workers(self):
+        return self.num_hosts * self.num_slots
+
 
     def _create_workers(self, host_resources, worker_cls, worker_init_args):
         colocator_cls = NodeColocator.options(**host_resources)
@@ -251,7 +261,7 @@ class HorovodJob:
         self.colocators = colocators
 
         node_ids = map_blocking(
-            lambda a: a.create_workers.remote(worker_cls, *worker_init_args),
+            lambda a: a.create_workers.remote(worker_cls, worker_init_args),
             colocators)
         assert len(set(node_ids)) == len(node_ids), (
             "Colocator actors must "
@@ -274,9 +284,7 @@ class HorovodJob:
 
     def start(self,
               worker_cls: type = None,
-              worker_init_args: Optional[List] = None,
-              cpus_per_worker: int = 1,
-              use_gpu: bool = False):
+              worker_init_args: Optional[List] = None):
         """Starts the workers and colocates them on all machines.
 
             We implement a node grouping because it seems like
@@ -290,15 +298,12 @@ class HorovodJob:
                 vars.
             worker_init_args (List): Arguments to be passed into the
                 worker class upon initialization.
-            cpus_per_worker (int): Number of CPU resources to allocate to
-                each worker.
-            use_gpu (bool): Whether to allocate GPU resources or not.
 
         """
 
         def resources_per_host():
-            num_cpus = cpus_per_worker * self.num_slots
-            num_gpus = self.num_slots * int(use_gpu)
+            num_cpus = self.cpus_per_worker * self.num_slots
+            num_gpus = self.num_slots * int(self.use_gpu)
             return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 
         worker_cls = self._mixin_horovod_worker(worker_cls)
@@ -313,7 +318,7 @@ class HorovodJob:
         # Update the environment variables.
         ray.get([
             w.update_env_vars.remote(
-                dict(world_rank=i, world_size=self.num_workers))
+                dict(HOROVOD_RANK=i, HOROVOD_SIZE=self.num_workers))
             for i, w in enumerate(self.workers)
         ])
         # Get all the hostnames of all workers
@@ -354,7 +359,7 @@ class HorovodJob:
         if blocking:
             remaining = result_ids
             while remaining:
-                remaining, done = ray.wait(remaining)
+                done, remaining = ray.wait(remaining)
         return result_ids
 
     def execute_single(self,
@@ -389,11 +394,45 @@ class HorovodJob:
         self.workers = []
 
 
-if __name__ == "__main__":
-    ray.init(address="auto")
+
+def test_local(address=None):
+    ray.init(address)
+    original_resources = ray.available_resources()
     setting = HorovodJob.create_settings(
-        timeout_s=30, ssh=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=1, num_slots=4)
+        timeout_s=30, ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
+    hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
     hjob.start()
     hostnames = ray.get(hjob.execute(lambda w: w.hostname.remote()))
-    assert set(hostnames) == 1
+    assert len(set(hostnames)) == 1, hostnames
+    hjob.shutdown()
+    assert original_resources == ray.available_resources()
+    ray.shutdown()
+    print("Finished!")
+
+
+def test_hvd_init(address=None):
+    ray.init(address)
+    original_resources = ray.available_resources()
+
+    def simple_fn(worker):
+        import horovod.torch as hvd
+        hvd.init()
+        print("success")
+        print("hvd rank", hvd.rank())
+        return hvd.rank()
+    setting = HorovodJob.create_settings(
+        timeout_s=30, ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
+    hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
+    hjob.start()
+    result = ray.get(hjob.execute(lambda w: w.execute.remote(simple_fn)))
+    print("Result: ", result)
+    assert len(set(result)) == 4
+    hjob.shutdown()
+    assert original_resources == ray.available_resources()
+    ray.shutdown()
+    print("Finished!")
+
+
+if __name__ == "__main__":
+    test_local()
+    test_hvd_init()
