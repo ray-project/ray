@@ -91,7 +91,7 @@ class NodeColocator:
     def __init__(self, num_workers: int, use_gpu: bool):
         self.num_workers = num_workers
         if use_gpu:
-            gpu_ids = ray.get_gpu_ids(as_str=True)
+            gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == num_workers, gpu_ids
         self.workers = []
 
@@ -112,7 +112,7 @@ class NodeColocator:
 
         # Propogate cuda visible devices to the underlying
         # colocated workers.
-        gpu_ids = ray.get_gpu_ids(as_str=True)
+        gpu_ids = ray.get_gpu_ids()
         for worker, gpu_id in zip(self.workers, gpu_ids):
             worker.update_env_vars.remote({"CUDA_VISIBLE_DEVICES": gpu_id})
         return node_id
@@ -233,9 +233,12 @@ class HorovodJob:
         return MiniSettings(
             ssh_identity_file=ssh_identity_file, timeout_s=timeout_s)
 
-    def __init__(self, settings, num_hosts: int = 1, num_slots: int = 1,
-              cpus_per_worker: int = 1,
-              use_gpu: bool = False):
+    def __init__(self,
+                 settings,
+                 num_hosts: int = 1,
+                 num_slots: int = 1,
+                 cpus_per_worker: int = 1,
+                 use_gpu: bool = False):
         self.settings = settings
         self.num_hosts = num_hosts
         self.num_slots = num_slots
@@ -245,7 +248,6 @@ class HorovodJob:
     @property
     def num_workers(self):
         return self.num_hosts * self.num_slots
-
 
     def _create_workers(self, host_resources, worker_cls, worker_init_args):
         colocator_cls = NodeColocator.options(**host_resources)
@@ -392,47 +394,3 @@ class HorovodJob:
 
         self.colocators = []
         self.workers = []
-
-
-
-def test_local(address=None):
-    ray.init(address)
-    original_resources = ray.available_resources()
-    setting = HorovodJob.create_settings(
-        timeout_s=30, ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
-    hjob.start()
-    hostnames = ray.get(hjob.execute(lambda w: w.hostname.remote()))
-    assert len(set(hostnames)) == 1, hostnames
-    hjob.shutdown()
-    assert original_resources == ray.available_resources()
-    ray.shutdown()
-    print("Finished!")
-
-
-def test_hvd_init(address=None):
-    ray.init(address)
-    original_resources = ray.available_resources()
-
-    def simple_fn(worker):
-        import horovod.torch as hvd
-        hvd.init()
-        print("success")
-        print("hvd rank", hvd.rank())
-        return hvd.rank()
-    setting = HorovodJob.create_settings(
-        timeout_s=30, ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
-    hjob.start()
-    result = ray.get(hjob.execute(lambda w: w.execute.remote(simple_fn)))
-    print("Result: ", result)
-    assert len(set(result)) == 4
-    hjob.shutdown()
-    assert original_resources == ray.available_resources()
-    ray.shutdown()
-    print("Finished!")
-
-
-if __name__ == "__main__":
-    test_local()
-    test_hvd_init()
