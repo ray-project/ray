@@ -3,7 +3,9 @@ FROM rayproject/ray:latest"$GPU"
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
-COPY requirements_autoscaler.txt ./
+COPY requirements_ml_ray.txt ./
+COPY requirements_rllib.txt ./
+COPY requirements_tune.txt ./
 
 RUN apt-get update \
     && apt-get install -y gcc \
@@ -12,8 +14,8 @@ RUN apt-get update \
         zlib1g-dev \
         libgl1-mesa-dev \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \ 
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_autoscaler.txt \
-    && rm requirements.txt && rm requirements_autoscaler.txt \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_ml_ray.txt \
+    && rm requirements.txt && rm requirements_ml_ray.txt \
     && apt-get remove cmake gcc -y \
     && apt-get clean 
 
