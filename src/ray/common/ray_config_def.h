@@ -294,3 +294,7 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
+
+/// Enable the task timeline. If this is enabled, certain events such as task
+/// execution are profiled and sent to the GCS.
+RAY_CONFIG(bool, enable_timeline, true)
