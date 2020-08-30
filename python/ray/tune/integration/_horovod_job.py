@@ -34,6 +34,10 @@ else:
 
 @dataclass
 class MiniSettings:
+    """Mock object, only necessary for Tune.
+
+    Should be replaced with a proper Horovod object.
+    """
     nics: set = None
     verbose: int = 1
     key: str = secret.make_secret_key() if secret else None
