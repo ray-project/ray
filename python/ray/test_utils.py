@@ -428,3 +428,11 @@ def get_error_message(pub_sub, num, error_type=None, timeout=5):
             time.sleep(0.01)
 
     return msgs
+
+
+def format_web_url(url):
+    """Format web url."""
+    url = url.replace("localhost", "http://127.0.0.1")
+    if not url.startswith("http://"):
+        return "http://" + url
+    return url
