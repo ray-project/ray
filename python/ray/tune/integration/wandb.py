@@ -149,9 +149,9 @@ class _WandbLoggingProcess(Process):
         flat_result = flatten_dict(result.copy(), delimiter="/")
 
         for k, v in flat_result.items():
-            if any([k.startswith(item) for item in self._to_config]):
+            if any(k.startswith(item) for item in self._to_config):
                 config_update[k] = v
-            elif any([k.startswith(item) for item in self._exclude]):
+            elif any(k.startswith(item) for item in self._exclude):
                 continue
             elif not isinstance(v, Number):
                 continue
