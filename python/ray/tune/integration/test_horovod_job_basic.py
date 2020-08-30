@@ -1,4 +1,4 @@
-"""Ray-Horovod Job tests.
+"""Ray-Horovod Job cluster tests.
 
 This is currently not run on the Ray CI and is expected
 to land in Horovod repo soon. If not, then these

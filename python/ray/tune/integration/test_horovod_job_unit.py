@@ -1,7 +1,15 @@
+"""Ray-Horovod Job unit tests.
+
+This is currently not run on the Ray CI and is expected
+to land in Horovod repo soon. If not, then these
+should be run after every commit for anything that touches
+the Horovod-Ray integration.
+"""
+
 import ray
 
-from ray.tune.integration._horovod_job import (BaseHorovodWorker,
-                                               NodeColocator)
+from ray.tune.integration._horovod_job import (
+    BaseHorovodWorker, NodeColocator, Coordinator, MiniSettings)
 import pytest
 
 
@@ -30,7 +38,6 @@ def ray_start_6_cpus():
 
 
 def test_coordinator_registration():
-    from ray.tune.integration.horovod import Coordinator, MiniSettings
     settings = MiniSettings()
     coord = Coordinator(settings)
     assert coord.world_size == 0
