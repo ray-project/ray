@@ -72,7 +72,7 @@ if [[ "$TRAVIS" == "true" ]]; then
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray/.whl
     cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/ray-ml/requirements.txt
-    cp "$ROOT_DIR"/python/requirements_ml_ray.txt "$ROOT_DIR"/docker/ray-ml/requirements_ml_ray.txt
+    cp "$ROOT_DIR"/python/requirements_ml_docker.txt "$ROOT_DIR"/docker/ray-ml/requirements_ml_docker.txt
     cp "$ROOT_DIR"/python/requirements_tune.txt "$ROOT_DIR"/docker/ray-ml/requirements_tune.txt
     cp "$ROOT_DIR"/python/requirements_rllib.txt "$ROOT_DIR"/docker/ray-ml/requirements_rllib.txt
 
@@ -81,7 +81,7 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     build_and_push_tags "ray" "$commit_sha"
 
-    build_and_push_tags "autoscaler" "$commit_sha"
+    build_and_push_tags "ray-ml" "$commit_sha"
  
 
     # We have a branch build, e.g. release/v0.7.0
@@ -89,7 +89,7 @@ if [[ "$TRAVIS" == "true" ]]; then
        # Replace / in branch name to - so it is legal tag name
        normalized_branch_name=$(echo "$TRAVIS_BRANCH" | sed -e "s/\//-/")
 
-       for IMAGE in "base-deps" "ray-deps" "ray" "autoscaler"
+       for IMAGE in "base-deps" "ray-deps" "ray" "ray-ml"
        do
             for GPU in "" "-gpu"
             do
