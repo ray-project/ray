@@ -1,21 +1,24 @@
 """Ray-Horovod Job tests.
 
 This is currently not run on the Ray CI and is expected
-to land in Horovod repo soon.
+to land in Horovod repo soon. If not, then these
+should be run after every commit for anything that touches
+the Horovod-Ray integration.
 """
 
 import os
+
 import ray
 from ray.tune.integration._horovod_job import HorovodJob
 
 
-def test_local(address=None):
+def test_local(address=None, num_slots=4):
     ray.init(address)
     original_resources = ray.available_resources()
     setting = HorovodJob.create_settings(
         timeout_s=30,
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=1, num_slots=4, use_gpu=True)
+    hjob = HorovodJob(setting, num_hosts=1, num_slots=num_slots, use_gpu=True)
     hjob.start()
     hostnames = hjob.execute(lambda _: ray.services.get_node_ip_address())
     assert len(set(hostnames)) == 1, hostnames
@@ -25,7 +28,7 @@ def test_local(address=None):
     print("Finished!")
 
 
-def test_hvd_init(address=None, hosts=1):
+def test_hvd_init(address=None, num_slots=4, hosts=1):
     ray.init(address)
     original_resources = ray.available_resources()
 
@@ -38,7 +41,8 @@ def test_hvd_init(address=None, hosts=1):
     setting = HorovodJob.create_settings(
         timeout_s=30,
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=hosts, num_slots=4, use_gpu=True)
+    hjob = HorovodJob(
+        setting, num_hosts=hosts, num_slots=num_slots, use_gpu=True)
     hjob.start()
     result = hjob.execute(simple_fn)
     assert len(set(result)) == hosts * 4
@@ -113,7 +117,7 @@ def _train(model_str="resnet50",
                                                  if use_gpu else "CPU"))
 
 
-def test_horovod_train(address=None, hosts=1, use_gpu=None):
+def test_horovod_train(address=None, num_slots=4, hosts=1, use_gpu=None):
     ray.init(address)
 
     def simple_fn(worker):
@@ -123,7 +127,8 @@ def test_horovod_train(address=None, hosts=1, use_gpu=None):
     setting = HorovodJob.create_settings(
         timeout_s=30,
         ssh_identity_file=os.path.expanduser("~/ray_bootstrap_key.pem"))
-    hjob = HorovodJob(setting, num_hosts=hosts, num_slots=4, use_gpu=True)
+    hjob = HorovodJob(
+        setting, num_hosts=hosts, num_slots=num_slots, use_gpu=True)
     hjob.start()
     result = hjob.execute(simple_fn)
     print("Result: ", result)
@@ -131,96 +136,6 @@ def test_horovod_train(address=None, hosts=1, use_gpu=None):
     hjob.shutdown()
     ray.shutdown()
     print("Finished!")
-
-
-########## Unit Tests below ###################
-
-@pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
-def ray_start_6_cpus():
-    address_info = ray.init(num_cpus=6)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-
-def test_coordinator_registration():
-    from ray.tune.integration.horovod import Coordinator, MiniSettings
-    settings = MiniSettings()
-    coord = Coordinator(settings)
-    assert coord.world_size == 0
-    assert coord.hoststring == ""
-    ranks = list(range(12))
-
-    for i, hostname in enumerate(["a", "b", "c"]):
-        for r in ranks:
-            if r % 3 == i:
-                coord.register(hostname, world_rank=r)
-
-    rank_to_info = coord.finalize_registration()
-    assert len(rank_to_info) == len(ranks)
-    assert all(info["node_world_size"] == 3 for info in rank_to_info.values())
-    assert {info["node_world_rank"]
-            for info in rank_to_info.values()} == {0, 1, 2}
-    assert all(info["local_size"] == 4 for info in rank_to_info.values())
-    assert {info["local_rank"]
-            for info in rank_to_info.values()} == {0, 1, 2, 3}
-
-
-def test_colocator(tmpdir, ray_start_6_cpus):
-    colocator = NodeColocator.options(num_cpus=4).remote(
-        num_workers=4, use_gpu=False)
-    colocator.create_workers.remote(_MockHorovodTrainable, {"hi": 1}, tmpdir)
-    worker_handles = ray.get(colocator.get_workers.remote())
-    assert len(set(ray.get(
-        [h.hostname.remote() for h in worker_handles]))) == 1
-
-    resources = ray.available_resources()
-    ip_address = ray.services.get_node_ip_address()
-    assert resources.get("CPU", 0) == 2, resources
-    assert resources.get(f"node:{ip_address}", 0) == 1 - 4 * 0.01
-
-
-def test_colocator_gpu(tmpdir, ray_start_4_cpus_4_gpus):
-    colocator = NodeColocator.options(
-        num_cpus=4, num_gpus=4).remote(
-            num_workers=4, use_gpu=True)
-    colocator.create_workers.remote(_MockHorovodTrainable, {"hi": 1}, tmpdir)
-    worker_handles = ray.get(colocator.get_workers.remote())
-    assert len(set(ray.get(
-        [h.hostname.remote() for h in worker_handles]))) == 1
-    resources = ray.available_resources()
-    ip_address = ray.services.get_node_ip_address()
-    assert resources.get("CPU", 0) == 0, resources
-    assert resources.get("GPU", 0) == 0, resources
-    assert resources.get(f"node:{ip_address}", 0) == 1 - 4 * 0.01
-
-    all_envs = ray.get([h.env_vars.remote() for h in worker_handles])
-    assert len({ev["CUDA_VISIBLE_DEVICES"] for ev in all_envs}) == 4
-
-
-def test_horovod_mixin(ray_start_2_cpus):
-    assert Test().hostname() == ray.services.get_node_ip_address()
-    actor = ray.remote(BaseHorovodWorker).remote()
-    DUMMY_VALUE = 1123123
-    actor.update_env_vars.remote({"TEST": DUMMY_VALUE})
-    assert ray.get(actor.env_vars.remote())["TEST"] == str(DUMMY_VALUE)
 
 
 if __name__ == "__main__":

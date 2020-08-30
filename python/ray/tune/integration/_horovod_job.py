@@ -116,21 +116,20 @@ class NodeColocator:
 
     Args:
         node_rank (int): Rank of the node that this colocator is placed on.
-        node_size (int): Total number of nodes (hosts) that are
-            participating in the job.
+        num_slots (int): Total number of slots on this machine.
         world_size (int): Total number of workers (slots) participating
             in the job across all nodes.
         use_gpu (bool): Whether to utilize the GPUs on the node.
     """
 
-    def __init__(self, *, node_rank: int, node_size: int, world_size: int,
+    def __init__(self, *, node_rank: int, num_slots: int, world_size: int,
                  use_gpu: bool):
         self.node_rank = node_rank
-        self.node_size = node_size
+        self.num_slots = num_slots
         self.world_size = world_size
         if use_gpu:
             gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == node_size, gpu_ids
+            assert len(gpu_ids) == num_slots, gpu_ids
         self.workers = []
 
     def create_workers(self,
@@ -157,12 +156,12 @@ class NodeColocator:
         remote_cls = remote_cls.options(
             num_cpus=0, num_gpus=0, resources={node_id: 0.01})
 
-        world_rank_start = self.node_size * self.node_rank
+        world_rank_start = self.num_slots * self.node_rank
 
         self.workers = [
             remote_cls.remote(world_rank=rank, world_size=self.world_size)
             for rank in range(world_rank_start, world_rank_start +
-                              self.node_size)
+                              self.num_slots)
         ]
 
         # Propogate cuda visible devices to the underlying
@@ -320,7 +319,7 @@ class HorovodJob:
         colocators = [
             colocator_cls.remote(
                 node_rank=node_rank,
-                node_size=self.num_slots,
+                num_slots=self.num_slots,
                 world_size=self.num_workers,
                 use_gpu=host_resources["num_gpus"] > 0)
             for node_rank in range(self.num_hosts)

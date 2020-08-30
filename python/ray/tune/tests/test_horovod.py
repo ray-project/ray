@@ -5,7 +5,6 @@ import ray
 from ray import tune
 from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           _train_simple)
-from ray.tune.integration._horovod_job import NodeColocator, BaseHorovodWorker
 
 try:
     import horovod
@@ -96,7 +95,6 @@ def test_simple_tune(ray_start_4_cpus):
     analysis = tune.run(
         trainable_cls, num_samples=2, stop={"training_iteration": 2})
     assert analysis.trials[0].last_result["training_iteration"] == 2
-
 
 
 @pytest.mark.skipif(horovod is None, reason="Horovod not found.")
