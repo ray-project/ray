@@ -21,8 +21,7 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
-from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
-    TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -30,10 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-    policy: Policy,
-    model: ModelV2,
-    dist_class: Type[TorchDistributionWrapper],
-    train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        policy: Policy, model: ModelV2,
+        dist_class: Type[TorchDistributionWrapper],
+        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:
@@ -67,8 +65,8 @@ def ppo_surrogate_loss(
         mask = None
         reduce_mean_valid = torch.mean
 
-    prev_action_dist = dist_class(
-        train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                                  model)
 
     logp_ratio = torch.exp(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
@@ -81,27 +79,32 @@ def ppo_surrogate_loss(
 
     surrogate_loss = torch.min(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
-                                 1 + policy.config["clip_param"]))
+        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
+            logp_ratio, 1 - policy.config["clip_param"],
+            1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
-        vf_loss1 = torch.pow(value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = prev_value_fn_out + torch.clamp(value_fn_out - prev_value_fn_out,
-                                            -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
-        vf_loss2 = torch.pow(vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_loss1 = torch.pow(
+            value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = prev_value_fn_out + torch.clamp(
+            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
+            policy.config["vf_clip_param"])
+        vf_loss2 = torch.pow(
+            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
         total_loss = reduce_mean_valid(
             -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss - policy.entropy_coeff * curr_entropy)
+            policy.config["vf_loss_coeff"] * vf_loss -
+            policy.entropy_coeff * curr_entropy)
     else:
         mean_vf_loss = 0.0
         total_loss = reduce_mean_valid(-surrogate_loss +
-                                 policy.kl_coeff * action_kl -
-                                 policy.entropy_coeff * curr_entropy)
+                                       policy.kl_coeff * action_kl -
+                                       policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -139,11 +142,22 @@ def kl_and_loss_stats(policy: Policy,
     }
 
 
-def vf_preds_fetches(policy: Policy, input_dict, state_batches, model, action_dist) -> Dict[str, TensorType]:
+def vf_preds_fetches(
+        policy: Policy, input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType], model: ModelV2,
+        action_dist: TorchDistributionWrapper) -> Dict[str, TensorType]:
     """Defines extra fetches per action computation.
 
     Args:
         policy (Policy): The Policy to perform the extra action fetch on.
+        input_dict (Dict[str, TensorType]): The input dict used for the action
+            computing forward pass.
+        state_batches (List[TensorType]): List of state tensors (empty for
+            non-RNNs).
+        model (ModelV2): The Model object of the Policy.
+        action_dist (TorchDistributionWrapper): The instantiated distribution
+            object, resulting from the model's outputs and the given
+            distribution class.
 
     Returns:
         Dict[str, TensorType]: Dict with extra tf fetches to perform per
@@ -164,6 +178,7 @@ class KLCoeffMixin:
     coefficient after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """
+
     def __init__(self, config):
         # The current KL value (as python float).
         self.kl_coeff = config["kl_coeff"]
@@ -190,6 +205,7 @@ class ValueNetworkMixin:
     the result of the most recent forward pass is being used to return an
     already calculated tensor.
     """
+
     def __init__(self, obs_space, action_space, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
@@ -220,14 +236,16 @@ class ValueNetworkMixin:
         self._value = value
 
 
-def training_view_requirements_fn(policy):
+def training_view_requirements_fn(
+        policy: Policy) -> Dict[str, ViewRequirement]:
     """Function defining the view requirements for training the policy.
 
     These go on top of the Policy's Model's own view requirements used for
     action computing forward passes.
 
     Args:
-        policy (Policy): The Policy that requires the returned ViewRequirements.
+        policy (Policy): The Policy that requires the returned
+            ViewRequirements.
 
     Returns:
         Dict[str, ViewRequirement]: The Policy's view requirements.

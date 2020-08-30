@@ -6,7 +6,8 @@ This file defines the distributed Trainer class for the asynchronous version
 of proximal policy optimization (APPO).
 See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#appo
+Detailed documentation:
+https://docs.ray.io/en/latest/rllib-algorithms.html#appo
 """
 from typing import Optional, Type
 
@@ -135,7 +136,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 
 def initialize_target(trainer: Trainer) -> None:
-    """Updates target network on startup by synching it 1:1 with the policy net.
+    """Updates target network on startup by synching it with the policy net.
 
     Args:
         trainer (Trainer): The Trainer object.
@@ -145,8 +146,8 @@ def initialize_target(trainer: Trainer) -> None:
 
 
 # Build a child class of `Trainer`, based on ImpalaTrainer's setup.
-# Note: The generated class is NOT a sub-class of ImpalaTrainer, but directly of
-# the `Trainer` class.
+# Note: The generated class is NOT a sub-class of ImpalaTrainer, but directly
+# of the `Trainer` class.
 APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,

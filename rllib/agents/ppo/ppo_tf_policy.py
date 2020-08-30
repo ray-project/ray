@@ -4,7 +4,7 @@ TensorFlow policy class used for PPO.
 
 import gym
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Type, Union
 
 import ray
 from ray.rllib.evaluation.episode import MultiAgentEpisode
@@ -20,7 +20,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
-    TensorType, TrainerConfigDict, Type
+    TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -28,10 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-    policy: Policy,
-    model: ModelV2,
-    dist_class: Type[TFActionDistribution],
-    train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        policy: Policy, model: ModelV2, dist_class: Type[TFActionDistribution],
+        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:
@@ -61,8 +59,8 @@ def ppo_surrogate_loss(
         mask = None
         reduce_mean_valid = tf.reduce_mean
 
-    prev_action_dist = dist_class(
-        train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
+    prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
+                                  model)
 
     logp_ratio = tf.exp(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
@@ -76,22 +74,20 @@ def ppo_surrogate_loss(
     surrogate_loss = tf.minimum(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
         train_batch[Postprocessing.ADVANTAGES] * tf.clip_by_value(
-            logp_ratio,
-            1 - policy.config["clip_param"],
+            logp_ratio, 1 - policy.config["clip_param"],
             1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
-        vf_loss1 = tf.math.square(
-            value_fn_out - train_batch[Postprocessing.VALUE_TARGETS])
+        vf_loss1 = tf.math.square(value_fn_out -
+                                  train_batch[Postprocessing.VALUE_TARGETS])
         vf_clipped = prev_value_fn_out + tf.clip_by_value(
-            value_fn_out - prev_value_fn_out,
-            -policy.config["vf_clip_param"],
+            value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
             policy.config["vf_clip_param"])
-        vf_loss2 = tf.math.square(
-            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS])
+        vf_loss2 = tf.math.square(vf_clipped -
+                                  train_batch[Postprocessing.VALUE_TARGETS])
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
         total_loss = reduce_mean_valid(
@@ -100,9 +96,9 @@ def ppo_surrogate_loss(
             policy.entropy_coeff * curr_entropy)
     else:
         mean_vf_loss = tf.constant(0.0)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl -
-            policy.entropy_coeff * curr_entropy)
+        total_loss = reduce_mean_valid(-surrogate_loss +
+                                       policy.kl_coeff * action_kl -
+                                       policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -159,18 +155,18 @@ def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
 
 
 def postprocess_ppo_gae(
-    policy: Policy,
-    sample_batch: SampleBatch,
-    other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-    episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
     - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
     contain a truncated (at-the-end) episode, in case the
     `config.rollout_fragment_length` was reached by the sampler.
-    - If `config.batch_mode=complete_episodes`, sample_batch will contain exactly
-    one episode (no matter how long).
+    - If `config.batch_mode=complete_episodes`, sample_batch will contain
+    exactly one episode (no matter how long).
     New columns can be added to sample_batch and existing ones may be altered.
 
     Args:
@@ -211,17 +207,15 @@ def postprocess_ppo_gae(
     return batch
 
 
-def compute_and_clip_gradients(
-    policy: Policy,
-    optimizer: LocalOptimizer,
-    loss: TensorType) -> ModelGradients:
+def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
+                               loss: TensorType) -> ModelGradients:
     """Gradients computing function (from loss tensor, using local optimizer).
 
     Args:
         policy (Policy): The Policy object that generated the loss tensor and
             that holds the given local optimizer.
-        optimizer (LocalOptimizer): The tf (local) optimizer object to calculate
-            the gradients with.
+        optimizer (LocalOptimizer): The tf (local) optimizer object to
+            calculate the gradients with.
         loss (TensorType): The loss tensor for which gradients should be
             calculated.
 
@@ -251,6 +245,7 @@ class KLCoeffMixin:
     coefficient after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """
+
     def __init__(self, config):
         # The current KL value (as python float).
         self.kl_coeff_val = config["kl_coeff"]
@@ -283,6 +278,7 @@ class ValueNetworkMixin:
     the result of the most recent forward pass is being used to return an
     already calculated tensor.
     """
+
     def __init__(self, obs_space, action_space, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
@@ -312,8 +308,7 @@ class ValueNetworkMixin:
         self._value = value
 
 
-def setup_config(policy: Policy,
-                 obs_space: gym.spaces.Space,
+def setup_config(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
     """Executed before Policy is "initialized" (at beginning of constructor).
@@ -328,11 +323,10 @@ def setup_config(policy: Policy,
     config["model"]["vf_share_layers"] = config["vf_share_layers"]
 
 
-def setup_mixins(policy: Policy,
-                 obs_space: gym.spaces.Space,
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors during PPOPolicy initialization.
+    """Call all mixin classes' constructors before PPOPolicy initialization.
 
     Args:
         policy (Policy): The Policy object.

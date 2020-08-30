@@ -167,6 +167,7 @@ class UpdateKL:
     Policy mixin class (which adds the `update_kl` method),
     defined in ppo_[tf|torch]_policy.py.
     """
+
     def __init__(self, workers):
         self.workers = workers
 
@@ -181,7 +182,8 @@ class UpdateKL:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        # Update KL on all trainable policies within the local (trainer) Worker.
+        # Update KL on all trainable policies within the local (trainer)
+        # Worker.
         self.workers.local_worker().foreach_trainable_policy(update)
 
 

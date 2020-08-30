@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 
-    # Adds the following updates to the `PPOTrainer` config in
-    # rllib/agents/ppo/ppo.py.
+# Adds the following updates to the `PPOTrainer` config in
+# rllib/agents/ppo/ppo.py.
 DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
     ppo.DEFAULT_CONFIG,
     {
