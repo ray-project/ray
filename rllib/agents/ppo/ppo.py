@@ -10,6 +10,7 @@ Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#ppo
 """
 
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
@@ -19,6 +20,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -142,14 +144,14 @@ def validate_config(config: TrainerConfigDict) -> None:
             "simple_optimizer=True if this doesn't work for you.")
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.
 
     Args:
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        Optional[Type[Policy]]: The Policy class to use with PGTrainer.
+        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
     if config["framework"] == "torch":
@@ -229,7 +231,7 @@ def execution_plan(workers: WorkerSet,
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        LocalIterator[dict]: The Policy class to use with PGTrainer.
+        LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
     rollouts = ParallelRollouts(workers, mode="bulk_sync")

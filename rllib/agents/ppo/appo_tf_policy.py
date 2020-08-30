@@ -1,6 +1,9 @@
-"""Adapted from VTraceTFPolicy to use the PPO surrogate loss.
+"""
+TensorFlow policy class used for APPO.
 
-Keep in sync with changes to VTraceTFPolicy."""
+Adapted from VTraceTFPolicy to use the PPO surrogate loss.
+Keep in sync with changes to VTraceTFPolicy.
+"""
 
 import numpy as np
 import logging
@@ -29,177 +32,7 @@ TARGET_POLICY_SCOPE = "target_func"
 logger = logging.getLogger(__name__)
 
 
-class PPOSurrogateLoss:
-    """Loss used when V-trace is disabled.
-
-    Arguments:
-        prev_actions_logp: A float32 tensor of shape [T, B].
-        actions_logp: A float32 tensor of shape [T, B].
-        action_kl: A float32 tensor of shape [T, B].
-        actions_entropy: A float32 tensor of shape [T, B].
-        values: A float32 tensor of shape [T, B].
-        valid_mask: A bool tensor of valid RNN input elements (#2992).
-        advantages: A float32 tensor of shape [T, B].
-        value_targets: A float32 tensor of shape [T, B].
-        vf_loss_coeff (float): Coefficient of the value function loss.
-        entropy_coeff (float): Coefficient of the entropy regularizer.
-        clip_param (float): Clip parameter.
-        cur_kl_coeff (float): Coefficient for KL loss.
-        use_kl_loss (bool): If true, use KL loss.
-    """
-
-    def __init__(self,
-                 prev_actions_logp,
-                 actions_logp,
-                 action_kl,
-                 actions_entropy,
-                 values,
-                 valid_mask,
-                 advantages,
-                 value_targets,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_param=0.3,
-                 cur_kl_coeff=None,
-                 use_kl_loss=False):
-        def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
-
-        logp_ratio = tf.math.exp(actions_logp - prev_actions_logp)
-
-        surrogate_loss = tf.minimum(
-            advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
-
-        self.mean_kl = reduce_mean_valid(action_kl)
-        self.pi_loss = -reduce_mean_valid(surrogate_loss)
-
-        # The baseline loss
-        delta = values - value_targets
-        self.value_targets = value_targets
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
-
-        # The entropy loss
-        self.entropy = reduce_mean_valid(actions_entropy)
-
-        # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
-
-        # Optional additional KL Loss
-        if use_kl_loss:
-            self.total_loss += cur_kl_coeff * self.mean_kl
-
-
-class VTraceSurrogateLoss:
-    def __init__(self,
-                 actions,
-                 prev_actions_logp,
-                 actions_logp,
-                 old_policy_actions_logp,
-                 action_kl,
-                 actions_entropy,
-                 dones,
-                 behaviour_logits,
-                 old_policy_behaviour_logits,
-                 target_logits,
-                 discount,
-                 rewards,
-                 values,
-                 bootstrap_value,
-                 dist_class,
-                 model,
-                 valid_mask,
-                 vf_loss_coeff=0.5,
-                 entropy_coeff=0.01,
-                 clip_rho_threshold=1.0,
-                 clip_pg_rho_threshold=1.0,
-                 clip_param=0.3,
-                 cur_kl_coeff=None,
-                 use_kl_loss=False):
-        """APPO Loss, with IS modifications and V-trace for Advantage Estimation
-
-        VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
-        batch_size. The reason we need to know `B` is for V-trace to properly
-        handle episode cut boundaries.
-
-        Arguments:
-            actions: An int|float32 tensor of shape [T, B, logit_dim].
-            prev_actions_logp: A float32 tensor of shape [T, B].
-            actions_logp: A float32 tensor of shape [T, B].
-            old_policy_actions_logp: A float32 tensor of shape [T, B].
-            action_kl: A float32 tensor of shape [T, B].
-            actions_entropy: A float32 tensor of shape [T, B].
-            dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
-            old_policy_behaviour_logits: A float32 tensor of shape
-            [T, B, logit_dim].
-            target_logits: A float32 tensor of shape [T, B, logit_dim].
-            discount: A float32 scalar.
-            rewards: A float32 tensor of shape [T, B].
-            values: A float32 tensor of shape [T, B].
-            bootstrap_value: A float32 tensor of shape [B].
-            dist_class: action distribution class for logits.
-            model: backing ModelV2 instance
-            valid_mask: A bool tensor of valid RNN input elements (#2992).
-            vf_loss_coeff (float): Coefficient of the value function loss.
-            entropy_coeff (float): Coefficient of the entropy regularizer.
-            clip_param (float): Clip parameter.
-            cur_kl_coeff (float): Coefficient for KL loss.
-            use_kl_loss (bool): If true, use KL loss.
-        """
-
-        def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
-
-        # Compute vtrace on the CPU for better perf.
-        with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=behaviour_logits,
-                target_policy_logits=old_policy_behaviour_logits,
-                actions=tf.unstack(actions, axis=2),
-                discounts=tf.cast(~dones, tf.float32) * discount,
-                rewards=rewards,
-                values=values,
-                bootstrap_value=bootstrap_value,
-                dist_class=dist_class,
-                model=model,
-                clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
-
-        self.is_ratio = tf.clip_by_value(
-            tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
-        logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
-
-        advantages = self.vtrace_returns.pg_advantages
-        surrogate_loss = tf.minimum(
-            advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
-
-        self.mean_kl = reduce_mean_valid(action_kl)
-        self.pi_loss = -reduce_mean_valid(surrogate_loss)
-
-        # The baseline loss
-        delta = values - self.vtrace_returns.vs
-        self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
-
-        # The entropy loss
-        self.entropy = reduce_mean_valid(actions_entropy)
-
-        # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
-
-        # Optional additional KL Loss
-        if use_kl_loss:
-            self.total_loss += cur_kl_coeff * self.mean_kl
-
-
-def build_appo_model(policy, obs_space, action_space, config):
+def build_appo_model(policy: Policy, obs_space: gym.spaces.Space, action_space: gym.spaces.Space, config: TrainerConfigDict) -> ModelV2:
     _, logit_dim = ModelCatalog.get_action_dist(action_space, config["model"])
 
     policy.model = ModelCatalog.get_model_v2(
@@ -254,7 +87,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         behaviour_logits, output_hidden_shape, axis=1)
     unpacked_old_policy_behaviour_logits = tf.split(
         old_policy_behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
+    #unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
     old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
@@ -269,10 +102,13 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     else:
         mask = tf.ones_like(rewards)
 
+    def reduce_mean_valid(t):
+        return tf.reduce_mean(tf.boolean_mask(t, mask))
+
     if policy.config["vtrace"]:
         logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
-        # Prepare actions for loss
+        # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
             actions, axis=1)
 
@@ -280,63 +116,103 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         mean_kl = make_time_major(
             old_policy_action_dist.multi_kl(action_dist), drop_last=True)
 
-        policy.loss = VTraceSurrogateLoss(
-            actions=make_time_major(loss_actions, drop_last=True),
-            prev_actions_logp=make_time_major(
-                prev_action_dist.logp(actions), drop_last=True),
-            actions_logp=make_time_major(
-                action_dist.logp(actions), drop_last=True),
-            old_policy_actions_logp=make_time_major(
-                old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
-            if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(
-                action_dist.multi_entropy(), drop_last=True),
-            dones=make_time_major(dones, drop_last=True),
-            behaviour_logits=make_time_major(
-                unpacked_behaviour_logits, drop_last=True),
-            old_policy_behaviour_logits=make_time_major(
-                unpacked_old_policy_behaviour_logits, drop_last=True),
-            target_logits=make_time_major(unpacked_outputs, drop_last=True),
-            discount=policy.config["gamma"],
-            rewards=make_time_major(rewards, drop_last=True),
-            values=make_time_major(values, drop_last=True),
-            bootstrap_value=make_time_major(values)[-1],
-            dist_class=Categorical if is_multidiscrete else dist_class,
-            model=policy.model,
-            valid_mask=make_time_major(mask, drop_last=True),
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
-            clip_pg_rho_threshold=policy.config[
-                "vtrace_clip_pg_rho_threshold"],
-            clip_param=policy.config["clip_param"],
-            cur_kl_coeff=policy.kl_coeff,
-            use_kl_loss=policy.config["use_kl_loss"])
+        # Compute vtrace on the CPU for better perf.
+        with tf.device("/cpu:0"):
+            vtrace_returns = vtrace.multi_from_logits(
+                behaviour_policy_logits=unpacked_behaviour_logits,
+                target_policy_logits=unpacked_old_policy_behaviour_logits,
+                actions=tf.unstack(loss_actions, axis=2),
+                discounts=tf.cast(~dones, tf.float32) * policy.config["gamma"],
+                rewards=rewards,
+                values=values,
+                bootstrap_value=make_time_major(values)[-1],
+                dist_class=Categorical if is_multidiscrete else dist_class,
+                model=model,
+                clip_rho_threshold=tf.cast(policy.config["vtrace_clip_rho_threshold"],
+                                           tf.float32),
+                clip_pg_rho_threshold=tf.cast(policy.config["vtrace_clip_pg_rho_threshold"],
+                                              tf.float32))
+
+        actions_logp = make_time_major(
+            action_dist.logp(loss_actions), drop_last=True)
+        prev_actions_logp = make_time_major(
+            prev_action_dist.logp(loss_actions), drop_last=True)
+        old_policy_actions_logp = make_time_major(
+                old_policy_action_dist.logp(loss_actions), drop_last=True)
+
+        is_ratio = tf.clip_by_value(
+            tf.math.exp(prev_actions_logp - old_policy_actions_logp),
+            0.0, 2.0)
+        logp_ratio = is_ratio * tf.exp(actions_logp - prev_actions_logp)
+        policy._is_ratio = is_ratio
+
+        advantages = vtrace_returns.pg_advantages
+        surrogate_loss = tf.minimum(
+            advantages * logp_ratio,
+            advantages * tf.clip_by_value(logp_ratio, 1 - policy.config["clip_param"],
+                                          1 + policy.config["clip_param"]))
+
+        action_kl = tf.reduce_mean(mean_kl, axis=0) \
+            if is_multidiscrete else mean_kl
+        mean_kl = reduce_mean_valid(action_kl)
+        mean_policy_loss = -reduce_mean_valid(surrogate_loss)
+
+        # The value function loss.
+        delta = values - vtrace_returns.vs
+        value_targets = vtrace_returns.vs
+        mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
+
+        # The entropy loss.
+        actions_entropy = make_time_major(
+            action_dist.multi_entropy(), drop_last=True)
+        mean_entropy = reduce_mean_valid(actions_entropy)
+
     else:
         logger.debug("Using PPO surrogate loss (vtrace=False)")
 
         # Prepare KL for Loss
         mean_kl = make_time_major(prev_action_dist.multi_kl(action_dist))
 
-        policy.loss = PPOSurrogateLoss(
-            prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
-            actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
-            if is_multidiscrete else mean_kl,
-            actions_entropy=make_time_major(action_dist.multi_entropy()),
-            values=make_time_major(values),
-            valid_mask=make_time_major(mask),
-            advantages=make_time_major(train_batch[Postprocessing.ADVANTAGES]),
-            value_targets=make_time_major(
-                train_batch[Postprocessing.VALUE_TARGETS]),
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            entropy_coeff=policy.config["entropy_coeff"],
-            clip_param=policy.config["clip_param"],
-            cur_kl_coeff=policy.kl_coeff,
-            use_kl_loss=policy.config["use_kl_loss"])
+        logp_ratio = tf.math.exp(make_time_major(action_dist.logp(actions)) - make_time_major(prev_action_dist.logp(actions)))
 
-    return policy.loss.total_loss
+        advantages = make_time_major(
+            train_batch[Postprocessing.ADVANTAGES])
+        surrogate_loss = tf.minimum(
+            advantages * logp_ratio,
+            advantages * tf.clip_by_value(logp_ratio, 1 - policy.config["clip_param"],
+                                          1 + policy.config["clip_param"]))
+
+        action_kl = tf.reduce_mean(mean_kl, axis=0) \
+            if is_multidiscrete else mean_kl
+        mean_kl = reduce_mean_valid(action_kl)
+        mean_policy_loss = -reduce_mean_valid(surrogate_loss)
+
+        # The value function loss.
+        value_targets = make_time_major(
+            train_batch[Postprocessing.VALUE_TARGETS])
+        delta = values - value_targets
+        mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
+
+        # The entropy loss.
+        mean_entropy = reduce_mean_valid(
+            make_time_major(action_dist.multi_entropy()))
+
+    # The summed weighted loss
+    total_loss = (mean_policy_loss + mean_vf_loss * policy.config["vf_loss_coeff"] -
+                  mean_entropy * policy.config["entropy_coeff"])
+
+    # Optional additional KL Loss
+    if policy.config["use_kl_loss"]:
+        total_loss += policy.kl_coeff * mean_kl
+
+    policy._mean_policy_loss = mean_policy_loss
+    policy._mean_kl = mean_kl
+    policy._mean_vf_loss = mean_vf_loss
+    policy._mean_entropy = mean_entropy
+    policy._value_targets = value_targets
+    policy._total_loss = total_loss
+
+    return total_loss
 
 
 def stats(policy, train_batch):
@@ -348,23 +224,23 @@ def stats(policy, train_batch):
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "policy_loss": policy._mean_policy_loss,
+        "entropy": policy._mean_entropy,
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
+        "vf_loss": policy._vf_loss,
         "vf_explained_var": explained_variance(
-            tf.reshape(policy.loss.value_targets, [-1]),
+            tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
     }
 
     if policy.config["vtrace"]:
-        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0, 1])
-        stats_dict.update({"mean_IS": is_stat_mean})
-        stats_dict.update({"var_IS": is_stat_var})
+        is_stat_mean, is_stat_var = tf.nn.moments(policy._is_ratio, [0, 1])
+        stats_dict["mean_IS"] = is_stat_mean
+        stats_dict["var_IS"] = is_stat_var
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy.loss.mean_kl})
-        stats_dict.update({"KL_Coeff": policy.kl_coeff})
+        stats_dict["kl"] = policy._mean_kl
+        stats_dict["KL_Coeff"] = policy.kl_coeff
 
     return stats_dict
 

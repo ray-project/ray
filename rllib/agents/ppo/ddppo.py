@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 
-# Adds the following updates to the `PPOTrainer` config in
-# rllib/agents/ppo/ppo.py.
+    # Adds the following updates to the `PPOTrainer` config in
+    # rllib/agents/ppo/ppo.py.
 DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
     ppo.DEFAULT_CONFIG,
     {
@@ -232,7 +232,7 @@ def execution_plan(workers: WorkerSet,
 
 # Build a child class of `Trainer`, based on PPOTrainer's setup.
 # Note: The generated class is NOT a sub-class of PPOTrainer, but directly of
-# Trainer (and the mixins defined in ppo.py).
+# the `Trainer` class.
 DDPPOTrainer = ppo.PPOTrainer.with_updates(
     name="DDPPO",
     default_config=DEFAULT_CONFIG,
