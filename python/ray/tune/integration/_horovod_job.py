@@ -80,6 +80,10 @@ class BaseHorovodWorker:
                          executable_cls=None,
                          executable_args=None,
                          executable_kwargs=None):
+        """Instantiates the executable class with provided args.
+
+        If none, self.executable = None.
+        """
         executable_args = executable_args or []
         executable_kwargs = executable_kwargs or {}
         if executable_cls:
@@ -95,13 +99,24 @@ class BaseHorovodWorker:
 class NodeColocator:
     """Responsible for colocation of child actors.
 
-    These actors are given resources equal to the sum of their children.
+    These actors are given resources equal to the sum of resources
+    to be effectively allocated to their children. The child
+    workers are currently allocated 0 resources in this implementation.
+
     This is a mechanism for gang-scheduling and could be replaced
     later on with placement groups. Gang-scheduling must occur because
     otherwise another concurrent group could be placed on this node.
 
     Right now, the only resources that are explicitly propogated to
     underlying colocated workers are cuda visible devices.
+
+    Args:
+        node_rank (int): Rank of the node that this colocator is placed on.
+        node_size (int): Total number of nodes (hosts) that are
+            participating in the job.
+        world_size (int): Total number of workers (slots) participating
+            in the job across all nodes.
+        use_gpu (bool): Whether to utilize the GPUs on the node.
     """
 
     def __init__(self, *, node_rank: int, node_size: int, world_size: int,
@@ -114,9 +129,22 @@ class NodeColocator:
             assert len(gpu_ids) == node_size, gpu_ids
         self.workers = []
 
-    def create_workers(self, executable_cls: type, executable_args: list,
-                       executable_kwargs: dict):
-        """Colocates a number of workers."""
+    def create_workers(self,
+                       executable_cls: type = None,
+                       executable_args: list = None,
+                       executable_kwargs: dict = None):
+        """Colocates a number of workers.
+
+        Also passes on the CUDA_VISIBLE_DEVICES to each worker.
+
+        Args:
+            executable_cls (type): Class of object to be created on all
+                workers.
+            executable_args (list): Initialization arguments for the
+                executable_cls.
+            executable_kwargs (dict): Initialization arguments for the
+                executable_cls.
+        """
         # Create a node ip resource label so that we can pin
         # all of the child actors to the same node. This ensures
         # colocation and balanced training.
@@ -151,6 +179,10 @@ class NodeColocator:
 
 
 class Coordinator:
+    """Responsible for instantiating the Rendezvous server.
+
+    Args:
+        settings: Horovod Settings object."""
     rendezvous = None
     global_rendezv_port = None
     nics = None
@@ -194,7 +226,8 @@ class Coordinator:
         """Creates the rendezvous server and identifies the nics to be used.
 
         Returns:
-            Environment variables for each worker. """
+            Environment variables for each worker.
+        """
 
         # start global rendezvous server and get port that it is listening on
         self.rendezvous = RendezvousServer(self.settings.verbose)
@@ -234,7 +267,7 @@ class HorovodJob:
         num_slots (int): Humber of workers to be placed on each machine.
         use_gpu (bool): Whether to use GPU for allocation. TODO: this
             can be removed.
-        cpus_per_worker (int): Number of CPU resources to allocate to
+        cpus_per_slot (int): Number of CPU resources to allocate to
             each worker.
     """
 
@@ -264,12 +297,12 @@ class HorovodJob:
                  settings,
                  num_hosts: int = 1,
                  num_slots: int = 1,
-                 cpus_per_worker: int = 1,
+                 cpus_per_slot: int = 1,
                  use_gpu: bool = False):
         self.settings = settings
         self.num_hosts = num_hosts
         self.num_slots = num_slots
-        self.cpus_per_worker = cpus_per_worker
+        self.cpus_per_slot = cpus_per_slot
         self.use_gpu = use_gpu
 
     @property
@@ -328,7 +361,7 @@ class HorovodJob:
         """
 
         def resources_per_host():
-            num_cpus = self.cpus_per_worker * self.num_slots
+            num_cpus = self.cpus_per_slot * self.num_slots
             num_gpus = self.num_slots * int(self.use_gpu)
             return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 

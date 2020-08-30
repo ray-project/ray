@@ -52,7 +52,7 @@ class _HorovodTrainable(tune.Trainable):
                 self._timeout_s, self._ssh_identity_file, self._ssh_str)
         self._job = HorovodJob(
             settings,
-            cpus_per_worker=self._num_cpus_per_worker,
+            cpus_per_slot=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
