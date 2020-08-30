@@ -277,6 +277,7 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         self.batch = batch
         self.live_trials = set()
+        self.cached_results = {}
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
@@ -299,15 +300,15 @@ class ConcurrencyLimiter(Searcher):
         if trial_id not in self.live_trials:
             return
         elif self.batch:
-            self._cached_results[trial_id] = (result, error)
-            if len(self._cached_results) == self.max_concurrent:
+            self.cached_results[trial_id] = (result, error)
+            if len(self.cached_results) == self.max_concurrent:
                 # Update the underlying searcher once the
                 # full batch is completed.
-                for trial_id, (result, error) in self._cached_results.items():
+                for trial_id, (result, error) in self.cached_results.items():
                     self.searcher.on_trial_complete(
                         trial_id, result=result, error=error)
                     self.live_trials.remove(trial_id)
-                self._cached_results = {}
+                self.cached_results = {}
             else:
                 return
         else:
