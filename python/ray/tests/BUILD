@@ -101,13 +101,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_stress_faiure.py",
+    "test_stress_failure.py",
     "test_failure.py"
   ],
   size = "large",
   extra_srcs = SRCS,
-  # TODO(ekl) enable again once we support direct call reconstruction
-  tags = ["exclusive", "manual"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 
