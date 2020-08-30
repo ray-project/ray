@@ -53,7 +53,7 @@ class Cluster:
         output_info = ray.init(
             ignore_reinit_error=True,
             address=self.redis_address,
-            redis_password=self.redis_password)
+            _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 
