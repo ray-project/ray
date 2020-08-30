@@ -282,7 +282,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "policy_loss": policy._mean_policy_loss,
         "entropy": policy._mean_entropy,
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy._vf_loss,
+        "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),

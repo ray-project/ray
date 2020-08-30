@@ -14,7 +14,7 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
-from ray.rllib.agents.ppo.appo_tf_policy import build_appo_model, \
+from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model, \
     postprocess_trajectory
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin, \
     KLCoeffMixin
@@ -325,7 +325,7 @@ AsyncPPOTorchPolicy = build_torch_policy(
     optimizer_fn=choose_optimizer,
     before_init=setup_early_mixins,
     after_init=setup_late_mixins,
-    make_model=build_appo_model,
+    make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
