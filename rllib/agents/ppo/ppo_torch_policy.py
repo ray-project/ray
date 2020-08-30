@@ -1,6 +1,7 @@
 """
 PyTorch policy class used for PPO.
 """
+import gym
 import logging
 import numpy as np
 from typing import Dict, List, Type, Union
@@ -8,7 +9,7 @@ from typing import Dict, List, Type, Union
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config, setup_mixins
+    setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -21,7 +22,7 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
     explained_variance, sequence_mask
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 
@@ -234,6 +235,24 @@ class ValueNetworkMixin:
                 return 0.0
 
         self._value = value
+
+
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before PPOPolicy initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
+    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    KLCoeffMixin.__init__(policy, config)
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 def training_view_requirements_fn(
