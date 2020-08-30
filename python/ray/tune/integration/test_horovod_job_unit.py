@@ -94,3 +94,9 @@ def test_horovod_mixin(ray_start_2_cpus):
     DUMMY_VALUE = 1123123
     actor.update_env_vars.remote({"TEST": DUMMY_VALUE})
     assert ray.get(actor.env_vars.remote())["TEST"] == str(DUMMY_VALUE)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
