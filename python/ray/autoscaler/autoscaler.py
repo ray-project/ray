@@ -271,9 +271,10 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"],
-                                               available_node_types=new_config.get("available_node_types"))
+            new_launch_hash = hash_launch_conf(
+                new_config["worker_nodes"],
+                new_config["auth"],
+                available_node_types=new_config.get("available_node_types"))
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
@@ -290,7 +291,7 @@ class StandardAutoscaler:
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
 
             self.provider = get_node_provider(self.config["provider"],
-                                            self.config["cluster_name"])
+                                              self.config["cluster_name"])
             # Check whether we can enable the resource demand scheduler.
             if "available_node_types" in self.config:
                 self.available_node_types = self.config["available_node_types"]
