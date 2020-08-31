@@ -201,7 +201,7 @@ Academic Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Other Libraries
+   :caption: Community Libraries
 
    multiprocessing.rst
    joblib.rst
