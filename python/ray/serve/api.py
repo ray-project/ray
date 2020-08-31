@@ -235,7 +235,7 @@ def update_backend_config(
 
 
 @_ensure_connected
-def get_backend_config(backend_tag: str) -> BackendConfig:
+def get_backend_config(backend_tag: str) -> "BackendConfig":
     """Get the backend configuration for a backend tag.
 
     Args:

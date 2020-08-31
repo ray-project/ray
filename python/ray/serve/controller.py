@@ -67,7 +67,7 @@ class BackendInfo(BaseModel):
     # TODO(architkulkarni): Add type hint for worker_class after upgrading
     # cloudpickle and adding types to RayServeWrappedWorker
     worker_class: Any
-    backend_config: BackendConfig
+    backend_config: "BackendConfig"
     replica_config: ReplicaConfig
 
     class Config:
@@ -369,7 +369,7 @@ class ServeController:
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
-    def get_backend_configs(self) -> Dict[str, BackendConfig]:
+    def get_backend_configs(self) -> "Dict[str, BackendConfig]":
         """Fetched by the router on startup."""
         backend_configs = {}
         for backend, info in self.backends.items():
@@ -746,7 +746,7 @@ class ServeController:
             await self._remove_pending_endpoints()
 
     async def create_backend(self, backend_tag: str,
-                             backend_config: BackendConfig,
+                             backend_config: "BackendConfig",
                              replica_config: ReplicaConfig) -> None:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
@@ -828,7 +828,7 @@ class ServeController:
 
     async def update_backend_config(
             self, backend_tag: str,
-            config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
+            config_options: "Union[BackendConfig, Dict[str, Any]]") -> None:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (backend_tag in self.backends
@@ -880,7 +880,7 @@ class ServeController:
         if len(broadcast_futures) > 0:
             await asyncio.gather(*broadcast_futures)
 
-    def get_backend_config(self, backend_tag: str) -> BackendConfig:
+    def get_backend_config(self, backend_tag: str) -> "BackendConfig":
         """Get the current config for the specified backend."""
         assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
