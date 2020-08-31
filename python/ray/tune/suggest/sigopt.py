@@ -35,7 +35,10 @@ class SigOptSearch(Searcher):
         name (str): Name of experiment. Required by SigOpt.
         max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
-        connection (Connection): an existing connection to SigOpt.
+        connection (Connection): An existing connection to SigOpt.
+        observation_budget (int): Optional, can improve SigOpt performance.
+        project (str): Optional, Project name to assign this experiment to.
+            SigOpt can group experiments by project
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -73,6 +76,8 @@ class SigOptSearch(Searcher):
                  max_concurrent=1,
                  reward_attr=None,
                  connection=None,
+                 observation_budget=None,
+                 project=None,
                  metric="episode_reward_mean",
                  mode="max",
                  **kwargs):
@@ -97,11 +102,18 @@ class SigOptSearch(Searcher):
             self._metric_op = -1.
         self._live_trial_mapping = {}
 
-        self.experiment = self.conn.experiments().create(
+        sigopt_params = dict(
             name=name,
             parameters=space,
-            parallel_bandwidth=self._max_concurrent,
-        )
+            parallel_bandwidth=self._max_concurrent)
+
+        if observation_budget is not None:
+            sigopt_params["observation_budget"] = observation_budget
+
+        if project is not None:
+            sigopt_params["project"] = project
+
+        self.experiment = self.conn.experiments().create(**sigopt_params)
 
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
