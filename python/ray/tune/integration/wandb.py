@@ -2,13 +2,11 @@ import os
 
 from multiprocessing import Process, Queue
 from numbers import Number
-from typing import Dict
 
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
-from ray.tune.utils import flatten_dict
 
 try:
     import wandb
