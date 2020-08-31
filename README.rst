@@ -262,10 +262,12 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 whitepaper`_ **(new)**
-- `Ray paper`_
-- `Ray HotOS paper`_
 - `RLlib paper`_
 - `Tune paper`_
+
+*Older documents:*
+- `Ray paper`_
+- `Ray HotOS paper`_
 
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
