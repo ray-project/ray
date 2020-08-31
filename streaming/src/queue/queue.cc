@@ -101,7 +101,7 @@ size_t Queue::PendingCount() {
   return begin->SeqId() - end->SeqId() + 1;
 }
 
-Status WriterQueue::Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
+Status WriterQueue::Push(const uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
                          uint64_t msg_id_start, uint64_t msg_id_end, bool raw) {
   if (IsPendingFull(buffer_size)) {
     return Status::OutOfMemory("Queue Push OutOfMemory");
