@@ -2,6 +2,8 @@ import copy
 import os
 import logging
 import pickle
+import typing
+from enum import Enum
 try:
     import sigopt as sgo
 except ImportError:
@@ -10,6 +12,17 @@ except ImportError:
 from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
+
+
+class Objective(Enum):
+    maximize: 1
+    minimize : 2
+
+
+class SigOptMetric(typing.NamedTuple):
+    name: str
+    objective: Objective
+    stddev_name: typing.Optional[str] = None
 
 
 class SigOptSearch(Searcher):
@@ -39,9 +52,13 @@ class SigOptSearch(Searcher):
         observation_budget (int): Optional, can improve SigOpt performance.
         project (str): Optional, Project name to assign this experiment to.
             SigOpt can group experiments by project
-        metric (str): The training result objective value attribute.
+        metric (str or List(SigOptMetric)): If str then the training result
+            objective value attribute. If list(SigOptMetric) then a list of
+            SigOptMetrics that can be optimized together. SigOpt currently
+            supports up to 2 metrics.
         mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
+            minimizing or maximizing the metric attribute. Will not be used
+            if metric is list.
 
     Example:
 
@@ -113,6 +130,9 @@ class SigOptSearch(Searcher):
         if project is not None:
             sigopt_params["project"] = project
 
+        if isinstance(metric, list):
+            sigopt_params["metric"] = self.serialize_metric(metric)
+
         self.experiment = self.conn.experiments().create(**sigopt_params)
 
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
@@ -139,10 +159,13 @@ class SigOptSearch(Searcher):
         Creates SigOpt Observation object for trial.
         """
         if result:
-            self.conn.experiments(self.experiment.id).observations().create(
-                suggestion=self._live_trial_mapping[trial_id].id,
-                value=self._metric_op * result[self._metric],
-            )
+            payload = dict(suggestion=self._live_trial_mapping[trial_id].id)
+            if isinstance(self.metric, list):
+                payload["values"] = self.serialize_result(result)
+            else:
+                payload["value"] = self._metric_op * result[self._metric]
+
+            self.conn.experiments(self.experiment.id).observations().create(**payload)
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
         elif error:
@@ -150,6 +173,39 @@ class SigOptSearch(Searcher):
             self.conn.experiments(self.experiment.id).observations().create(
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)
         del self._live_trial_mapping[trial_id]
+
+    @staticmethod
+    def serialize_metric(metrics):
+        """
+        Converts metrics to https://app.sigopt.com/docs/objects/metric
+        """
+        return [
+            dict(name=metric.name,
+                 objective=metric.score.name,
+                 strategy="optimize")
+            for metric in metrics
+        ]
+
+    def serialize_result(self, result):
+        """
+        Converts results to https://app.sigopt.com/docs/objects/metric_evaluation
+        """
+        missing_scores = [metric.name for metric in self._metric
+                          if metric.name not in result]
+
+        if missing_scores:
+            raise ValueError(
+                f"Some metrics specified during initialization are missing. "
+                f"Missing metrics: {missing_scores}, provided result {result}"
+            )
+
+        values = []
+        for metric in self._metric:
+            value = dict(name=metric.name, value=result[metric.name])
+            if metric.stddev_name is not None:
+                value["value_stddev"] = result[metric.stddev_name]
+            values.append(value)
+        return values
 
     def save(self, checkpoint_path):
         trials_object = (self.conn, self.experiment)
