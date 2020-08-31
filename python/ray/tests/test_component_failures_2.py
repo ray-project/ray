@@ -70,7 +70,8 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     for object_ref in object_refs:
         try:
             ray.get(object_ref)
-        except (ray.exceptions.RayTaskError, ray.exceptions.RayWorkerError):
+        except (ray.exceptions.RayTaskError,
+                ray.exceptions.WorkerCrashedError):
             pass
 
 

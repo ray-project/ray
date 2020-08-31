@@ -256,35 +256,18 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
-def validate_redis_address(address, redis_address):
-    """Validates redis address parameter and splits it into host/ip components.
-
-    We temporarily support both 'address' and 'redis_address', so both are
-    handled here.
+def validate_redis_address(address):
+    """Validates address parameter.
 
     Returns:
         redis_address: string containing the full <host:port> address.
         redis_ip: string representing the host portion of the address.
         redis_port: integer representing the port portion of the address.
-
-    Raises:
-        ValueError: if both address and redis_address were specified or the
-            address was malformed.
     """
 
-    if redis_address == "auto":
-        raise ValueError("auto address resolution not supported for "
-                         "redis_address parameter. Please use address.")
-
-    if address:
-        if redis_address:
-            raise ValueError(
-                "Both address and redis_address specified. Use only address.")
-        if address == "auto":
-            address = find_redis_address_or_die()
-        redis_address = address
-
-    redis_address = address_to_ip(redis_address)
+    if address == "auto":
+        address = find_redis_address_or_die()
+    redis_address = address_to_ip(address)
 
     redis_address_parts = redis_address.split(":")
     if len(redis_address_parts) != 2:
@@ -1430,6 +1413,7 @@ def start_raylet(redis_address,
             os.path.dirname(os.path.abspath(__file__)),
             "new_dashboard/agent.py"),
         "--redis-address={}".format(redis_address),
+        "--metrics-export-port={}".format(metrics_export_port),
         "--node-manager-port={}".format(node_manager_port),
         "--object-store-name={}".format(plasma_store_name),
         "--raylet-name={}".format(raylet_name),

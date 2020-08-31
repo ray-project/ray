@@ -11,7 +11,7 @@ public class Config {
   public static final String MEMORY_CHANNEL = "memory_channel";
   public static final String NATIVE_CHANNEL = "native_channel";
   public static final String CHANNEL_SIZE = "channel_size";
-  public static final String CHANNEL_SIZE_DEFAULT = String.valueOf((long)Math.pow(10, 8));
+  public static final String CHANNEL_SIZE_DEFAULT = String.valueOf((long) Math.pow(10, 8));
   public static final String IS_RECREATE = "streaming.is_recreate";
   // return from DataReader.getBundle if only empty message read in this interval.
   public static final String TIMER_INTERVAL_MS = "timer_interval_ms";

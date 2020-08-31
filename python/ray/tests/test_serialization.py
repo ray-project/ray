@@ -5,6 +5,7 @@ import logging
 import re
 import string
 import sys
+import weakref
 
 import numpy as np
 import pytest
@@ -315,30 +316,6 @@ def test_numpy_serialization(ray_start_regular):
     assert len(buffers) == 1
 
 
-def test_numpy_subclass_serialization(ray_start_regular):
-    class MyNumpyConstant(np.ndarray):
-        def __init__(self, value):
-            super().__init__()
-            self.constant = value
-
-        def __str__(self):
-            print(self.constant)
-
-    constant = MyNumpyConstant(123)
-
-    def explode(x):
-        raise RuntimeError("Expected error.")
-
-    ray.register_custom_serializer(
-        type(constant), serializer=explode, deserializer=explode)
-
-    try:
-        ray.put(constant)
-        assert False, "Should never get here!"
-    except (RuntimeError, IndexError):
-        print("Correct behavior, proof that customer serializer was used.")
-
-
 def test_numpy_subclass_serialization_pickle(ray_start_regular):
     class MyNumpyConstant(np.ndarray):
         def __init__(self, value):
@@ -446,7 +423,7 @@ def test_register_class(ray_start_2_cpus):
     assert ray.get(h2.remote(10)).value == 10
 
     # Test registering multiple classes with the same name.
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def j():
         class Class0:
             def method0(self):
@@ -519,6 +496,51 @@ def test_register_class(ray_start_2_cpus):
         assert not hasattr(c1, "method2")
         assert not hasattr(c2, "method0")
         assert not hasattr(c2, "method1")
+
+
+def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
+    x = np.full((2, 2), 1.)
+    o = ray.put(x)
+    y = ray.get(o)
+    with pytest.raises(
+            ValueError, match="assignment destination is read-only"):
+        y[0, 0] = 9.
+
+
+def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
+    # bpo-39492: reducer_override used to induce a spurious reference cycle
+    # inside the Pickler object, that could prevent all serialized objects
+    # from being garbage-collected without explicity invoking gc.collect.
+
+    # test a dynamic function
+    def f():
+        return 4669201609102990671853203821578
+
+    wr = weakref.ref(f)
+
+    bio = io.BytesIO()
+    from ray.cloudpickle import CloudPickler, loads, dumps
+    p = CloudPickler(bio, protocol=5)
+    p.dump(f)
+    new_f = loads(bio.getvalue())
+    assert new_f() == 4669201609102990671853203821578
+
+    del p
+    del f
+
+    assert wr() is None
+
+    # test a dynamic class
+    class ShortlivedObject:
+        def __del__(self):
+            print("Went out of scope!")
+
+    obj = ShortlivedObject()
+    new_obj = weakref.ref(obj)
+
+    dumps(obj)
+    del obj
+    assert new_obj() is None
 
 
 if __name__ == "__main__":
