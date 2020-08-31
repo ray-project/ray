@@ -37,10 +37,10 @@ def setup_static_dir():
             errno.ENOENT, "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
-            "(cd python/ray/{}/client "
+            f"(cd python/ray/{module_name}/client "
             "&& npm install "
             "&& npm ci "
-            "&& npm run build)".format(module_name), build_dir)
+            "&& npm run build)", build_dir)
 
     static_dir = os.path.join(build_dir, "static")
     routes.static("/static", static_dir, follow_symlinks=True)
@@ -59,14 +59,21 @@ class Dashboard:
         port(int): Port number of dashboard aiohttp server.
         redis_address(str): GCS address of a Ray cluster
         redis_password(str): Redis password to access GCS
+        log_dir(str): Log directory of dashboard.
     """
 
-    def __init__(self, host, port, redis_address, redis_password=None):
+    def __init__(self,
+                 host,
+                 port,
+                 redis_address,
+                 redis_password=None,
+                 log_dir=None):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
             http_port=port,
             redis_address=redis_address,
-            redis_password=redis_password)
+            redis_password=redis_password,
+            log_dir=log_dir)
 
         # Setup Dashboard Routes
         build_dir = setup_static_dir()
@@ -197,7 +204,8 @@ if __name__ == "__main__":
             args.host,
             args.port,
             args.redis_address,
-            redis_password=args.redis_password)
+            redis_password=args.redis_password,
+            log_dir=log_dir)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:

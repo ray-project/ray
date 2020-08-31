@@ -697,6 +697,14 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.destroy_event_loop_if_exists()
 
 
+# An empty profile event context to be used when the timeline is disabled.
+cdef class EmptyProfileEvent:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -1172,9 +1180,12 @@ cdef class CoreWorker:
         return resources_dict
 
     def profile_event(self, c_string event_type, object extra_data=None):
-        return ProfileEvent.make(
-            CCoreWorkerProcess.GetCoreWorker().CreateProfileEvent(event_type),
-            extra_data)
+        if RayConfig.instance().enable_timeline():
+            return ProfileEvent.make(
+                CCoreWorkerProcess.GetCoreWorker().CreateProfileEvent(
+                    event_type), extra_data)
+        else:
+            return EmptyProfileEvent()
 
     def remove_actor_handle_reference(self, ActorID actor_id):
         cdef:

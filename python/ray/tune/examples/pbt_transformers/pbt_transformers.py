@@ -106,7 +106,7 @@ def tune_transformer(num_samples=8,
                      gpus_per_trial=0,
                      smoke_test=False,
                      ray_address=None):
-    ray.init(ray_address, _log_to_driver=False)
+    ray.init(ray_address, log_to_driver=False)
     data_dir_name = "./data" if not smoke_test else "./test_data"
     data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
     if not os.path.exists(data_dir):
