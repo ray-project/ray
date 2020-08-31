@@ -5,7 +5,7 @@ namespace ray {
 namespace streaming {
 
 std::shared_ptr<ReliabilityHelper> ReliabilityHelperFactory::GenReliabilityHelper(
-    StreamingConfig &config, StreamingBarrierHelper &barrier_helper, DataWriter *writer,
+    const StreamingConfig &config, StreamingBarrierHelper &barrier_helper, DataWriter *writer,
     DataReader *reader) {
   if (config.IsExactlyOnce()) {
     return std::make_shared<ExactlyOnceHelper>(config, barrier_helper, writer, reader);
@@ -14,7 +14,7 @@ std::shared_ptr<ReliabilityHelper> ReliabilityHelperFactory::GenReliabilityHelpe
   }
 }
 
-ReliabilityHelper::ReliabilityHelper(StreamingConfig &config,
+ReliabilityHelper::ReliabilityHelper(const StreamingConfig &config,
                                      StreamingBarrierHelper &barrier_helper,
                                      DataWriter *writer, DataReader *reader)
     : config_(config),
@@ -66,7 +66,7 @@ StreamingStatus ReliabilityHelper::HandleNoValidItem(ConsumerChannelInfo &channe
   return StreamingStatus::OK;
 }
 
-AtLeastOnceHelper::AtLeastOnceHelper(StreamingConfig &config,
+AtLeastOnceHelper::AtLeastOnceHelper(const StreamingConfig &config,
                                      StreamingBarrierHelper &barrier_helper,
                                      DataWriter *writer, DataReader *reader)
     : ReliabilityHelper(config, barrier_helper, writer, reader) {}
@@ -88,7 +88,7 @@ StreamingStatus AtLeastOnceHelper::HandleNoValidItem(ConsumerChannelInfo &channe
   return StreamingStatus::Invalid;
 }
 
-ExactlyOnceHelper::ExactlyOnceHelper(StreamingConfig &config,
+ExactlyOnceHelper::ExactlyOnceHelper(const StreamingConfig &config,
                                      StreamingBarrierHelper &barrier_helper,
                                      DataWriter *writer, DataReader *reader)
     : ReliabilityHelper(config, barrier_helper, writer, reader) {}

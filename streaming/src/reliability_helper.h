@@ -16,13 +16,13 @@ class DataReader;
 class ReliabilityHelperFactory {
  public:
   static std::shared_ptr<ReliabilityHelper> GenReliabilityHelper(
-      StreamingConfig &config, StreamingBarrierHelper &barrier_helper, DataWriter *writer,
+      const StreamingConfig &config, StreamingBarrierHelper &barrier_helper, DataWriter *writer,
       DataReader *reader);
 };
 
 class ReliabilityHelper {
  public:
-  ReliabilityHelper(StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
+  ReliabilityHelper(const StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
                     DataWriter *writer, DataReader *reader);
   virtual ~ReliabilityHelper() = default;
   // Only exactly same need override this function.
@@ -40,7 +40,7 @@ class ReliabilityHelper {
   virtual StreamingStatus HandleNoValidItem(ConsumerChannelInfo &channel_info);
 
  protected:
-  StreamingConfig &config_;
+  const StreamingConfig &config_;
   StreamingBarrierHelper &barrier_helper_;
   DataWriter *writer_;
   DataReader *reader_;
@@ -48,7 +48,7 @@ class ReliabilityHelper {
 
 class AtLeastOnceHelper : public ReliabilityHelper {
  public:
-  AtLeastOnceHelper(StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
+  AtLeastOnceHelper(const StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
                     DataWriter *writer, DataReader *reader);
   StreamingStatus InitChannelMerger(uint32_t timeout) override;
   StreamingStatus HandleNoValidItem(ConsumerChannelInfo &channel_info) override;
@@ -56,7 +56,7 @@ class AtLeastOnceHelper : public ReliabilityHelper {
 
 class ExactlyOnceHelper : public ReliabilityHelper {
  public:
-  ExactlyOnceHelper(StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
+  ExactlyOnceHelper(const StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
                     DataWriter *writer, DataReader *reader);
   bool FilterMessage(ProducerChannelInfo &channel_info, const uint8_t *data,
                      StreamingMessageType message_type,
