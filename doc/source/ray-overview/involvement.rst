@@ -1,4 +1,4 @@
-Ray is more than a framework for distributed applications but also an active community of developers,
+Ray is more than a framework for building distributed applications but also an active community of developers,
 researchers, and folks that love machine learning. Here's a list of tips for getting involved with the Ray community:
 
 - Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
