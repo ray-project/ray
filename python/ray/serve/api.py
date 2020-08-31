@@ -294,7 +294,7 @@ def create_backend(
         "is_blocking": replica_config.is_blocking
     }
     if isinstance(config, dict):
-        backend_config = BackendConfig.parse_obj(config.update(metadata))
+        backend_config = BackendConfig.parse_obj({**config, **metadata})
     elif isinstance(config, BackendConfig):
         backend_config = config.copy(update=metadata)
     backend_config._validate_complete()
