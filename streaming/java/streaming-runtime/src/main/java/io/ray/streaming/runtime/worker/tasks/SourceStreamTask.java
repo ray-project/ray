@@ -59,7 +59,7 @@ public class SourceStreamTask extends StreamTask {
           }
         }
 
-        sourceProcessor.fetch(lastCheckpointId + 1);
+        sourceProcessor.fetch();
       }
     } catch (Throwable e) {
       if (e instanceof ChannelInterruptException ||

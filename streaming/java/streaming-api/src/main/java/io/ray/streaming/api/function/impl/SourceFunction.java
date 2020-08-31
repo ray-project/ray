@@ -11,7 +11,7 @@ public interface SourceFunction<T> extends Function {
 
   void init(int totalParallel, int currentIndex);
 
-  void fetch(SourceContext<T> ctx, long checkpointId) throws Exception;
+  void fetch(SourceContext<T> ctx) throws Exception;
 
   void close();
 

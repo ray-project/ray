@@ -25,7 +25,7 @@ public interface Operator extends Serializable {
 
   ChainStrategy getChainStrategy();
 
-  Object doCheckpoint(long checkpointId);
+  Object doCheckpoint();
 
-  void loadCheckpoint(Object checkpointObject, long checkpointId);
+  void loadCheckpoint(Object checkpointObject);
 }

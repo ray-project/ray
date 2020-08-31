@@ -11,9 +11,9 @@ public interface Processor<T> extends Serializable {
 
   void process(T t);
 
-  Object doCheckpoint(long checkpointId);
+  Object doCheckpoint();
 
-  void loadCheckpoint(Object checkpointObject, long checkpointId);
+  void loadCheckpoint(Object checkpointObject);
 
   void close();
 }

@@ -86,19 +86,19 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   @Override
-  public Object doCheckpoint(long checkpointId) {
+  public Object doCheckpoint() {
     Object[] checkpoints = new Object[operators.size()];
     for (int i = 0; i < operators.size(); ++i) {
-      checkpoints[i] = operators.get(i).doCheckpoint(checkpointId);
+      checkpoints[i] = operators.get(i).doCheckpoint();
     }
     return checkpoints;
   }
 
   @Override
-  public void loadCheckpoint(Object checkpointObject, long checkpointId) {
+  public void loadCheckpoint(Object checkpointObject) {
     Object[] checkpoints = (Object[]) checkpointObject;
     for (int i = 0; i < operators.size(); ++i) {
-      operators.get(i).loadCheckpoint(checkpoints[i], checkpointId);
+      operators.get(i).loadCheckpoint(checkpoints[i]);
     }
   }
 
@@ -142,8 +142,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     }
 
     @Override
-    public void fetch(long checkpointId) {
-      sourceOperator.fetch(checkpointId);
+    public void fetch() {
+      sourceOperator.fetch();
     }
 
     @Override

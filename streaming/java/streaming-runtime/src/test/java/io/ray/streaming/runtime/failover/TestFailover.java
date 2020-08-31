@@ -67,7 +67,7 @@ public class TestFailover {
 
     @Override
     public void fetch(
-        SourceContext<Integer> ctx, long checkpointId) throws Exception {
+        SourceContext<Integer> ctx) throws Exception {
       Thread.sleep(10);
       if (value < total) {
         ctx.collect(value++);
@@ -79,14 +79,14 @@ public class TestFailover {
     }
 
     @Override
-    public void loadCheckpoint(Object checkpointObject, long checkpointId) {
+    public void loadCheckpoint(Object checkpointObject) {
       value = (Integer) checkpointObject;
       LOG.info("load checkpoint, value={}, checkpointId={}", value, checkpointId);
     }
 
     @Override
-    public Object doCheckpoint(long checkpointId) {
-      LOG.info("do checkpoint, value={}, checkpointId={}", value, checkpointId);
+    public Object doCheckpoint() {
+      LOG.info("do checkpoint, value={}", value);
       return value;
     }
   }

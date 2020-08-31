@@ -130,7 +130,7 @@ public abstract class StreamTask implements Runnable {
     // when use memory state, if actor throw exception, will miss state
     if (bytes != null) {
       opCheckpointInfo = Serializer.decode(bytes);
-      processor.loadCheckpoint(opCheckpointInfo.processorCheckpoint, lastCheckpointId);
+      processor.loadCheckpoint(opCheckpointInfo.processorCheckpoint);
       LOG.info(
           "Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.",
           bytes.length, opCheckpointInfo);
@@ -252,7 +252,7 @@ public abstract class StreamTask implements Runnable {
         inputPoints, outputPoints);
 
     this.lastCheckpointId = checkpointId;
-    Object processorCheckpoint = processor.doCheckpoint(checkpointId);
+    Object processorCheckpoint = processor.doCheckpoint();
 
     try {
       OpCheckpointInfo opCpInfo =

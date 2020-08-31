@@ -22,7 +22,7 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void fetch(SourceContext<T> ctx, long checkpointId) throws Exception {
+  public void fetch(SourceContext<T> ctx) throws Exception {
     if (finished) {
       return;
     }

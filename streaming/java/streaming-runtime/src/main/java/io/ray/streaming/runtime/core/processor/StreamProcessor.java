@@ -36,13 +36,13 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
   }
 
   @Override
-  public Object doCheckpoint(long checkpointId) {
-    return operator.doCheckpoint(checkpointId);
+  public Object doCheckpoint() {
+    return operator.doCheckpoint();
   }
 
   @Override
-  public void loadCheckpoint(Object checkpointObject, long checkpointId) {
-    operator.loadCheckpoint(checkpointObject, checkpointId);
+  public void loadCheckpoint(Object checkpointObject) {
+    operator.loadCheckpoint(checkpointObject);
   }
 
   @Override
