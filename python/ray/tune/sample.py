@@ -50,6 +50,22 @@ class Sampler:
         raise NotImplementedError
 
 
+class BaseSampler(Sampler):
+    pass
+
+
+class Uniform(Sampler):
+    pass
+
+
+class LogUniform(Sampler):
+    pass
+
+
+class Normal(Sampler):
+    pass
+
+
 class Grid(Sampler):
     """Dummy sampler used for grid search"""
 
@@ -61,7 +77,7 @@ class Grid(Sampler):
 
 
 class Float(Domain):
-    class _Uniform(Sampler):
+    class _Uniform(Uniform):
         def sample(self,
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
@@ -75,7 +91,7 @@ class Float(Domain):
                 return items[0]
             return list(items)
 
-    class _LogUniform(Sampler):
+    class _LogUniform(LogUniform):
         def __init__(self, base: int = 10):
             self.base = base
             assert self.base > 0, "Base has to be strictly greater than 0"
@@ -96,7 +112,7 @@ class Float(Domain):
                 return items[0]
             return list(items)
 
-    class _Normal(Sampler):
+    class _Normal(Normal):
         def __init__(self, mean: float = 0., sd: float = 0.):
             self.mean = mean
             self.sd = sd
@@ -124,11 +140,6 @@ class Float(Domain):
         self.min = min
         self.max = max
 
-    def normal(self, mean=0., sd=1.):
-        new = copy(self)
-        new.set_sampler(self._Normal(mean, sd))
-        return new
-
     def uniform(self):
         if not self.min > float("-inf"):
             raise ValueError(
@@ -155,6 +166,11 @@ class Float(Domain):
         new.set_sampler(self._LogUniform(base))
         return new
 
+    def normal(self, mean=0., sd=1.):
+        new = copy(self)
+        new.set_sampler(self._Normal(mean, sd))
+        return new
+
     def quantized(self, q: Number):
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
@@ -162,7 +178,7 @@ class Float(Domain):
 
 
 class Integer(Domain):
-    class _Uniform(Sampler):
+    class _Uniform(Uniform):
         def sample(self,
                    domain: "Integer",
                    spec: Optional[Union[List[Dict], Dict]] = None,
@@ -190,7 +206,7 @@ class Integer(Domain):
 
 
 class Categorical(Domain):
-    class _Uniform(Sampler):
+    class _Uniform(Uniform):
         def sample(self,
                    domain: "Categorical",
                    spec: Optional[Union[List[Dict], Dict]] = None,
@@ -225,7 +241,7 @@ class Categorical(Domain):
 
 
 class Iterative(Domain):
-    class _NextSampler(Sampler):
+    class _NextSampler(BaseSampler):
         def sample(self,
                    domain: "Iterative",
                    spec: Optional[Union[List[Dict], Dict]] = None,
@@ -244,7 +260,7 @@ class Iterative(Domain):
 
 
 class Function(Domain):
-    class _CallSampler(Sampler):
+    class _CallSampler(BaseSampler):
         def sample(self,
                    domain: "Function",
                    spec: Optional[Union[List[Dict], Dict]] = None,

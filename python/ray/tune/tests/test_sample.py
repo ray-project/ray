@@ -66,12 +66,12 @@ class SearchSpaceTest(unittest.TestCase):
                 yield i
 
         itr = tune.sample.Iterative(test_iter())
-        samples = itr.uniform().sample(size=5)
+        samples = itr.sample(size=5)
         self.assertTrue(any([-2 <= s <= 2 for s in samples]))
         self.assertTrue(all([c in samples for c in categories]))
 
         itr = tune.sample.Iterative(iter(categories))
-        samples = itr.uniform().sample(size=5)
+        samples = itr.sample(size=5)
         self.assertTrue(any([-2 <= s <= 2 for s in samples]))
         self.assertTrue(all([c in samples for c in categories]))
 
@@ -81,7 +81,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         fnc = tune.sample.Function(sample)
 
-        samples = fnc.uniform().sample(size=1000)
+        samples = fnc.sample(size=1000)
         self.assertTrue(any([-4 < s < 4 for s in samples]))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
