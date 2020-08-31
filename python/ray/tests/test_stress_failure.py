@@ -1,5 +1,4 @@
 import numpy as np
-import os
 import pytest
 import sys
 import time
@@ -38,9 +37,7 @@ def ray_start_reconstruction(request):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 def test_simple(ray_start_reconstruction):
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -87,9 +84,7 @@ def sorted_random_indexes(total, output_num):
     return random_indexes
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 def test_recursive(ray_start_reconstruction):
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -146,9 +141,6 @@ def test_recursive(ray_start_reconstruction):
 
 
 @pytest.mark.skip(reason="This test often hangs or fails in CI.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
 def test_multiple_recursive(ray_start_reconstruction):
     plasma_store_memory, _, cluster = ray_start_reconstruction
     # Define the size of one task's return argument so that the combined
@@ -219,9 +211,6 @@ def wait_for_errors(p, error_check):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
 def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
     p = error_pubsub
     plasma_store_memory, num_nodes, cluster = ray_start_reconstruction
@@ -288,9 +277,7 @@ def test_nondeterministic_task(ray_start_reconstruction, error_pubsub):
     assert cluster.remaining_processes_alive()
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Failing with new GCS API on Linux.")
+@pytest.mark.skip(reason="Failing with new GCS API on Linux.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
@@ -335,10 +322,9 @@ def test_driver_put_errors(ray_start_object_store_memory, error_pubsub):
         return len(errors) > 1
 
     errors = wait_for_errors(p, error_check)
-    assert all(
-        error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
-        or "ray.exceptions.UnreconstructableError" in error.error_messages
-        for error in errors)
+    assert all(error.type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.ObjectLostError" in error.error_messages
+               for error in errors)
 
 
 # NOTE(swang): This test tries to launch 1000 workers and breaks.

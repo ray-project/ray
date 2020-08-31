@@ -5,18 +5,18 @@ import time
 import pytest
 
 import ray
-from ray.exceptions import RayCancellationError, RayTaskError, \
-                           RayTimeoutError, RayWorkerError, \
-                           UnreconstructableError
+from ray.exceptions import TaskCancelledError, RayTaskError, \
+                           GetTimeoutError, WorkerCrashedError, \
+                           ObjectLostError
 from ray.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):
     if use_force:
-        return (RayTaskError, RayCancellationError, RayWorkerError,
-                UnreconstructableError)
+        return (RayTaskError, TaskCancelledError, WorkerCrashedError,
+                ObjectLostError)
     else:
-        return (RayTaskError, RayCancellationError)
+        return (RayTaskError, TaskCancelledError)
 
 
 @pytest.mark.parametrize("use_force", [True, False])
@@ -33,7 +33,7 @@ def test_cancel_chain(ray_start_regular, use_force):
     obj4 = wait_for.remote([obj3])
 
     assert len(ray.wait([obj1], timeout=.1)[0]) == 0
-    ray.cancel(obj1, use_force)
+    ray.cancel(obj1, force=use_force)
     for ob in [obj1, obj2, obj3, obj4]:
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(ob)
@@ -45,15 +45,15 @@ def test_cancel_chain(ray_start_regular, use_force):
     obj4 = wait_for.remote([obj3])
 
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
-    ray.cancel(obj3, use_force)
+    ray.cancel(obj3, force=use_force)
     for ob in [obj3, obj4]:
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(ob)
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(obj1, timeout=.1)
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(obj2, timeout=.1)
 
     signaler2.send.remote()
@@ -74,7 +74,7 @@ def test_cancel_multiple_dependents(ray_start_regular, use_force):
         deps.append(wait_for.remote([head]))
 
     assert len(ray.wait([head], timeout=.1)[0]) == 0
-    ray.cancel(head, use_force)
+    ray.cancel(head, force=use_force)
     for d in deps:
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(d)
@@ -86,7 +86,7 @@ def test_cancel_multiple_dependents(ray_start_regular, use_force):
         deps2.append(wait_for.remote([head]))
 
     for d in deps2:
-        ray.cancel(d, use_force)
+        ray.cancel(d, force=use_force)
 
     for d in deps2:
         with pytest.raises(valid_exceptions(use_force)):
@@ -111,11 +111,11 @@ def test_single_cpu_cancel(shutdown_only, use_force):
     indep = wait_for.remote([signaler.wait.remote()])
 
     assert len(ray.wait([obj3], timeout=.1)[0]) == 0
-    ray.cancel(obj3, use_force)
+    ray.cancel(obj3, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(obj3)
 
-    ray.cancel(obj1, use_force)
+    ray.cancel(obj1, force=use_force)
 
     for d in [obj1, obj2]:
         with pytest.raises(valid_exceptions(use_force)):
@@ -145,12 +145,12 @@ def test_comprehensive(ray_start_regular, use_force):
 
     assert len(ray.wait([a, b, a2, combo], timeout=1)[0]) == 0
 
-    ray.cancel(a, use_force)
+    ray.cancel(a, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a, 10)
+        ray.get(a, timeout=10)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a2, 10)
+        ray.get(a2, timeout=10)
 
     signaler.send.remote()
 
@@ -177,10 +177,10 @@ def test_stress(shutdown_only, use_force):
     cancelled = set()
     for t in tasks:
         if random.random() > 0.5:
-            ray.cancel(t, use_force)
+            ray.cancel(t, force=use_force)
             cancelled.add(t)
 
-    ray.cancel(first, use_force)
+    ray.cancel(first, force=use_force)
     cancelled.add(first)
 
     for done in cancelled:
@@ -188,7 +188,7 @@ def test_stress(shutdown_only, use_force):
             ray.get(done)
     for indx, t in enumerate(tasks):
         if sleep_or_no[indx]:
-            ray.cancel(t, use_force)
+            ray.cancel(t, force=use_force)
             cancelled.add(t)
         if t in cancelled:
             with pytest.raises(valid_exceptions(use_force)):
@@ -209,7 +209,7 @@ def test_fast(shutdown_only, use_force):
     ids = list()
     for _ in range(100):
         x = fast.remote("a")
-        ray.cancel(x, use_force)
+        ray.cancel(x, force=use_force)
         ids.append(x)
 
     @ray.remote
@@ -223,7 +223,7 @@ def test_fast(shutdown_only, use_force):
 
     for idx in range(100, 5100):
         if random.random() > 0.95:
-            ray.cancel(ids[idx], use_force)
+            ray.cancel(ids[idx], force=use_force)
     signaler.send.remote()
     for obj_ref in ids:
         try:
@@ -249,13 +249,13 @@ def test_remote_cancel(ray_start_regular, use_force):
     outer = remote_wait.remote([sig])
     inner = ray.get(outer)[0]
 
-    with pytest.raises(RayTimeoutError):
-        ray.get(inner, 1)
+    with pytest.raises(GetTimeoutError):
+        ray.get(inner, timeout=1)
 
-    ray.cancel(inner, use_force)
+    ray.cancel(inner, force=use_force)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(inner, 10)
+        ray.get(inner, timeout=10)
 
 
 if __name__ == "__main__":

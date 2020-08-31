@@ -1,11 +1,9 @@
 # coding: utf-8
-import io
 import logging
 import os
 import pickle
 import sys
 import time
-import weakref
 
 import numpy as np
 import pytest
@@ -64,12 +62,12 @@ def test_submit_api(shutdown_only):
     def g():
         return ray.get_gpu_ids()
 
-    assert f._remote([0], num_return_vals=0) is None
-    id1 = f._remote(args=[1], num_return_vals=1)
+    assert f._remote([0], num_returns=0) is None
+    id1 = f._remote(args=[1], num_returns=1)
     assert ray.get(id1) == [0]
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    id1, id2 = f._remote(args=[2], num_returns=2)
     assert ray.get([id1, id2]) == [0, 1]
-    id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
+    id1, id2, id3 = f._remote(args=[3], num_returns=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
         g._remote(args=[], num_cpus=1, num_gpus=1,
@@ -107,8 +105,62 @@ def test_submit_api(shutdown_only):
     ray.get(a2.method._remote())
 
     id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_return_vals=4)
+        args=["test"], kwargs={"b": 2}, num_returns=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
+
+
+def test_invalid_arguments(shutdown_only):
+    ray.init(num_cpus=2)
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'num_returns' only accepts 0 or a"
+                " positive integer"):
+
+            @ray.remote(num_returns=opt)
+            def g1():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_retries' only accepts 0, -1 or a"
+                " positive integer"):
+
+            @ray.remote(max_retries=opt)
+            def g2():
+                return 1
+
+    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_calls' only accepts 0 or a positive"
+                " integer"):
+
+            @ray.remote(max_calls=opt)
+            def g3():
+                return 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_restarts' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_restarts=opt)
+            class A1:
+                x = 1
+
+    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
+        with pytest.raises(
+                ValueError,
+                match="The keyword 'max_task_retries' only accepts -1, 0 or a"
+                " positive integer"):
+
+            @ray.remote(max_task_retries=opt)
+            class A2:
+                x = 1
 
 
 def test_many_fractional_resources(shutdown_only):
@@ -362,51 +414,6 @@ def test_ray_recursive_objects(ray_start_shared_local_modes):
         ray.put(obj)
 
 
-def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
-    # bpo-39492: reducer_override used to induce a spurious reference cycle
-    # inside the Pickler object, that could prevent all serialized objects
-    # from being garbage-collected without explicity invoking gc.collect.
-
-    # test a dynamic function
-    def f():
-        return 4669201609102990671853203821578
-
-    wr = weakref.ref(f)
-
-    bio = io.BytesIO()
-    from ray.cloudpickle import CloudPickler, loads, dumps
-    p = CloudPickler(bio, protocol=5)
-    p.dump(f)
-    new_f = loads(bio.getvalue())
-    assert new_f() == 4669201609102990671853203821578
-
-    del p
-    del f
-
-    assert wr() is None
-
-    # test a dynamic class
-    class ShortlivedObject:
-        def __del__(self):
-            print("Went out of scope!")
-
-    obj = ShortlivedObject()
-    new_obj = weakref.ref(obj)
-
-    dumps(obj)
-    del obj
-    assert new_obj() is None
-
-
-def test_deserialized_from_buffer_immutable(ray_start_shared_local_modes):
-    x = np.full((2, 2), 1.)
-    o = ray.put(x)
-    y = ray.get(o)
-    with pytest.raises(
-            ValueError, match="assignment destination is read-only"):
-        y[0, 0] = 9.
-
-
 def test_passing_arguments_by_value_out_of_the_box(
         ray_start_shared_local_modes):
     @ray.remote
@@ -454,36 +461,6 @@ def test_putting_object_that_closes_over_object_ref(
 
     f = Foo()
     ray.put(f)
-
-
-def test_custom_serializers(ray_start_shared_local_modes):
-    class Foo:
-        def __init__(self):
-            self.x = 3
-
-    def custom_serializer(obj):
-        return 3, "string1", type(obj).__name__
-
-    def custom_deserializer(serialized_obj):
-        return serialized_obj, "string2"
-
-    ray.register_custom_serializer(
-        Foo, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    assert ray.get(ray.put(Foo())) == ((3, "string1", Foo.__name__), "string2")
-
-    class Bar:
-        def __init__(self):
-            self.x = 3
-
-    ray.register_custom_serializer(
-        Bar, serializer=custom_serializer, deserializer=custom_deserializer)
-
-    @ray.remote
-    def f():
-        return Bar()
-
-    assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
 
 
 def test_keyword_args(ray_start_shared_local_modes):

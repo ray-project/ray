@@ -1,9 +1,11 @@
-# The deploy Docker image build a self-contained Ray instance suitable
-# for end users.
+# The development Docker image build a self-contained Ray instance suitable
+# for developers that need the source code to actively modify.
 
-FROM ray-project/base-deps
+FROM rayproject/ray-deps:latest
 ADD ray.tar /ray
 ADD git-rev /ray/git-rev
+# Install dependencies needed to build ray
+RUN apt-get update && apt-get install -y curl unzip cmake gcc && apt-get clean
 RUN cd /ray && git init && ./ci/travis/install-bazel.sh --system
 ENV PATH=$PATH:/root/bin
 RUN echo 'build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"' >> $HOME/.bazelrc 

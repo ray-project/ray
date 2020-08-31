@@ -56,7 +56,7 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    ready, unready = ray.wait(ids, 100, 240)
+    ready, unready = ray.wait(ids, num_returns=100, timeout=240)
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0
