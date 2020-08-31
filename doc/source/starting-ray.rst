@@ -26,7 +26,7 @@ You can start Ray the init API. It will start the local services that Ray uses t
   .. code-tab:: python
 
     import ray
-    # `function.remote()` will not work until `ray.init()` is called.
+    # Other Ray API will not work until `ray.init()` is called.
     ray.init()
 
   .. code-tab:: java
@@ -112,7 +112,7 @@ You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh
 
   .. group-tab:: Java
 
-    Your jar files must be distributed manually to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same between nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
+    Your jar files must be distributed manually to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
 
     To connect your program to the Ray cluster, run it like this:
 
@@ -125,7 +125,7 @@ You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh
 
     .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
 
-Your Python script or Java code **only** needs to execute on one machine in the cluster (usually the head node).
+Your driver code **only** needs to execute on one machine in the cluster (usually the head node).
 
 .. note:: Without the address parameter, your Ray program will only be parallelized across a single machine!
 
