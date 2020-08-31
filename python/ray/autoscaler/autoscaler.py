@@ -272,7 +272,8 @@ class StandardAutoscaler:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"])
+                                               new_config["auth"],
+                                               available_node_types=new_config.get("available_node_types"))
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],

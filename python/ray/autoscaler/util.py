@@ -117,7 +117,7 @@ def with_head_node_ip(cmds):
     return out
 
 
-def hash_launch_conf(node_conf, auth):
+def hash_launch_conf(node_conf, auth, available_node_types=None):
     hasher = hashlib.sha1()
     # For hashing, we replace the path to the key with the
     # key itself. This is to make sure the hashes are the
@@ -130,6 +130,10 @@ def hash_launch_conf(node_conf, auth):
                 full_auth[key_type] = key.read()
     hasher.update(
         json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
+    if available_node_types:
+        hasher.update(
+            json.dumps(available_node_types, sort_keys=True).encode("utf-8"))
+
     return hasher.hexdigest()
 
 
