@@ -8,7 +8,6 @@ public interface CheckpointConfig extends Config, Mutable {
   String CP_INTERVAL_SECS = "streaming.checkpoint.interval.secs";
   String CP_TIMEOUT_SECS = "streaming.checkpoint.timeout.secs";
   String CP_MODE = "streaming.checkpoint.mode";
-  String CP_RETAINED_NUM = "streaming.checkpoint.retained.num";
 
   String CP_PREFIX_KEY_MASTER = "streaming.checkpoint.prefix-key.job-master.context";
   String CP_PREFIX_KEY_WORKER = "streaming.checkpoint.prefix-key.job-worker.context";
@@ -21,14 +20,6 @@ public interface CheckpointConfig extends Config, Mutable {
   @DefaultValue(value = "120")
   @Key(value = CP_TIMEOUT_SECS)
   int cpTimeoutSecs();
-
-  @DefaultValue(value = "sync")
-  @Key(value = CP_MODE)
-  String cpMode();
-
-  @DefaultValue(value = "1")
-  @Key(value = CP_RETAINED_NUM)
-  int cpRetainedNum();
 
   @DefaultValue(value = "job_master_runtime_context_")
   @Key(value = CP_PREFIX_KEY_MASTER)

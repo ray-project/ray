@@ -205,16 +205,6 @@ public abstract class StreamTask implements Runnable {
   protected abstract void init() throws Exception;
 
   /**
-   * Stop running tasks.
-   */
-  protected void cancelTask() throws Exception {
-    running = false;
-    while (!stopped) {
-      Thread.sleep(100);
-    }
-  }
-
-  /**
    * Close running tasks.
    */
   public void close() {
