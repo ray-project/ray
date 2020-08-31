@@ -285,7 +285,7 @@ build_wheels() {
         -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
-        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA}"
+        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
