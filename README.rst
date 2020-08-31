@@ -275,7 +275,7 @@ More Information
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
-.. _`Ray 1.0 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c
+.. _`Ray 1.0 architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

@@ -102,7 +102,7 @@ Slides
 Papers
 ------
 
-- `Ray 1.0 whitepaper`_ **(new)**
+- `Ray 1.0 architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
