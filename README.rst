@@ -6,7 +6,7 @@
 |
 
 
-**Ray provides a universal API for distributed computing.**
+**Ray provides a simple and universal API for distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 

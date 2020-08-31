@@ -16,7 +16,7 @@
 title: "Ray: A fast and simple framework for distributed applications"
 email: ""
 description: > # this means to ignore newlines until "baseurl:"
-  Ray provides a universal API for distributed computing.
+  Ray provides a simple and universal API for distributed applications.
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "" # the base hostname & protocol for your site, e.g. http://example.com
 github_username:  ray-project
