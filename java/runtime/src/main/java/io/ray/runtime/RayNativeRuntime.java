@@ -75,49 +75,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
-
-    if (rayConfig.getRedisAddress() != null) {
-      GcsClient tempGcsClient =
-          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-      for (Map.Entry<String, String> entry :
-          tempGcsClient.getInternalConfig().entrySet()) {
-        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
-      }
-
-      // Keep this method logic in sync with `services.get_address_info_from_redis_helper`
-      int numRetries = 5;
-      int retryCount = 0;
-      boolean loadConfig = false;
-      while (retryCount++ < numRetries) {
-        for (NodeInfo nodeInfo : tempGcsClient.getAllNodeInfo()) {
-          if (rayConfig.nodeIp.equals(nodeInfo.nodeAddress) ||
-              (nodeInfo.nodeAddress.equals("127.0.0.1") &&
-                  rayConfig.nodeIp.equals(rayConfig.getRedisAddress()))) {
-            rayConfig.objectStoreSocketName = nodeInfo.objectStoreSocketName;
-            rayConfig.rayletSocketName = nodeInfo.rayletSocketName;
-            rayConfig.nodeManagerPort = nodeInfo.nodeManagerPort;
-            loadConfig = true;
-            break;
-          }
-        }
-        if (!loadConfig) {
-          LOGGER.warn("Some processes that the driver needs to connect to have " +
-              "not registered with Redis, so retrying. Have you run " +
-              "'ray start' on this node?");
-          try {
-            TimeUnit.SECONDS.sleep(1);
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-        } else {
-          break;
-        }
-      }
-      if (!loadConfig) {
-        throw new RayException("Some processes that the driver needs to connect to have " +
-            "not registered with Redis. Have you run 'ray start' on this node?");
-      }
-    }
   }
 
   private static void resetLibraryPath(RayConfig rayConfig) {
@@ -128,6 +85,50 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
+    if (rayConfig.getRedisAddress() != null) {
+      GcsClient tempGcsClient =
+          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      for (Map.Entry<String, String> entry :
+          tempGcsClient.getInternalConfig().entrySet()) {
+        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
+      }
+
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        // Keep this method logic in sync with `services.get_address_info_from_redis_helper`
+        int numRetries = 5;
+        int retryCount = 0;
+        boolean loadConfig = false;
+        while (retryCount++ < numRetries) {
+          for (NodeInfo nodeInfo : tempGcsClient.getAllNodeInfo()) {
+            if (rayConfig.nodeIp.equals(nodeInfo.nodeAddress) ||
+                (nodeInfo.nodeAddress.equals("127.0.0.1") &&
+                    rayConfig.nodeIp.equals(rayConfig.getRedisAddress()))) {
+              rayConfig.objectStoreSocketName = nodeInfo.objectStoreSocketName;
+              rayConfig.rayletSocketName = nodeInfo.rayletSocketName;
+              rayConfig.nodeManagerPort = nodeInfo.nodeManagerPort;
+              loadConfig = true;
+              break;
+            }
+          }
+          if (!loadConfig) {
+            LOGGER.warn("Some processes that the driver needs to connect to have " +
+                "not registered with Redis, so retrying. Have you run " +
+                "'ray start' on this node?");
+            try {
+              TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+              throw new RuntimeException(e);
+            }
+          } else {
+            break;
+          }
+        }
+        if (!loadConfig) {
+          throw new RayException("Some processes that the driver needs to connect to have " +
+              "not registered with Redis. Have you run 'ray start' on this node?");
+        }
+      }
+    }
   }
 
   @Override

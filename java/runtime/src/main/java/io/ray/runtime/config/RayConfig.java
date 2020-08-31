@@ -118,7 +118,6 @@ public class RayConfig {
     WorkerType localWorkerMode;
     try {
       localWorkerMode = config.getEnum(WorkerType.class, "ray.worker.mode");
-      System.out.println("localWorkerMode" + localWorkerMode);
     } catch (ConfigException.Missing e) {
       localWorkerMode = WorkerType.DRIVER;
     }
@@ -132,28 +131,6 @@ public class RayConfig {
       nodeIp = NetworkUtil.getIpAddress(null);
     }
     this.nodeIp = nodeIp;
-    // Redis configurations.
-    String redisAddress = config.getString("ray.redis.address");
-    if (StringUtils.isNotBlank(redisAddress)) {
-      setRedisAddress(redisAddress);
-    } else {
-      // We need to start gcs using `RunManager` for local cluster
-      this.redisAddress = null;
-    }
-
-    if (config.hasPath("ray.redis.head-port")) {
-      headRedisPort = config.getInt("ray.redis.head-port");
-    } else {
-      headRedisPort = NetworkUtil.getUnusedPort();
-    }
-    numberRedisShards = config.getInt("ray.redis.shard-number");
-    redisShardPorts = new int[numberRedisShards];
-    for (int i = 0; i < numberRedisShards; i++) {
-      redisShardPorts[i] = NetworkUtil.getUnusedPort();
-    }
-    headRedisPassword = config.getString("ray.redis.head-password");
-    redisPassword = config.getString("ray.redis.password");
-
     // Resources.
     resources = ResourceUtil.getResourcesMapFromString(
         config.getString("ray.resources"));
@@ -203,6 +180,27 @@ public class RayConfig {
       pythonWorkerCommand = null;
     }
 
+    // Redis configurations.
+    String redisAddress = config.getString("ray.redis.address");
+    if (StringUtils.isNotBlank(redisAddress)) {
+      setRedisAddress(redisAddress);
+    } else {
+      // We need to start gcs using `RunManager` for local cluster
+      this.redisAddress = null;
+    }
+
+    if (config.hasPath("ray.redis.head-port")) {
+      headRedisPort = config.getInt("ray.redis.head-port");
+    } else {
+      headRedisPort = NetworkUtil.getUnusedPort();
+    }
+    numberRedisShards = config.getInt("ray.redis.shard-number");
+    redisShardPorts = new int[numberRedisShards];
+    for (int i = 0; i < numberRedisShards; i++) {
+      redisShardPorts[i] = NetworkUtil.getUnusedPort();
+    }
+    headRedisPassword = config.getString("ray.redis.head-password");
+    redisPassword = config.getString("ray.redis.password");
     // Raylet node manager port.
     nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     if (nodeManagerPort == 0) {
