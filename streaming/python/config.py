@@ -55,7 +55,7 @@ class ConfigHelper(object):
         return Config.FILE_STATE_ROOT_PATH_DEFAULT
 
     @staticmethod
-    def get_cp_state_backend_type(conf):
+    def get_cp_context_backend_type(conf):
         value = conf.get(Config.CP_STATE_BACKEND_TYPE)
         if value is not None:
             return value

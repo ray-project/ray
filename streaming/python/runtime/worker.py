@@ -13,7 +13,7 @@ from ray.streaming.runtime.command import WorkerRollbackRequest
 from ray.streaming.runtime.failover import Barrier
 from ray.streaming.runtime.graph import ExecutionVertexContext, ExecutionVertex
 from ray.streaming.runtime.remote_call import CallResult, RemoteCallMst
-from ray.streaming.runtime.state_backend import StateBackendFactory
+from ray.streaming.runtime.context_backend import ContextBackendFactory
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 from ray.streaming.runtime.transfer import channel_bytes_to_str
 from ray.streaming.config import Config
@@ -47,7 +47,7 @@ class JobWorker(object):
         self.task = None
         self.stream_processor = None
         self.master_actor = None
-        self.state_backend = StateBackendFactory.get_state_backend(self.config)
+        self.context_backend = ContextBackendFactory.get_context_backend(self.config)
         self.initial_state_lock = threading.Lock()
         self.__rollback_cnt: int = 0
         self.__is_recreate: bool = False
@@ -66,7 +66,7 @@ class JobWorker(object):
                 job_worker_context_key = self.__get_job_worker_context_key()
                 logger.info("Worker get checkpoint state by key: {}.".format(
                     job_worker_context_key))
-                context_bytes = self.state_backend.get(job_worker_context_key)
+                context_bytes = self.context_backend.get(job_worker_context_key)
                 if context_bytes is not None and context_bytes.__len__() > 0:
                     self.init(context_bytes)
                     self.request_rollback(
@@ -100,7 +100,7 @@ class JobWorker(object):
 
             # save context
             job_worker_context_key = self.__get_job_worker_context_key()
-            self.state_backend.put(job_worker_context_key,
+            self.context_backend.put(job_worker_context_key,
                                    worker_context_bytes)
 
             # use vertex id as task id

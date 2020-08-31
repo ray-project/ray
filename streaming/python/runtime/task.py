@@ -78,7 +78,7 @@ class StreamTask(ABC):
         logger.info("save operator cp, op_checkpoint_info={}".format(
             op_checkpoint_info))
         cp_bytes = pickle.dumps(op_checkpoint_info)
-        self.worker.state_backend.put(
+        self.worker.context_backend.put(
             self.__gen_op_checkpoint_key(checkpoint_id), cp_bytes)
 
     def __report_commit(self, checkpoint_id: int):
@@ -90,7 +90,7 @@ class StreamTask(ABC):
 
     def clear_expired_cp_state(self, checkpoint_id):
         cp_key = self.__gen_op_checkpoint_key(checkpoint_id)
-        self.worker.state_backend.remove(cp_key)
+        self.worker.context_backend.remove(cp_key)
 
     def clear_expired_queue_msg(self, checkpoint_id):
         # clear operator checkpoint
@@ -132,7 +132,7 @@ class StreamTask(ABC):
             logger.info("Getting task checkpoints from state, \
                     cpKey={}, checkpointId={}."
                         .format(cp_key, self.last_checkpoint_id))
-            cp_bytes = self.worker.state_backend.get(cp_key)
+            cp_bytes = self.worker.context_backend.get(cp_key)
             if cp_bytes is None:
                 msg = "Task recover failed, checkpoint is null!\
                      cpKey={}".format(cp_key)

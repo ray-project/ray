@@ -8,7 +8,7 @@ from ray.streaming.config import ConfigHelper, Config
 logger = logging.getLogger(__name__)
 
 
-class StateBackend(ABC):
+class ContextBackend(ABC):
     @abstractmethod
     def get(self, key):
         pass
@@ -22,7 +22,7 @@ class StateBackend(ABC):
         pass
 
 
-class MemoryStateBackend(StateBackend):
+class MemoryContextBackend(ContextBackend):
     def __init__(self, conf):
         self.__dic = dict()
 
@@ -37,7 +37,7 @@ class MemoryStateBackend(StateBackend):
             del self.__dic[key]
 
 
-class LocalFileStateBackend(StateBackend):
+class LocalFileContextBackend(ContextBackend):
     def __init__(self, conf):
         self.__dir = ConfigHelper.get_cp_local_file_root_dir(conf)
         logger.info("Start init local file state backend, root_dir={}.".format(
@@ -79,7 +79,7 @@ class LocalFileStateBackend(StateBackend):
         return path.join(self.__dir, key)
 
 
-class AtomicFsStateBackend(LocalFileStateBackend):
+class AtomicFsContextBackend(LocalFileContextBackend):
     def __init__(self, conf):
         super().__init__(conf)
         self.__tmp_flag = "_tmp"
@@ -105,13 +105,13 @@ class AtomicFsStateBackend(LocalFileStateBackend):
         super().remove(key)
 
 
-class StateBackendFactory:
+class ContextBackendFactory:
     @staticmethod
-    def get_state_backend(worker_config) -> StateBackend:
-        backend_type = ConfigHelper.get_cp_state_backend_type(worker_config)
-        state_backend = None
+    def get_context_backend(worker_config) -> ContextBackend:
+        backend_type = ConfigHelper.get_cp_context_backend_type(worker_config)
+        context_backend = None
         if backend_type == Config.CP_STATE_BACKEND_LOCAL_FILE:
-            state_backend = AtomicFsStateBackend(worker_config)
+            context_backend = AtomicFsContextBackend(worker_config)
         elif backend_type == Config.CP_STATE_BACKEND_MEMORY:
-            state_backend = MemoryStateBackend(worker_config)
-        return state_backend
+            context_backend = MemoryContextBackend(worker_config)
+        return context_backend
