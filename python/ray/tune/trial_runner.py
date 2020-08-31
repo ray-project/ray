@@ -460,6 +460,7 @@ class TrialRunner:
         self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
+            logger.debug("Running trial {}".format(trial))
         return trial
 
     def _process_events(self):

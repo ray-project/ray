@@ -4,7 +4,7 @@ import unittest
 import ray
 
 
-class TestUnreconstructableErrors(unittest.TestCase):
+class TestObjectLostErrors(unittest.TestCase):
     def setUp(self):
         ray.init(
             num_cpus=1,
@@ -20,7 +20,7 @@ class TestUnreconstructableErrors(unittest.TestCase):
         ray.get(x_id)
         for _ in range(20):
             ray.put(np.zeros(10 * 1024 * 1024))
-        self.assertRaises(ray.exceptions.UnreconstructableError,
+        self.assertRaises(ray.exceptions.ObjectLostError,
                           lambda: ray.get(x_id))
 
 

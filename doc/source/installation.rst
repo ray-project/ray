@@ -171,21 +171,26 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Run the script to create Docker images.
+Most users should pull a Docker image from the Ray Docker Hub.
+
+- The ``rayproject/ray`` image has ray and all required dependencies. It comes with anaconda and Python 3.7.
+- The ``rayproject/autoscaler`` image has the above features as well as many additional libraries.
+- The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
+
+These images are tagged by their release number (or commit hash for nightlies) as well as a ``"-gpu"`` if they are GPU compatible.
+
+
+If you want to tweak some aspect of these images and build them locally, refer to the following script:
 
 .. code-block:: bash
 
   cd ray
   ./build-docker.sh
 
-This script creates several Docker images:
+Beyond creating the above Docker images, this script can also produce the following two images.
 
-- The ``ray-project/deploy`` image is a self-contained copy of code and binaries
-  suitable for end users.
-- The ``ray-project/examples`` adds additional libraries for running examples.
-- The ``ray-project/base-deps`` image builds from Ubuntu Xenial and includes
-  Anaconda and other basic dependencies and can serve as a starting point for
-  developers.
+- The ``rayproject/development`` image has the ray source code included and is setup for development.
+- The ``rayproject/examples`` image adds additional libraries for running examples.
 
 Review images by listing them:
 
@@ -198,10 +203,10 @@ Output should look something like the following:
 .. code-block:: bash
 
   REPOSITORY                          TAG                 IMAGE ID            CREATED             SIZE
-  ray-project/examples                latest              7584bde65894        4 days ago          3.257 GB
-  ray-project/deploy                  latest              970966166c71        4 days ago          2.899 GB
-  ray-project/base-deps               latest              f45d66963151        4 days ago          2.649 GB
-  ubuntu                              xenial              f49eec89601e        3 weeks ago         129.5 MB
+  rayproject/ray                      latest              7243a11ac068        2 days ago          1.11 GB
+  rayproject/ray-deps                 latest              b6b39d979d73        8 days ago          996  MB
+  rayproject/base-deps                latest              5606591eeab9        8 days ago          512  MB
+  ubuntu                              focal               1e4467b07108        3 weeks ago         73.9 MB
 
 
 Launch Ray in Docker
@@ -211,7 +216,7 @@ Start out by launching the deployment container.
 
 .. code-block:: bash
 
-  docker run --shm-size=<shm-size> -t -i ray-project/deploy
+  docker run --shm-size=<shm-size> -t -i ray-project/ray
 
 Replace ``<shm-size>`` with a limit appropriate for your system, for example
 ``512M`` or ``2G``. The ``-t`` and ``-i`` options here are required to support
