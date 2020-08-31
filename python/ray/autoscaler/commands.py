@@ -344,10 +344,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
             return head + workers
 
-        def try_docker_stop(node):
-            container_name = config.get("docker", {}).get("container_name")
-            if container_name is None:
-                return
+        def run_docker_stop(node, container_name):
             try:
                 updater = NodeUpdaterThread(
                     node_id=node,
@@ -377,8 +374,10 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
         #   really gone
         A = remaining_nodes()
 
-        for node in A:
-            try_docker_stop(node)
+        container_name = config.get("docker", {}).get("container_name")
+        if container_name:
+            for node in A:
+                run_docker_stop(node, container_name)
 
         with LogTimer("teardown_cluster: done."):
             while A:
