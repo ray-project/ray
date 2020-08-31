@@ -622,6 +622,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
     def run_rsync_up(self, source, target, options=None):
+        options = options or {}
         host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
                                         target.lstrip("/"))
 
@@ -641,6 +642,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self._docker_expand_user(target)))
 
     def run_rsync_down(self, source, target, options=None):
+        options = options or {}
         host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
@@ -748,9 +750,11 @@ class DockerCommandRunner(CommandRunnerInterface):
                 for remote, local in file_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
-                        cli_logger.verbose(
+                        cli_logger.error(
                             "Please ray stop & restart cluster to "
                             f"allow mount {remote}:{local} to take hold")
             except json.JSONDecodeError:
-                pass
+                cli_logger.verbose(
+                    "Unable to check if file_mounts specified in the YAML "
+                    "differ from those on the running container.")
         self.initialized = True
