@@ -376,8 +376,11 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag,
-                    logger_creator):
+    def reset_trial(self,
+                    trial,
+                    new_config,
+                    new_experiment_tag,
+                    logger_creator=None):
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:

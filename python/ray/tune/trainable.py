@@ -534,7 +534,7 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator):
+    def reset(self, new_config, logger_creator=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
