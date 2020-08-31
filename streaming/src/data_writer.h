@@ -60,7 +60,7 @@ class DataWriter {
       const ObjectID &q_id, uint8_t *data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);
 
-  /// Send barrier to all channel. note there are user define data in barrier bundle
+  /// Send barrier to all channel. note there are user defined data in barrier bundle
   /// \param barrier_id
   /// \param data
   /// \param data_size
