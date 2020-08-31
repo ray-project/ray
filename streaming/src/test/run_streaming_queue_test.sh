@@ -53,7 +53,7 @@ STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="$RAY_ROOT/bazel-bin/gcs_server"
 
 # clear env
-ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_server|job_agent" | grep -v grep | awk '{print $1}' | xargs kill -9 &> /dev/null
+pgrep "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_server|job_agent" | xargs kill -9 &> /dev/null
 
 # Run tests.
 
@@ -61,5 +61,5 @@ ps -ax | grep -E "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_serve
 #$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
 
 # run all tests
-$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC "$RAYLET_PORT" $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
+"$RAY_ROOT"/bazel-bin/streaming/streaming_queue_tests "$STORE_EXEC" "$RAYLET_EXEC" "$RAYLET_PORT" "$STREAMING_TEST_WORKER_EXEC" "$GCS_SERVER_EXEC" "$REDIS_SERVER_EXEC" "$REDIS_MODULE" "$REDIS_CLIENT_EXEC"
 sleep 1s

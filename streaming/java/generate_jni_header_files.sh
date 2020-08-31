@@ -10,10 +10,10 @@ bazel build all_streaming_tests_deploy.jar
 function generate_one()
 {
   file=${1//./_}.h
-  javah -classpath ../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar $1
+  javah -classpath ../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar "$1"
 
   # prepend licence first
-  cat <<EOF > ../src/lib/java/$file
+  cat <<EOF > ../src/lib/java/"$file"
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,8 +30,8 @@ function generate_one()
 
 EOF
   # then append the generated header file
-  cat $file >> ../src/lib/java/$file
-  rm -f $file
+  cat "$file" >> ../src/lib/java/"$file"
+  rm -f "$file"
 }
 
 generate_one io.ray.streaming.runtime.transfer.channel.ChannelId
