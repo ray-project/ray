@@ -224,7 +224,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const auto &bundle_id = bundle->BundleId();
     const auto &node_id = selected_nodes[bundle_id];
     leasing_context->MarkLeaseStarted(node_id, bundle);
-
+    // TODO(sang): The callback might not be called at all if nodes are dead. We should
+    // handle this case properly.
     ReserveResourceFromNode(bundle, gcs_node_manager_.GetNode(node_id),
                             [this, bundle, node_id, leasing_context, failure_callback,
                              success_callback](const Status &status) {
@@ -517,7 +518,7 @@ bool LeasingContext::MarkLeaseStarted(const ClientID &node_id,
 void LeasingContext::MarkLeaseReturned(const ClientID &node_id,
                                        const std::shared_ptr<BundleSpecification> bundle,
                                        const Status &status) {
-  RAY_CHECK(returned_count_ <= placement_group_->GetBundleSize());
+  RAY_CHECK(returned_count_ <= unplaced_bundles_.size());
   auto leasing_bundles = node_to_bundles_when_leasing_.find(node_id);
   RAY_CHECK(leasing_bundles != node_to_bundles_when_leasing_.end());
   auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
