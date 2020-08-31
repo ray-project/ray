@@ -29,13 +29,17 @@ class BackendConfig(BaseModel):
     """
 
     internal_metadata: BackendMetadata = BackendMetadata()
-    #: The number of worker processes to start up that will handle requests to this backend.
+    #: The number of worker processes to start up that will handle requests
+    # to this backend.
     num_replicas: PositiveInt = 1
-    #: The maximum number of requests that will be processed in one batch by this backend.
+    #: The maximum number of requests that will be processed in one batch by
+    # this backend.
     max_batch_size: Optional[PositiveInt] = None
-    #: The time in seconds that backend replicas will wait for a full batch of requests before processing a partial batch.
+    #: The time in seconds that backend replicas will wait for a full batch
+    # of requests before processing a partial batch.
     batch_wait_timeout: float = 0
-    #: The maximum number of queries that will be sent to a replica of this backend without receiving a response.
+    #: The maximum number of queries that will be sent to a replica of this
+    # backend without receiving a response.
     max_concurrent_queries: Optional[int] = None
     #: Experimental
     autoscaling_config: Optional[Dict[str, Any]] = None
