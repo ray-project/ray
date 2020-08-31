@@ -17,19 +17,24 @@ from operator import itemgetter
 
 logger = logging.getLogger(__name__)
 
-PYCLASSNAME_RE = re.compile(r"(.+)\(")
+PYCLASSNAME_RE = re.compile(r"(.+?)\(")
 def group_actors_by_python_class(actors):
     groups = defaultdict(list)
     for actor in actors.values():
-        if not actor.get("actorTitle"):
+        actor_title = actor.get("actorTitle")
+        if not actor_title:
             groups["Unknown Class"].append(actor)
         else:
-            match = PYCLASSNAME_RE.search(actor["actorTitle"])
+            match = PYCLASSNAME_RE.search(actor_title)
             if match:
+                # Catches case of actorTitle like
+                # Foo(bar, baz, [1,2,3]) -> Foo
                 class_name = match.groups()[0]
                 groups[class_name].append(actor)
             else:
-                groups["Unknown Class"].append(actor)
+                # Catches case of e.g. just Foo
+                # in case of actor task
+                groups[actor_title].append(actor)
     return groups
 
 def get_actor_group_stats(group):
@@ -37,27 +42,30 @@ def get_actor_group_stats(group):
     state_to_count = defaultdict(lambda: 0)
     pending_tasks = 0
     executed_tasks = 0
-    min_timestamp = math.inf
+    min_timestamp = None
     num_timestamps = 0
     sum_timestamps = 0
-    now = datetime.now().timestamp() / 1000 # We record seconds
+    now = time.time() * 1000 # convert S -> MS
     for actor in group:
+        logger.info(actor)
         state_to_count[actor["state"]] += 1
         if "timestamp" in actor:
-            if actor["timestamp"] < min_timestamp:
+            if not min_timestamp or actor["timestamp"] < min_timestamp:
                 min_timestamp = actor["timestamp"]
             num_timestamps += 1
             sum_timestamps += now - actor["timestamp"]
-        if "pending_tasks" in actor:
-            pending_tasks += actor["pending_tasks"]
-        if "executed_tasks" in actor:
-            executed_tasks += actor["executed_tasks"]
-    
+        if "numExecutedTasks" in actor:
+            executed_tasks += actor["numExecutedTasks"]
+    if num_timestamps > 0:
+        avg_lifetime = int((sum_timestamps / num_timestamps) / 1000)
+        max_lifetime = int((now - min_timestamp) / 1000)
+    else:
+        avg_lifetime = 0
+        max_lifetime = 0
     return {
         "stateToCount": state_to_count,
-        "avgLifetime": sum_timestamps / num_timestamps if num_timestamps != 0 else 0,
-        "maxLifetime": now - min_timestamp,
-        "numPendingTasks": pending_tasks,
+        "avgLifetime":  avg_lifetime,
+        "maxLifetime": max_lifetime,
         "numExecutedTasks": executed_tasks,
     }
             
@@ -240,6 +248,7 @@ class NodeStats(threading.Thread):
                               str(actor_data["OwnerAddress"]["Port"]))
                 self._addr_to_owner_addr[addr] = owner_addr
                 self._addr_to_actor_id[addr] = actor_data["ActorID"]
+                logger.info(f"timestamp data in actor table {actor_data['Timestamp']}")
                 self._addr_to_extra_info_dict[addr] = {
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],

@@ -72,7 +72,6 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({ actorGroup,
           <LabeledDatum label={"Mean Lifetime"} datum={summary.avgLifetime} />
           <LabeledDatum label={"Max Lifetime"} datum={summary.maxLifetime} />
           <LabeledDatum label={"Executed Tasks"} datum={summary.numExecutedTasks} />
-          <LabeledDatum label={"Pending Tasks"} datum={summary.numPendingTasks} />
         </Grid>
       {expanded ?
         <>

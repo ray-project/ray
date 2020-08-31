@@ -211,7 +211,6 @@ export type ActorGroupSummary = {
   stateToCount: { [state in ActorState]: number };
   avgLifetime: number;
   maxLifetime: number;
-  numPendingTasks: number;
   numExecutedTasks: number;
 };
 

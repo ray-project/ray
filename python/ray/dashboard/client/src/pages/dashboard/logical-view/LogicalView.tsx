@@ -1,4 +1,5 @@
 import {
+  Snackbar,
   FormControl,
   FormHelperText,
   Input,
@@ -13,6 +14,7 @@ import React, { useState } from "react";
 import { useSelector } from 'react-redux';
 import { useDebounce } from "use-debounce";
 import { StoreState } from "../../../store";
+import { ActorState } from "../../../api";
 import ActorClassGroups from "./ActorClassGroups";
 
 const useLogicalViewStyles = makeStyles((theme: Theme) => createStyles({
@@ -40,12 +42,15 @@ const LogicalView: React.FC = () => {
   const actorGroups = debouncedNameFilter === ""
     ? Object.entries(rayletInfo.actorGroups)
     : Object.entries(rayletInfo.actorGroups).filter(([key, _]) => actorClassMatchesSearch(key, debouncedNameFilter));
+  const numInfeasibleActors = actorGroups.reduce((acc, [_, group]) =>
+    acc + (group.summary.stateToCount[ActorState.Infeasible] ?? 0), 0)
   return (
     <Box className={classes.container}>
       {actorGroups.length === 0 ? (
         <Typography color="textSecondary">No actors found.</Typography>
       ) : (
           <>
+            
             <FormControl>
               <InputLabel htmlFor="actor-name-filter">Actor Search</InputLabel>
               <Input
