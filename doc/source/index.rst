@@ -102,7 +102,7 @@ Slides
 Papers
 ------
 
-- `Ray 1.0 architecture whitepaper`_ **(new)**
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
@@ -111,7 +111,7 @@ Papers
 - `Ray paper`_
 - `Ray HotOS paper`_
 
-.. _`Ray 1.0 architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
