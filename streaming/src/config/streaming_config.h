@@ -60,9 +60,6 @@ class StreamingConfig {
   inline bool IsExactlyOnce() const {
     return ReliabilityLevel::EXACTLY_ONCE == streaming_strategy_;
   }
-  inline bool IsExactlySame() const {
-    return ReliabilityLevel::EXACTLY_SAME == streaming_strategy_;
-  }
 
   DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
   DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)

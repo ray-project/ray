@@ -143,12 +143,14 @@ class WriterQueue : public Queue {
         is_upstream_first_pull_(true) {}
 
   /// Push a continuous buffer into queue, the buffer consists of some messages packed by
-  /// DataWriter. \param data, the buffer address \param data_size, buffer size \param
-  /// timestamp, the timestamp when the buffer pushed in \param msg_id_start, the message
-  /// id of the first message in the buffer \param msg_id_end, the message id of the last
-  /// message in the buffer \param raw, whether this buffer is raw data, be True only in
-  /// test
-  Status Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
+  /// DataWriter.
+  /// \param data, the buffer address
+  /// \param data_size, buffer size
+  /// \param timestamp, the timestamp when the buffer pushed in
+  /// \param msg_id_start, the message id of the first message in the buffer
+  /// \param msg_id_end, the message id of the last message in the buffer
+  /// \param raw, whether this buffer is raw data, be True only in test
+  Status Push(const uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
               uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies
