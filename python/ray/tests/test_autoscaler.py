@@ -42,6 +42,7 @@ class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds
+        self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
@@ -51,7 +52,18 @@ class MockProcessRunner:
 
     def check_output(self, cmd):
         self.check_call(cmd)
-        return "command-output".encode()
+        return_string = "command-output"
+        key_to_delete = None
+        for pattern, pair in self.call_response.items():
+            if pattern in str(cmd):
+                return_string = pair[0]
+                if pair[1] - 1 == 0:
+                    key_to_delete = pattern
+                break
+        if key_to_delete:
+            del self.call_response[key_to_delete]
+
+        return return_string.encode()
 
     def assert_has_call(self, ip, pattern=None, exact=None):
         assert pattern or exact, \
@@ -94,6 +106,9 @@ class MockProcessRunner:
 
     def clear_history(self):
         self.calls = []
+
+    def respond_to_call(self, pattern, response, num_times=1):
+        self.call_response[pattern] = (response, num_times)
 
 
 class MockProvider(NodeProvider):
