@@ -20,12 +20,13 @@ Installation
 Starting Ray on a single machine
 --------------------------------
 
-You can start Ray by calling ``ray.init()`` in your Python script or ``Ray.init()`` in your Java code. This will start the local services that Ray uses to schedule remote tasks and actors and then connect to them. Note that you must initialize Ray before any tasks or actors are called (i.e., ``function.remote()`` / ``Ray.task(FooClass::bar).remote()`` will not work until ``ray.init()`` / ``Ray.init()`` is called).
+You can start Ray the init API. It will start the local services that Ray uses to schedule remote tasks and actors and then connect to them. Note that you must initialize Ray before any tasks or actors are called.
 
 .. tabs::
   .. code-tab:: python
 
     import ray
+    # `function.remote()` will not work until `ray.init()` is called.
     ray.init()
 
   .. code-tab:: java
@@ -34,12 +35,13 @@ You can start Ray by calling ``ray.init()`` in your Python script or ``Ray.init(
     public class MyRayApp {
 
       public static void main(String[] args) {
+        // `Ray.task(FooClass::bar).remote()` will not work until `Ray.init()` is called.
         Ray.init();
         ...
       }
     }
 
-To stop or restart Ray, use ``ray.shutdown()`` / ``Ray.shutdown()``.
+To stop or restart Ray, use the shutdown API.
 
 .. tabs::
   .. code-tab:: python
@@ -114,15 +116,16 @@ You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh
 
         .. code-block:: bash
 
-            java -classpath /path/to/jars/ -Dray.job.resource-path=/path/to/jars/ -Dray.redis.address=<ADDRESS> <CLASS_NAME> <ARGS>
+            java -classpath /path/to/jars/ \
+              -Dray.job.resource-path=/path/to/jars/ \
+              -Dray.redis.address=<ADDRESS> \
+              <CLASS_NAME> <ARGS>
 
     .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
 
 Your Python script or Java code **only** needs to execute on one machine in the cluster (usually the head node).
 
-.. note:: TODO: Expain the way to distribute Java code to other machines.
-
-.. note:: Without ``ray.init(address...)`` / ``-Dray.redis.address=...``, your Ray program will only be parallelized across a single machine!
+.. note:: Without the address parameter, your Ray program will only be parallelized across a single machine!
 
 Manual cluster setup
 ~~~~~~~~~~~~~~~~~~~~
@@ -179,7 +182,9 @@ To run or debug your code in single process mode, you need to set the ``ray.run-
 
 .. code-block:: bash
 
-    java -classpath <CLASSPATH> -Dray.run-mode=SINGLE_PROCESS <CLASS_NAME> <ARGS>
+    java -classpath <CLASSPATH> \
+      -Dray.run-mode=SINGLE_PROCESS \
+      <CLASS_NAME> <ARGS>
 
 Note that some behavior such as resource management may not work as expected.
 
