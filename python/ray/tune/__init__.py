@@ -9,7 +9,8 @@ from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.create import create_scheduler
 from ray.tune.session import (report, get_trial_dir, get_trial_name,
-                              get_trial_id)
+                              get_trial_id, make_checkpoint_dir,
+                              save_checkpoint, checkpoint_dir)
 from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
                                         JupyterNotebookReporter)
 from ray.tune.sample import (function, sample_from, uniform, choice, randint,
@@ -22,5 +23,6 @@ __all__ = [
     "uniform", "choice", "randint", "randn", "loguniform",
     "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
     "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id", "create_scheduler"
+    "get_trial_id", "make_checkpoint_dir", "save_checkpoint", "checkpoint_dir",
+    "create_scheduler"
 ]
