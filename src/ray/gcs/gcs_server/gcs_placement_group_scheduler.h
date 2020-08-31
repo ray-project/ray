@@ -143,11 +143,11 @@ enum class LeasingState {
 
 /// A data structure that encapsulates information regarding bundle resource leasing
 /// status.
-class LeasingContext {
+class LeaseStatusTracker {
  public:
-  LeasingContext(std::shared_ptr<GcsPlacementGroup> placement_group,
-                 std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
-  ~LeasingContext() = default;
+  LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
+                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
+  ~LeaseStatusTracker() = default;
 
   bool MarkLeaseStarted(const ClientID &node_id,
                         std::shared_ptr<BundleSpecification> bundle);
@@ -316,7 +316,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const rpc::Address &raylet_address);
 
   void OnAllBundleSchedulingRequestReturned(
-      const std::shared_ptr<LeasingContext> &leasing_context,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_failure_handler,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
@@ -350,7 +350,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Set of placement group that have lease requests in flight to nodes.
   /// It is required to know if placement group has been removed or not.
-  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeasingContext>>
+  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
 };
 
