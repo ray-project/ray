@@ -850,7 +850,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto actor_id = actor->GetActorID();
   RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
-  // counter may return a reply to the request of WaitForActorOutOfScope to GCS serverr
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
   // destroyed before the actor creation is completed.
   if (registered_actors_.count(actor_id) == 0) {
