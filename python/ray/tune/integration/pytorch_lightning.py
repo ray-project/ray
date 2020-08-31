@@ -197,20 +197,6 @@ class _TuneCheckpointCallback(TuneCallback):
             "batch_start", or "train_end". Defaults to "validation_end".
 
 
-    Example:
-
-    .. code-block:: python
-
-        import pytorch_lightning as pl
-        from ray.tune.integration.pytorch_lightning import \
-            TuneCheckpointCallback
-
-        # Save checkpoint after each training batch and after each
-        # validation epoch.
-        trainer = pl.Trainer(callbacks=[TuneCheckpointCallback(
-            "trainer.ckpt", on=["batch_end", "validation_end"])])
-
-
     """
 
     def __init__(self,
