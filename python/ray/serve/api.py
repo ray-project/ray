@@ -250,7 +250,7 @@ def create_backend(
         func_or_class: Union[Callable, Type[Callable]],
         *actor_init_args: Any,
         ray_actor_options: Optional[Dict] = None,
-        config: "Optional[Union[BackendConfig, Dict[str, Any]]]" = None
+        config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
 ) -> None:
     """Create a backend with the provided tag.
 
