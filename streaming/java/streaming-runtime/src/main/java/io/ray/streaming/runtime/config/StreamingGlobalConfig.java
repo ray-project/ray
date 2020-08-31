@@ -75,7 +75,7 @@ public class StreamingGlobalConfig implements Serializable {
           value = method.invoke(config);
         } catch (Exception e) {
           LOG.warn("Can not get value by method invoking for config key: {}. "
-              + "So use default value instead.", ownerKeyAnnotationValue);
+                       + "So use default value instead.", ownerKeyAnnotationValue);
           String defaultValue = method.getAnnotation(DefaultValue.class).value();
           value = defaultValue;
         }

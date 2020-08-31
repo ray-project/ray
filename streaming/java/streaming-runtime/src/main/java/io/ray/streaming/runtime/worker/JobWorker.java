@@ -100,7 +100,7 @@ public class JobWorker implements Serializable {
   private StreamTask createStreamTask() {
     StreamTask task = null;
     StreamProcessor streamProcessor = ProcessBuilder
-        .buildProcessor(executionVertex.getStreamOperator());
+                                          .buildProcessor(executionVertex.getStreamOperator());
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     try {

@@ -129,7 +129,7 @@ public class PythonOperator extends StreamOperator {
     @Override
     public String getName() {
       return operators.stream().map(Operator::getName)
-          .collect(Collectors.joining(" -> ", "[", "]"));
+                 .collect(Collectors.joining(" -> ", "[", "]"));
     }
 
     @Override

@@ -68,7 +68,8 @@ public class PythonFunction implements Function {
    * @param functionName function name of streaming function. {@code functionName} is the name of a
    *                     python function, or class name of subclass of `ray.streaming.function.`
    */
-  public PythonFunction(String moduleName,
+  public PythonFunction(
+      String moduleName,
       String functionName) {
     Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
     Preconditions.checkArgument(StringUtils.isNotBlank(functionName));

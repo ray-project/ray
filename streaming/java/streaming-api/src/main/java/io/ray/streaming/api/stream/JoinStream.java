@@ -60,7 +60,8 @@ public class JoinStream<L, R, O> extends DataStream<L> {
     private KeyFunction<L, K> leftKeyByFunction;
     private KeyFunction<R, K> rightKeyByFunction;
 
-    Equal(JoinStream<L, R, O> joinStream, KeyFunction<L, K> leftKeyByFunction,
+    Equal(
+        JoinStream<L, R, O> joinStream, KeyFunction<L, K> leftKeyByFunction,
         KeyFunction<R, K> rightKeyByFunction) {
       this.joinStream = joinStream;
       this.leftKeyByFunction = leftKeyByFunction;

@@ -185,10 +185,10 @@ public class ExecutionJobVertex {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("executionJobVertexId", executionJobVertexId)
-        .add("executionJobVertexName", executionJobVertexName)
-        .add("vertexType", vertexType)
-        .add("parallelism", parallelism)
-        .toString();
+               .add("executionJobVertexId", executionJobVertexId)
+               .add("executionJobVertexName", executionJobVertexName)
+               .add("vertexType", vertexType)
+               .add("parallelism", parallelism)
+               .toString();
   }
 }

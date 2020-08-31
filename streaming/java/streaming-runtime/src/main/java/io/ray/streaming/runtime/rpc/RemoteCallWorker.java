@@ -55,7 +55,7 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof PyActorHandle) {
       result = ((PyActorHandle) actor)
-          .task(PyActorMethod.of("start", Boolean.class)).remote();
+                   .task(PyActorMethod.of("start", Boolean.class)).remote();
     } else {
       // java
       result = ((ActorHandle<JobWorker>) actor).task(JobWorker::start).remote();

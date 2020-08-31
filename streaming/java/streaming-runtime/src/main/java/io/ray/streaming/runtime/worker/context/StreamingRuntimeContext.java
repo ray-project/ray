@@ -33,7 +33,8 @@ public class StreamingRuntimeContext implements RuntimeContext {
   private Long checkpointId;
   private Map<String, String> config;
 
-  public StreamingRuntimeContext(ExecutionVertex executionVertex, Map<String, String> config,
+  public StreamingRuntimeContext(
+      ExecutionVertex executionVertex, Map<String, String> config,
       int parallelism) {
     this.taskId = executionVertex.getExecutionVertexId();
     this.config = config;
@@ -115,7 +116,8 @@ public class StreamingRuntimeContext implements RuntimeContext {
     return this.keyStateBackend.getMapState(stateDescriptor);
   }
 
-  protected void stateSanityCheck(AbstractStateDescriptor stateDescriptor,
+  protected void stateSanityCheck(
+      AbstractStateDescriptor stateDescriptor,
       AbstractKeyStateBackend backend) {
     Preconditions.checkNotNull(stateDescriptor, "The state properties must not be null");
     Preconditions.checkNotNull(backend, "backend must not be null");

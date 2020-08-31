@@ -39,7 +39,8 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   protected final int numberOfKeyGroups;
   protected final KeyGroup keyGroup;
 
-  public KeyStateBackend(int numberOfKeyGroups, KeyGroup keyGroup,
+  public KeyStateBackend(
+      int numberOfKeyGroups, KeyGroup keyGroup,
       AbstractStateBackend abstractStateBackend) {
     super(abstractStateBackend);
     this.numberOfKeyGroups = numberOfKeyGroups;
@@ -108,7 +109,7 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   @Override
   public void setCurrentKey(Object currentKey) {
     super.keyGroupIndex = KeyGroupAssignment
-        .assignKeyGroupIndexForKey(currentKey, numberOfKeyGroups);
+                              .assignKeyGroupIndexForKey(currentKey, numberOfKeyGroups);
     super.currentKey = currentKey;
   }
 

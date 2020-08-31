@@ -18,7 +18,8 @@ public class JobVertex implements Serializable {
   private StreamOperator streamOperator;
   private Map<String, String> config;
 
-  public JobVertex(int vertexId,
+  public JobVertex(
+      int vertexId,
       int parallelism,
       VertexType vertexType,
       StreamOperator streamOperator,
@@ -62,13 +63,13 @@ public class JobVertex implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("vertexId", vertexId)
-        .add("parallelism", parallelism)
-        .add("vertexType", vertexType)
-        .add("language", language)
-        .add("streamOperator", streamOperator)
-        .add("config", config)
-        .toString();
+               .add("vertexId", vertexId)
+               .add("parallelism", parallelism)
+               .add("vertexType", vertexType)
+               .add("language", language)
+               .add("streamOperator", streamOperator)
+               .add("config", config)
+               .toString();
   }
 
 }

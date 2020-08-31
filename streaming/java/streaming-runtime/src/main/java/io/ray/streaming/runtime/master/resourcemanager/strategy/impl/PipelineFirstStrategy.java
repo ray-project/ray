@@ -57,8 +57,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
       vertexRemainingNum.put(k, size);
     });
     int totalExecutionVerticesNum = vertexRemainingNum.values().stream()
-        .mapToInt(Integer::intValue)
-        .sum();
+                                        .mapToInt(Integer::intValue)
+                                        .sum();
     int containerNum = containers.size();
     int capacityPerContainer = Math.max(totalExecutionVerticesNum / containerNum, 1);
 
@@ -97,7 +97,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
         allocatedVertexCount++;
         // Once allocatedVertexCount reaches threshold, we should enlarge capacity
         if (!enlarged && enlargeCapacityThreshold > 0
-            && allocatedVertexCount >= enlargeCapacityThreshold) {
+                && allocatedVertexCount >= enlargeCapacityThreshold) {
           updateContainerCapacity(containers, capacityPerContainer + 1);
           enlarged = true;
           LOG.info("Enlarge capacity per container to: {}.", containers.get(0).getCapacity());

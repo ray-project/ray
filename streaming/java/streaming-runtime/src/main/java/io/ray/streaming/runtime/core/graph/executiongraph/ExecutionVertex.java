@@ -189,14 +189,14 @@ public class ExecutionVertex implements Serializable {
 
   public List<ExecutionVertex> getInputVertices() {
     return inputEdges.stream()
-        .map(ExecutionEdge::getSourceExecutionVertex)
-        .collect(Collectors.toList());
+               .map(ExecutionEdge::getSourceExecutionVertex)
+               .collect(Collectors.toList());
   }
 
   public List<ExecutionVertex> getOutputVertices() {
     return outputEdges.stream()
-        .map(ExecutionEdge::getTargetExecutionVertex)
-        .collect(Collectors.toList());
+               .map(ExecutionEdge::getTargetExecutionVertex)
+               .collect(Collectors.toList());
   }
 
   public Map<String, Double> getResource() {
@@ -252,12 +252,12 @@ public class ExecutionVertex implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("id", executionVertexId)
-        .add("name", getExecutionVertexName())
-        .add("resources", resource)
-        .add("state", state)
-        .add("containerId", containerId)
-        .add("workerActor", workerActor)
-        .toString();
+               .add("id", executionVertexId)
+               .add("name", getExecutionVertexName())
+               .add("resources", resource)
+               .add("state", state)
+               .add("containerId", containerId)
+               .add("workerActor", workerActor)
+               .toString();
   }
 }

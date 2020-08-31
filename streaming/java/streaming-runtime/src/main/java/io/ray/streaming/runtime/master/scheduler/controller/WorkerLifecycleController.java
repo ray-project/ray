@@ -48,15 +48,15 @@ public class WorkerLifecycleController {
     BaseActorHandle actor;
     if (Language.JAVA == language) {
       actor = Ray.actor(JobWorker::new)
-          .setResources(executionVertex.getResource())
-          .setMaxRestarts(-1)
-          .remote();
+                  .setResources(executionVertex.getResource())
+                  .setMaxRestarts(-1)
+                  .remote();
     } else {
       actor = Ray.actor(
           PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"))
-          .setResources(executionVertex.getResource())
-          .setMaxRestarts(-1)
-          .remote();
+                  .setResources(executionVertex.getResource())
+                  .setMaxRestarts(-1)
+                  .remote();
     }
 
     if (null == actor) {
@@ -171,14 +171,14 @@ public class WorkerLifecycleController {
       List<ExecutionVertex> executionVertices) {
     final Object asyncContext = Ray.getAsyncContext();
 
-    List<CompletableFuture<Boolean>> futureResults = executionVertices.stream()
-        .map(vertex -> CompletableFuture.supplyAsync(() -> {
+    List<CompletableFuture<Boolean>> futureResults =
+        executionVertices.stream().map(vertex -> CompletableFuture.supplyAsync(() -> {
           Ray.setAsyncContext(asyncContext);
           return operation.apply(vertex);
         })).collect(Collectors.toList());
 
     List<Boolean> succeeded = futureResults.stream().map(CompletableFuture::join)
-        .collect(Collectors.toList());
+                                  .collect(Collectors.toList());
 
     if (succeeded.stream().anyMatch(x -> !x)) {
       LOG.error("Not all futures return true, check ResourceManager'log the detail.");

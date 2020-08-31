@@ -35,7 +35,8 @@ public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T
 
   private final ListState<T> listState;
 
-  public ListStateStoreManagerProxy(AbstractKeyStateBackend keyStateBackend,
+  public ListStateStoreManagerProxy(
+      AbstractKeyStateBackend keyStateBackend,
       ListStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     if (stateDescriptor.isOperatorList()) {

@@ -31,7 +31,8 @@ public class DataWriter {
    * @param toActors       downstream output actors
    * @param workerConfig   configuration
    */
-  public DataWriter(List<String> outputChannels,
+  public DataWriter(
+      List<String> outputChannels,
       List<BaseActorHandle> toActors,
       StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
@@ -39,7 +40,7 @@ public class DataWriter {
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
-        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+                                       .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {

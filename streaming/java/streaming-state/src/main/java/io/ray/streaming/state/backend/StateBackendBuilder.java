@@ -27,7 +27,8 @@ import java.util.Map;
  */
 public class StateBackendBuilder {
 
-  private static AbstractStateBackend getStateBackend(Map<String, String> config,
+  private static AbstractStateBackend getStateBackend(
+      Map<String, String> config,
       BackendType type) {
     switch (type) {
       case MEMORY:

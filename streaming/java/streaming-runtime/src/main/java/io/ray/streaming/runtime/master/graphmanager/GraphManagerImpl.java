@@ -31,8 +31,8 @@ public class GraphManagerImpl implements GraphManager {
 
     // set max parallelism
     int maxParallelism = jobGraph.getJobVertices().stream()
-        .map(JobVertex::getParallelism)
-        .max(Integer::compareTo).get();
+                             .map(JobVertex::getParallelism)
+                             .max(Integer::compareTo).get();
     executionGraph.setMaxParallelism(maxParallelism);
 
     // set job config

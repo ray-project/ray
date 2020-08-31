@@ -28,7 +28,8 @@ public class DataReader {
    * @param fromActors    upstream input actors
    * @param workerConfig  configuration
    */
-  public DataReader(List<String> inputChannels,
+  public DataReader(
+      List<String> inputChannels,
       List<BaseActorHandle> fromActors,
       StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
@@ -36,7 +37,7 @@ public class DataReader {
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
-        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+                                      .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
@@ -169,7 +170,8 @@ public class DataReader {
       byte[] configBytes,
       boolean isMock);
 
-  private native void getBundleNative(long nativeReaderPtr,
+  private native void getBundleNative(
+      long nativeReaderPtr,
       long timeoutMillis,
       long params,
       long metaAddress);

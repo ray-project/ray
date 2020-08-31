@@ -52,8 +52,8 @@ class ClusterStarter {
     // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
     // with `test` included in the name, we can check classpath `test` to filter out test classes.
     String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
-        .filter(s -> !s.contains(" ") && s.contains("test"))
-        .collect(Collectors.joining(":"));
+                           .filter(s -> !s.contains(" ") && s.contains("test"))
+                           .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
     Map<String, String> config = new HashMap<>(RayConfig.create().rayletConfigParameters);
     config.put("num_workers_per_process_java", "1");
@@ -114,8 +114,8 @@ class ClusterStarter {
     LOG.info("Executing command: {}", String.join(" ", command));
     try {
       ProcessBuilder processBuilder = new ProcessBuilder(command)
-          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-          .redirectError(ProcessBuilder.Redirect.INHERIT);
+                                          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+                                          .redirectError(ProcessBuilder.Redirect.INHERIT);
       Process process = processBuilder.start();
       boolean exit = process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       if (!exit) {

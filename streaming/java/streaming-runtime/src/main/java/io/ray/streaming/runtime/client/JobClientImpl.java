@@ -35,9 +35,9 @@ public class JobClientImpl implements JobClient {
 
     // create job master actor
     this.jobMasterActor = Ray.actor(JobMaster::new, jobConfig)
-        .setResources(resources)
-        .setMaxRestarts(-1)
-        .remote();
+                              .setResources(resources)
+                              .setMaxRestarts(-1)
+                              .remote();
 
     try {
       ObjectRef<Boolean> submitResult = jobMasterActor.task(JobMaster::submitJob,

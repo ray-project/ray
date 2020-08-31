@@ -117,7 +117,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
     long time = 0;
     while (time < 20000 &&
-        readerActor.task(ReaderWorker::getTotalMsg).remote().get() < msgCount * queueNum) {
+               readerActor.task(ReaderWorker::getTotalMsg).remote().get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;

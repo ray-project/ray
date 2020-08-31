@@ -27,7 +27,7 @@ public class AbstractID implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("id", id)
-        .toString();
+               .add("id", id)
+               .toString();
   }
 }

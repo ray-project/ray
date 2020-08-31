@@ -34,7 +34,8 @@ public class JobGraphBuilder {
     this(streamSinkList, jobName, new HashMap<>());
   }
 
-  public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
+  public JobGraphBuilder(
+      List<StreamSink> streamSinkList, String jobName,
       Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;

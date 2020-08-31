@@ -32,7 +32,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(streamingContext, streamOperator);
   }
 
-  public DataStream(StreamingContext streamingContext,
+  public DataStream(
+      StreamingContext streamingContext,
       StreamOperator streamOperator,
       Partition<T> partition) {
     super(streamingContext, streamOperator, partition);
@@ -42,7 +43,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(input, streamOperator);
   }
 
-  public <R> DataStream(DataStream<R> input,
+  public <R> DataStream(
+      DataStream<R> input,
       StreamOperator streamOperator,
       Partition<T> partition) {
     super(input, streamOperator, partition);
@@ -182,7 +184,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.PYTHON) {
       throw new RuntimeException("Partition related methods can't be called on a " +
-          "java stream if parent stream is a python stream.");
+                                     "java stream if parent stream is a python stream.");
     }
   }
 

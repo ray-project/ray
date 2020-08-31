@@ -128,7 +128,7 @@ public class PythonGateway {
       String funcName = (String) params.get(1);
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
       Class[] paramsTypes = params.subList(2, params.size()).stream()
-          .map(Object::getClass).toArray(Class[]::new);
+                                .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, funcName, paramsTypes);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
       return serialize(result);
@@ -146,7 +146,7 @@ public class PythonGateway {
       String methodName = (String) params.get(1);
       Class<?> clz = obj.getClass();
       Class[] paramsTypes = params.subList(2, params.size()).stream()
-          .map(Object::getClass).toArray(Class[]::new);
+                                .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, methodName, paramsTypes);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
       return serialize(result);
@@ -162,27 +162,28 @@ public class PythonGateway {
     }
     // Convert all params types to primitive types if it's boxed type
     Class[] unwrappedTypes = Arrays.stream(paramsTypes)
-        .map((Function<Class, Class>) Primitives::unwrap)
-        .toArray(Class[]::new);
+                                 .map((Function<Class, Class>) Primitives::unwrap)
+                                 .toArray(Class[]::new);
     Optional<Method> any = methods.stream()
-        .filter(m -> {
-          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
-          if (exactMatch) {
-            return true;
-          } else if (paramsTypes.length == m.getParameterTypes().length) {
-            for (int i = 0; i < m.getParameterTypes().length; i++) {
-              Class<?> parameterType = m.getParameterTypes()[i];
-              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
-                return false;
-              }
-            }
-            return true;
-          } else {
-            return false;
-          }
-        })
-        .findAny();
+                               .filter(m -> {
+                                 boolean exactMatch =
+                                     Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+                                         Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+                                 if (exactMatch) {
+                                   return true;
+                                 } else if (paramsTypes.length == m.getParameterTypes().length) {
+                                   for (int i = 0; i < m.getParameterTypes().length; i++) {
+                                     Class<?> parameterType = m.getParameterTypes()[i];
+                                     if (!parameterType.isAssignableFrom(paramsTypes[i])) {
+                                       return false;
+                                     }
+                                   }
+                                   return true;
+                                 } else {
+                                   return false;
+                                 }
+                               })
+                               .findAny();
     Preconditions.checkArgument(any.isPresent(),
         String.format("Method %s with type %s doesn't exist on class %s",
             methodName, Arrays.toString(paramsTypes), cls));
@@ -213,7 +214,7 @@ public class PythonGateway {
 
   private static boolean isBasic(Object value) {
     return value == null || (value instanceof Boolean) || (value instanceof Number) ||
-        (value instanceof String) || (value instanceof byte[]);
+               (value instanceof String) || (value instanceof byte[]);
   }
 
   public byte[] newInstance(byte[] classNameBytes) {
@@ -231,7 +232,7 @@ public class PythonGateway {
 
   private List<Object> processParameters(List<Object> params) {
     return params.stream().map(this::processParameter)
-        .collect(Collectors.toList());
+               .collect(Collectors.toList());
   }
 
   private Object processParameter(Object o) {

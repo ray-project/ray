@@ -74,7 +74,7 @@ public class OperatorStateImpl<V> implements ListState<V> {
     int index = 0;
     while (true) {
       List<PartitionRecord<V>> list = helper.getBackend()
-          .get(descriptor, getKey(descriptor.getIdentify(), index));
+                                          .get(descriptor, getKey(descriptor.getIdentify(), index));
       if (list != null && !list.isEmpty()) {
         partitionNum = list.get(0).getPartitionID();
         allList.addAll(list);

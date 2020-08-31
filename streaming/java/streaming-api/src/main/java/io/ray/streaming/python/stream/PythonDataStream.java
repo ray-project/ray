@@ -18,12 +18,14 @@ import java.util.List;
  */
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
-  protected PythonDataStream(StreamingContext streamingContext,
+  protected PythonDataStream(
+      StreamingContext streamingContext,
       PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
-  protected PythonDataStream(StreamingContext streamingContext,
+  protected PythonDataStream(
+      StreamingContext streamingContext,
       PythonOperator pythonOperator,
       Partition<Object> partition) {
     super(streamingContext, pythonOperator, partition);
@@ -33,7 +35,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
     super(input, pythonOperator);
   }
 
-  public PythonDataStream(PythonDataStream input,
+  public PythonDataStream(
+      PythonDataStream input,
       PythonOperator pythonOperator,
       Partition<Object> partition) {
     super(input, pythonOperator, partition);
@@ -184,7 +187,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
       throw new RuntimeException("Partition related methods can't be called on a " +
-          "python stream if parent stream is a java stream.");
+                                     "python stream if parent stream is a java stream.");
     }
   }
 

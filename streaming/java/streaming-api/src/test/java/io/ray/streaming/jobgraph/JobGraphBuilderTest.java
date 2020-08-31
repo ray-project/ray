@@ -76,7 +76,7 @@ public class JobGraphBuilderTest {
     DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
-        .sink(x -> LOG.info(x));
+                                .sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
     JobGraph jobGraph = jobGraphBuilder.build();

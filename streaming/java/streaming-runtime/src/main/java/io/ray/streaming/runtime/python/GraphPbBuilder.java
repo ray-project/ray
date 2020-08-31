@@ -127,7 +127,8 @@ public class GraphPbBuilder {
 
   private byte[] serializePythonChainedOperator(ChainedPythonOperator operator) {
     List<byte[]> serializedOperators = operator.getOperators().stream()
-        .map(this::serializeOperator).collect(Collectors.toList());
+                                           .map(this::serializeOperator)
+                                           .collect(Collectors.toList());
     return serializer.serialize(Arrays.asList(
         serializedOperators,
         operator.getConfigs()

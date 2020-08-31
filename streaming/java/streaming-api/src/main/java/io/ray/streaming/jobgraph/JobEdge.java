@@ -45,6 +45,6 @@ public class JobEdge implements Serializable {
   @Override
   public String toString() {
     return "Edge(" + "from:" + srcVertexId + "-" + targetVertexId + "-" + this.partition.getClass()
-        + ")";
+               + ")";
   }
 }

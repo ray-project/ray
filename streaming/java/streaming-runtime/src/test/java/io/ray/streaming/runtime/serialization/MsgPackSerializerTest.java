@@ -27,7 +27,7 @@ public class MsgPackSerializerTest {
     MsgPackSerializer serializer = new MsgPackSerializer();
 
     assertEquals(serializer.deserialize
-        (serializer.serialize(Short.MAX_VALUE)), Short.MAX_VALUE);
+                                (serializer.serialize(Short.MAX_VALUE)), Short.MAX_VALUE);
     assertEquals(serializer.deserialize(
         serializer.serialize(Integer.MAX_VALUE)), Integer.MAX_VALUE);
     assertEquals(serializer.deserialize(

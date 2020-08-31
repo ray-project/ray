@@ -102,7 +102,7 @@ public class JobSchedulerImpl implements JobScheduler {
 
     // create JobWorker actors
     boolean createResult = workerLifecycleController
-        .createWorkers(executionGraph.getAllAddedExecutionVertices());
+                               .createWorkers(executionGraph.getAllAddedExecutionVertices());
 
     if (createResult) {
       LOG.info("Finished creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);

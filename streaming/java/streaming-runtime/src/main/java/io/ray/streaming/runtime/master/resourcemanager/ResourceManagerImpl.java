@@ -89,7 +89,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   @Override
-  public ResourceAssignmentView assignResource(List<Container> containers,
+  public ResourceAssignmentView assignResource(
+      List<Container> containers,
       ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
@@ -114,10 +115,11 @@ public class ResourceManagerImpl implements ResourceManager {
     Map<UniqueId, NodeInfo> latestNodeInfos = RayUtils.getAliveNodeInfoMap();
 
     List<UniqueId> addNodes = latestNodeInfos.keySet().stream()
-        .filter(this::isAddedNode).collect(Collectors.toList());
+                                  .filter(this::isAddedNode).collect(Collectors.toList());
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
-        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
+                                     .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
+                                     .collect(Collectors.toList());
     LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
@@ -131,7 +133,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
       // register containers
       registerNewContainers(addNodes.stream().map(latestNodeInfos::get)
-          .collect(Collectors.toList()));
+                                .collect(Collectors.toList()));
     }
   }
 
