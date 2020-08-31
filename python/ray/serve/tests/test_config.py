@@ -1,7 +1,7 @@
 import pytest
 
 from ray import serve
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from pydantic import ValidationError
 
 
@@ -18,10 +18,15 @@ def test_backend_config_validation():
         BackendConfig(num_replicas=-1)
 
     # Test max_batch_size validation.
-    BackendConfig(max_batch_size=10, accepts_batches=True)._validate_complete()
+    BackendConfig(
+        max_batch_size=10,
+        internal_metadata=BackendMetadata(
+            accepts_batches=True))._validate_complete()
     with pytest.raises(ValueError):
         BackendConfig(
-            max_batch_size=10, accepts_batches=False)._validate_complete()
+            max_batch_size=10,
+            internal_metadata=BackendMetadata(
+                accepts_batches=False))._validate_complete()
     with pytest.raises(ValidationError, match="type_error"):
         BackendConfig(max_batch_size="hello")
     with pytest.raises(ValidationError, match="value_error"):
@@ -46,13 +51,13 @@ def test_backend_config_update():
         b.num_replicas = -1
 
     # Test batch validation.
-    b = BackendConfig(accepts_batches=False)
+    b = BackendConfig(internal_metadata=BackendMetadata(accepts_batches=False))
     b.max_batch_size = 1
     with pytest.raises(ValueError):
         b.max_batch_size = 2
         b._validate_complete()
 
-    b = BackendConfig(accepts_batches=True)
+    b = BackendConfig(internal_metadata=BackendMetadata(accepts_batches=True))
     b.max_batch_size = 2
 
 

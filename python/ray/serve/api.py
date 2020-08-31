@@ -7,7 +7,7 @@ from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name)
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -264,7 +264,8 @@ def create_backend(
         ray_actor_options (optional): options to be passed into the
             @ray.remote decorator for the backend actor.
         config (optional): configuration options for this backend. Either a
-            BackendConfig, or a dictionary.
+            BackendConfig, or a dictionary mapping strings to values for the
+            following options:
             Supported options:
             - "num_replicas": number of worker processes to start up that will
             handle requests to this backend.
@@ -289,14 +290,15 @@ def create_backend(
 
     replica_config = ReplicaConfig(
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
-    metadata = {
-        "accepts_batches": replica_config.accepts_batches,
-        "is_blocking": replica_config.is_blocking
-    }
+    metadata = BackendMetadata(
+        accepts_batches=replica_config.accepts_batches,
+        is_blocking=replica_config.is_blocking)
     if isinstance(config, dict):
-        backend_config = BackendConfig.parse_obj({**config, **metadata})
+        backend_config = BackendConfig.parse_obj({
+            **config, "internal_metadata": metadata
+        })
     elif isinstance(config, BackendConfig):
-        backend_config = config.copy(update=metadata)
+        backend_config = config.copy(update={"internal_metadata": metadata})
     backend_config._validate_complete()
     ray.get(
         controller.create_backend.remote(backend_tag, backend_config,

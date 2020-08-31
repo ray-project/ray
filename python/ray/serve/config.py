@@ -19,9 +19,13 @@ def _callable_is_blocking(func_or_class):
         return not inspect.iscoroutinefunction(func_or_class.__call__)
 
 
-class BackendConfig(BaseModel):
+class BackendMetadata(BaseModel):
     accepts_batches: bool = False
     is_blocking: bool = True
+
+
+class BackendConfig(BaseModel):
+    internal_metadata: BackendMetadata = BackendMetadata()
     num_replicas: PositiveInt = 1
     max_batch_size: Optional[PositiveInt] = None
     batch_wait_timeout: float = 0
@@ -36,7 +40,8 @@ class BackendConfig(BaseModel):
     # creating partially filled BackendConfig objects to pass as updates--for
     # example, BackendConfig(max_batch_size=5).
     def _validate_complete(self):
-        if (self.max_batch_size is not None and not self.accepts_batches
+        if (self.max_batch_size is not None
+                and not self.internal_metadata.accepts_batches
                 and self.max_batch_size > 1):
             raise ValueError(
                 "max_batch_size is set in config but the function or "
@@ -51,7 +56,8 @@ class BackendConfig(BaseModel):
             # Model serving mode: if the servable is blocking and the wait
             # timeout is default zero seconds, then we keep the existing
             # behavior to allow at most max batch size queries.
-            if values["is_blocking"] and values["batch_wait_timeout"] == 0:
+            if (values["internal_metadata"].is_blocking
+                    and values["batch_wait_timeout"] == 0):
                 if ("max_batch_size" in values
                         and values["max_batch_size"] is not None):
                     v = 2 * values["max_batch_size"]
@@ -61,7 +67,7 @@ class BackendConfig(BaseModel):
             # Pipeline/async mode: if the servable is not blocking,
             # router should just keep pushing queries to the worker
             # replicas until a high limit.
-            if not values["is_blocking"]:
+            if not values["internal_metadata"].is_blocking:
                 v = ASYNC_CONCURRENCY
 
             # Batch inference mode: user specifies non zero timeout to wait for
