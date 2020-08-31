@@ -42,7 +42,7 @@ You can start Ray on a single machine by adding this to your code.
 
   .. code-tab:: java
 
-    import io.ray.Ray;
+    import io.ray.api.Ray;
 
     public class MyRayApp {
 
