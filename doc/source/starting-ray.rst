@@ -77,7 +77,7 @@ To stop or restart Ray, use ``ray.shutdown()`` / ``Ray.shutdown()``.
 
   .. group-tab:: Java
 
-    There is no way to check if Ray is initialized in Java yet.
+    Checking if Ray is initialized hasn't been implemented in Java yet.
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
 
@@ -108,20 +108,21 @@ You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh
 
   .. group-tab:: Java
 
-    You need to set the ``ray.redis.address`` parameter. To connect your program to the Ray cluster, add the following to your Java code:
+    Your jar files must be distributed manually to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same between nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
 
-        .. code-block:: java
+    To connect your program to the Ray cluster, run it like this:
 
-            System.setProperty("ray.redis.address", "127.0.0.1:6375"); // Replace it with the actual address.
-            Ray.init();
+        .. code-block:: bash
 
-    .. note:: We don't support ``auto`` as the Redis address in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
+            java -classpath /path/to/jars/ -Dray.job.resource-path=/path/to/jars/ -Dray.redis.address=<ADDRESS> <CLASS_NAME> <ARGS>
+
+    .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
 
 Your Python script or Java code **only** needs to execute on one machine in the cluster (usually the head node).
 
 .. note:: TODO: Expain the way to distribute Java code to other machines.
 
-.. note:: Without ``ray.init(address...)`` / ``ray.redis.address``, your Ray program will only be parallelized across a single machine!
+.. note:: Without ``ray.init(address...)`` / ``-Dray.redis.address=...``, your Ray program will only be parallelized across a single machine!
 
 Manual cluster setup
 ~~~~~~~~~~~~~~~~~~~~
@@ -176,10 +177,9 @@ Note that this is different from local mode for Python. The main differences are
 
 To run or debug your code in single process mode, you need to set the ``ray.run-mode`` parameter to ``SINGLE_PROCESS``. And you should not set the ``ray.redis.address`` parameter. e.g.
 
-.. code-block:: java
+.. code-block:: bash
 
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
-    Ray.init();
+    java -classpath <CLASSPATH> -Dray.run-mode=SINGLE_PROCESS <CLASS_NAME> <ARGS>
 
 Note that some behavior such as resource management may not work as expected.
 
