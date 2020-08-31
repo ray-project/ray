@@ -483,12 +483,12 @@ def init(
         configure_logging=True,
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
+        log_to_driver=True,
         enable_object_reconstruction=False,
         # The following are unstable parameters and their use is discouraged.
         _redis_max_memory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
-        _log_to_driver=True,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
@@ -564,6 +564,8 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
+        log_to_driver (bool): If true, the output from all of the worker
+            processes on all nodes will be directed to the driver.
         enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -574,8 +576,6 @@ def init(
         _node_ip_address (str): The IP address of the node that we are on.
         _driver_object_store_memory (int): Limit the amount of memory the
             driver can use in the object store for creating objects.
-        _log_to_driver (bool): If true, the output from all of the worker
-            processes on all nodes will be directed to the driver.
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
@@ -739,7 +739,7 @@ def init(
     connect(
         _global_node,
         mode=driver_mode,
-        log_to_driver=_log_to_driver,
+        log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
