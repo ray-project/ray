@@ -6,7 +6,7 @@
 |
 
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a universal API for distributed computing.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -261,6 +261,7 @@ More Information
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
+- `Ray 1.0 whitepaper`_ **(new)**
 - `Ray paper`_
 - `Ray HotOS paper`_
 - `RLlib paper`_
@@ -269,6 +270,7 @@ More Information
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
+.. _`Ray 1.0 whitepaper`: https://arxiv.org/abs/1712.05889
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
