@@ -133,7 +133,7 @@ public class ExecutionGraph implements Serializable {
       });
     });
 
-    LOG.info("Channel grouped actors is: {}.", channelGroupedActors);
+    LOG.debug("Channel grouped actors is: {}.", channelGroupedActors);
   }
 
   private void addActorToChannelGroupedActors(

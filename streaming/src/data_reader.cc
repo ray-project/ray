@@ -339,9 +339,9 @@ bool DataReader::BarrierAlign(std::shared_ptr<DataBundle> &message) {
   STREAMING_LOG(INFO) << "[Reader] [Barrier] get barrier, barrier_id=" << barrier_id
                       << ", barrier_cnt=" << (*barrier_align_cnt)[barrier_id]
                       << ", global barrier id=" << barrier_header.barrier_id
-                      << ", from q_id=" << message->from << ", barrier type ="
+                      << ", from q_id=" << message->from << ", barrier type="
                       << static_cast<uint32_t>(barrier_header.barrier_type)
-                      << ", target count =" << target_count;
+                      << ", target count=" << target_count;
   // notify invoker the last barrier, so that checkpoint or something related can be
   // taken right now.
   if ((*barrier_align_cnt)[barrier_id] == target_count) {
