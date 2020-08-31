@@ -1,15 +1,8 @@
-import {
-  Divider,
-  Grid,
-  makeStyles,
-  Theme,
-} from "@material-ui/core";
+import { Divider, Grid, makeStyles, Theme } from "@material-ui/core";
 import React from "react";
 import { ActorState } from "../../../api";
 import LabeledDatum from "../../../common/LabeledDatum";
 import ActorStateRepr from "./ActorStateRepr";
-
-
 
 type ActorDetailsPaneProps = {
   actorTitle: string;

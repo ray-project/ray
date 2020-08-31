@@ -1,10 +1,10 @@
-import { ActorState } from '../../../api';
-import { makeStyles, Theme, createStyles, Typography } from '@material-ui/core';
+import { createStyles, makeStyles, Theme, Typography } from "@material-ui/core";
 import React from "react";
+import { ActorState } from "../../../api";
 
 type ActorStateReprProps = {
   state: ActorState;
-  variant?: any; 
+  variant?: any;
 };
 
 const useActorStateReprStyles = makeStyles((theme: Theme) =>
@@ -47,20 +47,51 @@ const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, variant }) => {
   const variantOrDefault = variant ?? "body1";
   switch (state) {
     case Infeasible:
-        return <Typography variant={variantOrDefault} className={classes.infeasible}>Infeasible</Typography>;
+      return (
+        <Typography variant={variantOrDefault} className={classes.infeasible}>
+          Infeasible
+        </Typography>
+      );
     case PendingResources:
-        return <Typography variant={variantOrDefault} className={classes.pendingResources}>Pending</Typography>;
+      return (
+        <Typography
+          variant={variantOrDefault}
+          className={classes.pendingResources}
+        >
+          Pending
+        </Typography>
+      );
     case PendingCreation:
-      return <Typography variant={variantOrDefault} className={classes.creating}>Creating</Typography>;
+      return (
+        <Typography variant={variantOrDefault} className={classes.creating}>
+          Creating
+        </Typography>
+      );
     case DependenciesUnready:
-      return <Typography variant={variantOrDefault} className={classes.creating}>Dependencies Unready</Typography>;
+      return (
+        <Typography variant={variantOrDefault} className={classes.creating}>
+          Dependencies Unready
+        </Typography>
+      );
     case Alive:
-      return <Typography variant={variantOrDefault} className={classes.alive}>Alive</Typography>;
+      return (
+        <Typography variant={variantOrDefault} className={classes.alive}>
+          Alive
+        </Typography>
+      );
     case Restarting:
-      return <Typography variant={variantOrDefault} className={classes.restarting}>Restarting</Typography>;
+      return (
+        <Typography variant={variantOrDefault} className={classes.restarting}>
+          Restarting
+        </Typography>
+      );
     case Dead:
-      return <Typography variant={variantOrDefault} className={classes.dead}>Dead</Typography>;
-  };
+      return (
+        <Typography variant={variantOrDefault} className={classes.dead}>
+          Dead
+        </Typography>
+      );
+  }
 };
 
 export default ActorStateRepr;

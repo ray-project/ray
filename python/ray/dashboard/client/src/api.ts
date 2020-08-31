@@ -204,7 +204,10 @@ export function isFullActorInfo(
   // Lint disabled because arrow functions don't play well with type guards.
   // This function is used to determine what kind of information we have about
   // a given actor in a response based on its state.
-  return actorInfo.state !== ActorState.Infeasible && actorInfo.state !== ActorState.PendingResources;
+  return (
+    actorInfo.state !== ActorState.Infeasible &&
+    actorInfo.state !== ActorState.PendingResources
+  );
 }
 
 export type ActorGroupSummary = {
