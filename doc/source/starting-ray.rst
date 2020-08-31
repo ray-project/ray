@@ -206,7 +206,7 @@ By default, Ray will parallelize its workload and run tasks on different nodes. 
     .. code-block:: bash
 
       java -classpath <classpath> \
-        -Dray.local-mode=True \
+        -Dray.local-mode=true \
         <classname> <args>
 
 Note that some behavior such as setting global process variables may not work as expected.
