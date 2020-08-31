@@ -30,6 +30,7 @@ You can start Ray the init API. It will start the local services that Ray uses t
     ray.init()
 
   .. code-tab:: java
+
     import io.ray.Ray;
 
     public class MyRayApp {
@@ -52,6 +53,7 @@ To stop or restart Ray, use the shutdown API.
     ray.shutdown()
 
   .. code-tab:: java
+
     import io.ray.Ray;
 
     public class MyRayApp {
@@ -118,8 +120,8 @@ You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh
 
             java -classpath /path/to/jars/ \
               -Dray.job.resource-path=/path/to/jars/ \
-              -Dray.redis.address=<ADDRESS> \
-              <CLASS_NAME> <ARGS>
+              -Dray.redis.address=<address> \
+              <classname> <args>
 
     .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
 
@@ -182,9 +184,9 @@ To run or debug your code in single process mode, you need to set the ``ray.run-
 
 .. code-block:: bash
 
-    java -classpath <CLASSPATH> \
+    java -classpath <classpath> \
       -Dray.run-mode=SINGLE_PROCESS \
-      <CLASS_NAME> <ARGS>
+      <classname> <args>
 
 Note that some behavior such as resource management may not work as expected.
 
