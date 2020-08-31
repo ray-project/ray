@@ -1,4 +1,3 @@
-import copy
 from collections import defaultdict
 import logging
 import pickle
@@ -290,7 +289,6 @@ class BayesOptSearch(Searcher):
              self._total_random_search_trials,
              self._config_counter) = pickle.load(f)
 
-
     @staticmethod
     def convert_search_space(spec: Dict):
         spec = flatten_dict(spec)
@@ -299,26 +297,26 @@ class BayesOptSearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to an BayesOpt search space.")
+                "to a BayesOpt search space.")
 
         if resolved_vars:
             raise ValueError(
-                "BeaysOpt does not support fixed parameters. Please find a "
+                "BayesOpt does not support fixed parameters. Please find a "
                 "different way to pass constants to your training function.")
 
         def resolve_value(domain):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                logger.warning("BayesOpt search does not support quantization. "
-                               "Dropped quantization.")
+                logger.warning(
+                    "BayesOpt search does not support quantization. "
+                    "Dropped quantization.")
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler != None:
+                if domain.sampler is not None:
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
-                        "The {} sampler will be dropped.".format(
-                            sampler))
+                        "The {} sampler will be dropped.".format(sampler))
                     return (domain.min, domain.max)
 
             raise ValueError("BayesOpt does not support parameters of type "

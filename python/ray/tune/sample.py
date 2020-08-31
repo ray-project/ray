@@ -2,7 +2,7 @@ import logging
 import random
 from copy import copy
 from numbers import Number
-from typing import Callable, Dict, Iterator, List, Optional, \
+from typing import Any, Callable, Dict, Iterator, List, Optional, \
     Sequence, \
     Union
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Domain:
     sampler = None
+    default_sampler_cls = None
 
     def set_sampler(self, sampler, allow_override=False):
         if self.sampler and not allow_override:
@@ -27,7 +28,7 @@ class Domain:
     def get_sampler(self):
         sampler = self.sampler
         if not sampler:
-            sampler = Uniform()
+            sampler = self.default_sampler_cls()
         return sampler
 
     def sample(self, spec=None, size=1):
@@ -41,19 +42,91 @@ class Domain:
         return False
 
 
+class Sampler:
+    def sample(self,
+               domain: Domain,
+               spec: Optional[Union[List[Dict], Dict]] = None,
+               size: int = 1):
+        raise NotImplementedError
+
+
+class Grid(Sampler):
+    """Dummy sampler used for grid search"""
+
+    def sample(self,
+               domain: Domain,
+               spec: Optional[Union[List[Dict], Dict]] = None,
+               size: int = 1):
+        return RuntimeError("Do not call `sample()` on grid.")
+
+
 class Float(Domain):
+    class _Uniform(Sampler):
+        def sample(self,
+                   domain: "Float",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            assert domain.min > float("-inf"), \
+                "Uniform needs a minimum bound"
+            assert 0 < domain.max < float("inf"), \
+                "Uniform needs a maximum bound"
+            items = np.random.uniform(domain.min, domain.max, size=size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
+
+    class _LogUniform(Sampler):
+        def __init__(self, base: int = 10):
+            self.base = base
+            assert self.base > 0, "Base has to be strictly greater than 0"
+
+        def sample(self,
+                   domain: "Float",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            assert domain.min > 0, \
+                "LogUniform needs a minimum bound greater than 0"
+            assert 0 < domain.max < float("inf"), \
+                "LogUniform needs a maximum bound greater than 0"
+            logmin = np.log(domain.min) / np.log(self.base)
+            logmax = np.log(domain.max) / np.log(self.base)
+
+            items = self.base**(np.random.uniform(logmin, logmax, size=size))
+            if len(items) == 1:
+                return items[0]
+            return list(items)
+
+    class _Normal(Sampler):
+        def __init__(self, mean: float = 0., sd: float = 0.):
+            self.mean = mean
+            self.sd = sd
+
+            assert self.sd > 0, "SD has to be strictly greater than 0"
+
+        def sample(self,
+                   domain: "Float",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            # Use a truncated normal to avoid oversampling border values
+            dist = stats.truncnorm(
+                (domain.min - self.mean) / self.sd,
+                (domain.max - self.mean) / self.sd,
+                loc=self.mean,
+                scale=self.sd)
+            items = dist.rvs(size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
+
+    default_sampler_cls = _Uniform
+
     def __init__(self, min=float("-inf"), max=float("inf")):
         self.min = min
         self.max = max
 
-    def quantized(self, q: Number):
-        new = copy(self)
-        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
-        return new
-
     def normal(self, mean=0., sd=1.):
         new = copy(self)
-        new.set_sampler(Normal(mean, sd))
+        new.set_sampler(self._Normal(mean, sd))
         return new
 
     def uniform(self):
@@ -66,7 +139,7 @@ class Float(Domain):
                 "Uniform requires a maximum bound. Make sure to set the "
                 "`max` parameter of `Float()`.")
         new = copy(self)
-        new.set_sampler(Uniform())
+        new.set_sampler(self._Uniform())
         return new
 
     def loguniform(self, base: int = 10):
@@ -79,33 +152,64 @@ class Float(Domain):
                 "LogUniform requires a minimum bound greater than 0. "
                 "Make sure to set the `max` parameter of `Float()` correctly.")
         new = copy(self)
-        new.set_sampler(LogUniform(base))
+        new.set_sampler(self._LogUniform(base))
+        return new
+
+    def quantized(self, q: Number):
+        new = copy(self)
+        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
 
 class Integer(Domain):
+    class _Uniform(Sampler):
+        def sample(self,
+                   domain: "Integer",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            items = np.random.randint(domain.min, domain.max, size=size)
+            if len(items) == 1:
+                return items[0]
+            return list(items)
+
+    default_sampler_cls = _Uniform
+
     def __init__(self, min, max):
         self.min = min
         self.max = max
 
     def quantized(self, q: Number):
         new = copy(self)
-        new.set_sampler(Quantized(new.sampler, q), allow_override=True)
+        new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
     def uniform(self):
         new = copy(self)
-        new.set_sampler(Uniform())
+        new.set_sampler(self._Uniform())
         return new
 
 
 class Categorical(Domain):
+    class _Uniform(Sampler):
+        def sample(self,
+                   domain: "Categorical",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            choices = []
+            for i in range(size):
+                choices.append(random.choice(domain.categories))
+            if len(choices) == 1:
+                return choices[0]
+            return choices
+
+    default_sampler_cls = _Uniform
+
     def __init__(self, categories: Sequence):
         self.categories = list(categories)
 
     def uniform(self):
         new = copy(self)
-        new.set_sampler(Uniform())
+        new.set_sampler(self._Uniform())
         return new
 
     def grid(self):
@@ -121,70 +225,30 @@ class Categorical(Domain):
 
 
 class Iterative(Domain):
+    class _NextSampler(Sampler):
+        def sample(self,
+                   domain: "Iterative",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            items = []
+            for i in range(size):
+                items.append(next(domain.iterator))
+            if len(items) == 1:
+                return items[0]
+            return items
+
+    default_sampler_cls = _NextSampler
+
     def __init__(self, iterator: Iterator):
         self.iterator = iterator
 
-    def uniform(self):
-        new = copy(self)
-        new.set_sampler(Uniform())
-        return new
-
 
 class Function(Domain):
-    def __init__(self, func: Callable):
-        self.func = func
-
-    def uniform(self):
-        new = copy(self)
-        new.set_sampler(Uniform())
-        return new
-
-    def is_function(self):
-        return True
-
-
-class Sampler:
-    def sample(self,
-               domain: Domain,
-               spec: Optional[Union[List[Dict], Dict]] = None,
-               size: int = 1):
-        raise NotImplementedError
-
-
-class Uniform(Sampler):
-    def sample(self,
-               domain: Domain,
-               spec: Optional[Union[List[Dict], Dict]] = None,
-               size: int = 1):
-        if isinstance(spec, list) and spec:
-            assert len(spec) == size, \
-                "Number of passed specs must match sample size"
-        elif isinstance(spec, dict) and spec:
-            assert size == 1, \
-                "Cannot sample the same parameter more than once for one spec"
-
-        if isinstance(domain, Float):
-            assert domain.min > float("-inf"), \
-                "Uniform needs a minimum bound"
-            assert 0 < domain.max < float("inf"), \
-                "Uniform needs a maximum bound"
-            items = np.random.uniform(domain.min, domain.max, size=size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
-        elif isinstance(domain, Integer):
-            items = np.random.randint(domain.min, domain.max, size=size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
-        elif isinstance(domain, Categorical):
-            choices = []
-            for i in range(size):
-                choices.append(random.choice(domain.categories))
-            if len(choices) == 1:
-                return choices[0]
-            return choices
-        elif isinstance(domain, Function):
+    class _CallSampler(Sampler):
+        def sample(self,
+                   domain: "Function",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
             items = []
             for i in range(size):
                 this_spec = spec[i] if isinstance(spec, list) else spec
@@ -192,74 +256,14 @@ class Uniform(Sampler):
             if len(items) == 1:
                 return items[0]
             return items
-        elif isinstance(domain, Iterative):
-            items = []
-            for i in range(size):
-                items.append(next(domain.iterator))
-            if len(items) == 1:
-                return items[0]
-            return items
-        else:
-            raise RuntimeError(
-                "Uniform sampler does not support parameters of type {}. "
-                "Allowed types: {}".format(
-                    domain.__class__.__name__,
-                    [Float, Integer, Categorical, Function, Iterative]))
 
+    default_sampler_cls = _CallSampler
 
-class LogUniform(Sampler):
-    def __init__(self, base: int = 10):
-        self.base = base
-        assert self.base > 0, "Base has to be strictly greater than 0"
+    def __init__(self, func: Callable):
+        self.func = func
 
-    def sample(self,
-               domain: Domain,
-               spec: Optional[Union[List[Dict], Dict]] = None,
-               size: int = 1):
-        if isinstance(domain, Float):
-            assert domain.min > 0, \
-                "LogUniform needs a minimum bound greater than 0"
-            assert 0 < domain.max < float("inf"), \
-                "LogUniform needs a maximum bound greater than 0"
-            logmin = np.log(domain.min) / np.log(self.base)
-            logmax = np.log(domain.max) / np.log(self.base)
-
-            items = self.base**(np.random.uniform(logmin, logmax, size=size))
-            if len(items) == 1:
-                return items[0]
-            return list(items)
-        else:
-            raise RuntimeError(
-                "LogUniform sampler does not support parameters of type {}. "
-                "Allowed types: {}".format(domain.__class__.__name__, [Float]))
-
-
-class Normal(Sampler):
-    def __init__(self, mean: float = 0., sd: float = 0.):
-        self.mean = mean
-        self.sd = sd
-
-        assert self.sd > 0, "SD has to be strictly greater than 0"
-
-    def sample(self,
-               domain: Domain,
-               spec: Optional[Union[List[Dict], Dict]] = None,
-               size: int = 1):
-        if isinstance(domain, Float):
-            # Use a truncated normal to avoid oversampling border values
-            dist = stats.truncnorm(
-                (domain.min - self.mean) / self.sd,
-                (domain.max - self.mean) / self.sd,
-                loc=self.mean,
-                scale=self.sd)
-            items = dist.rvs(size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
-        else:
-            raise ValueError(
-                "Normal sampler does not support parameters of type {}. "
-                "Allowed types: {}".format(domain.__class__.__name__, [Float]))
+    def is_function(self):
+        return True
 
 
 class Quantized(Sampler):
@@ -267,11 +271,10 @@ class Quantized(Sampler):
         self.sampler = sampler
         self.q = q
 
+        assert self.sampler, "Quantized() expects a sampler instance"
+
     def get_sampler(self):
-        sampler = self.sampler
-        if not sampler:
-            sampler = Uniform()
-        return sampler
+        return self.sampler
 
     def sample(self,
                domain: Domain,
@@ -284,15 +287,7 @@ class Quantized(Sampler):
         return list(quantized)
 
 
-class Grid(Sampler):
-    def sample(self,
-               domain: Domain,
-               spec: Optional[Union[List[Dict], Dict]] = None,
-               size: int = 1):
-        return RuntimeError("Do not call `sample()` on grid.")
-
-
-def sample_from(func):
+def sample_from(func: Callable[[Dict], Any]):
     """Specify that tune should sample configuration values from this function.
 
     Arguments:
@@ -301,7 +296,7 @@ def sample_from(func):
     return Function(func)
 
 
-def uniform(min, max):
+def uniform(min: float, max: float):
     """Sample a float value uniformly between ``min`` and ``max``.
 
     Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
@@ -311,7 +306,7 @@ def uniform(min, max):
     return Float(min, max).uniform()
 
 
-def quniform(min, max, q):
+def quniform(min: float, max: float, q: float):
     """Sample a quantized float value uniformly between ``min`` and ``max``.
 
     Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
@@ -323,7 +318,7 @@ def quniform(min, max, q):
     return Float(min, max).uniform().quantized(q)
 
 
-def loguniform(min, max, base=10):
+def loguniform(min: float, max: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
@@ -351,7 +346,7 @@ def qloguniform(min, max, q, base=10):
     return Float(min, max).loguniform(base).quantized(q)
 
 
-def choice(categories):
+def choice(categories: List):
     """Sample a categorical value.
 
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from
@@ -361,16 +356,30 @@ def choice(categories):
     return Categorical(categories).uniform()
 
 
-def randint(min, max):
+def randint(min: int, max: int):
     """Sample an integer value uniformly between ``min`` and ``max``.
 
-    ``min`` is inclusive, ``max`` is exlcusive.
+    ``min`` is inclusive, ``max`` is exclusive.
 
     Sampling from ``tune.randint(10)`` is equivalent to sampling from
     ``np.random.randint(10)``
 
     """
     return Integer(min, max).uniform()
+
+
+def qrandint(min: int, max: int, q: int = 1):
+    """Sample an integer value uniformly between ``min`` and ``max``.
+
+    ``min`` is inclusive, ``max`` is exclusive.
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+
+    Sampling from ``tune.randint(10)`` is equivalent to sampling from
+    ``np.random.randint(10)``
+
+    """
+    return Integer(min, max).uniform().quantized(q)
 
 
 def randn(mean: float = 0.,

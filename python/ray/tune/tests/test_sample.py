@@ -164,14 +164,8 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             converted_config = BayesOptSearch.convert_search_space(config)
 
-        config = {
-            "b": {
-                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
-            }
-        }
-        bayesopt_config = {
-            "b/z": (1e-4, 1e-2)
-        }
+        config = {"b": {"z": tune.sample.Float(1e-4, 1e-2).loguniform()}}
+        bayesopt_config = {"b/z": (1e-4, 1e-2)}
 
         converted_config = BayesOptSearch.convert_search_space(config)
 
