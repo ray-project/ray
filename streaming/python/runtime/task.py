@@ -54,7 +54,7 @@ class StreamTask(ABC):
         if self.writer is not None:
             output_points = self.writer.get_output_checkpoints()
 
-        operator_checkpoint = self.processor.save_checkpoint(checkpoint_id)
+        operator_checkpoint = self.processor.save_checkpoint()
         op_checkpoint_info = OpCheckpointInfo(
             operator_checkpoint, input_points, output_points, checkpoint_id)
         self.__save_cp_state_and_report(op_checkpoint_info, checkpoint_id)
@@ -140,8 +140,7 @@ class StreamTask(ABC):
 
         if cp_bytes is not None:
             op_checkpoint_info = pickle.loads(cp_bytes)
-            self.processor.load_checkpoint(self.last_checkpoint_id,
-                                           op_checkpoint_info.operator_point)
+            self.processor.load_checkpoint(op_checkpoint_info.operator_point)
             logger.info("Stream task recover from checkpoint state,\
                      checkpoint bytes len={}, checkpointInfo={}.".format(
                 cp_bytes.__len__(), op_checkpoint_info))
@@ -342,7 +341,7 @@ class SourceStreamTask(StreamTask):
         logger.info("Source task thread start.")
         try:
             while self.running:
-                self.processor.fetch(self.last_checkpoint_id + 1)
+                self.processor.fetch()
                 # check checkpoint
                 if self.__pending_barrier is not None:
                     # source fetcher only have outputPoints

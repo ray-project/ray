@@ -42,11 +42,11 @@ class Operator(ABC):
         pass
 
     @abstractmethod
-    def save_checkpoint(self, checkpoint_id):
+    def save_checkpoint(self):
         pass
 
     @abstractmethod
-    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
+    def load_checkpoint(self, checkpoint_obj):
         pass
 
 
@@ -99,16 +99,16 @@ class StreamOperator(Operator, ABC):
         for collector in self.collectors:
             collector.collect(record)
 
-    def save_checkpoint(self, checkpoint_id):
-        self.func.save_checkpoint(checkpoint_id)
+    def save_checkpoint(self):
+        self.func.save_checkpoint()
 
-    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
-        self.func.load_checkpoint(checkpoint_id, checkpoint_obj)
+    def load_checkpoint(self, checkpoint_obj):
+        self.func.load_checkpoint(checkpoint_obj)
 
 
 class SourceOperator(Operator, ABC):
     @abstractmethod
-    def fetch(self, checkpoint_id):
+    def fetch(self):
         pass
 
 
@@ -136,8 +136,8 @@ class SourceOperatorImpl(SourceOperator, StreamOperator):
         self.func.init(runtime_context.get_parallelism(),
                        runtime_context.get_task_index())
 
-    def fetch(self, checkpoint_id):
-        self.func.fetch(self.source_context, checkpoint_id)
+    def fetch(self):
+        self.func.fetch(self.source_context)
 
     def operator_type(self):
         return OperatorType.SOURCE
@@ -310,8 +310,8 @@ class ChainedSourceOperator(SourceOperator, ChainedOperator):
     def __init__(self, operators, configs):
         super().__init__(operators, configs)
 
-    def fetch(self, checkpoint_id):
-        self.operators[0].fetch(checkpoint_id)
+    def fetch(self):
+        self.operators[0].fetch()
 
 
 class ChainedOneInputOperator(ChainedOperator):

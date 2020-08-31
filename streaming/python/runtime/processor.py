@@ -24,11 +24,11 @@ class Processor(ABC):
         pass
 
     @abstractmethod
-    def save_checkpoint(self, checkpoint_id):
+    def save_checkpoint(self):
         pass
 
     @abstractmethod
-    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
+    def load_checkpoint(self, checkpoint_obj):
         pass
 
 
@@ -50,11 +50,11 @@ class StreamingProcessor(Processor, ABC):
     def close(self):
         self.operator.close()
 
-    def save_checkpoint(self, checkpoint_id):
-        self.operator.save_checkpoint(checkpoint_id)
+    def save_checkpoint(self):
+        self.operator.save_checkpoint()
 
-    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
-        self.operator.load_checkpoint(checkpoint_id, checkpoint_obj)
+    def load_checkpoint(self, checkpoint_obj):
+        self.operator.load_checkpoint(checkpoint_obj)
 
 
 class SourceProcessor(StreamingProcessor):
@@ -66,8 +66,8 @@ class SourceProcessor(StreamingProcessor):
     def process(self, record):
         raise Exception("SourceProcessor should not process record")
 
-    def fetch(self, checkpoint_id):
-        self.operator.fetch(checkpoint_id)
+    def fetch(self):
+        self.operator.fetch()
 
 
 class OneInputProcessor(StreamingProcessor):
