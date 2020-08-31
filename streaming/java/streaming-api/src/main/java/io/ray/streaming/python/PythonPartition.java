@@ -39,7 +39,7 @@ public class PythonPartition implements Partition<Object> {
   /**
    * Create a python partition from a moduleName and partition function name
    *
-   * @param moduleName   module name of python partition
+   * @param moduleName module name of python partition
    * @param functionName function/class name of the partition function.
    */
   public PythonPartition(String moduleName, String functionName) {

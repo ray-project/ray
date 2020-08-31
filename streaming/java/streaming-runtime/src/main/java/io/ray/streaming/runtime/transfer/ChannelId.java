@@ -133,7 +133,7 @@ public class ChannelId {
    * Generate channel name, which will be 20 character
    *
    * @param fromTaskId upstream task id
-   * @param toTaskId   downstream task id
+   * @param toTaskId downstream task id
    * @return channel name
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {

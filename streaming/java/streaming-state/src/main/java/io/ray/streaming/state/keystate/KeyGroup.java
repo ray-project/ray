@@ -34,7 +34,7 @@ public class KeyGroup implements Serializable {
    * Defines the range [startIndex, endIndex]
    *
    * @param startIndex start of the range (inclusive)
-   * @param endIndex   end of the range (inclusive)
+   * @param endIndex end of the range (inclusive)
    */
   public KeyGroup(int startIndex, int endIndex) {
     Preconditions.checkArgument(startIndex >= 0 && startIndex <= endIndex);

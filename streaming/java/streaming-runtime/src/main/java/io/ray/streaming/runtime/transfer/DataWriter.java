@@ -29,8 +29,8 @@ public class DataWriter {
 
   /**
    * @param outputChannels output channels ids
-   * @param toActors       downstream output actors
-   * @param workerConfig   configuration
+   * @param toActors downstream output actors
+   * @param workerConfig configuration
    */
   public DataWriter(
       List<String> outputChannels,
@@ -67,7 +67,7 @@ public class DataWriter {
   /**
    * Write msg into the specified channel
    *
-   * @param id   channel id
+   * @param id channel id
    * @param item message item data section is specified by [position, limit).
    */
   public void write(ChannelId id, ByteBuffer item) {
@@ -81,9 +81,10 @@ public class DataWriter {
   /**
    * Write msg into the specified channels
    *
-   * @param ids  channel ids
-   * @param item message item data section is specified by [position, limit). item doesn't have to
-   *             be a direct buffer.
+   * @param ids channel ids
+   * @param item message item data section is specified by [position, limit). item doesn't have
+   *     to
+   *     be a direct buffer.
    */
   public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();

@@ -44,8 +44,8 @@ public class KeyDataStream<K, T> extends DataStream<T> {
    * Apply an aggregate Function to this stream.
    *
    * @param aggregateFunction The aggregate function
-   * @param <A>               The type of aggregated intermediate data.
-   * @param <O>               The type of result data.
+   * @param <A> The type of aggregated intermediate data.
+   * @param <O> The type of result data.
    * @return A new DataStream.
    */
   public <A, O> DataStream<O> aggregate(AggregateFunction<T, A, O> aggregateFunction) {

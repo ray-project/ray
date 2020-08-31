@@ -33,8 +33,8 @@ public final class KeyGroupAssignment {
    * Computes the range of key-groups that are assigned for a given operator instance.
    *
    * @param maxParallelism Maximal parallelism of the job.
-   * @param parallelism    Parallelism for the job. <= maxParallelism.
-   * @param index          index of the operator instance.
+   * @param parallelism Parallelism for the job. <= maxParallelism.
+   * @param index index of the operator instance.
    */
   public static KeyGroup getKeyGroup(int maxParallelism, int parallelism, int index) {
     Preconditions.checkArgument(maxParallelism >= parallelism,
@@ -49,7 +49,7 @@ public final class KeyGroupAssignment {
   /**
    * Assigning the key to a key-group index.
    *
-   * @param key            the key to assign.
+   * @param key the key to assign.
    * @param maxParallelism the maximum parallelism.
    * @return the key-group index to which the given key is assigned.
    */

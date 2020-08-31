@@ -38,7 +38,7 @@ public interface MapState<K, V> extends UnaryState<Map<K, V>> {
   /**
    * Associates a new value with the given key.
    *
-   * @param key   The key of the mapping
+   * @param key The key of the mapping
    * @param value The new value of the mapping
    */
   void put(K key, V value);

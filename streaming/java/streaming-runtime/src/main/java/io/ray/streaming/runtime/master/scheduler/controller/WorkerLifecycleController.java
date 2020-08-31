@@ -75,7 +75,7 @@ public class WorkerLifecycleController {
    * Using context to init JobWorker.
    *
    * @param vertexToContextMap target JobWorker actor
-   * @param timeout            timeout for waiting, unit: ms
+   * @param timeout timeout for waiting, unit: ms
    * @return initiation result
    */
   public boolean initWorkers(
@@ -108,7 +108,7 @@ public class WorkerLifecycleController {
    * Start JobWorkers to run task.
    *
    * @param executionGraph physical plan
-   * @param timeout        timeout for waiting, unit: ms
+   * @param timeout timeout for waiting, unit: ms
    * @return starting result
    */
   public boolean startWorkers(ExecutionGraph executionGraph, int timeout) {

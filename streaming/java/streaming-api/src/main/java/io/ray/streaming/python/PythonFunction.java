@@ -65,9 +65,10 @@ public class PythonFunction implements Function {
   /**
    * Create a {@link PythonFunction} from a moduleName and streaming function name.
    *
-   * @param moduleName   module name of streaming function.
-   * @param functionName function name of streaming function. {@code functionName} is the name of a
-   *                     python function, or class name of subclass of `ray.streaming.function.`
+   * @param moduleName module name of streaming function.
+   * @param functionName function name of streaming function. {@code functionName} is the name
+   *     of a
+   *     python function, or class name of subclass of `ray.streaming.function.`
    */
   public PythonFunction(
       String moduleName,
