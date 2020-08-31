@@ -231,7 +231,7 @@ class PopulationBasedTraining(FIFOScheduler):
                                (list, dict, Domain)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
-                                "callable.")
+                                "a callable.")
             if type(value) is sample_from:
                 raise ValueError("arbitrary tune.sample_from objects are not "
                                  "supported for `hyperparam_mutation` values."

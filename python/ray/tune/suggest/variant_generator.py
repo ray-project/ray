@@ -117,9 +117,7 @@ def _clean_value(value):
 
 def parse_spec_vars(spec):
     resolved, unresolved = _split_resolved_unresolved_values(spec)
-    resolved_vars = []
-    for path, value in resolved.items():
-        resolved_vars.append((path, value))
+    resolved_vars = list(resolved.items())
 
     if not unresolved:
         return resolved_vars, [], []

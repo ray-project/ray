@@ -87,9 +87,7 @@ class Float(Domain):
             assert 0 < domain.max < float("inf"), \
                 "Uniform needs a maximum bound"
             items = np.random.uniform(domain.min, domain.max, size=size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
+            return items if len(items) > 1 else items[0]
 
     class _LogUniform(LogUniform):
         def __init__(self, base: int = 10):
@@ -108,9 +106,7 @@ class Float(Domain):
             logmax = np.log(domain.max) / np.log(self.base)
 
             items = self.base**(np.random.uniform(logmin, logmax, size=size))
-            if len(items) == 1:
-                return items[0]
-            return list(items)
+            return items if len(items) > 1 else items[0]
 
     class _Normal(Normal):
         def __init__(self, mean: float = 0., sd: float = 0.):
@@ -130,15 +126,14 @@ class Float(Domain):
                 loc=self.mean,
                 scale=self.sd)
             items = dist.rvs(size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
+            return items if len(items) > 1 else items[0]
 
     default_sampler_cls = _Uniform
 
-    def __init__(self, min=float("-inf"), max=float("inf")):
-        self.min = min
-        self.max = max
+    def __init__(self, min: float, max: float):
+        # Need to explicitly check for None
+        self.min = min if min is not None else float("-inf")
+        self.max = max if max is not None else float("inf")
 
     def uniform(self):
         if not self.min > float("-inf"):
@@ -184,9 +179,7 @@ class Integer(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
             items = np.random.randint(domain.min, domain.max, size=size)
-            if len(items) == 1:
-                return items[0]
-            return list(items)
+            return items if len(items) > 1 else items[0]
 
     default_sampler_cls = _Uniform
 
@@ -211,12 +204,9 @@ class Categorical(Domain):
                    domain: "Categorical",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            choices = []
-            for i in range(size):
-                choices.append(random.choice(domain.categories))
-            if len(choices) == 1:
-                return choices[0]
-            return choices
+
+            items = random.choices(domain.categories, k=size)
+            return items if len(items) > 1 else items[0]
 
     default_sampler_cls = _Uniform
 
@@ -246,12 +236,8 @@ class Iterative(Domain):
                    domain: "Iterative",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            items = []
-            for i in range(size):
-                items.append(next(domain.iterator))
-            if len(items) == 1:
-                return items[0]
-            return items
+            items = [next(domain.iterator) for _ in range(size)]
+            return items if len(items) > 1 else items[0]
 
     default_sampler_cls = _NextSampler
 
