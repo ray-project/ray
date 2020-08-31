@@ -80,7 +80,7 @@ public class PythonOperator extends StreamOperator {
     StringBuilder builder = new StringBuilder();
     builder.append(PythonOperator.class.getSimpleName()).append("[");
     if (function != null) {
-      builder.append(((PythonFunction)function).toSimpleString());
+      builder.append(((PythonFunction) function).toSimpleString());
     } else {
       builder.append(moduleName).append(".").append(className);
     }

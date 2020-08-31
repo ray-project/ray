@@ -98,7 +98,7 @@ public class JobGraphBuilder {
 
       // process join stream
       if (stream instanceof JoinStream) {
-        DataStream rightStream =  ((JoinStream) stream).getRightStream();
+        DataStream rightStream = ((JoinStream) stream).getRightStream();
         this.jobGraph.addEdge(
             new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
         processStream(rightStream);

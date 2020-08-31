@@ -86,7 +86,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    *
    * @param func The python FilterFunction.
    * @return A new PythonDataStream that contains only the elements satisfying
-   *     the given filter predicate.
+   * the given filter predicate.
    */
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);

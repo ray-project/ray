@@ -11,6 +11,7 @@ public interface RichFunction extends Function {
   /**
    * Initialization method for user function which called before the first call to the user
    * function.
+   *
    * @param runtimeContext runtime context
    */
   void open(RuntimeContext runtimeContext);

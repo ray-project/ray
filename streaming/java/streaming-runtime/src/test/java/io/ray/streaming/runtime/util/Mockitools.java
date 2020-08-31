@@ -21,7 +21,7 @@ public class Mockitools {
   public static void mockGscApi() {
     PowerMockito.mockStatic(RayUtils.class);
     PowerMockito.when(RayUtils.getAliveNodeInfoMap())
-      .thenReturn(mockGetNodeInfoMap(mockGetAllNodeInfo()));
+        .thenReturn(mockGetNodeInfoMap(mockGetAllNodeInfo()));
   }
 
   /**
@@ -62,16 +62,16 @@ public class Mockitools {
    */
   public static Map<UniqueId, NodeInfo> mockGetNodeInfoMap(List<NodeInfo> nodeInfos) {
     return nodeInfos.stream().filter(nodeInfo -> nodeInfo.isAlive).collect(
-      Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
+        Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
   }
 
   private static NodeInfo mockNodeInfo(int i, Map<String, Double> resources) {
     return new NodeInfo(
-      createNodeId(i),
-      "localhost" + i,
-      "localhost" + i,
-      true,
-      resources);
+        createNodeId(i),
+        "localhost" + i,
+        "localhost" + i,
+        true,
+        resources);
   }
 
   private static UniqueId createNodeId(int id) {
