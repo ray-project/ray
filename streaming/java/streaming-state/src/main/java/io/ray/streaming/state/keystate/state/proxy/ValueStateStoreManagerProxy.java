@@ -34,7 +34,7 @@ public class ValueStateStoreManagerProxy<T> extends StateStoreManagerProxy<T> im
   private final ValueStateImpl<T> valueState;
 
   public ValueStateStoreManagerProxy(KeyStateBackend keyStateBackend,
-                                     ValueStateDescriptor<T> stateDescriptor) {
+      ValueStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     this.valueState = new ValueStateImpl<>(stateDescriptor, keyStateBackend);
   }

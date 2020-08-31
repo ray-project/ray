@@ -31,8 +31,8 @@ import io.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import io.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
 
 /**
- * key state backend manager, managing different kinds of states in different thread.
- * This class is not thread safe.
+ * key state backend manager, managing different kinds of states in different thread. This class is
+ * not thread safe.
  */
 public class KeyStateBackend extends AbstractKeyStateBackend {
 
@@ -40,7 +40,7 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   protected final KeyGroup keyGroup;
 
   public KeyStateBackend(int numberOfKeyGroups, KeyGroup keyGroup,
-                         AbstractStateBackend abstractStateBackend) {
+      AbstractStateBackend abstractStateBackend) {
     super(abstractStateBackend);
     this.numberOfKeyGroups = numberOfKeyGroups;
     this.keyGroup = keyGroup;

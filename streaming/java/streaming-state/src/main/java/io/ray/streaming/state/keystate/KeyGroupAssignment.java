@@ -58,7 +58,7 @@ public final class KeyGroupAssignment {
   }
 
   public static Map<Integer, List<Integer>> computeKeyGroupToTask(int maxParallelism,
-                                                                  List<Integer> targetTasks) {
+      List<Integer> targetTasks) {
     Map<Integer, List<Integer>> keyGroupToTask = new ConcurrentHashMap<>();
     for (int index = 0; index < targetTasks.size(); index++) {
       KeyGroup taskKeyGroup = getKeyGroup(maxParallelism, targetTasks.size(), index);

@@ -35,7 +35,7 @@ public class MapStateStoreManagerProxy<K, V> extends StateStoreManagerProxy<Map<
   private final MapStateImpl<K, V> mapState;
 
   public MapStateStoreManagerProxy(KeyStateBackend keyStateBackend,
-                                   MapStateDescriptor<K, V> stateDescriptor) {
+      MapStateDescriptor<K, V> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     this.mapState = new MapStateImpl<>(stateDescriptor, keyStateBackend);
   }

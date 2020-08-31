@@ -35,8 +35,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   public Stream(StreamingContext streamingContext,
-                StreamOperator streamOperator,
-                Partition<T> partition) {
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     this(streamingContext, null, streamOperator, partition);
   }
 
@@ -50,9 +50,9 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   protected Stream(StreamingContext streamingContext,
-                   Stream inputStream,
-                   StreamOperator streamOperator,
-                   Partition<T> partition) {
+      Stream inputStream,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     this.streamingContext = streamingContext;
     this.inputStream = inputStream;
     this.operator = streamOperator;
@@ -64,8 +64,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Create a proxy stream of original stream.
-   * Changes in new stream will be reflected in original stream and vice versa
+   * Create a proxy stream of original stream. Changes in new stream will be reflected in original
+   * stream and vice versa
    */
   protected Stream(Stream originalStream) {
     this.originalStream = originalStream;
@@ -183,8 +183,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Set the partition function of this {@link Stream} so that output elements are forwarded to
-   * next operator locally.
+   * Set the partition function of this {@link Stream} so that output elements are forwarded to next
+   * operator locally.
    */
   public S forward() {
     return setPartition(getForwardPartition(operator));

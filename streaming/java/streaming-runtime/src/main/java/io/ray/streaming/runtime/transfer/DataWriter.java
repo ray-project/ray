@@ -13,8 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * DataWriter is a wrapper of streaming c++ DataWriter, which sends data
- * to downstream workers
+ * DataWriter is a wrapper of streaming c++ DataWriter, which sends data to downstream workers
  */
 public class DataWriter {
   private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
@@ -33,8 +32,8 @@ public class DataWriter {
    * @param workerConfig   configuration
    */
   public DataWriter(List<String> outputChannels,
-                    List<BaseActorHandle> toActors,
-                    StreamingWorkerConfig workerConfig) {
+      List<BaseActorHandle> toActors,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     ChannelCreationParametersBuilder initialParameters =
@@ -81,8 +80,8 @@ public class DataWriter {
    * Write msg into the specified channels
    *
    * @param ids  channel ids
-   * @param item message item data section is specified by [position, limit).
-   *             item doesn't have to be a direct buffer.
+   * @param item message item data section is specified by [position, limit). item doesn't have to
+   *             be a direct buffer.
    */
   public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();

@@ -90,7 +90,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
   @Override
   public ResourceAssignmentView assignResource(List<Container> containers,
-                                               ExecutionGraph executionGraph) {
+      ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
 
@@ -106,8 +106,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   /**
-   * Check the status of ray cluster node and update the internal resource information of
-   * streaming system.
+   * Check the status of ray cluster node and update the internal resource information of streaming
+   * system.
    */
   private void checkAndUpdateResource() {
     //Get add&del nodes(node -> container)

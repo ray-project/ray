@@ -21,8 +21,8 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
- * Optimize job graph by chaining some operators so that some operators can be run in the
- * same thread.
+ * Optimize job graph by chaining some operators so that some operators can be run in the same
+ * thread.
  */
 public class JobGraphOptimizer {
   private final JobGraph jobGraph;
@@ -157,8 +157,8 @@ public class JobGraphOptimizer {
   }
 
   private boolean canBeChained(JobVertex precedingVertex,
-                               JobVertex succeedingVertex,
-                               JobEdge edge) {
+      JobVertex succeedingVertex,
+      JobEdge edge) {
     if (jobGraph.getVertexOutputEdges(precedingVertex.getVertexId()).size() > 1 ||
         jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
       return false;

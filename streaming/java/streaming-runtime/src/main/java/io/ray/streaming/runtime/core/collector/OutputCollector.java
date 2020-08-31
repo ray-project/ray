@@ -28,9 +28,9 @@ public class OutputCollector implements Collector<Record> {
   private final Serializer crossLangSerializer = new CrossLangSerializer();
 
   public OutputCollector(DataWriter writer,
-                         Collection<String> outputChannelIds,
-                         Collection<BaseActorHandle> targetActors,
-                         Partition partition) {
+      Collection<String> outputChannelIds,
+      Collection<BaseActorHandle> targetActors,
+      Partition partition) {
     this.writer = writer;
     this.outputQueues = outputChannelIds.stream().map(ChannelId::from).toArray(ChannelId[]::new);
     this.targetActors = targetActors;

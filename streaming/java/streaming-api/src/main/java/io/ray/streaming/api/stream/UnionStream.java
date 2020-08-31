@@ -6,7 +6,6 @@ import java.util.List;
 
 /**
  * Represents a union DataStream.
- *
  * <p>This stream does not create a physical operation, it only affects how upstream data are
  * connected to downstream data.
  *

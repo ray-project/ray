@@ -94,13 +94,13 @@ public class ChannelCreationParametersBuilder {
   }
 
   public static void setJavaReaderFunctionDesc(JavaFunctionDescriptor asyncFunc,
-                                               JavaFunctionDescriptor syncFunc) {
+      JavaFunctionDescriptor syncFunc) {
     javaReaderAsyncFuncDesc = asyncFunc;
     javaReaderSyncFuncDesc = syncFunc;
   }
 
   public static void setJavaWriterFunctionDesc(JavaFunctionDescriptor asyncFunc,
-                                               JavaFunctionDescriptor syncFunc) {
+      JavaFunctionDescriptor syncFunc) {
     javaWriterAsyncFuncDesc = asyncFunc;
     javaWriterSyncFuncDesc = syncFunc;
   }
@@ -113,17 +113,17 @@ public class ChannelCreationParametersBuilder {
   }
 
   public ChannelCreationParametersBuilder buildOutputQueueParameters(List<String> queues,
-                                                                     List<BaseActorHandle> actors) {
+      List<BaseActorHandle> actors) {
     return buildParameters(queues, actors, javaReaderAsyncFuncDesc, javaReaderSyncFuncDesc,
         pyReaderAsyncFunctionDesc, pyReaderSyncFunctionDesc);
   }
 
   private ChannelCreationParametersBuilder buildParameters(List<String> queues,
-                                                           List<BaseActorHandle> actors,
-                                                           JavaFunctionDescriptor javaAsyncFunctionDesc,
-                                                           JavaFunctionDescriptor javaSyncFunctionDesc,
-                                                           PyFunctionDescriptor pyAsyncFunctionDesc,
-                                                           PyFunctionDescriptor pySyncFunctionDesc
+      List<BaseActorHandle> actors,
+      JavaFunctionDescriptor javaAsyncFunctionDesc,
+      JavaFunctionDescriptor javaSyncFunctionDesc,
+      PyFunctionDescriptor pyAsyncFunctionDesc,
+      PyFunctionDescriptor pySyncFunctionDesc
   ) {
     parameters = new ArrayList<>(queues.size());
 

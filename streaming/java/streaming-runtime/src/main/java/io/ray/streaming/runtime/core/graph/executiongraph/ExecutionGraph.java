@@ -25,9 +25,7 @@ public class ExecutionGraph implements Serializable {
   private Map<String, String> jobConfig;
 
   /**
-   * Data map for execution job vertex.
-   * key: job vertex id.
-   * value: execution job vertex.
+   * Data map for execution job vertex. key: job vertex id. value: execution job vertex.
    */
   private Map<Integer, ExecutionJobVertex> executionJobVertexMap;
 

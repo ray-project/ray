@@ -23,12 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Gateway for streaming python api.
- * All calls on DataStream in python will be mapped to DataStream call in java by this
- * PythonGateway using ray calls.
- * <p>
- * Note: this class needs to be in sync with `GatewayClient` in
- * `streaming/python/runtime/gateway_client.py`
+ * Gateway for streaming python api. All calls on DataStream in python will be mapped to DataStream
+ * call in java by this PythonGateway using ray calls. this class needs to be in sync with
+ * GatewayClient in `streaming/python/runtime/gateway_client.py`
  */
 @SuppressWarnings("unchecked")
 public class PythonGateway {

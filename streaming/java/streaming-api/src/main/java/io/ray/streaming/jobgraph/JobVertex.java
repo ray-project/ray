@@ -19,10 +19,10 @@ public class JobVertex implements Serializable {
   private Map<String, String> config;
 
   public JobVertex(int vertexId,
-                   int parallelism,
-                   VertexType vertexType,
-                   StreamOperator streamOperator,
-                   Map<String, String> config) {
+      int parallelism,
+      VertexType vertexType,
+      StreamOperator streamOperator,
+      Map<String, String> config) {
     this.vertexId = vertexId;
     this.parallelism = parallelism;
     this.vertexType = vertexType;

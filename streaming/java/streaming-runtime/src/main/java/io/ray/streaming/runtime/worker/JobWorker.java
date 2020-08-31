@@ -147,8 +147,7 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by upstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by upstream streaming queue to send data to this actor and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
     if (transferHandler == null) {
@@ -165,8 +164,8 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by downstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by downstream streaming queue to send data to this actor and receive result from this
+   * actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
     if (transferHandler == null) {

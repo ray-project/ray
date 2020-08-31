@@ -35,7 +35,7 @@ public class JobGraphBuilder {
   }
 
   public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
-                         Map<String, String> jobConfig) {
+      Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);

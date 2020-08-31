@@ -8,13 +8,11 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Represents a python partition function.
  * <p>
- * Python worker can create a partition object using information in this
- * PythonPartition.
+ * Python worker can create a partition object using information in this PythonPartition.
  * <p>
- * If this object is constructed from serialized python partition,
- * python worker can deserialize it to create python partition directly.
- * If this object is constructed from moduleName and className/functionName,
- * python worker will use `importlib` to load python partition function.
+ * If this object is constructed from serialized python partition, python worker can deserialize it
+ * to create python partition directly. If this object is constructed from moduleName and
+ * className/functionName, python worker will use `importlib` to load python partition function.
  * <p>
  */
 public class PythonPartition implements Partition<Object> {
