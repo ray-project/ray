@@ -9,9 +9,9 @@ import torchvision.transforms as transforms
 from tqdm import trange
 
 import ray
-from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE
+from ray.util.sgd.utils import BATCH_SIZE, override, RayFileLock
 
 
 def initialization_hook():
@@ -23,49 +23,65 @@ def initialization_hook():
     # print("NCCL DEBUG SET")
     # os.environ["NCCL_DEBUG"] = "INFO"
 
+class CifarTrainingOperator(TrainingOperator):
 
-def cifar_creator(config):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])  # meanstd transformation
+    @override(TrainingOperator)
+    def setup(self, config):
+        # Create model.
+        model = ResNet18(config)
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-    train_dataset = CIFAR10(
-        root="~/data", train=True, download=True, transform=transform_train)
-    validation_dataset = CIFAR10(
-        root="~/data", train=False, download=False, transform=transform_test)
+        # Create optimizer.
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=config.get("lr", 0.1),
+            momentum=config.get("momentum", 0.9))
 
-    if config["test_mode"]:
-        train_dataset = Subset(train_dataset, list(range(64)))
-        validation_dataset = Subset(validation_dataset, list(range(64)))
+        # Load in training and validation data.
+        with RayFileLock():
+            transform_train = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])  # meanstd transformation
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-    validation_loader = DataLoader(
-        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-    return train_loader, validation_loader
+            transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
+            train_dataset = CIFAR10(
+                root="~/data", train=True, download=True,
+                transform=transform_train)
+            validation_dataset = CIFAR10(
+                root="~/data", train=False, download=False,
+                transform=transform_test)
 
+            if config["test_mode"]:
+                train_dataset = Subset(train_dataset, list(range(64)))
+                validation_dataset = Subset(validation_dataset,
+                                            list(range(64)))
 
-def optimizer_creator(model, config):
-    """Returns optimizer"""
-    return torch.optim.SGD(
-        model.parameters(),
-        lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.9))
+            train_loader = DataLoader(
+                train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+            validation_loader = DataLoader(
+                validation_dataset, batch_size=config[BATCH_SIZE],
+                num_workers=2)
 
+        # Create scheduler.
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=[150, 250, 350], gamma=0.1)
 
-def scheduler_creator(optimizer, config):
-    return torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, milestones=[150, 250, 350], gamma=0.1)
+        # Create loss.
+        criterion = nn.CrossEntropyLoss()
 
+        # Register all components.
+        self.model, self.optimizer, self.criterion, self.scheduler = \
+            self.register(models=model, optimizers=optimizer,
+                          train_loader=train_loader,
+                          validation_loader=validation_loader,
+                          criterion=criterion, schedulers=scheduler)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -104,12 +120,11 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(address=args.address, num_cpus=num_cpus, log_to_driver=True)
 
+
+
+
     trainer1 = TorchTrainer(
-        model_creator=ResNet18,
-        data_creator=cifar_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.CrossEntropyLoss,
-        scheduler_creator=scheduler_creator,
+        training_operator_cls=CifarTrainingOperator,
         initialization_hook=initialization_hook,
         num_workers=args.num_workers,
         config={

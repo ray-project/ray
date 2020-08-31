@@ -9,7 +9,7 @@ import torch.nn as nn
 from filelock import FileLock
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES)
+                                NUM_SAMPLES, RayFileLock)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
 from torch.nn.parallel.distributed import DistributedDataParallel
@@ -123,7 +123,7 @@ class TrainingOperator:
 
         .. code-block:: python
 
-            @override
+            @override(TrainingOperator)
             def setup(self, config):
                 model = ...
                 optimizer = ...
@@ -598,8 +598,7 @@ class TrainingOperator:
                 loaders = None
                 if serialize_data_creation:
                     logger.debug("Serializing the dataloading process.")
-                    with FileLock(
-                        os.path.join(tempfile.gettempdir(), ".raydata.lock")):
+                    with RayFileLock():
                         loaders = data_creator(config)
                 else:
                     loaders = data_creator(config)
@@ -644,11 +643,25 @@ class TrainingOperator:
                     kwargs["criterion"] = criterion
 
                 state = self.register(**kwargs)
-                self.model, self.optimizer = state[:2]
-                if len(state) == 3:
+                self.models, self.optimizers = state[:2]
+                if isinstance(self.models, tuple):
+                    self.model = self.models[0]
+                else:
+                    self.model = self.models
+
+                if isinstance(self.optimizers, tuple):
+                    self.optimizer = self.optimizers[0]
+                else:
+                    self.optimizer = self.optimizers
+
+                if len(state) >= 3:
                     self.criterion = state[2]
                 if len(state) == 4:
-                    self.scheduler = state[3]
+                    self.schedulers = state[3]
+                    if isinstance(self.schedulers, tuple):
+                        self.scheduler = self.schedulers[0]
+                    else:
+                        self.scheduler = self.schedulers
 
         return CreatorOperator
 

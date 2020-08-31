@@ -70,10 +70,7 @@ class TorchTrainer:
                                                     validation_loader=val_loader,
                                                     criterion=loss)
         trainer = TorchTrainer(
-            model_creator=model_creator,
-            data_creator=data_creator,
-            optimizer_creator=optimizer_creator,
-            loss_creator=nn.MSELoss,
+            training_operator_cls=MyTrainingOperator,
             config={"batch_size": 32},
             use_gpu=True
         )
@@ -192,8 +189,9 @@ class TorchTrainer:
         if serialize_data_creation is True:
             logging.warning(
                 "serialize_data_creation is deprecated and will be ignored. "
-                "If you require serialized data loading you should use a "
-                "FileLock to load data in TrainingOperator.setup."
+                "If you require serialized data loading you should use "
+                "implement this in TrainingOperator.setup. You may find "
+                "sgd.utils.RayFileLock useful here."
             )
 
         if data_loader_args:
@@ -685,10 +683,7 @@ class TorchTrainer:
         .. code-block:: python
 
             TorchTrainable = TorchTrainer.as_trainable(
-                model_creator=ResNet18,
-                data_creator=cifar_creator,
-                optimizer_creator=optimizer_creator,
-                loss_creator=nn.CrossEntropyLoss,
+                training_operator_cls=MyTrainingOperator,
                 num_gpus=2
             )
             analysis = tune.run(
@@ -737,10 +732,7 @@ class BaseTorchTrainable(Trainable):
     .. code-block:: python
 
         TorchTrainable = TorchTrainer.as_trainable(
-            model_creator=ResNet18,
-            data_creator=cifar_creator,
-            optimizer_creator=optimizer_creator,
-            loss_creator=nn.CrossEntropyLoss,
+            training_operator_cls=MyTrainingOperator,
             num_gpus=2
         )
         # TorchTrainable is subclass of BaseTorchTrainable.
