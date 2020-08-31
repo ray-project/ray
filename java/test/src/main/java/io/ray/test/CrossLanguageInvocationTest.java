@@ -54,7 +54,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test
   public void testCallingPythonFunction() {
-    Object[] inputs = new Object[]{
+    Object[] inputs = new Object[] {
         true,  // Boolean
         Byte.MAX_VALUE,  // Byte
         Short.MAX_VALUE,  // Short
@@ -84,7 +84,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     }
     // array
     {
-      int[] input = new int[]{1, 2};
+      int[] input = new int[] {1, 2};
       ObjectRef<int[]> res = Ray.task(
           PyFunction.of(PYTHON_MODULE, "py_return_input", int[].class), input).remote();
       int[] r = res.get();
@@ -92,8 +92,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     }
     // array of Object
     {
-      Object[] input = new Object[]{1, 2.3f, 4.56, "789", "10".getBytes(), null, true,
-          new int[]{1, 2}};
+      Object[] input = new Object[] {1, 2.3f, 4.56, "789", "10".getBytes(), null, true,
+          new int[] {1, 2}};
       ObjectRef<Object[]> res = Ray.task(
           PyFunction.of(PYTHON_MODULE, "py_return_input", Object[].class), input).remote();
       Object[] r = res.get();
@@ -194,8 +194,9 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     } catch (RayException e) {
       String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
           .getStackTrace(e);
-      io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
-          .parseFrom(e.toBytes());
+      io.ray.runtime.generated.Common.RayException exception =
+          io.ray.runtime.generated.Common.RayException
+              .parseFrom(e.toBytes());
       Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
     }
   }
@@ -274,7 +275,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   public static Object[] pack(int i, String s, double f, Object[] o) {
     // This function will be called from test_cross_language_invocation.py
-    return new Object[]{i, s, f, o};
+    return new Object[] {i, s, f, o};
   }
 
   public static Object returnInput(Object o) {

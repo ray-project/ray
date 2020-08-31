@@ -268,31 +268,31 @@ public class KryoUtils {
 
   static class Tuple2<A, B> {
 
-    private A a;
-    private B b;
+    private A first;
+    private B second;
 
     public Tuple2() {
     }
 
-    public Tuple2(A a, B b) {
-      this.a = a;
-      this.b = b;
+    public Tuple2(A first, B second) {
+      this.first = first;
+      this.second = second;
     }
 
-    public A getA() {
-      return a;
+    public A getFirst() {
+      return first;
     }
 
-    public void setA(A a) {
-      this.a = a;
+    public void setFirst(A first) {
+      this.first = first;
     }
 
-    public B getB() {
-      return b;
+    public B getSecond() {
+      return second;
     }
 
-    public void setB(B b) {
-      this.b = b;
+    public void setSecond(B second) {
+      this.second = second;
     }
   }
 
@@ -309,8 +309,8 @@ public class KryoUtils {
     @Override
     public ArrayBlockingQueue read(Kryo kryo, Input input, Class<ArrayBlockingQueue> type) {
       Tuple2<Integer, LinkedList> tuple2 = kryo.readObject(input, Tuple2.class);
-      ArrayBlockingQueue arrayBlockingQueue = new ArrayBlockingQueue(tuple2.a);
-      tuple2.b.stream().forEach(
+      ArrayBlockingQueue arrayBlockingQueue = new ArrayBlockingQueue(tuple2.first);
+      tuple2.second.stream().forEach(
           obj -> {
             arrayBlockingQueue.add(obj);
           }
@@ -332,8 +332,8 @@ public class KryoUtils {
     @Override
     public LinkedBlockingQueue read(Kryo kryo, Input input, Class<LinkedBlockingQueue> type) {
       Tuple2<Integer, LinkedList> tuple2 = kryo.readObject(input, Tuple2.class);
-      LinkedBlockingQueue linkedBlockingQueue = new LinkedBlockingQueue(tuple2.a);
-      tuple2.b.stream().forEach(
+      LinkedBlockingQueue linkedBlockingQueue = new LinkedBlockingQueue(tuple2.first);
+      tuple2.second.stream().forEach(
           obj -> {
             linkedBlockingQueue.add(obj);
           }

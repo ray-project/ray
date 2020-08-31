@@ -18,8 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * DataWriter is a wrapper of streaming c++ DataWriter, which sends data
- * to downstream workers
+ * DataWriter is a wrapper of streaming c++ DataWriter, which sends data to downstream workers
  */
 public class DataWriter {
 

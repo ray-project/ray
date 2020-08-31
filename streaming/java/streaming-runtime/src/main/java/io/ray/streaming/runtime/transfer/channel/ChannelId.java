@@ -12,8 +12,8 @@ import java.util.Set;
 import sun.nio.ch.DirectBuffer;
 
 /**
- * ChannelID is used to identify a transfer channel between a upstream worker
- * and downstream worker.
+ * ChannelID is used to identify a transfer channel between a upstream worker and downstream
+ * worker.
  */
 public class ChannelId {
 

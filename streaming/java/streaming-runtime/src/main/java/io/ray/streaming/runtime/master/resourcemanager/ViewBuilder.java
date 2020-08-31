@@ -15,8 +15,8 @@ public class ViewBuilder {
   }
 
   public static ResourceAssignmentView buildResourceAssignmentView(List<Container> containers) {
-    Map<ContainerId, List<Integer>> assignmentView = containers.stream()
-        .collect(java.util.stream.Collectors.toMap(Container::getId,
+    Map<ContainerId, List<Integer>> assignmentView =
+        containers.stream().collect(java.util.stream.Collectors.toMap(Container::getId,
             Container::getExecutionVertexIds));
 
     return ResourceAssignmentView.of(assignmentView);

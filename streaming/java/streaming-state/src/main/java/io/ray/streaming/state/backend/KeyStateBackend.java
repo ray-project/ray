@@ -31,8 +31,8 @@ import io.ray.streaming.state.keystate.state.proxy.MapStateStoreManagerProxy;
 import io.ray.streaming.state.keystate.state.proxy.ValueStateStoreManagerProxy;
 
 /**
- * key state backend manager, managing different kinds of states in different thread.
- * This class is not thread safe.
+ * key state backend manager, managing different kinds of states in different thread. This class is
+ * not thread safe.
  */
 public class KeyStateBackend extends AbstractKeyStateBackend {
 

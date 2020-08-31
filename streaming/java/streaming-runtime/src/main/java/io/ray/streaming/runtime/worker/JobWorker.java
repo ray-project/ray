@@ -33,8 +33,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The streaming worker implementation class, it is ray actor. JobWorker is created by
- * {@link JobMaster} through ray api, and JobMaster communicates
- * with JobWorker through Ray.call().
+ * {@link JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
  *
  * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
  * between workers.
@@ -173,13 +172,13 @@ public class JobWorker implements Serializable {
 
       // create stream task
       task = createStreamTask(checkpointId);
-      ChannelRecoverInfo qRecoverInfo = task.recover(isRecreate.get());
+      ChannelRecoverInfo channelRecoverInfo = task.recover(isRecreate.get());
       isNeedRollback = false;
 
-      LOG.info("Rollback job worker success, checkpoint is {}, qRecoverInfo is {}.",
-          checkpointId, qRecoverInfo);
+      LOG.info("Rollback job worker success, checkpoint is {}, channelRecoverInfo is {}.",
+          checkpointId, channelRecoverInfo);
 
-      return CallResult.success(qRecoverInfo);
+      return CallResult.success(channelRecoverInfo);
     } catch (Exception e) {
       LOG.error("Rollback job worker has exception.", e);
       return CallResult.fail(ExceptionUtils.getStackTrace(e));
@@ -301,8 +300,7 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by upstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by upstream streaming queue to send data to this actor and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
     if (transferHandler == null) {
@@ -321,8 +319,8 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by downstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by downstream streaming queue to send data to this actor and receive result from this
+   * actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
     if (transferHandler == null) {

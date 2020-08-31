@@ -25,8 +25,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * DataReader is wrapper of streaming c++ DataReader, which read data
- * from channels of upstream workers
+ * DataReader is wrapper of streaming c++ DataReader, which read data from channels of upstream
+ * workers
  */
 public class DataReader {
 

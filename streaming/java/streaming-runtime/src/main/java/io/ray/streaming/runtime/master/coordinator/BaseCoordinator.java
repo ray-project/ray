@@ -16,7 +16,7 @@ public abstract class BaseCoordinator implements Runnable {
   protected final JobMasterRuntimeContext runtimeContext;
   protected final GraphManager graphManager;
   protected volatile boolean closed;
-  private Thread t;
+  private Thread thread;
 
   public BaseCoordinator(JobMaster jobMaster) {
     this.jobMaster = jobMaster;
@@ -25,17 +25,17 @@ public abstract class BaseCoordinator implements Runnable {
   }
 
   public void start() {
-    t = new Thread(Ray.wrapRunnable(this),
+    thread = new Thread(Ray.wrapRunnable(this),
         this.getClass().getName() + "-" + System.currentTimeMillis());
-    t.start();
+    thread.start();
   }
 
   public void stop() {
     closed = true;
 
     try {
-      if (t != null) {
-        t.join(30000);
+      if (thread != null) {
+        thread.join(30000);
       }
     } catch (InterruptedException e) {
       LOG.error("Coordinator thread exit has exception.", e);

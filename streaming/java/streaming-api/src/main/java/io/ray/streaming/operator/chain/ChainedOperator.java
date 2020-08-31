@@ -44,7 +44,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     // Dont' call super.open() as we `open` every operator separately.
     List<ForwardCollector> succeedingCollectors = operators.stream().skip(1)
-        .map(operator -> new ForwardCollector((OneInputOperator) operator))
+        .map(operator -> new ForwardCollector(
+            (OneInputOperator) operator))
         .collect(Collectors.toList());
     for (int i = 0; i < operators.size() - 1; i++) {
       StreamOperator operator = operators.get(i);

@@ -53,7 +53,8 @@ public class Resources implements Serializable {
 
   public ImmutableMap<UniqueId, Container> getRegisteredContainerMap() {
     return ImmutableMap.copyOf(registerContainers.stream()
-        .collect(java.util.stream.Collectors.toMap(Container::getNodeId, c -> c)));
+        .collect(java.util.stream.Collectors
+            .toMap(Container::getNodeId, c -> c)));
   }
 
   @Override

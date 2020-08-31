@@ -47,8 +47,7 @@ public class Container implements Serializable {
   private Map<String, Double> availableResources = new HashMap<>();
 
   /**
-   * List of {@link ExecutionVertex} ids
-   * belong to the container.
+   * List of {@link ExecutionVertex} ids belong to the container.
    */
   private List<Integer> executionVertexIds = new ArrayList<>();
 

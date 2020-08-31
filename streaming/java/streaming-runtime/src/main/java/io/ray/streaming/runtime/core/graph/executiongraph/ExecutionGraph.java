@@ -35,9 +35,7 @@ public class ExecutionGraph implements Serializable {
   private Map<String, String> jobConfig;
 
   /**
-   * Data map for execution job vertex.
-   * key: job vertex id.
-   * value: execution job vertex.
+   * Data map for execution job vertex. key: job vertex id. value: execution job vertex.
    */
   private Map<Integer, ExecutionJobVertex> executionJobVertexMap;
 
@@ -297,8 +295,11 @@ public class ExecutionGraph implements Serializable {
    */
   public List<BaseActorHandle> getNonSourceActors() {
     List<ExecutionJobVertex> executionJobVertices = getExecutionJobVertexList().stream()
-        .filter(executionJobVertex -> executionJobVertex.isTransformationVertex()
-            || executionJobVertex.isSinkVertex())
+        .filter(executionJobVertex ->
+            executionJobVertex
+                .isTransformationVertex()
+                || executionJobVertex
+                .isSinkVertex())
         .collect(Collectors.toList());
 
     return getActorsFromJobVertices(executionJobVertices);

@@ -67,8 +67,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Create a proxy stream of original stream.
-   * Changes in new stream will be reflected in original stream and vice versa
+   * Create a proxy stream of original stream. Changes in new stream will be reflected in original
+   * stream and vice versa
    */
   protected Stream(Stream originalStream) {
     this.originalStream = originalStream;
@@ -186,8 +186,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Set the partition function of this {@link Stream} so that output elements are forwarded to
-   * next operator locally.
+   * Set the partition function of this {@link Stream} so that output elements are forwarded to next
+   * operator locally.
    */
   public S forward() {
     return setPartition(getForwardPartition(operator));

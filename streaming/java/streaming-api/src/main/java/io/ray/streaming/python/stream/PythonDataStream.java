@@ -43,8 +43,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Create a python stream that reference passed java stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a python stream that reference passed java stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public PythonDataStream(DataStream referencedStream) {
     super(referencedStream);
@@ -88,8 +88,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    * Apply a filter function to this stream.
    *
    * @param func The python FilterFunction.
-   * @return A new PythonDataStream that contains only the elements satisfying
-   *     the given filter predicate.
+   * @return A new PythonDataStream that contains only the elements satisfying the given filter
+   *     predicate.
    */
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
@@ -97,8 +97,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
    * @param stream The DataStream to union output with.
    * @param others The other DataStreams to union output with.
@@ -112,8 +112,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
    * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
@@ -181,8 +181,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * If parent stream is a python stream, we can't call partition related methods
-   * in the java stream.
+   * If parent stream is a python stream, we can't call partition related methods in the java
+   * stream.
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
@@ -192,9 +192,9 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Convert this stream as a java stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a java stream. The converted stream and this stream are the same logical
+   * stream, which has same stream id. Changes in converted stream will be reflected in this stream
+   * and vice versa.
    */
   public DataStream<Object> asJavaStream() {
     return new DataStream<>(this);

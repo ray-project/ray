@@ -26,8 +26,6 @@ public class Mockitools {
 
   /**
    * Mock get all node info from GCS
-   *
-   * @return
    */
   public static List<NodeInfo> mockGetAllNodeInfo() {
     List<NodeInfo> nodeInfos = new LinkedList<>();

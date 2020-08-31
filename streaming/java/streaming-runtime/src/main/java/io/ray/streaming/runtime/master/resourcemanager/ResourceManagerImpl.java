@@ -101,8 +101,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   /**
-   * Check the status of ray cluster node and update the internal resource information of
-   * streaming system.
+   * Check the status of ray cluster node and update the internal resource information of streaming
+   * system.
    */
   private void checkAndUpdateResource() {
     //Get add&del nodes(node -> container)
@@ -112,8 +112,9 @@ public class ResourceManagerImpl implements ResourceManager {
         .filter(this::isAddedNode).collect(Collectors.toList());
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
-        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
-    LOG.debug("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
+        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
+        .collect(Collectors.toList());
+    LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
     if (!addNodes.isEmpty() || !deleteNodes.isEmpty()) {

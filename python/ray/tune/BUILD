@@ -7,7 +7,7 @@ py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["jenkins_only"],
+    tags = ["exclusive"],
     deps = [":tune_lib"],
 )
 

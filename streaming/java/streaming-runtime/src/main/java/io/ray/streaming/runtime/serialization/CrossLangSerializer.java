@@ -6,8 +6,8 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * A serializer for cross-lang serialization between java/python.
- * TODO implements a more sophisticated serialization framework
+ * A serializer for cross-lang serialization between java/python. TODO implements a more
+ * sophisticated serialization framework
  */
 public class CrossLangSerializer implements Serializer {
 

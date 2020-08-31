@@ -208,7 +208,8 @@ public class KeyStateBackendTest {
   public void testGetMapState() {
     keyStateBackend.setCheckpointId(1l);
     MapStateDescriptor<String, String> mapStateDescriptor = MapStateDescriptor
-        .build("map", String.class, String.class);
+        .build("map", String.class,
+            String.class);
     mapStateDescriptor.setTableName("kepler_hlg_ut");
     MapState<String, String> mapState = keyStateBackend.getMapState(mapStateDescriptor);
 

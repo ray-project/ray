@@ -20,8 +20,8 @@ public class SourceStreamTask extends StreamTask {
   private long lastCheckpointId = 0;
 
   /**
-   * SourceStreamTask for executing a {@link SourceOperator}.
-   * It is responsible for running the corresponding source operator.
+   * SourceStreamTask for executing a {@link SourceOperator}. It is responsible for running the
+   * corresponding source operator.
    */
   public SourceStreamTask(Processor sourceProcessor, JobWorker jobWorker, long lastCheckpointId) {
     super(sourceProcessor, jobWorker, lastCheckpointId);

@@ -31,9 +31,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * This class defines the implementation of operator state.
- * When the state is initialized, we must scan the whole table.
- * And if the state type is splitList, all the records must be spitted.
+ * This class defines the implementation of operator state. When the state is initialized, we must
+ * scan the whole table. And if the state type is splitList, all the records must be spitted.
  */
 public class OperatorStateImpl<V> implements ListState<V> {
 
