@@ -210,8 +210,9 @@ def update_backend_config(
 
     Args:
         backend_tag(str): A registered backend.
-        config_options: Backend config options to update. Either a
-        BackendConfig object or a dict.
+        config_options(dict, serve.BackendConfig): Backend config options to 
+        update. Either a BackendConfig object or a dict mapping strings to 
+        values for the following options:
 
             Supported options:
             - "num_replicas": number of worker processes to start up that
@@ -289,17 +290,14 @@ def create_backend(
 
     replica_config = ReplicaConfig(
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
+    metadata = {
+        "accepts_batches": replica_config.accepts_batches,
+        "is_blocking": replica_config.is_blocking
+    }
     if isinstance(config, dict):
-        backend_config = BackendConfig(
-            **config,
-            accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+        backend_config = BackendConfig.parse_obj(config.update(metadata))
     elif isinstance(config, BackendConfig):
-        backend_config = config.copy(
-            update={
-                "accepts_batches": replica_config.accepts_batches,
-                "is_blocking": replica_config.is_blocking
-            })
+        backend_config = config.copy(update=metadata)
     backend_config._validate_complete()
     ray.get(
         controller.create_backend.remote(backend_tag, backend_config,
