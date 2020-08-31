@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
  * <p>
  */
 public class PythonFunction implements Function {
+
   public enum FunctionInterface {
     SOURCE_FUNCTION("SourceFunction"),
     MAP_FUNCTION("MapFunction"),
@@ -64,14 +65,13 @@ public class PythonFunction implements Function {
   /**
    * Create a {@link PythonFunction} from a moduleName and streaming function name.
    *
-   * @param moduleName module name of streaming function.
-   * @param functionName function name of streaming function. {@code functionName} is the name
-   *     of a
-   *     python function, or class name of subclass of `ray.streaming.function.`
+   * @param moduleName   module name of streaming function.
+   * @param functionName function name of streaming function. {@code functionName} is the name of a
+   *                     python function, or class name of subclass of `ray.streaming.function.`
    */
   public PythonFunction(
-      String moduleName,
-      String functionName) {
+    String moduleName,
+    String functionName) {
     Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
     Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
     this.function = null;
@@ -110,12 +110,12 @@ public class PythonFunction implements Function {
   @Override
   public String toString() {
     StringJoiner stringJoiner = new StringJoiner(", ",
-        PythonFunction.class.getSimpleName() + "[", "]");
+      PythonFunction.class.getSimpleName() + "[", "]");
     if (function != null) {
       stringJoiner.add("function=binary function");
     } else {
       stringJoiner.add("moduleName='" + moduleName + "'")
-          .add("functionName='" + functionName + "'");
+        .add("functionName='" + functionName + "'");
     }
     stringJoiner.add("functionInterface='" + functionInterface + "'");
     return stringJoiner.toString();

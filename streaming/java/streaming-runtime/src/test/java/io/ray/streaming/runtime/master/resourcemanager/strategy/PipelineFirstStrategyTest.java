@@ -60,7 +60,7 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
   public void testResourceAssignment() {
     strategy = new PipelineFirstStrategy();
     Assert.assertEquals(
-        ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
+      ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY.getName(), strategy.getName());
 
     Map<String, String> jobConf = new HashMap<>();
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);

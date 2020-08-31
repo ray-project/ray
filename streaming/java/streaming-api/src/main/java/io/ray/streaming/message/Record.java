@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.Objects;
 
 public class Record<T> implements Serializable {
+
   protected transient String stream;
   protected T value;
 
@@ -37,7 +38,7 @@ public class Record<T> implements Serializable {
     }
     Record<?> record = (Record<?>) o;
     return Objects.equals(stream, record.stream) &&
-               Objects.equals(value, record.value);
+      Objects.equals(value, record.value);
   }
 
   @Override

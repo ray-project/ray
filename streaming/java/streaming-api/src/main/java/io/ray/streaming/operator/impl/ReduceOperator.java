@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 public class ReduceOperator<K, T> extends StreamOperator<ReduceFunction<T>> implements
-    OneInputOperator<T> {
+  OneInputOperator<T> {
 
   private Map<K, T> reduceState;
 

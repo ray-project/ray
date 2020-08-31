@@ -165,7 +165,7 @@ public abstract class AbstractKeyStateBackend implements StateStoreManager {
   }
 
   public KeyValueStore<String, Map<Long, byte[]>> getBackStorage(
-      AbstractStateDescriptor stateDescriptor) {
+    AbstractStateDescriptor stateDescriptor) {
     String tableName = this.backend.getTableName(stateDescriptor);
     return getBackStorage(tableName);
   }

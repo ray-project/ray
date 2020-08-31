@@ -20,7 +20,6 @@ package io.ray.streaming.state.backend;
 
 import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
 
-
 import io.ray.streaming.state.config.ConfigKey;
 import io.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import io.ray.streaming.state.serialization.KeyMapStoreSerializer;
@@ -51,7 +50,7 @@ public abstract class AbstractStateBackend implements Serializable {
   public abstract <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(String tableName);
 
   public abstract <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(
-      String tableName, KeyMapStoreSerializer keyMapStoreSerializer);
+    String tableName, KeyMapStoreSerializer keyMapStoreSerializer);
 
   public BackendType getBackendType() {
     return backendType;

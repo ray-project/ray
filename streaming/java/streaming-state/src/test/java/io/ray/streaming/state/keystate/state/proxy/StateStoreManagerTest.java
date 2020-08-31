@@ -26,5 +26,5 @@ import java.util.HashMap;
 public class StateStoreManagerTest {
 
   protected KeyStateBackend keyStateBackend = new KeyStateBackend(1, new KeyGroup(1, 1),
-      new MemoryStateBackend(new HashMap<String, String>()));
+    new MemoryStateBackend(new HashMap<String, String>()));
 }

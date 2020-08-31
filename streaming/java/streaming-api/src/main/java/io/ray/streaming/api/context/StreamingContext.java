@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
  * Encapsulate the context information of a streaming Job.
  */
 public class StreamingContext implements Serializable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamingContext.class);
 
   private transient AtomicInteger idGenerator;
@@ -79,7 +80,7 @@ public class StreamingContext implements Serializable {
     ServiceLoader<JobClient> serviceLoader = ServiceLoader.load(JobClient.class);
     Iterator<JobClient> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
-        "No JobClient implementation has been provided.");
+      "No JobClient implementation has been provided.");
     JobClient jobClient = iterator.next();
     jobClient.submit(jobGraph, jobConfig);
   }

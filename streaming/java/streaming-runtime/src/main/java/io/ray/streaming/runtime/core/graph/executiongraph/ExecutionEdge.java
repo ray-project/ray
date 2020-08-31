@@ -30,9 +30,9 @@ public class ExecutionEdge implements Serializable {
   private final String executionEdgeIndex;
 
   public ExecutionEdge(
-      ExecutionVertex sourceExecutionVertex,
-      ExecutionVertex targetExecutionVertex,
-      ExecutionJobEdge executionJobEdge) {
+    ExecutionVertex sourceExecutionVertex,
+    ExecutionVertex targetExecutionVertex,
+    ExecutionJobEdge executionJobEdge) {
     this.sourceExecutionVertex = sourceExecutionVertex;
     this.targetExecutionVertex = targetExecutionVertex;
     this.partition = executionJobEdge.getPartition();
@@ -41,7 +41,7 @@ public class ExecutionEdge implements Serializable {
 
   private String generateExecutionEdgeIndex() {
     return sourceExecutionVertex.getExecutionVertexId() + "—"
-               + targetExecutionVertex.getExecutionVertexId();
+      + targetExecutionVertex.getExecutionVertexId();
   }
 
   public ExecutionVertex getSourceExecutionVertex() {
@@ -75,10 +75,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-               .add("source", sourceExecutionVertex)
-               .add("target", targetExecutionVertex)
-               .add("partition", partition)
-               .add("index", executionEdgeIndex)
-               .toString();
+      .add("source", sourceExecutionVertex)
+      .add("target", targetExecutionVertex)
+      .add("partition", partition)
+      .add("index", executionEdgeIndex)
+      .toString();
   }
 }

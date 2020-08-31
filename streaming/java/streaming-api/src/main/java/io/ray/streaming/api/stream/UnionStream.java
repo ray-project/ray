@@ -12,6 +12,7 @@ import java.util.List;
  * @param <T> The type of union data.
  */
 public class UnionStream<T> extends DataStream<T> {
+
   private List<DataStream<T>> unionStreams;
 
   public UnionStream(DataStream<T> input, List<DataStream<T>> streams) {

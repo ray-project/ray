@@ -31,13 +31,13 @@ import java.util.List;
  * This class defines ListState Wrapper, connecting state and backend.
  */
 public class ListStateStoreManagerProxy<T> extends StateStoreManagerProxy<List<T>> implements
-    KeyValueState<String, List<T>> {
+  KeyValueState<String, List<T>> {
 
   private final ListState<T> listState;
 
   public ListStateStoreManagerProxy(
-      AbstractKeyStateBackend keyStateBackend,
-      ListStateDescriptor<T> stateDescriptor) {
+    AbstractKeyStateBackend keyStateBackend,
+    ListStateDescriptor<T> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     if (stateDescriptor.isOperatorList()) {
       this.listState = new OperatorStateImpl<>(stateDescriptor, keyStateBackend);

@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
  * Abstract base class for chained operators.
  */
 public abstract class ChainedOperator extends StreamOperator<Function> {
+
   protected final List<StreamOperator> operators;
   protected final Operator headOperator;
   protected final Operator tailOperator;
@@ -30,9 +31,9 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   public ChainedOperator(List<StreamOperator> operators, List<Map<String, String>> configs) {
     Preconditions.checkArgument(operators.size() >= 2,
-        "Need at lease two operators to be chained together");
+      "Need at lease two operators to be chained together");
     operators.stream().skip(1)
-        .forEach(operator -> Preconditions.checkArgument(operator instanceof OneInputOperator));
+      .forEach(operator -> Preconditions.checkArgument(operator instanceof OneInputOperator));
     this.operators = operators;
     this.configs = configs;
     this.headOperator = operators.get(0);
@@ -43,13 +44,13 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     // Dont' call super.open() as we `open` every operator separately.
     List<ForwardCollector> succeedingCollectors = operators.stream().skip(1)
-                                                      .map(operator -> new ForwardCollector(
-                                                          (OneInputOperator) operator))
-                                                      .collect(Collectors.toList());
+      .map(operator -> new ForwardCollector(
+        (OneInputOperator) operator))
+      .collect(Collectors.toList());
     for (int i = 0; i < operators.size() - 1; i++) {
       StreamOperator operator = operators.get(i);
       List<ForwardCollector> forwardCollectors =
-          Collections.singletonList(succeedingCollectors.get(i));
+        Collections.singletonList(succeedingCollectors.get(i));
       operator.open(forwardCollectors, createRuntimeContext(runtimeContext, i));
     }
     // tail operator send data to downstream using provided collectors.
@@ -69,7 +70,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   @Override
   public String getName() {
     return operators.stream().map(Operator::getName)
-               .collect(Collectors.joining(" -> ", "[", "]"));
+      .collect(Collectors.joining(" -> ", "[", "]"));
   }
 
   public List<StreamOperator> getOperators() {
@@ -86,19 +87,19 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   private RuntimeContext createRuntimeContext(RuntimeContext runtimeContext, int index) {
     return (RuntimeContext) Proxy.newProxyInstance(runtimeContext.getClass().getClassLoader(),
-        new Class[] {RuntimeContext.class},
-        (proxy, method, methodArgs) -> {
-          if (method.getName().equals("getConfig")) {
-            return configs.get(index);
-          } else {
-            return method.invoke(runtimeContext, methodArgs);
-          }
-        });
+      new Class[]{RuntimeContext.class},
+      (proxy, method, methodArgs) -> {
+        if (method.getName().equals("getConfig")) {
+          return configs.get(index);
+        } else {
+          return method.invoke(runtimeContext, methodArgs);
+        }
+      });
   }
 
   public static ChainedOperator newChainedOperator(
-      List<StreamOperator> operators,
-      List<Map<String, String>> configs) {
+    List<StreamOperator> operators,
+    List<Map<String, String>> configs) {
     switch (operators.get(0).getOpType()) {
       case SOURCE:
         return new ChainedSourceOperator(operators, configs);
@@ -108,12 +109,13 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
         return new ChainedTwoInputOperator(operators, configs);
       default:
         throw new IllegalArgumentException(
-            "Unsupported operator type " + operators.get(0).getOpType());
+          "Unsupported operator type " + operators.get(0).getOpType());
     }
   }
 
   static class ChainedSourceOperator<T> extends ChainedOperator
-      implements SourceOperator<T> {
+    implements SourceOperator<T> {
+
     private final SourceOperator<T> sourceOperator;
 
     @SuppressWarnings("unchecked")
@@ -135,7 +137,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   static class ChainedOneInputOperator<T> extends ChainedOperator
-      implements OneInputOperator<T> {
+    implements OneInputOperator<T> {
+
     private final OneInputOperator<T> inputOperator;
 
     @SuppressWarnings("unchecked")
@@ -152,7 +155,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   static class ChainedTwoInputOperator<L, R> extends ChainedOperator
-      implements TwoInputOperator<L, R> {
+    implements TwoInputOperator<L, R> {
+
     private final TwoInputOperator<L, R> inputOperator;
 
     @SuppressWarnings("unchecked")

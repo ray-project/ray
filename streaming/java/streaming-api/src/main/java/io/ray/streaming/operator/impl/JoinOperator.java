@@ -16,7 +16,8 @@ import io.ray.streaming.operator.TwoInputOperator;
  * @param <O> Type of the data in the joined stream.
  */
 public class JoinOperator<L, R, K, O> extends StreamOperator<JoinFunction<L, R, O>> implements
-    TwoInputOperator<L, R> {
+  TwoInputOperator<L, R> {
+
   public JoinOperator() {
 
   }

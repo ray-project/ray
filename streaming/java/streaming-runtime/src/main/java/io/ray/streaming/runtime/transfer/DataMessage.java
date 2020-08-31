@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
  * DataMessage represents data between upstream and downstream operator
  */
 public class DataMessage implements Message {
+
   private final ByteBuffer body;
   private final long msgId;
   private final long timestamp;
@@ -45,10 +46,10 @@ public class DataMessage implements Message {
   @Override
   public String toString() {
     return "DataMessage{" +
-               "body=" + body +
-               ", msgId=" + msgId +
-               ", timestamp=" + timestamp +
-               ", channelId='" + channelId + '\'' +
-               '}';
+      "body=" + body +
+      ", msgId=" + msgId +
+      ", timestamp=" + timestamp +
+      ", channelId='" + channelId + '\'' +
+      '}';
   }
 }

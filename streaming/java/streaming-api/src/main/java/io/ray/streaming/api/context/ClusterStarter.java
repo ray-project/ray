@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class ClusterStarter {
+
   private static final Logger LOG = LoggerFactory.getLogger(ClusterStarter.class);
   private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/plasma_store_socket";
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/raylet_socket";
@@ -52,24 +53,24 @@ class ClusterStarter {
     // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
     // with `test` included in the name, we can check classpath `test` to filter out test classes.
     String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
-                           .filter(s -> !s.contains(" ") && s.contains("test"))
-                           .collect(Collectors.joining(":"));
+      .filter(s -> !s.contains(" ") && s.contains("test"))
+      .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
     Map<String, String> config = new HashMap<>(RayConfig.create().rayletConfigParameters);
     config.put("num_workers_per_process_java", "1");
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
-        "ray",
-        "start",
-        "--head",
-        "--redis-port=6379",
-        String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
-        String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
-        String.format("--node-manager-port=%s", nodeManagerPort),
-        "--load-code-from-local",
-        "--include-java",
-        "--java-worker-options=" + workerOptions,
-        "--system-config=" + new Gson().toJson(config)
+      "ray",
+      "start",
+      "--head",
+      "--redis-port=6379",
+      String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
+      String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
+      String.format("--node-manager-port=%s", nodeManagerPort),
+      "--load-code-from-local",
+      "--include-java",
+      "--java-worker-options=" + workerOptions,
+      "--system-config=" + new Gson().toJson(config)
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
@@ -96,8 +97,8 @@ class ClusterStarter {
     if (isCrossLanguage) {
       // Stop ray cluster.
       final List<String> stopCommand = ImmutableList.of(
-          "ray",
-          "stop"
+        "ray",
+        "stop"
       );
       if (!executeCommand(stopCommand, 10)) {
         throw new RuntimeException("Couldn't stop ray cluster");
@@ -114,8 +115,8 @@ class ClusterStarter {
     LOG.info("Executing command: {}", String.join(" ", command));
     try {
       ProcessBuilder processBuilder = new ProcessBuilder(command)
-                                          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-                                          .redirectError(ProcessBuilder.Redirect.INHERIT);
+        .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+        .redirectError(ProcessBuilder.Redirect.INHERIT);
       Process process = processBuilder.start();
       boolean exit = process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       if (!exit) {

@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JobGraphBuilder {
+
   private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilder.class);
 
   private JobGraph jobGraph;
@@ -35,8 +36,8 @@ public class JobGraphBuilder {
   }
 
   public JobGraphBuilder(
-      List<StreamSink> streamSinkList, String jobName,
-      Map<String, String> jobConfig) {
+    List<StreamSink> streamSinkList, String jobName,
+    Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);
@@ -60,7 +61,7 @@ public class JobGraphBuilder {
     }
     StreamOperator streamOperator = stream.getOperator();
     Preconditions.checkArgument(stream.getLanguage() == streamOperator.getLanguage(),
-        "Reference stream should be skipped.");
+      "Reference stream should be skipped.");
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
     Map<String, String> config = stream.getConfig();
@@ -76,7 +77,7 @@ public class JobGraphBuilder {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator, config);
     } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
       jobVertex = new JobVertex(
-          vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator, config);
+        vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator, config);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
@@ -101,7 +102,7 @@ public class JobGraphBuilder {
       if (stream instanceof JoinStream) {
         DataStream rightStream = ((JoinStream) stream).getRightStream();
         this.jobGraph.addEdge(
-            new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
+          new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
         processStream(rightStream);
       }
     } else {

@@ -39,7 +39,7 @@ public class JobGraphBuilderTest {
   public JobGraph buildDataSyncJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
-        Lists.newArrayList("a", "b", "c"));
+      Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
@@ -74,9 +74,9 @@ public class JobGraphBuilderTest {
   public JobGraph buildKeyByJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
-        Lists.newArrayList("1", "2", "3", "4"));
+      Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
-                                .sink(x -> LOG.info(x));
+      .sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
     JobGraph jobGraph = jobGraphBuilder.build();

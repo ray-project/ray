@@ -60,9 +60,9 @@ public class Container implements Serializable {
   }
 
   public Container(
-      String address,
-      UniqueId nodeId, String hostname,
-      Map<String, Double> availableResources) {
+    String address,
+    UniqueId nodeId, String hostname,
+    Map<String, Double> availableResources) {
 
     this.id = new ContainerID();
     this.address = address;
@@ -73,10 +73,10 @@ public class Container implements Serializable {
 
   public static Container from(NodeInfo nodeInfo) {
     return new Container(
-        nodeInfo.nodeAddress,
-        nodeInfo.nodeId,
-        nodeInfo.nodeHostname,
-        nodeInfo.resources
+      nodeInfo.nodeAddress,
+      nodeInfo.nodeId,
+      nodeInfo.nodeHostname,
+      nodeInfo.resources
     );
   }
 
@@ -151,7 +151,7 @@ public class Container implements Serializable {
       reclaimResource(vertex.getResource());
     } else {
       throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
-          this, vertex.getExecutionJobVertexName()));
+        this, vertex.getExecutionJobVertexName()));
     }
   }
 
@@ -162,11 +162,11 @@ public class Container implements Serializable {
   private void decreaseResource(Map<String, Double> allocatedResource) {
     allocatedResource.forEach((k, v) -> {
       Preconditions.checkArgument(this.availableResources.get(k) >= v,
-          String.format("Available resource %s not >= decreased resource %s",
-              this.availableResources.get(k), v));
+        String.format("Available resource %s not >= decreased resource %s",
+          this.availableResources.get(k), v));
       Double newValue = this.availableResources.get(k) - v;
       LOG.info("Decrease container {} resource [{}], from {} to {}.",
-          this.address, k, this.availableResources.get(k), newValue);
+        this.address, k, this.availableResources.get(k), newValue);
       this.availableResources.put(k, newValue);
     });
   }
@@ -175,7 +175,7 @@ public class Container implements Serializable {
     allocatedResource.forEach((k, v) -> {
       Double newValue = this.availableResources.get(k) + v;
       LOG.info("Reclaim container {} resource [{}], from {} to {}.",
-          this.address, k, this.availableResources.get(k), newValue);
+        this.address, k, this.availableResources.get(k), newValue);
       this.availableResources.put(k, newValue);
     });
   }
@@ -183,13 +183,13 @@ public class Container implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-               .add("id", id)
-               .add("address", address)
-               .add("hostname", hostname)
-               .add("nodeId", nodeId)
-               .add("availableResources", availableResources)
-               .add("executionVertexIds", executionVertexIds)
-               .add("capacity", capacity)
-               .toString();
+      .add("id", id)
+      .add("address", address)
+      .add("hostname", hostname)
+      .add("nodeId", nodeId)
+      .add("availableResources", availableResources)
+      .add("executionVertexIds", executionVertexIds)
+      .add("capacity", capacity)
+      .toString();
   }
 }

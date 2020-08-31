@@ -38,7 +38,7 @@ public class OperatorStateBackend extends AbstractKeyStateBackend {
   }
 
   protected <T> ListStateStoreManagerProxy<T> newListStateStoreManagerProxy(
-      ListStateDescriptor<T> stateDescriptor) {
+    ListStateDescriptor<T> stateDescriptor) {
     return new ListStateStoreManagerProxy<>(this, stateDescriptor);
   }
 

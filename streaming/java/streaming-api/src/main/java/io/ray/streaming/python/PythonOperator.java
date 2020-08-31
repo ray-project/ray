@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
  */
 @SuppressWarnings("unchecked")
 public class PythonOperator extends StreamOperator {
+
   private final String moduleName;
   private final String className;
 
@@ -65,7 +66,7 @@ public class PythonOperator extends StreamOperator {
     Preconditions.checkState(trace.length >= 2);
     StackTraceElement traceElement = trace[2];
     String msg = String.format("Method %s.%s shouldn't be called.",
-        traceElement.getClassName(), traceElement.getMethodName());
+      traceElement.getClassName(), traceElement.getMethodName());
     throw new UnsupportedOperationException(msg);
   }
 
@@ -90,24 +91,25 @@ public class PythonOperator extends StreamOperator {
   @Override
   public String toString() {
     StringJoiner stringJoiner = new StringJoiner(", ",
-        PythonOperator.class.getSimpleName() + "[", "]");
+      PythonOperator.class.getSimpleName() + "[", "]");
     if (function != null) {
       stringJoiner.add("function='" + function + "'");
     } else {
       stringJoiner.add("moduleName='" + moduleName + "'")
-          .add("className='" + className + "'");
+        .add("className='" + className + "'");
     }
     return stringJoiner.toString();
   }
 
   public static class ChainedPythonOperator extends PythonOperator {
+
     private final List<PythonOperator> operators;
     private final PythonOperator headOperator;
     private final PythonOperator tailOperator;
     private final List<Map<String, String>> configs;
 
     public ChainedPythonOperator(
-        List<PythonOperator> operators, List<Map<String, String>> configs) {
+      List<PythonOperator> operators, List<Map<String, String>> configs) {
       super(null);
       Preconditions.checkArgument(!operators.isEmpty());
       this.operators = operators;
@@ -129,7 +131,7 @@ public class PythonOperator extends StreamOperator {
     @Override
     public String getName() {
       return operators.stream().map(Operator::getName)
-                 .collect(Collectors.joining(" -> ", "[", "]"));
+        .collect(Collectors.joining(" -> ", "[", "]"));
     }
 
     @Override

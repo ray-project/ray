@@ -55,8 +55,8 @@ public class DualStateStrategyTest {
 
   public void caseKV() {
     ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-                                                            .build("VALUE-" + currentTime,
-                                                                String.class, defaultValue);
+      .build("VALUE-" + currentTime,
+        String.class, defaultValue);
     valueStateDescriptor.setTableName(table);
     ValueState<String> state = this.keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -160,8 +160,8 @@ public class DualStateStrategyTest {
 
   public void caseKVGap() {
     ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-                                                            .build("value2-" + currentTime,
-                                                                String.class, defaultValue);
+      .build("value2-" + currentTime,
+        String.class, defaultValue);
     valueStateDescriptor.setTableName(table);
     ValueState<String> state = this.keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -210,8 +210,8 @@ public class DualStateStrategyTest {
 
   public void caseKList() {
     ListStateDescriptor<Integer> listStateDescriptor = ListStateDescriptor
-                                                           .build("LIST-" + currentTime,
-                                                               Integer.class);
+      .build("LIST-" + currentTime,
+        Integer.class);
     listStateDescriptor.setTableName(table);
     ListState<Integer> state = this.keyStateBackend.getListState(listStateDescriptor);
 
@@ -313,8 +313,8 @@ public class DualStateStrategyTest {
 
   public void caseKMap() {
     MapStateDescriptor<Integer, Integer> mapStateDescriptor = MapStateDescriptor
-                                                                  .build("MAP-" + currentTime,
-                                                                      Integer.class, Integer.class);
+      .build("MAP-" + currentTime,
+        Integer.class, Integer.class);
     mapStateDescriptor.setTableName(table);
     MapState<Integer, Integer> state = this.keyStateBackend.getMapState(mapStateDescriptor);
 
@@ -429,7 +429,7 @@ public class DualStateStrategyTest {
   public void testMem() {
     config.put(ConfigKey.STATE_BACKEND_TYPE, BackendType.MEMORY.name());
     this.keyStateBackend = new KeyStateBackend(10, new KeyGroup(1, 3),
-        StateBackendBuilder.buildStateBackend(config));
+      StateBackendBuilder.buildStateBackend(config));
     caseKV();
     caseKVGap();
     caseKList();

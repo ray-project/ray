@@ -31,8 +31,8 @@ public class JobGraph implements Serializable {
   }
 
   public JobGraph(
-      String jobName, Map<String, String> jobConfig,
-      List<JobVertex> jobVertices, List<JobEdge> jobEdges) {
+    String jobName, Map<String, String> jobConfig,
+    List<JobVertex> jobVertices, List<JobEdge> jobEdges) {
     this.jobName = jobName;
     this.jobConfig = jobConfig;
     this.jobVertices = jobVertices;
@@ -83,14 +83,14 @@ public class JobGraph implements Serializable {
 
   public List<JobVertex> getSourceVertices() {
     return jobVertices.stream()
-               .filter(v -> v.getVertexType() == VertexType.SOURCE)
-               .collect(Collectors.toList());
+      .filter(v -> v.getVertexType() == VertexType.SOURCE)
+      .collect(Collectors.toList());
   }
 
   public List<JobVertex> getSinkVertices() {
     return jobVertices.stream()
-               .filter(v -> v.getVertexType() == VertexType.SINK)
-               .collect(Collectors.toList());
+      .filter(v -> v.getVertexType() == VertexType.SINK)
+      .collect(Collectors.toList());
   }
 
   public JobVertex getVertex(int vertexId) {
@@ -103,14 +103,14 @@ public class JobGraph implements Serializable {
 
   public Set<JobEdge> getVertexInputEdges(int vertexId) {
     return jobEdges.stream()
-               .filter(jobEdge -> jobEdge.getTargetVertexId() == vertexId)
-               .collect(Collectors.toSet());
+      .filter(jobEdge -> jobEdge.getTargetVertexId() == vertexId)
+      .collect(Collectors.toSet());
   }
 
   public Set<JobEdge> getVertexOutputEdges(int vertexId) {
     return jobEdges.stream()
-               .filter(jobEdge -> jobEdge.getSrcVertexId() == vertexId)
-               .collect(Collectors.toSet());
+      .filter(jobEdge -> jobEdge.getSrcVertexId() == vertexId)
+      .collect(Collectors.toSet());
   }
 
   public String getDigraph() {

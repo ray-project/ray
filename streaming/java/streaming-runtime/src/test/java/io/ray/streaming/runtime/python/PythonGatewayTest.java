@@ -2,7 +2,6 @@ package io.ray.streaming.runtime.python;
 
 import static org.testng.Assert.assertEquals;
 
-
 import io.ray.streaming.api.stream.StreamSink;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.jobgraph.JobGraphBuilder;
@@ -25,22 +24,22 @@ public class PythonGatewayTest {
     gateway.withConfig(serializer.serialize(config));
     byte[] mockPySource = new byte[0];
     Object source = serializer.deserialize(
-        gateway.createPythonStreamSource(mockPySource));
+      gateway.createPythonStreamSource(mockPySource));
     byte[] mockPyFunc = new byte[0];
     Object mapPyFunc = serializer.deserialize(gateway.createPyFunc(mockPyFunc));
     Object mapStream = serializer.deserialize(
-        gateway.callMethod(
-            serializer.serialize(Arrays.asList(source, "map", mapPyFunc))));
+      gateway.callMethod(
+        serializer.serialize(Arrays.asList(source, "map", mapPyFunc))));
     byte[] mockPyPartition = new byte[0];
     Object partition = serializer.deserialize(
-        gateway.createPyPartition(mockPyPartition));
+      gateway.createPyPartition(mockPyPartition));
     Object partitionedStream = serializer.deserialize(
-        gateway.callMethod(
-            serializer.serialize(Arrays.asList(mapStream, "partitionBy", partition))));
+      gateway.callMethod(
+        serializer.serialize(Arrays.asList(mapStream, "partitionBy", partition))));
     byte[] mockSinkFunc = new byte[0];
     Object sinkPyFunc = serializer.deserialize(gateway.createPyFunc(mockSinkFunc));
     gateway.callMethod(
-        serializer.serialize(Arrays.asList(partitionedStream, "sink", sinkPyFunc)));
+      serializer.serialize(Arrays.asList(partitionedStream, "sink", sinkPyFunc)));
     List<StreamSink> streamSinks = gateway.getStreamingContext().getStreamSinks();
     assertEquals(streamSinks.size(), 1);
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(streamSinks, "py_job");

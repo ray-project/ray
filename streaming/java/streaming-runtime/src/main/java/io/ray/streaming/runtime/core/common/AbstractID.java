@@ -9,6 +9,7 @@ import java.util.UUID;
  * Streaming system unique identity base class. For example, ${@link ContainerID }
  */
 public class AbstractID implements Serializable {
+
   private UUID id;
 
   public AbstractID() {
@@ -27,7 +28,7 @@ public class AbstractID implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-               .add("id", id)
-               .toString();
+      .add("id", id)
+      .toString();
   }
 }

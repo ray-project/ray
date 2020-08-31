@@ -38,11 +38,11 @@ public abstract class StateStoreManagerProxy<V> implements StateStoreManager {
   private final AbstractKeyStateBackend keyStateBackend;
 
   public StateStoreManagerProxy(
-      AbstractKeyStateBackend keyStateBackend,
-      AbstractStateDescriptor stateDescriptor) {
+    AbstractKeyStateBackend keyStateBackend,
+    AbstractStateDescriptor stateDescriptor) {
     this.keyStateBackend = keyStateBackend;
     KeyValueStore<String, Map<Long, byte[]>> backStorage = keyStateBackend
-                                                               .getBackStorage(stateDescriptor);
+      .getBackStorage(stateDescriptor);
     StateStrategy stateStrategy = keyStateBackend.getStateStrategy();
     switch (stateStrategy) {
       case DUAL_VERSION:

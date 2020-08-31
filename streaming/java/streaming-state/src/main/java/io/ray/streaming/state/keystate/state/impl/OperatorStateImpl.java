@@ -20,7 +20,6 @@ package io.ray.streaming.state.keystate.state.impl;
 
 import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
 
-
 import com.google.common.base.Preconditions;
 import io.ray.streaming.state.PartitionRecord;
 import io.ray.streaming.state.backend.AbstractKeyStateBackend;
@@ -74,7 +73,7 @@ public class OperatorStateImpl<V> implements ListState<V> {
     int index = 0;
     while (true) {
       List<PartitionRecord<V>> list = helper.getBackend()
-                                          .get(descriptor, getKey(descriptor.getIdentify(), index));
+        .get(descriptor, getKey(descriptor.getIdentify(), index));
       if (list != null && !list.isEmpty()) {
         partitionNum = list.get(0).getPartitionID();
         allList.addAll(list);

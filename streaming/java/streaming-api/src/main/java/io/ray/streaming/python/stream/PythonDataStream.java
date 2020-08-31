@@ -19,15 +19,15 @@ import java.util.List;
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
   protected PythonDataStream(
-      StreamingContext streamingContext,
-      PythonOperator pythonOperator) {
+    StreamingContext streamingContext,
+    PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
   protected PythonDataStream(
-      StreamingContext streamingContext,
-      PythonOperator pythonOperator,
-      Partition<Object> partition) {
+    StreamingContext streamingContext,
+    PythonOperator pythonOperator,
+    Partition<Object> partition) {
     super(streamingContext, pythonOperator, partition);
   }
 
@@ -36,9 +36,9 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonDataStream(
-      PythonDataStream input,
-      PythonOperator pythonOperator,
-      Partition<Object> partition) {
+    PythonDataStream input,
+    PythonOperator pythonOperator,
+    Partition<Object> partition) {
     super(input, pythonOperator, partition);
   }
 
@@ -89,7 +89,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    *
    * @param func The python FilterFunction.
    * @return A new PythonDataStream that contains only the elements satisfying the given filter
-   *     predicate.
+   * predicate.
    */
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
@@ -187,7 +187,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
       throw new RuntimeException("Partition related methods can't be called on a " +
-                                     "python stream if parent stream is a java stream.");
+        "python stream if parent stream is a java stream.");
     }
   }
 

@@ -20,7 +20,8 @@ import java.util.Map;
  * @param <T> Type of the data in the stream.
  */
 public abstract class Stream<S extends Stream<S, T>, T>
-    implements Serializable {
+  implements Serializable {
+
   private final int id;
   private final StreamingContext streamingContext;
   private final Stream inputStream;
@@ -35,15 +36,15 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   public Stream(
-      StreamingContext streamingContext,
-      StreamOperator streamOperator,
-      Partition<T> partition) {
+    StreamingContext streamingContext,
+    StreamOperator streamOperator,
+    Partition<T> partition) {
     this(streamingContext, null, streamOperator, partition);
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator) {
     this(inputStream.getStreamingContext(), inputStream, streamOperator,
-        getForwardPartition(streamOperator));
+      getForwardPartition(streamOperator));
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator, Partition<T> partition) {
@@ -51,10 +52,10 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   protected Stream(
-      StreamingContext streamingContext,
-      Stream inputStream,
-      StreamOperator streamOperator,
-      Partition<T> partition) {
+    StreamingContext streamingContext,
+    Stream inputStream,
+    StreamOperator streamOperator,
+    Partition<T> partition) {
     this.streamingContext = streamingContext;
     this.inputStream = inputStream;
     this.operator = streamOperator;
@@ -87,7 +88,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
         return new ForwardPartition<>();
       default:
         throw new UnsupportedOperationException(
-            "Unsupported language " + operator.getLanguage());
+          "Unsupported language " + operator.getLanguage());
     }
   }
 

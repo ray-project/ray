@@ -76,7 +76,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   @Test(timeOut = 300000)
   public void testReaderWriter() {
     LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}",
-        System.getProperty("ray.run-mode"));
+      System.getProperty("ray.run-mode"));
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
@@ -90,9 +90,9 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     ActorHandle<ReaderWorker> readerActor = Ray.actor(ReaderWorker::new, "reader").remote();
 
     LOGGER.info("call getName on writerActor: {}",
-        writerActor.task(WriterWorker::getName).remote().get());
+      writerActor.task(WriterWorker::getName).remote().get());
     LOGGER.info("call getName on readerActor: {}",
-        readerActor.task(ReaderWorker::getName).remote().get());
+      readerActor.task(ReaderWorker::getName).remote().get());
 
     // LOGGER.info(writerActor.task(WriterWorker::testCallReader, readerActor).remote().get());
     List<String> outputQueueList = new ArrayList<>();
@@ -117,7 +117,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
 
     long time = 0;
     while (time < 20000 &&
-               readerActor.task(ReaderWorker::getTotalMsg).remote().get() < msgCount * queueNum) {
+      readerActor.task(ReaderWorker::getTotalMsg).remote().get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;
@@ -127,8 +127,8 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
 
     Assert.assertEquals(
-        readerActor.task(ReaderWorker::getTotalMsg).remote().get().intValue(),
-        msgCount * queueNum);
+      readerActor.task(ReaderWorker::getTotalMsg).remote().get().intValue(),
+      msgCount * queueNum);
   }
 
   @Test(timeOut = 60000)
@@ -143,7 +143,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Ray.init();
     LOGGER.info("testWordCount");
     LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
-        System.getProperty("ray.run-mode"));
+      System.getProperty("ray.run-mode"));
     String resultFile = "/tmp/io.ray.streaming.runtime.streamingqueue.testWordCount.txt";
     deleteResultFile(resultFile);
 
@@ -157,27 +157,27 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     text.add("hello world eagle eagle eagle");
     DataStreamSource<String> streamSource = DataStreamSource.fromCollection(streamingContext, text);
     streamSource
-        .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
-          String[] records = value.split(" ");
-          for (String record : records) {
-            collector.collect(new WordAndCount(record, 1));
-          }
-        })
-        .keyBy(pair -> pair.word)
-        .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) -> {
-          LOGGER.info("reduce: {} {}", oldValue, newValue);
-          return new WordAndCount(oldValue.word, oldValue.count + newValue.count);
-        })
-        .sink(s -> {
-          LOGGER.info("sink {} {}", s.word, s.count);
-          wordCount.put(s.word, s.count);
-          serializeResultToFile(resultFile, wordCount);
-        });
+      .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
+        String[] records = value.split(" ");
+        for (String record : records) {
+          collector.collect(new WordAndCount(record, 1));
+        }
+      })
+      .keyBy(pair -> pair.word)
+      .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) -> {
+        LOGGER.info("reduce: {} {}", oldValue, newValue);
+        return new WordAndCount(oldValue.word, oldValue.count + newValue.count);
+      })
+      .sink(s -> {
+        LOGGER.info("sink {} {}", s.word, s.count);
+        wordCount.put(s.word, s.count);
+        serializeResultToFile(resultFile, wordCount);
+      });
 
     streamingContext.execute("testSQWordCount");
 
     Map<String, Integer> checkWordCount =
-        (Map<String, Integer>) deserializeResultFromFile(resultFile);
+      (Map<String, Integer>) deserializeResultFromFile(resultFile);
     // Sleep until the count for every word is computed.
     while (checkWordCount == null || checkWordCount.size() < 3) {
       LOGGER.info("sleep");
@@ -190,7 +190,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     }
     LOGGER.info("check");
     Assert.assertEquals(checkWordCount,
-        ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
+      ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
   }
 
   private void serializeResultToFile(String fileName, Object obj) {
@@ -208,7 +208,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
       ObjectInputStream in = new ObjectInputStream(new FileInputStream(fileName));
       checkWordCount = (Map<String, Integer>) in.readObject();
       Assert.assertEquals(checkWordCount,
-          ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
+        ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
     } catch (Exception e) {
       LOGGER.error(String.valueOf(e));
     }

@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 public class Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
@@ -50,6 +51,7 @@ public class Worker {
 }
 
 class ReaderWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
@@ -99,8 +101,8 @@ class ReaderWorker extends Worker {
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
-        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
-        new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
+      new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
+      new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
     dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
 
@@ -135,7 +137,7 @@ class ReaderWorker extends Worker {
 
       // check size
       LOGGER.info("capacity {} bufferSize {} dataSize {}",
-          dataMessage.body().capacity(), bufferSize, dataSize);
+        dataMessage.body().capacity(), bufferSize, dataSize);
       Assert.assertEquals(bufferSize, dataSize);
       if (dataMessage instanceof DataMessage) {
         if (LOGGER.isInfoEnabled()) {
@@ -170,6 +172,7 @@ class ReaderWorker extends Worker {
 }
 
 class WriterWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
@@ -226,8 +229,8 @@ class WriterWorker extends Worker {
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
-        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
-        new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
+      new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
+      new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
     dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {

@@ -16,15 +16,16 @@ import org.apache.commons.lang3.StringUtils;
  * <p>
  */
 public class PythonPartition implements Partition<Object> {
+
   public static final PythonPartition BroadcastPartition = new PythonPartition(
-      "ray.streaming.partition", "BroadcastPartition");
+    "ray.streaming.partition", "BroadcastPartition");
   public static final PythonPartition KeyPartition = new PythonPartition(
-      "ray.streaming.partition", "KeyPartition");
+    "ray.streaming.partition", "KeyPartition");
   public static final PythonPartition RoundRobinPartition = new PythonPartition(
-      "ray.streaming.partition", "RoundRobinPartition");
+    "ray.streaming.partition", "RoundRobinPartition");
   public static final String FORWARD_PARTITION_CLASS = "ForwardPartition";
   public static final PythonPartition ForwardPartition = new PythonPartition(
-      "ray.streaming.partition", FORWARD_PARTITION_CLASS);
+    "ray.streaming.partition", FORWARD_PARTITION_CLASS);
 
   private byte[] partition;
   private String moduleName;
@@ -38,7 +39,7 @@ public class PythonPartition implements Partition<Object> {
   /**
    * Create a python partition from a moduleName and partition function name
    *
-   * @param moduleName module name of python partition
+   * @param moduleName   module name of python partition
    * @param functionName function/class name of the partition function.
    */
   public PythonPartition(String moduleName, String functionName) {
@@ -51,7 +52,7 @@ public class PythonPartition implements Partition<Object> {
   @Override
   public int[] partition(Object record, int numPartition) {
     String msg = String.format("partition method of %s shouldn't be called.",
-        getClass().getSimpleName());
+      getClass().getSimpleName());
     throw new UnsupportedOperationException(msg);
   }
 
@@ -74,12 +75,12 @@ public class PythonPartition implements Partition<Object> {
   @Override
   public String toString() {
     StringJoiner stringJoiner = new StringJoiner(", ",
-        PythonPartition.class.getSimpleName() + "[", "]");
+      PythonPartition.class.getSimpleName() + "[", "]");
     if (partition != null) {
       stringJoiner.add("partition=binary partition");
     } else {
       stringJoiner.add("moduleName='" + moduleName + "'")
-          .add("functionName='" + functionName + "'");
+        .add("functionName='" + functionName + "'");
     }
     return stringJoiner.toString();
   }
