@@ -142,13 +142,12 @@ class WriterQueue : public Queue {
         is_resending_(false),
         is_upstream_first_pull_(true) {}
 
-  /// Push a continuous buffer into queue, the buffer consists of some messages packed by DataWriter.
-  /// \param data, the buffer address
-  /// \param data_size, buffer size
-  /// \param timestamp, the timestamp when the buffer pushed in
-  /// \param msg_id_start, the message id of the first message in the buffer
-  /// \param msg_id_end, the message id of the last message in the buffer
-  /// \param raw, whether this buffer is raw data, be True only in test
+  /// Push a continuous buffer into queue, the buffer consists of some messages packed by
+  /// DataWriter. \param data, the buffer address \param data_size, buffer size \param
+  /// timestamp, the timestamp when the buffer pushed in \param msg_id_start, the message
+  /// id of the first message in the buffer \param msg_id_end, the message id of the last
+  /// message in the buffer \param raw, whether this buffer is raw data, be True only in
+  /// test
   Status Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
               uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
@@ -171,9 +170,7 @@ class WriterQueue : public Queue {
   /// can be evicted, determined by eviction_limit_ and min_consumed_msg_id_.
   Status TryEvictItems();
 
-  void SetQueueEvictionLimit(uint64_t msg_id) {
-    eviction_limit_ = msg_id;
-  }
+  void SetQueueEvictionLimit(uint64_t msg_id) { eviction_limit_ = msg_id; }
 
   uint64_t EvictionLimit() { return eviction_limit_; }
 
@@ -253,9 +250,9 @@ class ReaderQueue : public Queue {
   /// NOTE: this callback function is called in queue thread.
   void OnResendData(std::shared_ptr<ResendDataMessage> msg);
 
-
   inline uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
   inline uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
+
  private:
   void Notify(uint64_t seq_id);
   void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args);

@@ -3,7 +3,7 @@ import random
 from queue import Queue
 from typing import List
 from enum import Enum
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 import ray
 import ray.streaming._streaming as _streaming
@@ -481,7 +481,7 @@ class ChannelRecoverInfo:
         return data_lost_queues
 
     def __str__(self):
-        return 'QueueRecoverInfo [dataLostQueues=%s]' \
+        return "QueueRecoverInfo [dataLostQueues=%s]" \
                % (self.get_data_lost_queues())
 
 
@@ -490,22 +490,6 @@ class ChannelCreationStatus(Enum):
     PullOk = 1
     Timeout = 2
     DataLost = 3
-
-
-def channel_id_str_to_bytes(channel_id_str):
-    """
-    Args:
-        channel_id_str: string representation of channel id
-
-    Returns:
-        bytes representation of channel id
-    """
-    assert type(channel_id_str) in [str, bytes]
-    if isinstance(channel_id_str, bytes):
-        return channel_id_str
-    qid_bytes = bytes.fromhex(channel_id_str)
-    assert len(qid_bytes) == CHANNEL_ID_LEN
-    return qid_bytes
 
 
 def channel_id_bytes_to_str(id_bytes):

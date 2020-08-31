@@ -54,13 +54,13 @@ class StreamingConfig {
  public:
   void FromProto(const uint8_t *, uint32_t size);
 
-  inline bool IsAtLeastOnce() const{
+  inline bool IsAtLeastOnce() const {
     return ReliabilityLevel::AT_LEAST_ONCE == streaming_strategy_;
   }
-  inline bool IsExactlyOnce() const{
+  inline bool IsExactlyOnce() const {
     return ReliabilityLevel::EXACTLY_ONCE == streaming_strategy_;
   }
-  inline bool IsExactlySame() const{
+  inline bool IsExactlySame() const {
     return ReliabilityLevel::EXACTLY_SAME == streaming_strategy_;
   }
 

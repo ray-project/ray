@@ -49,7 +49,8 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
                                                  channel_info_.queue_size);
   STREAMING_CHECK(queue_ != nullptr);
 
-  STREAMING_LOG(INFO) << "StreamingQueueProducer CreateQueue queue id => " << channel_info_.channel_id << ", queue size => "
+  STREAMING_LOG(INFO) << "StreamingQueueProducer CreateQueue queue id => "
+                      << channel_info_.channel_id << ", queue size => "
                       << channel_info_.queue_size;
 
   return StreamingStatus::OK;
@@ -86,7 +87,8 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
                        << ", msg_id_start=" << msg_id_start
                        << ", msg_id_end=" << msg_id_end << ", meta=" << *meta;
 
-  Status status = PushQueueItem(data, data_size, current_time_ms(), msg_id_start, msg_id_end);
+  Status status =
+      PushQueueItem(data, data_size, current_time_ms(), msg_id_start, msg_id_end);
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(DEBUG) << channel_info_.channel_id << " => Queue is full"
                          << " meesage => " << status.message();
@@ -103,9 +105,9 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
   return StreamingStatus::OK;
 }
 
-Status StreamingQueueProducer::PushQueueItem(uint8_t *data,
-                                             uint32_t data_size, uint64_t timestamp,
-                                             uint64_t msg_id_start, uint64_t msg_id_end) {
+Status StreamingQueueProducer::PushQueueItem(uint8_t *data, uint32_t data_size,
+                                             uint64_t timestamp, uint64_t msg_id_start,
+                                             uint64_t msg_id_end) {
   STREAMING_LOG(DEBUG) << "StreamingQueueProducer::PushQueueItem:"
                        << " qid: " << channel_info_.channel_id
                        << " data_size: " << data_size;
@@ -118,8 +120,7 @@ Status StreamingQueueProducer::PushQueueItem(uint8_t *data,
       return status;
     }
 
-    status =
-        queue_->Push(data, data_size, timestamp, msg_id_start, msg_id_end, false);
+    status = queue_->Push(data, data_size, timestamp, msg_id_start, msg_id_end, false);
   }
 
   queue_->Send();
@@ -281,9 +282,8 @@ StreamingStatus MockProducer::RefreshChannelInfo() {
   return StreamingStatus::OK;
 }
 
-
 StreamingStatus MockConsumer::ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
-                                         uint32_t timeout) {
+                                                     uint32_t timeout) {
   std::unique_lock<std::mutex> lock(MockQueue::mutex);
   MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info_.channel_id;

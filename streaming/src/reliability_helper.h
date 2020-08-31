@@ -16,8 +16,8 @@ class DataReader;
 class ReliabilityHelperFactory {
  public:
   static std::shared_ptr<ReliabilityHelper> GenReliabilityHelper(
-      const StreamingConfig &config, StreamingBarrierHelper &barrier_helper, DataWriter *writer,
-      DataReader *reader);
+      const StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
+      DataWriter *writer, DataReader *reader);
 };
 
 class ReliabilityHelper {

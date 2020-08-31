@@ -11,9 +11,9 @@
 #include "event_service.h"
 #include "flow_control.h"
 #include "message/message_bundle.h"
-#include "runtime_context.h"
 #include "reliability/barrier_helper.h"
 #include "reliability_helper.h"
+#include "runtime_context.h"
 
 namespace ray {
 namespace streaming {
@@ -64,9 +64,8 @@ class DataWriter {
   /// \param barrier_id
   /// \param data
   /// \param data_size
-  /// 
-  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
-                        uint32_t data_size);
+  ///
+  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data, uint32_t data_size);
 
   /// To relieve stress from large source/input data, we define a new function
   /// clear_check_point

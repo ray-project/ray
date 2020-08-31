@@ -7,7 +7,7 @@ class Barrier:
         self.id = id
 
     def __str__(self):
-        return 'Barrier [id:%s]' % self.id
+        return "Barrier [id:%s]" % self.id
 
 
 class OpCheckpointInfo:

@@ -4,8 +4,8 @@
 #include "queue/queue_handler.h"
 #include "ring_buffer.h"
 #include "status.h"
-#include "util/streaming_util.h"
 #include "util/config.h"
+#include "util/streaming_util.h"
 
 namespace ray {
 namespace streaming {
@@ -112,7 +112,7 @@ class ConsumerChannel {
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
   virtual StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
-                                         uint32_t timeout) = 0;
+                                                 uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
  protected:
@@ -135,8 +135,8 @@ class StreamingQueueProducer : public ProducerChannel {
 
  private:
   StreamingStatus CreateQueue();
-  Status PushQueueItem(uint8_t *data, uint32_t data_size,
-                       uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end);
+  Status PushQueueItem(uint8_t *data, uint32_t data_size, uint64_t timestamp,
+                       uint64_t msg_id_start, uint64_t msg_id_end);
 
  private:
   std::shared_ptr<WriterQueue> queue_;

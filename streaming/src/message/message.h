@@ -1,7 +1,7 @@
 #pragma once
 
-#include <memory>
 #include <cstring>
+#include <memory>
 
 namespace ray {
 namespace streaming {
@@ -17,10 +17,7 @@ enum class StreamingMessageType : uint32_t {
   MAX = Message
 };
 
-enum class StreamingBarrierType : uint32_t {
-  GlobalBarrier = 0,
-  EndOfDataBarrier = 2
-};
+enum class StreamingBarrierType : uint32_t { GlobalBarrier = 0, EndOfDataBarrier = 2 };
 
 struct StreamingBarrierHeader {
   StreamingBarrierType barrier_type;
@@ -33,13 +30,10 @@ struct StreamingBarrierHeader {
   }
 };
 
-
 constexpr uint32_t kMessageHeaderSize =
     sizeof(uint32_t) + sizeof(uint64_t) + sizeof(StreamingMessageType);
 
-
-constexpr uint32_t kBarrierHeaderSize =
-    sizeof(StreamingBarrierType) + sizeof(uint64_t);
+constexpr uint32_t kBarrierHeaderSize = sizeof(StreamingBarrierType) + sizeof(uint64_t);
 
 /// All messages should be wrapped by this protocol.
 //  DataSize means length of raw data, message id is increasing from [1, +INF].
@@ -67,7 +61,6 @@ constexpr uint32_t kBarrierHeaderSize =
 
 class StreamingMessage {
  private:
-
   std::shared_ptr<uint8_t> payload_data_;
   uint32_t payload_data_size_;
   StreamingMessageType message_type_;
@@ -79,24 +72,24 @@ class StreamingMessage {
   /// \param payload_data_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_data_size, uint64_t msg_id,
-                   StreamingMessageType message_type);
+  StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_data_size,
+                   uint64_t msg_id, StreamingMessageType message_type);
 
   /// Move outsite raw data to message data.
   /// \param payload_data_ raw data from user buffer
   /// \param payload_data_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_data_size, uint64_t msg_id,
-                   StreamingMessageType message_type);
+  StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_data_size,
+                   uint64_t msg_id, StreamingMessageType message_type);
 
   /// Copy raw data from outside buffer.
   /// \param payload_data_ raw data from user buffer
   /// \param payload_data_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(const uint8_t *payload_data, uint32_t payload_data_size, uint64_t msg_id,
-                   StreamingMessageType message_type);
+  StreamingMessage(const uint8_t *payload_data, uint32_t payload_data_size,
+                   uint64_t msg_id, StreamingMessageType message_type);
 
   StreamingMessage(const StreamingMessage &);
 
@@ -132,14 +125,15 @@ class StreamingMessage {
   virtual void ToBytes(uint8_t *data);
   static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
 
-  inline virtual uint32_t ClassBytesSize() { return kMessageHeaderSize + payload_data_size_; }
+  inline virtual uint32_t ClassBytesSize() {
+    return kMessageHeaderSize + payload_data_size_;
+  }
 
   static inline void GetBarrierIdFromRawData(const uint8_t *data,
                                              StreamingBarrierHeader *barrier_header) {
     barrier_header->barrier_type = *reinterpret_cast<const StreamingBarrierType *>(data);
     barrier_header->barrier_id =
         *reinterpret_cast<const uint64_t *>(data + sizeof(StreamingBarrierType));
-
   }
 
   friend std::ostream &operator<<(std::ostream &os, const StreamingMessage &message);

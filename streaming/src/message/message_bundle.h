@@ -7,8 +7,8 @@
 #include <string>
 
 #include "message.h"
-#include "ray/common/id.h"
 #include "message/message.h"
+#include "ray/common/id.h"
 
 namespace ray {
 namespace streaming {
@@ -193,8 +193,8 @@ struct DataBundle {
   uint32_t last_barrier_id;
   StreamingMessageBundleMetaPtr meta;
   bool is_reallocated = false;
-  
-  ~DataBundle() { 
+
+  ~DataBundle() {
     if (is_reallocated) {
       delete[] data;
     }
@@ -205,8 +205,7 @@ struct DataBundle {
     is_reallocated = true;
   }
 
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const DataBundle &bundle);
+  friend std::ostream &operator<<(std::ostream &os, const DataBundle &bundle);
 };
 
 }  // namespace streaming

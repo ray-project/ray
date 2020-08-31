@@ -10,23 +10,28 @@
 namespace ray {
 namespace streaming {
 
-StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_data_size,
-                                   uint64_t msg_id, StreamingMessageType message_type)
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &payload_data,
+                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   StreamingMessageType message_type)
     : payload_data_(payload_data),
       payload_data_size_(payload_data_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
-StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_data_size,
-                                   uint64_t msg_id, StreamingMessageType message_type)
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&payload_data,
+                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   StreamingMessageType message_type)
     : payload_data_(payload_data),
       payload_data_size_(payload_data_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
-StreamingMessage::StreamingMessage(const uint8_t *payload_data, uint32_t payload_data_size,
-                                   uint64_t msg_id, StreamingMessageType message_type)
-    : payload_data_size_(payload_data_size), message_type_(message_type), message_id_(msg_id) {
+StreamingMessage::StreamingMessage(const uint8_t *payload_data,
+                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   StreamingMessageType message_type)
+    : payload_data_size_(payload_data_size),
+      message_type_(message_type),
+      message_id_(msg_id) {
   payload_data_.reset(new uint8_t[payload_data_size], std::default_delete<uint8_t[]>());
   std::memcpy(payload_data_.get(), payload_data, payload_data_size);
 }
@@ -59,8 +64,8 @@ StreamingMessagePtr StreamingMessage::FromBytes(const uint8_t *bytes,
 
 void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   uint32_t byte_offset = 0;
-  std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&payload_data_size_),
-              sizeof(payload_data_size_));
+  std::memcpy(serlizable_data + byte_offset,
+              reinterpret_cast<char *>(&payload_data_size_), sizeof(payload_data_size_));
   byte_offset += sizeof(payload_data_size_);
 
   std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&message_id_),
@@ -91,8 +96,7 @@ std::ostream &operator<<(std::ostream &os, const StreamingMessage &message) {
      << " message_type_: " << static_cast<int>(message.GetMessageType())
      << " message_id_: " << message.GetMessageId()
      << " payload_data_size_: " << message.payload_data_size_
-     << " payload_data_: " << (void*) message.payload_data_.get()
-     << "}";
+     << " payload_data_: " << (void *)message.payload_data_.get() << "}";
   return os;
 }
 

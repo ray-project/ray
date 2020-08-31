@@ -4,11 +4,11 @@
 #include <string>
 #include <unordered_map>
 
-#include "util/streaming_logging.h"
 #include "ray/common/id.h"
+#include "util/streaming_logging.h"
 
-namespace ray{
-namespace streaming{
+namespace ray {
+namespace streaming {
 
 class Util {
  public:

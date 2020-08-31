@@ -81,9 +81,10 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
   delete data_writer;
 }
 
-
-JNIEXPORT jlongArray JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_getOutputMsgIdNative
-  (JNIEnv *env, jobject thisObj, jlong ptr) {
+JNIEXPORT jlongArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_getOutputMsgIdNative(JNIEnv *env,
+                                                                       jobject thisObj,
+                                                                       jlong ptr) {
   DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
 
   std::vector<uint64_t> result;
@@ -98,17 +99,18 @@ JNIEXPORT jlongArray JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_g
   return jArray;
 }
 
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative
-  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jbyteArray data) {
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative(
+    JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jbyteArray data) {
   STREAMING_LOG(INFO) << "jni: broadcast barrier, cp_id=" << checkpointId;
-   RawDataFromJByteArray raw_data(env, data);
+  RawDataFromJByteArray raw_data(env, data);
   DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
-  writer_client->BroadcastBarrier(checkpointId, raw_data.data,
-                                  raw_data.data_size);
+  writer_client->BroadcastBarrier(checkpointId, raw_data.data, raw_data.data_size);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataWriter_clearCheckpointNative
-  (JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId) {
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_clearCheckpointNative(
+    JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId) {
   STREAMING_LOG(INFO) << "[Producer] jni: clearCheckpoints.";
   auto *writer = reinterpret_cast<DataWriter *>(ptr);
   writer->ClearCheckpoint(checkpointId);

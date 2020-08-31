@@ -27,8 +27,7 @@ TEST(StreamingMockTransfer, mock_produce_consume) {
   EXPECT_EQ(std::memcmp(data_consumed, data, 3), 0);
   consumer.NotifyChannelConsumed(1);
 
-  auto status =
-      consumer.ConsumeItemFromChannel(data_consumed, data_size_consumed, -1);
+  auto status = consumer.ConsumeItemFromChannel(data_consumed, data_size_consumed, -1);
   EXPECT_EQ(status, StreamingStatus::NoSuchItem);
 }
 
@@ -147,21 +146,25 @@ TEST_F(StreamingTransferTest, flow_control_test) {
   });
   std::unordered_map<ObjectID, ProducerChannelInfo> *writer_offset_info = nullptr;
   std::unordered_map<ObjectID, ConsumerChannelInfo> *reader_offset_info = nullptr;
-  writer->GetOffsetInfo(writer_offset_info); 
+  writer->GetOffsetInfo(writer_offset_info);
   reader->GetOffsetInfo(reader_offset_info);
   uint32_t writer_step = writer_runtime_context->GetConfig().GetWriterConsumedStep();
   uint32_t reader_step = reader_runtime_context->GetConfig().GetReaderConsumedStep();
-  uint64_t &writer_current_msg_id = (*writer_offset_info)[queue_vec[0]].current_message_id;
-  uint64_t &writer_last_commit_id = (*writer_offset_info)[queue_vec[0]].message_last_commit_id;
-  uint64_t &writer_target_msg_id = (*writer_offset_info)[queue_vec[0]].queue_info.target_message_id;
-  uint64_t &reader_target_msg_id = (*reader_offset_info)[queue_vec[0]].queue_info.target_message_id;
+  uint64_t &writer_current_msg_id =
+      (*writer_offset_info)[queue_vec[0]].current_message_id;
+  uint64_t &writer_last_commit_id =
+      (*writer_offset_info)[queue_vec[0]].message_last_commit_id;
+  uint64_t &writer_target_msg_id =
+      (*writer_offset_info)[queue_vec[0]].queue_info.target_message_id;
+  uint64_t &reader_target_msg_id =
+      (*reader_offset_info)[queue_vec[0]].queue_info.target_message_id;
   do {
     std::this_thread::sleep_for(
         std::chrono::milliseconds(StreamingConfig::TIME_WAIT_UINT));
     STREAMING_LOG(INFO) << "Writer currrent msg id " << writer_current_msg_id
                         << ", writer target_msg_id=" << writer_target_msg_id
                         << ", consumer step " << writer_step;
-  } while(writer_current_msg_id < writer_step);
+  } while (writer_current_msg_id < writer_step);
 
   std::list<StreamingMessagePtr> read_message_list;
   while (read_message_list.size() < num) {

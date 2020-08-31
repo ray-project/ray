@@ -12,9 +12,8 @@ using namespace ray::streaming;
 JNIEXPORT jlong JNICALL
 Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
     JNIEnv *env, jclass, jobject streaming_queue_initial_parameters,
-    jobjectArray input_channels, jlongArray msg_id_array,
-    jlong timer_interval, jobject creation_status, jbyteArray config_bytes,
-    jboolean is_mock) {
+    jobjectArray input_channels, jlongArray msg_id_array, jlong timer_interval,
+    jobject creation_status, jbyteArray config_bytes, jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: create DataReader.";
   std::vector<ray::streaming::ChannelCreationParameter> parameter_vec;
   ParseChannelInitParameters(env, streaming_queue_initial_parameters, parameter_vec);
@@ -35,7 +34,8 @@ Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
   // init reader
   auto reader = new DataReader(ctx);
   std::vector<TransferCreationStatus> creation_status_vec;
-  reader->Init(input_channels_ids, parameter_vec, msg_ids, creation_status_vec, timer_interval);
+  reader->Init(input_channels_ids, parameter_vec, msg_ids, creation_status_vec,
+               timer_interval);
 
   // add creation status to Java's List
   jclass array_list_cls = env->GetObjectClass(creation_status);
@@ -101,17 +101,17 @@ Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *env,
   delete reinterpret_cast<DataReader *>(ptr);
 }
 
-
-JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative
-  (JNIEnv *env, jobject thisObj, jlong ptr) {
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative(JNIEnv *env,
+                                                                       jobject thisObj,
+                                                                       jlong ptr) {
   auto reader = reinterpret_cast<ray::streaming::DataReader *>(ptr);
   std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map = nullptr;
   reader->GetOffsetInfo(offset_map);
   STREAMING_CHECK(offset_map);
   // queue nums + (queue id + seq id + message id) * queue nums
   int offset_data_size =
-      sizeof(uint32_t) +
-      (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();
+      sizeof(uint32_t) + (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();
   jbyteArray offsets_info = env->NewByteArray(offset_data_size);
   int offset = 0;
   // total queue nums
@@ -120,7 +120,7 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_g
                           reinterpret_cast<jbyte *>(&queue_nums));
   offset += sizeof(uint32_t);
   // queue name & offset
-  for (auto &p : *offset_map) {\
+  for (auto &p : *offset_map) {
     env->SetByteArrayRegion(offsets_info, offset, kUniqueIDSize,
                             reinterpret_cast<const jbyte *>(p.first.Data()));
     offset += kUniqueIDSize;

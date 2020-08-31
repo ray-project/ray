@@ -2,7 +2,6 @@ import subprocess
 import time
 from typing import List
 
-import pytest
 import ray
 from ray.streaming import StreamingContext
 
@@ -12,7 +11,9 @@ def test_word_count():
         ray.init(load_code_from_local=True, include_java=True)
         ctx = StreamingContext.Builder() \
             .option("streaming.state-backend.type", "local_file") \
-            .option("streaming.state-backend.file-state.root", "/tmp/ray/cp_files/") \
+            .option(
+                "streaming.state-backend.file-state.root", "/tmp/ray/cp_files/"
+            ) \
             .option("streaming.checkpoint.timeout.secs", "3") \
             .build()
 
@@ -46,9 +47,9 @@ def test_word_count():
         retry_count = 300000 / 5  # wait for 5min
         while True:
             cur_cp_num = checkpoint_success_num()
-            print(
-                "-----------checking checkpoint, cur_cp_num={}, old_cp_num={}-------------".
-                format(cur_cp_num, cp_ok_num))
+            print("-----------checking checkpoint\
+                    , cur_cp_num={}, old_cp_num={}-------------".format(
+                cur_cp_num, cp_ok_num))
             if cur_cp_num > cp_ok_num:
                 print("--------------TEST OK!------------------")
                 break
@@ -71,13 +72,13 @@ def run_cmd(cmd: List):
 
 def grep_log(keyword: str) -> str:
     out = subprocess.check_output(
-        ['grep', '-r', keyword, '/tmp/ray/session_latest/logs'])
+        ["grep", "-r", keyword, "/tmp/ray/session_latest/logs"])
     return out.decode()
 
 
 def has_sink_output() -> bool:
     try:
-        grep_log('####result')
+        grep_log("####result")
         return True
     except Exception:
         return False
@@ -85,15 +86,16 @@ def has_sink_output() -> bool:
 
 def checkpoint_success_num() -> int:
     try:
-        return grep_log("Finish checkpoint").count('\n')
+        return grep_log("Finish checkpoint").count("\n")
     except Exception:
         return 0
 
 
 def kill_all_worker():
     return subprocess.run([
-        'bash', '-c',
-        'grep -r \'Initializing job worker, exe_vert\' /tmp/ray/session_latest/logs | awk -F\'pid\' \'{print $2}\' | awk -F\'=\' \'{print $2}\' | xargs kill -9'
+        "bash", "-c", "grep -r \'Initializing job worker, exe_vert\'" +
+        "/tmp/ray/session_latest/logs" + "| awk -F\'pid\' \'{print $2}\'" +
+        "| awk -F\'=\' \'{print $2}\'" + "| xargs kill -9"
     ])
 
 

@@ -10,8 +10,8 @@
 #include "channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
-#include "runtime_context.h"
 #include "reliability_helper.h"
+#include "runtime_context.h"
 
 namespace ray {
 namespace streaming {
@@ -98,8 +98,7 @@ class DataReader {
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
             const std::vector<uint64_t> &msg_ids,
-            std::vector<TransferCreationStatus> &creation_status,
-            int64_t timer_interval);
+            std::vector<TransferCreationStatus> &creation_status, int64_t timer_interval);
 
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
@@ -135,7 +134,8 @@ class DataReader {
   /// in merged queue.
   StreamingStatus InitChannelMerger(uint32_t timeout_ms);
 
-  StreamingStatus StashNextMessageAndPop(std::shared_ptr<DataBundle> &message, uint32_t timeout_ms);
+  StreamingStatus StashNextMessageAndPop(std::shared_ptr<DataBundle> &message,
+                                         uint32_t timeout_ms);
 
   StreamingStatus GetMessageFromChannel(ConsumerChannelInfo &channel_info,
                                         std::shared_ptr<DataBundle> &message,
@@ -149,8 +149,7 @@ class DataReader {
 
   BundleCheckStatus CheckBundle(const std::shared_ptr<DataBundle> &message);
 
-  static void SplitBundle(std::shared_ptr<DataBundle> &message,
-                          uint64_t last_msg_id);
+  static void SplitBundle(std::shared_ptr<DataBundle> &message, uint64_t last_msg_id);
 };
 }  // namespace streaming
 }  // namespace ray

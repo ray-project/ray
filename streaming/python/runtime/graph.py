@@ -51,10 +51,13 @@ class ExecutionVertex:
             .execution_job_vertex_id
         self.execution_job_vertex_name = execution_vertex_pb \
             .execution_job_vertex_name
-        self.execution_vertex_index = execution_vertex_pb.execution_vertex_index
+        self.execution_vertex_index = execution_vertex_pb\
+            .execution_vertex_index
         self.parallelism = execution_vertex_pb.parallelism
-        if execution_vertex_pb.language == Language.PYTHON:
-            operator_bytes = execution_vertex_pb.operator  # python operator descriptor
+        if execution_vertex_pb\
+                .language == Language.PYTHON:
+            # python operator descriptor
+            operator_bytes = execution_vertex_pb.operator
             if execution_vertex_pb.chained:
                 logger.info("Load chained operator")
                 self.stream_operator = operator.load_chained_operator(

@@ -199,8 +199,7 @@ bool StreamingMessageBundle::operator==(StreamingMessageBundle *bundle) const {
 
 std::ostream &operator<<(std::ostream &os, const DataBundle &bundle) {
   os << "{"
-     << "data: " << (void*) bundle.data
-     << ", data_size: " << bundle.data_size
+     << "data: " << (void *)bundle.data << ", data_size: " << bundle.data_size
      << ", channel last_barrier_id: " << bundle.last_barrier_id
      << ", meta: " << *(bundle.meta) << "}";
   return os;

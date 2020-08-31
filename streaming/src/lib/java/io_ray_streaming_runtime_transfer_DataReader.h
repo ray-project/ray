@@ -24,42 +24,47 @@ extern "C" {
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    createDataReaderNative
- * Signature: (Lio/ray/streaming/runtime/transfer/ChannelCreationParametersBuilder;[[B[JJLjava/util/List;[BZ)J
+ * Signature:
+ * (Lio/ray/streaming/runtime/transfer/ChannelCreationParametersBuilder;[[B[JJLjava/util/List;[BZ)J
  */
-JNIEXPORT jlong JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative
-  (JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jobject, jbyteArray, jboolean);
+JNIEXPORT jlong JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
+    JNIEnv *, jclass, jobject, jobjectArray, jlongArray, jlong, jobject, jbyteArray,
+    jboolean);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    getBundleNative
  * Signature: (JJJJ)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative
-  (JNIEnv *, jobject, jlong, jlong, jlong, jlong);
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getBundleNative(
+    JNIEnv *, jobject, jlong, jlong, jlong, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    getOffsetsInfoNative
  * Signature: (J)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_getOffsetsInfoNative(JNIEnv *, jobject,
+                                                                       jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    stopReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_stopReaderNative(
+    JNIEnv *, jobject, jlong);
 
 /*
  * Class:     io_ray_streaming_runtime_transfer_DataReader
  * Method:    closeReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative
-  (JNIEnv *, jobject, jlong);
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataReader_closeReaderNative(JNIEnv *, jobject,
+                                                                    jlong);
 
 #ifdef __cplusplus
 }

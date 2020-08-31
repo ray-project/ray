@@ -63,8 +63,8 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
                                               uint32_t data_size,
                                               StreamingMessageType message_type) {
   STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
-                       << " data_size: " << data_size << ", message_type="
-                       << static_cast<uint32_t>(message_type)
+                       << " data_size: " << data_size
+                       << ", message_type=" << static_cast<uint32_t>(message_type)
                        << ", data=" << Util::Byte2hex(data, data_size);
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
@@ -188,8 +188,8 @@ void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
     // yet.
     STREAMING_LOG(WARNING) << "[Writer] [Barrier] previous barrier(checkpoint) was fail "
                               "to do some opearting, ids => "
-                           << Util::join(barrier_id_vec.begin(),
-                                                     barrier_id_vec.end(), "|");
+                           << Util::join(barrier_id_vec.begin(), barrier_id_vec.end(),
+                                         "|");
   }
   StreamingBarrierHeader barrier_header = {
       .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
@@ -324,8 +324,11 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   while (message_list.size() < runtime_context_->GetConfig().GetRingBufferCapacity() &&
          !buffer_ptr->IsEmpty()) {
     StreamingMessagePtr &message_ptr = buffer_ptr->Front();
-    STREAMING_LOG(DEBUG) << "Collecting message " << *message_ptr << ", message_list_size=" << message_list.size()
-                        << ", buffer capacity=" << runtime_context_->GetConfig().GetRingBufferCapacity() << ", buffer size=" << buffer_ptr->Size();
+    STREAMING_LOG(DEBUG) << "Collecting message " << *message_ptr
+                         << ", message_list_size=" << message_list.size()
+                         << ", buffer capacity="
+                         << runtime_context_->GetConfig().GetRingBufferCapacity()
+                         << ", buffer size=" << buffer_ptr->Size();
 
     uint32_t message_total_size = message_ptr->ClassBytesSize();
     if (!message_list.empty() &&
@@ -336,9 +339,11 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
     }
     if (!message_list.empty() &&
         message_list.back()->GetMessageType() != message_ptr->GetMessageType()) {
-      STREAMING_LOG(DEBUG) << "Different message type detected, break collecting, last message type in list="
+      STREAMING_LOG(DEBUG) << "Different message type detected, break collecting, last "
+                              "message type in list="
                            << static_cast<uint32_t>(message_list.back()->GetMessageType())
-                           << ", current collecing message type=" << static_cast<uint32_t>(message_ptr->GetMessageType());
+                           << ", current collecing message type="
+                           << static_cast<uint32_t>(message_ptr->GetMessageType());
       break;
     }
     // ClassBytesSize = DataSize + MetaDataSize
@@ -348,8 +353,11 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
     buffer_ptr->Pop();
     buffer_remain = buffer_ptr->Size();
     is_barrier = message_ptr->IsBarrier();
-    STREAMING_LOG(DEBUG) << "Message " << *message_ptr << " collected, message_list_size=" << message_list.size()
-                        << ", buffer capacity=" << runtime_context_->GetConfig().GetRingBufferCapacity() << ", buffer size=" << buffer_ptr->Size();
+    STREAMING_LOG(DEBUG) << "Message " << *message_ptr
+                         << " collected, message_list_size=" << message_list.size()
+                         << ", buffer capacity="
+                         << runtime_context_->GetConfig().GetRingBufferCapacity()
+                         << ", buffer size=" << buffer_ptr->Size();
   }
 
   if (bundle_buffer_size >= channel_info.queue_size) {
@@ -579,13 +587,14 @@ void DataWriter::ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t m
 
   uint64_t current_msg_id = channel_info.current_message_id;
   if (msg_id > current_msg_id) {
-    STREAMING_LOG(WARNING) << "current_msg_id=" << current_msg_id << ", msg_id to be cleared=" << msg_id
+    STREAMING_LOG(WARNING) << "current_msg_id=" << current_msg_id
+                           << ", msg_id to be cleared=" << msg_id
                            << ", channel id = " << channel_info.channel_id;
   }
   channel_map_[channel_info.channel_id]->NotifyChannelConsumed(msg_id);
 
-  STREAMING_LOG(DEBUG) << "clearing data from msg_id=" << msg_id << ", qid= "
-                       << channel_info.channel_id;
+  STREAMING_LOG(DEBUG) << "clearing data from msg_id=" << msg_id
+                       << ", qid= " << channel_info.channel_id;
 }
 
 void DataWriter::GetChannelOffset(std::vector<uint64_t> &result) {
