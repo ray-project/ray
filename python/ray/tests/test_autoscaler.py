@@ -152,12 +152,10 @@ class MockProvider(NodeProvider):
             if self.cache_stopped:
                 for node in self.mock_nodes.values():
                     if node.state == "stopped" and count > 0:
-                        print("Using stopped node")
                         count -= 1
                         node.state = "pending"
                         node.tags.update(tags)
             for _ in range(count):
-                print(f"using node id: {self.next_id}")
                 self.mock_nodes[self.next_id] = MockNode(
                     self.next_id, tags.copy(), node_config,
                     tags.get(TAG_RAY_USER_NODE_TYPE))
@@ -168,7 +166,6 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
-            print("node terminated", node_id)
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:
