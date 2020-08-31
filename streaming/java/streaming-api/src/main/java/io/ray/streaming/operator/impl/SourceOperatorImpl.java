@@ -12,7 +12,7 @@ import io.ray.streaming.operator.StreamOperator;
 import java.util.List;
 
 public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
-  implements SourceOperator {
+    implements SourceOperator {
 
   private SourceContextImpl sourceContext;
 

@@ -35,8 +35,8 @@ public class StreamingRuntimeContext implements RuntimeContext {
   private Map<String, String> config;
 
   public StreamingRuntimeContext(
-    ExecutionVertex executionVertex, Map<String, String> config,
-    int parallelism) {
+      ExecutionVertex executionVertex, Map<String, String> config,
+      int parallelism) {
     this.taskId = executionVertex.getExecutionVertexId();
     this.config = config;
     this.taskIndex = executionVertex.getExecutionVertexIndex();
@@ -118,8 +118,8 @@ public class StreamingRuntimeContext implements RuntimeContext {
   }
 
   protected void stateSanityCheck(
-    AbstractStateDescriptor stateDescriptor,
-    AbstractKeyStateBackend backend) {
+      AbstractStateDescriptor stateDescriptor,
+      AbstractKeyStateBackend backend) {
     Preconditions.checkNotNull(stateDescriptor, "The state properties must not be null");
     Preconditions.checkNotNull(backend, "backend must not be null");
   }

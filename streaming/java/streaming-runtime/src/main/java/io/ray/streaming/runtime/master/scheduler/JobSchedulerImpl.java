@@ -102,7 +102,7 @@ public class JobSchedulerImpl implements JobScheduler {
 
     // create JobWorker actors
     boolean createResult = workerLifecycleController
-      .createWorkers(executionGraph.getAllAddedExecutionVertices());
+        .createWorkers(executionGraph.getAllAddedExecutionVertices());
 
     if (createResult) {
       LOG.info("Finished creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
@@ -122,7 +122,7 @@ public class JobSchedulerImpl implements JobScheduler {
     boolean result;
     try {
       result = workerLifecycleController.initWorkers(vertexToContextMap,
-        jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
+          jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to initiate workers.", e);
       return false;
@@ -137,7 +137,7 @@ public class JobSchedulerImpl implements JobScheduler {
     boolean result;
     try {
       result = workerLifecycleController.startWorkers(
-        executionGraph, jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
+          executionGraph, jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to start workers.", e);
       return false;
@@ -152,7 +152,7 @@ public class JobSchedulerImpl implements JobScheduler {
    * @return vertex to worker context map
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
-    ExecutionGraph executionGraph) {
+      ExecutionGraph executionGraph) {
     ActorHandle<JobMaster> masterActor = jobMaster.getJobMasterActor();
 
     // build workers' context
@@ -165,13 +165,13 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private JobWorkerContext buildJobWorkerContext(
-    ExecutionVertex executionVertex,
-    ActorHandle<JobMaster> masterActor) {
+      ExecutionVertex executionVertex,
+      ActorHandle<JobMaster> masterActor) {
 
     // create java worker context
     JobWorkerContext context = new JobWorkerContext(
-      masterActor,
-      executionVertex
+        masterActor,
+        executionVertex
     );
 
     return context;

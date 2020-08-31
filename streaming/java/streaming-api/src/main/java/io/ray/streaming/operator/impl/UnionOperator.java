@@ -7,7 +7,7 @@ import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
 public class UnionOperator<T> extends StreamOperator<Function> implements
-  OneInputOperator<T> {
+    OneInputOperator<T> {
 
   public UnionOperator() {
     super(Functions.emptyFunction());

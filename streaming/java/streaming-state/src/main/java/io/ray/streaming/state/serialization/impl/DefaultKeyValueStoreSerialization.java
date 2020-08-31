@@ -25,7 +25,7 @@ import io.ray.streaming.state.serialization.Serializer;
  * KV Store Serialization and Deserialization.
  */
 public class DefaultKeyValueStoreSerialization<K, V> extends AbstractSerialization implements
-  KeyValueStoreSerialization<K, V> {
+    KeyValueStoreSerialization<K, V> {
 
   @Override
   public byte[] serializeKey(K key) {

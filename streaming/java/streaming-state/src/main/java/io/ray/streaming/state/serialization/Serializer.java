@@ -26,7 +26,7 @@ import org.nustaq.serialization.FSTConfiguration;
 public class Serializer {
 
   private static final ThreadLocal<FSTConfiguration> conf =
-    ThreadLocal.withInitial(FSTConfiguration::createDefaultConfiguration);
+      ThreadLocal.withInitial(FSTConfiguration::createDefaultConfiguration);
 
   public static byte[] object2Bytes(Object value) {
     return conf.get().asByteArray(value);

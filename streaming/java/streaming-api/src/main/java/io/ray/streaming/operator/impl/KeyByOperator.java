@@ -7,7 +7,7 @@ import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
 public class KeyByOperator<T, K> extends StreamOperator<KeyFunction<T, K>> implements
-  OneInputOperator<T> {
+    OneInputOperator<T> {
 
   public KeyByOperator(KeyFunction<T, K> keyFunction) {
     super(keyFunction);

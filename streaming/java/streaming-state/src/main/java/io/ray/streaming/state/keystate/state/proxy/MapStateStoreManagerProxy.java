@@ -30,13 +30,13 @@ import java.util.Map;
  * This class defines MapState Wrapper, connecting state and backend.
  */
 public class MapStateStoreManagerProxy<K, V> extends StateStoreManagerProxy<Map<K, V>> implements
-  KeyValueState<String, Map<K, V>> {
+    KeyValueState<String, Map<K, V>> {
 
   private final MapStateImpl<K, V> mapState;
 
   public MapStateStoreManagerProxy(
-    KeyStateBackend keyStateBackend,
-    MapStateDescriptor<K, V> stateDescriptor) {
+      KeyStateBackend keyStateBackend,
+      MapStateDescriptor<K, V> stateDescriptor) {
     super(keyStateBackend, stateDescriptor);
     this.mapState = new MapStateImpl<>(stateDescriptor, keyStateBackend);
   }

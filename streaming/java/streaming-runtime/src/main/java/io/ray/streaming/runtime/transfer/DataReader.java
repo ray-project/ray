@@ -30,15 +30,15 @@ public class DataReader {
    * @param workerConfig  configuration
    */
   public DataReader(
-    List<String> inputChannels,
-    List<BaseActorHandle> fromActors,
-    StreamingWorkerConfig workerConfig) {
+      List<String> inputChannels,
+      List<BaseActorHandle> fromActors,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =
-      new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
+        new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
-      .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
@@ -54,17 +54,17 @@ public class DataReader {
     boolean isRecreate = workerConfig.transferConfig.readerIsRecreate();
 
     this.nativeReaderPtr = createDataReaderNative(
-      initialParameters,
-      inputChannelsBytes,
-      seqIds,
-      msgIds,
-      timerInterval,
-      isRecreate,
-      ChannelUtils.toNativeConf(workerConfig),
-      isMock
+        initialParameters,
+        inputChannelsBytes,
+        seqIds,
+        msgIds,
+        timerInterval,
+        isRecreate,
+        ChannelUtils.toNativeConf(workerConfig),
+        isMock
     );
     LOG.info("Create DataReader succeed for worker: {}.",
-      workerConfig.workerInternalConfig.workerName());
+        workerConfig.workerInternalConfig.workerName());
   }
 
   // params set by getBundleNative: bundle data address + size
@@ -94,7 +94,7 @@ public class DataReader {
         // barrier
         if (bundleMeta.getBundleType() == DataBundleType.BARRIER) {
           throw new UnsupportedOperationException(
-            "Unsupported bundle type " + bundleMeta.getBundleType());
+              "Unsupported bundle type " + bundleMeta.getBundleType());
         } else if (bundleMeta.getBundleType() == DataBundleType.BUNDLE) {
           String channelID = bundleMeta.getChannelID();
           long timestamp = bundleMeta.getBundleTs();
@@ -104,7 +104,7 @@ public class DataReader {
         } else if (bundleMeta.getBundleType() == DataBundleType.EMPTY) {
           long messageId = bundleMeta.getLastMessageId();
           buf.offer(new DataMessage(null, bundleMeta.getBundleTs(),
-            messageId, bundleMeta.getChannelID()));
+              messageId, bundleMeta.getChannelID()));
         }
       }
     }
@@ -133,7 +133,7 @@ public class DataReader {
 
   private void getBundle(long timeoutMillis) {
     getBundleNative(nativeReaderPtr, timeoutMillis,
-      Platform.getAddress(getBundleParams), Platform.getAddress(bundleMeta));
+        Platform.getAddress(getBundleParams), Platform.getAddress(bundleMeta));
     bundleMeta.rewind();
     long bundleAddress = getBundleParams.getLong(0);
     int bundleSize = getBundleParams.getInt(8);
@@ -162,20 +162,20 @@ public class DataReader {
   }
 
   private static native long createDataReaderNative(
-    ChannelCreationParametersBuilder initialParameters,
-    byte[][] inputChannels,
-    long[] seqIds,
-    long[] msgIds,
-    long timerInterval,
-    boolean isRecreate,
-    byte[] configBytes,
-    boolean isMock);
+      ChannelCreationParametersBuilder initialParameters,
+      byte[][] inputChannels,
+      long[] seqIds,
+      long[] msgIds,
+      long timerInterval,
+      boolean isRecreate,
+      byte[] configBytes,
+      boolean isMock);
 
   private native void getBundleNative(
-    long nativeReaderPtr,
-    long timeoutMillis,
-    long params,
-    long metaAddress);
+      long nativeReaderPtr,
+      long timeoutMillis,
+      long params,
+      long metaAddress);
 
   private native void stopReaderNative(long nativeReaderPtr);
 

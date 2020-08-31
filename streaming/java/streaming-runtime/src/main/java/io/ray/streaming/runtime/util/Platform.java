@@ -51,14 +51,14 @@ public final class Platform {
   }
 
   private static final ThreadLocal<ByteBuffer> localEmptyBuffer =
-    ThreadLocal.withInitial(() -> {
-      try {
-        return (ByteBuffer) DBB_CONSTRUCTOR.newInstance(0, 0);
-      } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-        UNSAFE.throwException(e);
-      }
-      throw new IllegalStateException("unreachable");
-    });
+      ThreadLocal.withInitial(() -> {
+        try {
+          return (ByteBuffer) DBB_CONSTRUCTOR.newInstance(0, 0);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+          UNSAFE.throwException(e);
+        }
+        throw new IllegalStateException("unreachable");
+      });
 
   /**
    * Wrap a buffer [address, address + size) as a DirectByteBuffer.

@@ -19,8 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The streaming worker implementation class, it is ray actor. JobWorker is created by {@link
- * JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
+ * The streaming worker implementation class, it is ray actor. JobWorker is created by
+ * {@link JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
  *
  * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
  * between workers.
@@ -52,7 +52,7 @@ public class JobWorker implements Serializable {
    */
   public Boolean init(JobWorkerContext workerContext) {
     LOG.info("Initiating job worker: {}. Worker context is: {}.",
-      workerContext.getWorkerName(), workerContext);
+        workerContext.getWorkerName(), workerContext);
 
     try {
       this.workerContext = workerContext;
@@ -99,7 +99,7 @@ public class JobWorker implements Serializable {
   private StreamTask createStreamTask() {
     StreamTask task = null;
     StreamProcessor streamProcessor = ProcessBuilder
-      .buildProcessor(executionVertex.getStreamOperator());
+        .buildProcessor(executionVertex.getStreamOperator());
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     try {

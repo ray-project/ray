@@ -6,7 +6,7 @@ import io.ray.streaming.operator.OneInputOperator;
 import io.ray.streaming.operator.StreamOperator;
 
 public class FilterOperator<T> extends StreamOperator<FilterFunction<T>> implements
-  OneInputOperator<T> {
+    OneInputOperator<T> {
 
   public FilterOperator(FilterFunction<T> filterFunction) {
     super(filterFunction);

@@ -33,15 +33,15 @@ public class DataWriter {
    * @param workerConfig   configuration
    */
   public DataWriter(
-    List<String> outputChannels,
-    List<BaseActorHandle> toActors,
-    StreamingWorkerConfig workerConfig) {
+      List<String> outputChannels,
+      List<BaseActorHandle> toActors,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     ChannelCreationParametersBuilder initialParameters =
-      new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
+        new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
     byte[][] outputChannelsBytes = outputChannels.stream()
-      .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
     long[] msgIds = new long[outputChannels.size()];
     for (int i = 0; i < outputChannels.size(); i++) {
@@ -53,15 +53,15 @@ public class DataWriter {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
-      initialParameters,
-      outputChannelsBytes,
-      msgIds,
-      channelSize,
-      ChannelUtils.toNativeConf(workerConfig),
-      isMock
+        initialParameters,
+        outputChannelsBytes,
+        msgIds,
+        channelSize,
+        ChannelUtils.toNativeConf(workerConfig),
+        isMock
     );
     LOG.info("Create DataWriter succeed for worker: {}.",
-      workerConfig.workerInternalConfig.workerName());
+        workerConfig.workerInternalConfig.workerName());
   }
 
   /**
@@ -124,15 +124,15 @@ public class DataWriter {
   }
 
   private static native long createWriterNative(
-    ChannelCreationParametersBuilder initialParameters,
-    byte[][] outputQueueIds,
-    long[] msgIds,
-    long channelSize,
-    byte[] confBytes,
-    boolean isMock);
+      ChannelCreationParametersBuilder initialParameters,
+      byte[][] outputQueueIds,
+      long[] msgIds,
+      long channelSize,
+      byte[] confBytes,
+      boolean isMock);
 
   private native long writeMessageNative(
-    long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
+      long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
 
   private native void stopWriterNative(long nativeQueueProducerPtr);
 

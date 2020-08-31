@@ -32,8 +32,8 @@ public class MapStateDescriptor<K, V> extends AbstractStateDescriptor<MapState<K
   }
 
   public static <K, V> MapStateDescriptor<K, V> build(
-    String name, Class<K> keyType,
-    Class<V> valueType) {
+      String name, Class<K> keyType,
+      Class<V> valueType) {
     return new MapStateDescriptor<>(name, keyType, valueType);
   }
 

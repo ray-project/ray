@@ -27,7 +27,7 @@ public class ListStateDescriptorTest {
   @Test
   public void test() {
     ListStateDescriptor<Integer> descriptor = ListStateDescriptor
-      .build("lsdTest", Integer.class, true);
+        .build("lsdTest", Integer.class, true);
     descriptor.setTableName("table");
     Assert.assertTrue(descriptor.isOperatorList());
 
@@ -38,6 +38,6 @@ public class ListStateDescriptorTest {
     Assert.assertEquals(descriptor.getIndex(), 0);
 
     Assert.assertEquals(descriptor.getIdentify(),
-      "lsdTest" + ConfigKey.DELIMITER + "3" + ConfigKey.DELIMITER + "0");
+        "lsdTest" + ConfigKey.DELIMITER + "3" + ConfigKey.DELIMITER + "0");
   }
 }

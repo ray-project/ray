@@ -38,8 +38,8 @@ public final class KeyGroupAssignment {
    */
   public static KeyGroup getKeyGroup(int maxParallelism, int parallelism, int index) {
     Preconditions.checkArgument(maxParallelism >= parallelism,
-      "Maximum parallelism (%s) must not be smaller than parallelism(%s)", maxParallelism,
-      parallelism);
+        "Maximum parallelism (%s) must not be smaller than parallelism(%s)", maxParallelism,
+        parallelism);
 
     int start = index == 0 ? 0 : ((index * maxParallelism - 1) / parallelism) + 1;
     int end = ((index + 1) * maxParallelism - 1) / parallelism;
@@ -58,13 +58,13 @@ public final class KeyGroupAssignment {
   }
 
   public static Map<Integer, List<Integer>> computeKeyGroupToTask(
-    int maxParallelism,
-    List<Integer> targetTasks) {
+      int maxParallelism,
+      List<Integer> targetTasks) {
     Map<Integer, List<Integer>> keyGroupToTask = new ConcurrentHashMap<>();
     for (int index = 0; index < targetTasks.size(); index++) {
       KeyGroup taskKeyGroup = getKeyGroup(maxParallelism, targetTasks.size(), index);
       for (int groupId = taskKeyGroup.getStartIndex(); groupId <= taskKeyGroup.getEndIndex();
-        groupId++) {
+          groupId++) {
         keyGroupToTask.put(groupId, ImmutableList.of(targetTasks.get(index)));
       }
     }

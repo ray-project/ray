@@ -25,7 +25,7 @@ import io.ray.streaming.state.serialization.Serializer;
  * Default Key Map Serialization and Deserialization.
  */
 public class DefaultKeyMapStoreSerializer<K, S, T> extends AbstractSerialization implements
-  KeyMapStoreSerializer<K, S, T> {
+    KeyMapStoreSerializer<K, S, T> {
 
   @Override
   public byte[] serializeKey(K key) {

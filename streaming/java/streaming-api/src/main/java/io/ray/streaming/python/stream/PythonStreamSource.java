@@ -18,8 +18,8 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
   }
 
   public static PythonStreamSource from(
-    StreamingContext streamingContext,
-    PythonFunction sourceFunction) {
+      StreamingContext streamingContext,
+      PythonFunction sourceFunction) {
     sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);
     return new PythonStreamSource(streamingContext, sourceFunction);
   }

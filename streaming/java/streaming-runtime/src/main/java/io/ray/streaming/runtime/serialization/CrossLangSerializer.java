@@ -22,15 +22,15 @@ public class CrossLangSerializer implements Serializer {
     Class<? extends Record> clz = record.getClass();
     if (clz == Record.class) {
       return msgPackSerializer.serialize(Arrays.asList(
-        RECORD_TYPE_ID, record.getStream(), value));
+          RECORD_TYPE_ID, record.getStream(), value));
     } else if (clz == KeyRecord.class) {
       KeyRecord keyRecord = (KeyRecord) record;
       Object key = keyRecord.getKey();
       return msgPackSerializer.serialize(Arrays.asList(
-        KEY_RECORD_TYPE_ID, keyRecord.getStream(), key, value));
+          KEY_RECORD_TYPE_ID, keyRecord.getStream(), key, value));
     } else {
       throw new UnsupportedOperationException(
-        String.format("Serialize %s is unsupported.", record));
+          String.format("Serialize %s is unsupported.", record));
     }
   }
 

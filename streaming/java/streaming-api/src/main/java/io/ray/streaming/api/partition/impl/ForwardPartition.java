@@ -11,7 +11,7 @@ import io.ray.streaming.api.partition.Partition;
  */
 public class ForwardPartition<T> implements Partition<T> {
 
-  private int[] partitions = new int[]{0};
+  private int[] partitions = new int[] {0};
 
   @Override
   public int[] partition(T record, int numPartition) {

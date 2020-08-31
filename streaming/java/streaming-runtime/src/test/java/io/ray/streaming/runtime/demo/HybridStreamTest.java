@@ -47,25 +47,25 @@ public class HybridStreamTest {
 
     StreamingContext context = StreamingContext.buildContext();
     DataStreamSource<String> streamSource =
-      DataStreamSource.fromCollection(context, Arrays.asList("a", "b", "c"));
+        DataStreamSource.fromCollection(context, Arrays.asList("a", "b", "c"));
     streamSource
-      .map(x -> x + x)
-      .asPythonStream()
-      .map("ray.streaming.tests.test_hybrid_stream", "map_func1")
-      .filter("ray.streaming.tests.test_hybrid_stream", "filter_func1")
-      .asJavaStream()
-      .sink((SinkFunction<Object>) value -> {
-        LOG.info("HybridStreamTest: {}", value);
-        try {
-          if (!Files.exists(Paths.get(sinkFileName))) {
-            Files.createFile(Paths.get(sinkFileName));
+        .map(x -> x + x)
+        .asPythonStream()
+        .map("ray.streaming.tests.test_hybrid_stream", "map_func1")
+        .filter("ray.streaming.tests.test_hybrid_stream", "filter_func1")
+        .asJavaStream()
+        .sink((SinkFunction<Object>) value -> {
+          LOG.info("HybridStreamTest: {}", value);
+          try {
+            if (!Files.exists(Paths.get(sinkFileName))) {
+              Files.createFile(Paths.get(sinkFileName));
+            }
+            Files.write(Paths.get(sinkFileName), value.toString().getBytes(),
+                StandardOpenOption.APPEND);
+          } catch (IOException e) {
+            throw new RuntimeException(e);
           }
-          Files.write(Paths.get(sinkFileName), value.toString().getBytes(),
-            StandardOpenOption.APPEND);
-        } catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-      });
+        });
     context.execute("HybridStreamTestJob");
     int sleptTime = 0;
     TimeUnit.SECONDS.sleep(3);

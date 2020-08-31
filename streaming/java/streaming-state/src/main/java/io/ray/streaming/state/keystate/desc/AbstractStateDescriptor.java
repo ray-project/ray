@@ -66,7 +66,7 @@ public abstract class AbstractStateDescriptor<S extends State, T> {
   @Override
   public String toString() {
     return "AbstractStateDescriptor{" + "tableName='" + tableName + '\'' + ", name='" + name + '\''
-      + ", type=" + type + '}';
+        + ", type=" + type + '}';
   }
 
   public enum StateType {

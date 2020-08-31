@@ -47,7 +47,7 @@ public class MemoryStateBackend extends AbstractStateBackend {
 
   @Override
   public <K, S, T> KeyMapStore<K, S, T> getKeyMapStore(
-    String tableName, KeyMapStoreSerializer keyMapStoreSerializer) {
+      String tableName, KeyMapStoreSerializer keyMapStoreSerializer) {
     return new MemoryKeyMapStore<>();
   }
 

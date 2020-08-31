@@ -37,9 +37,9 @@ public class JobGraphOptimizer {
   public JobGraphOptimizer(JobGraph jobGraph) {
     this.jobGraph = jobGraph;
     vertexMap = jobGraph.getJobVertices().stream()
-      .collect(Collectors.toMap(JobVertex::getVertexId, Function.identity()));
+        .collect(Collectors.toMap(JobVertex::getVertexId, Function.identity()));
     outputEdgesMap = vertexMap.keySet().stream().collect(Collectors.toMap(
-      id -> vertexMap.get(id), id -> new HashSet<>(jobGraph.getVertexOutputEdges(id))));
+        id -> vertexMap.get(id), id -> new HashSet<>(jobGraph.getVertexOutputEdges(id))));
     mergedVertexMap = new HashMap<>();
   }
 
@@ -53,7 +53,7 @@ public class JobGraphOptimizer {
     });
 
     List<JobVertex> vertices = mergedVertexMap.values().stream()
-      .map(Pair::getLeft).collect(Collectors.toList());
+        .map(Pair::getLeft).collect(Collectors.toList());
 
     return new JobGraph(jobGraph.getJobName(), jobGraph.getJobConfig(), vertices, createEdges());
   }
@@ -90,24 +90,24 @@ public class JobGraphOptimizer {
       mergedVertex = headVertex;
     } else {
       List<StreamOperator> operators = verticesToMerge.stream()
-        .map(v -> vertexMap.get(v.getVertexId())
-          .getStreamOperator())
-        .collect(Collectors.toList());
+          .map(v -> vertexMap.get(v.getVertexId())
+              .getStreamOperator())
+          .collect(Collectors.toList());
       List<Map<String, String>> configs = verticesToMerge.stream()
-        .map(v -> vertexMap.get(v.getVertexId()).getConfig())
-        .collect(Collectors.toList());
+          .map(v -> vertexMap.get(v.getVertexId()).getConfig())
+          .collect(Collectors.toList());
       StreamOperator operator;
       if (language == Language.JAVA) {
         operator = ChainedOperator.newChainedOperator(operators, configs);
       } else {
         List<PythonOperator> pythonOperators = operators.stream()
-          .map(o -> (PythonOperator) o)
-          .collect(Collectors.toList());
+            .map(o -> (PythonOperator) o)
+            .collect(Collectors.toList());
         operator = new ChainedPythonOperator(pythonOperators, configs);
       }
       // chained operator config is placed into `ChainedOperator`.
       mergedVertex = new JobVertex(headVertex.getVertexId(), headVertex.getParallelism(),
-        headVertex.getVertexType(), operator, new HashMap<>());
+          headVertex.getVertexType(), operator, new HashMap<>());
     }
 
     mergedVertexMap.put(mergedVertex.getVertexId(), Pair.of(mergedVertex, verticesToMerge));
@@ -123,13 +123,13 @@ public class JobGraphOptimizer {
       if (outputEdgesMap.containsKey(tailVertex)) {
         outputEdgesMap.get(tailVertex).forEach(edge -> {
           Pair<JobVertex, List<JobVertex>> downstreamPair =
-            mergedVertexMap.get(edge.getTargetVertexId());
+              mergedVertexMap.get(edge.getTargetVertexId());
           // change ForwardPartition to RoundRobinPartition.
           Partition partition = changePartition(edge.getPartition());
           JobEdge newEdge = new JobEdge(
-            mergedVertex.getVertexId(),
-            downstreamPair.getLeft().getVertexId(),
-            partition);
+              mergedVertex.getVertexId(),
+              downstreamPair.getLeft().getVertexId(),
+              partition);
           edges.add(newEdge);
         });
 
@@ -145,7 +145,7 @@ public class JobGraphOptimizer {
     if (partition instanceof PythonPartition) {
       PythonPartition pythonPartition = (PythonPartition) partition;
       if (!pythonPartition.isConstructedFromBinary() &&
-        pythonPartition.getFunctionName().equals(PythonPartition.FORWARD_PARTITION_CLASS)) {
+          pythonPartition.getFunctionName().equals(PythonPartition.FORWARD_PARTITION_CLASS)) {
         return PythonPartition.RoundRobinPartition;
       } else {
         return partition;
@@ -160,19 +160,19 @@ public class JobGraphOptimizer {
   }
 
   private boolean canBeChained(
-    JobVertex precedingVertex,
-    JobVertex succeedingVertex,
-    JobEdge edge) {
+      JobVertex precedingVertex,
+      JobVertex succeedingVertex,
+      JobEdge edge) {
     if (jobGraph.getVertexOutputEdges(precedingVertex.getVertexId()).size() > 1 ||
-      jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
+        jobGraph.getVertexInputEdges(succeedingVertex.getVertexId()).size() > 1) {
       return false;
     }
     if (precedingVertex.getParallelism() != succeedingVertex.getParallelism()) {
       return false;
     }
     if (precedingVertex.getStreamOperator().getChainStrategy() == ChainStrategy.NEVER
-      || succeedingVertex.getStreamOperator().getChainStrategy() == ChainStrategy.NEVER
-      || succeedingVertex.getStreamOperator().getChainStrategy() == ChainStrategy.HEAD) {
+        || succeedingVertex.getStreamOperator().getChainStrategy() == ChainStrategy.NEVER
+        || succeedingVertex.getStreamOperator().getChainStrategy() == ChainStrategy.HEAD) {
       return false;
     }
     if (precedingVertex.getLanguage() != succeedingVertex.getLanguage()) {
@@ -184,7 +184,7 @@ public class JobGraphOptimizer {
     } else {
       PythonPartition pythonPartition = (PythonPartition) partition;
       return !pythonPartition.isConstructedFromBinary() &&
-        pythonPartition.getFunctionName().equals(PythonPartition.FORWARD_PARTITION_CLASS);
+          pythonPartition.getFunctionName().equals(PythonPartition.FORWARD_PARTITION_CLASS);
     }
   }
 

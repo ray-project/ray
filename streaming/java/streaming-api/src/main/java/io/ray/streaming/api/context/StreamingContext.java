@@ -80,7 +80,7 @@ public class StreamingContext implements Serializable {
     ServiceLoader<JobClient> serviceLoader = ServiceLoader.load(JobClient.class);
     Iterator<JobClient> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
-      "No JobClient implementation has been provided.");
+        "No JobClient implementation has been provided.");
     JobClient jobClient = iterator.next();
     jobClient.submit(jobGraph, jobConfig);
   }
