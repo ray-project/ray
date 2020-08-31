@@ -35,6 +35,7 @@ class SigOptSearch(Searcher):
         name (str): Name of experiment. Required by SigOpt.
         max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
+        connection (Connection): an existing connection to SigOpt.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -71,14 +72,22 @@ class SigOptSearch(Searcher):
                  name="Default Tune Experiment",
                  max_concurrent=1,
                  reward_attr=None,
+                 connection=None,
                  metric="episode_reward_mean",
                  mode="max",
                  **kwargs):
-        assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
-        assert "SIGOPT_KEY" in os.environ, \
-            "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if connection is not None:
+            self.conn = connection
+        else:
+            assert sgo is not None, "SigOpt must be installed!"
+            assert "SIGOPT_KEY" in os.environ, \
+                "SigOpt API key must be stored as " \
+                "environ variable at SIGOPT_KEY"
+            # Create a connection with SigOpt API, requires API key
+            self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -87,9 +96,6 @@ class SigOptSearch(Searcher):
         elif mode == "min":
             self._metric_op = -1.
         self._live_trial_mapping = {}
-
-        # Create a connection with SigOpt API, requires API key
-        self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 
         self.experiment = self.conn.experiments().create(
             name=name,
