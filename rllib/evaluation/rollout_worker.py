@@ -420,7 +420,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
-            if not ray.get_gpu_ids(as_str=True):
+            if not ray.get_gpu_ids():
                 logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +
                              " on CPU (please ignore any CUDA init errors)")
@@ -515,7 +515,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -538,7 +538,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 rollout_fragment_length=rollout_fragment_length,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
-                pack_multiple_episodes_in_batch=pack,
+                multiple_episodes_in_batch=pack,
                 tf_sess=self.tf_sess,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -619,7 +619,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch
 
     @DeveloperAPI
-    @ray.method(num_return_vals=2)
+    @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate future."""
         batch = self.sample()

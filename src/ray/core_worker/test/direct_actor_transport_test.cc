@@ -102,10 +102,10 @@ class DirectActorSubmitterTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_(
-            [&](const rpc::Address &addr) {
+            std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
               return worker_client_;
-            },
+            }),
             store_, task_finisher_) {}
 
   int num_clients_connected_ = 0;
@@ -363,7 +363,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // We receive the RESTART message late. Nothing happens.
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
@@ -372,7 +372,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // The actor dies twice. We receive the last RESTART message first.
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
@@ -382,17 +382,17 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
 
   // We receive the late messages. Nothing happens.
   submitter_.ConnectActor(actor_id, addr, 2);
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/false);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently. All tasks are failed.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _)).Times(1);
-  submitter_.DisconnectActor(actor_id, 2, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 3, /*dead=*/true);
   ASSERT_EQ(num_clients_connected_, 2);
 
   // We receive more late messages. Nothing happens because the actor is dead.
-  submitter_.DisconnectActor(actor_id, 3, /*dead=*/false);
-  submitter_.ConnectActor(actor_id, addr, 3);
+  submitter_.DisconnectActor(actor_id, 4, /*dead=*/false);
+  submitter_.ConnectActor(actor_id, addr, 4);
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
@@ -428,7 +428,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
                                          [] { return Status::OK(); }));
-    receiver_->Init([&](const rpc::Address &addr) { return worker_client_; },
+    receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
+                        [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
   }
 

@@ -16,8 +16,8 @@ public class TwoInputStreamTask extends InputStreamTask {
       String leftStream,
       String rightStream) {
     super(taskId, processor, jobWorker);
-    ((TwoInputProcessor)(super.processor)).setLeftStream(leftStream);
-    ((TwoInputProcessor)(super.processor)).setRightStream(rightStream);
+    ((TwoInputProcessor) (super.processor)).setLeftStream(leftStream);
+    ((TwoInputProcessor) (super.processor)).setRightStream(rightStream);
   }
 
 }

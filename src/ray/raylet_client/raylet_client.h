@@ -169,7 +169,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
-  /// \param internal_config This will be populated with internal config parameters
+  /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
@@ -178,7 +178,7 @@ class RayletClient : public PinObjectsInterface,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *internal_config,
+               std::unordered_map<std::string, std::string> *system_config,
                const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
@@ -319,10 +319,13 @@ class RayletClient : public PinObjectsInterface,
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
-  /// Spill objects to external storage.
-  /// \param object_ids The IDs of objects to be spilled.
-  /// \return ray::Status
-  ray::Status ForceSpillObjects(const std::vector<ObjectID> &object_ids);
+  /// Ask the raylet to spill an object to external storage.
+  /// \param object_id The ID of the object to be spilled.
+  /// \param callback Callback that will be called after raylet completes the
+  /// object spilling (or it fails).
+  void RequestObjectSpillage(
+      const ObjectID &object_id,
+      const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
   /// Restore spilled objects from external storage.
   /// \param object_ids The IDs of objects to be restored.

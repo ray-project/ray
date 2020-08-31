@@ -197,7 +197,7 @@ Distributed Checkpointing
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods. 
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -225,7 +225,7 @@ You often will want to compute a large object (e.g., training data, model weight
     # X_id can be referenced in closures
     X_id = pin_in_object_store(np.random.random(size=100000000))
 
-    def f(config, reporter):
+    def f(config):
         X = get_pinned_object(X_id)
         # use X
 
@@ -472,8 +472,7 @@ decide between the two options.
 Redirecting stdout and stderr to files
 --------------------------------------
 The stdout and stderr streams are usually printed to the console. For remote actors,
-Ray collects these logs and prints them to the head process, as long as it
-has been initialized with ``log_to_driver=True``, which is the default.
+Ray collects these logs and prints them to the head process.
 
 However, if you would like to collect the stream outputs in files for later
 analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
@@ -507,17 +506,6 @@ too.
 
 If ``log_to_file`` is set, Tune will automatically register a new logging handler
 for Ray's base logger and log the output to the specified stderr output file.
-
-Setting ``log_to_file`` does not disable logging to the driver. If you would
-like to disable the logs showing up in the driver output (i.e. they should only
-show up in the logfiles), initialize Ray accordingly:
-
-.. code-block:: python
-
-    ray.init(log_to_driver=False)
-    tune.run(
-        trainable,
-        log_to_file=True)
 
 .. _tune-debugging:
 

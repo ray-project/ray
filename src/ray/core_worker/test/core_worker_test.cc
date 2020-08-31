@@ -27,6 +27,7 @@
 #include "hiredis/hiredis.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -314,7 +315,6 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
-      ASSERT_TRUE(return_ids[0].IsReturnObject());
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
@@ -546,7 +546,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, resources, resources);
+                              RandomTaskId(), address, num_returns, resources, resources,
+                              PlacementGroupID::Nil());
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -629,6 +630,17 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   // Verify that these fields are thread-local.
   ASSERT_EQ(context.GetNextTaskIndex(), 3);
   ASSERT_EQ(context.GetNextPutIndex(), 3);
+
+  TaskSpecification task_spec;
+  size_t num_returns = 3;
+  task_spec.GetMutableMessage().set_num_returns(num_returns);
+  context.ResetCurrentTask(task_spec);
+  context.SetCurrentTask(task_spec);
+  ASSERT_EQ(context.GetCurrentTaskID(), task_spec.TaskId());
+
+  // Verify that put index doesn't confict with the return object range.
+  ASSERT_EQ(context.GetNextPutIndex(), num_returns + 1);
+  ASSERT_EQ(context.GetNextPutIndex(), num_returns + 2);
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {

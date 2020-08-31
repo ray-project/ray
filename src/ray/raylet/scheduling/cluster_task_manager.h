@@ -1,5 +1,8 @@
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -29,9 +32,11 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const ClientID &node_id)
 /// 3. If a task has unresolved dependencies, set it aside to wait for
 ///    dependencies to be resolved.
 /// 4. When a task is ready to be dispatched, ensure that the local node is
-///    still capable of running the task.
+///    still capable of running the task, then dispatch it.
 ///     * Step 4 should be run any time there is a new task to dispatch *or*
 ///       there is a new worker which can dispatch the tasks.
+/// 5. When a worker finishes executing its task(s), the requester will return
+///    it and we should release the resources in our view of the node's state.
 class ClusterTaskManager {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
@@ -78,6 +83,21 @@ class ClusterTaskManager {
   ///
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
+
+  /// (Step 5) Call once a task finishes (i.e. a worker is returned).
+  ///
+  /// \param worker: The worker which was running the task.
+  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker);
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id);
+
+  std::string DebugString();
 
  private:
   const ClientID &self_node_id_;

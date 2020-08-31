@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Optional
 import copy
 import logging
 import math
@@ -14,8 +15,8 @@ from ray.experimental.internal_kv import _internal_kv_put, \
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
-    TAG_RAY_INSTANCE_TYPE, STATUS_UP_TO_DATE, NODE_TYPE_WORKER)
+    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -63,12 +64,13 @@ class StandardAutoscaler:
                                           self.config["cluster_name"])
 
         # Check whether we can enable the resource demand scheduler.
-        if "available_instance_types" in self.config:
-            self.instance_types = self.config["available_instance_types"]
+        if "available_node_types" in self.config:
+            self.available_node_types = self.config["available_node_types"]
             self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.instance_types, self.config["max_workers"])
+                self.provider, self.available_node_types,
+                self.config["max_workers"])
         else:
-            self.instance_types = None
+            self.available_node_types = None
             self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
@@ -96,7 +98,7 @@ class StandardAutoscaler:
                 queue=self.launch_queue,
                 index=i,
                 pending=self.pending_launches,
-                instance_types=self.instance_types,
+                node_types=self.available_node_types,
             )
             node_launcher.daemon = True
             node_launcher.start()
@@ -115,7 +117,7 @@ class StandardAutoscaler:
         # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = None
+        self.resource_demand_vector = []
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -195,15 +197,18 @@ class StandardAutoscaler:
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler and self.resource_demand_vector:
-            # TODO(ekl) include head node in the node list
-            instances = (
-                self.resource_demand_scheduler.get_instances_to_launch(
-                    nodes, self.pending_launches.breakdown(),
-                    self.resource_demand_vector))
-            # TODO(ekl) also enforce max launch concurrency here?
-            for instance_type, count in instances:
-                self.launch_new_node(count, instance_type=instance_type)
+        if self.resource_demand_scheduler:
+            resource_demand_vector = self.resource_demand_vector + \
+                self.load_metrics.get_resource_demand_vector()
+            if resource_demand_vector:
+                to_launch = (
+                    self.resource_demand_scheduler.get_nodes_to_launch(
+                        self.provider.non_terminated_nodes(tag_filters={}),
+                        self.pending_launches.breakdown(),
+                        resource_demand_vector))
+                # TODO(ekl) also enforce max launch concurrency here?
+                for node_type, count in to_launch:
+                    self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -212,7 +217,8 @@ class StandardAutoscaler:
                               self.max_concurrent_launches - num_pending)
 
             num_launches = min(max_allowed, target_workers - num_workers)
-            self.launch_new_node(num_launches)
+            self.launch_new_node(num_launches,
+                                 self.config.get("worker_default_node_type"))
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
@@ -260,10 +266,11 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
     def _node_resources(self, node_id):
-        instance_type = self.provider.node_tags(node_id).get(
-            TAG_RAY_INSTANCE_TYPE)
-        if instance_type:
-            return self.instance_types[instance_type].get("resources", {})
+        node_type = self.provider.node_tags(node_id).get(
+            TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get(
+                "resources", {})
         else:
             return {}
 
@@ -382,9 +389,23 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
+            is_head_node=False,
             docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
+
+    def _get_node_type_specific_commands(self, node_id: str,
+                                         commands_key: str):
+        commands = self.config[commands_key]
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+            if node_type not in self.available_node_types:
+                raise ValueError(f"Unknown node type tag: {node_type}.")
+            node_specific_config = self.available_node_types[node_type]
+            if commands_key in node_specific_config:
+                commands = node_specific_config[commands_key]
+        return commands
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
@@ -399,10 +420,12 @@ class StandardAutoscaler:
             init_commands = []
             ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
         return (node_id, init_commands, ray_commands)
@@ -417,11 +440,13 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
+                self._get_node_type_specific_commands(
+                    node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
             process_runner=self.process_runner,
             use_internal_ip=True,
@@ -439,20 +464,16 @@ class StandardAutoscaler:
             return False
         return True
 
-    def launch_new_node(self, count, instance_type=None):
+    def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        # Try to fill in the default instance type so we can tag it properly.
-        if not instance_type:
-            instance_type = self.provider.get_instance_type(
-                self.config["worker_nodes"])
-        self.pending_launches.inc(instance_type, count)
+        self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
-        self.launch_queue.put((config, count, instance_type))
+        self.launch_queue.put((config, count, node_type))
 
     def workers(self):
         return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "
@@ -488,8 +509,9 @@ class StandardAutoscaler:
             resources: Either a list of resource bundles or a single resource
                 demand dictionary.
         """
-        logger.info(
-            "StandardAutoscaler: resource_requests={}".format(resources))
+        if resources:
+            logger.info(
+                "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:

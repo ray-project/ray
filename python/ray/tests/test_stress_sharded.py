@@ -1,25 +1,20 @@
 import numpy as np
-import os
 import pytest
 
 import ray
 
 
-@pytest.fixture(params=[1, 4])
+@pytest.fixture(params=[1])
 def ray_start_sharded(request):
-    num_redis_shards = request.param
-
-    if os.environ.get("RAY_USE_NEW_GCS") == "on":
-        num_redis_shards = 1
-        # For now, RAY_USE_NEW_GCS supports 1 shard, and credis supports
-        # 1-node chain for that shard only.
+    # TODO(ekl) enable this again once GCS supports sharding.
+    # num_redis_shards = request.param
 
     # Start the Ray processes.
     ray.init(
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
-        num_redis_shards=num_redis_shards,
-        redis_max_memory=10**7)
+        # _num_redis_shards=num_redis_shards,
+        _redis_max_memory=10**7)
 
     yield None
 

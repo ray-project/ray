@@ -89,9 +89,6 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// \return string.
   std::string DebugString() const;
 
-  /// Record metrics.
-  void RecordMetrics() const;
-
  private:
   struct ReconstructionTask {
     ReconstructionTask(boost::asio::io_service &io_service)

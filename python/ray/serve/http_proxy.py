@@ -8,7 +8,7 @@ import ray
 from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.context import TaskContext
-from ray.serve.metric import MetricClient
+from ray.experimental import metrics
 from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
 from ray.serve.router import Router
@@ -33,14 +33,9 @@ class HTTPProxy:
 
         self.route_table = await controller.get_router_config.remote()
 
-        # The exporter is required to return results for /-/metrics endpoint.
-        [self.metric_exporter] = await controller.get_metric_exporter.remote()
-
-        self.metric_client = MetricClient(self.metric_exporter)
-        self.request_counter = self.metric_client.new_counter(
-            "num_http_requests",
-            description="The number of requests processed",
-            label_names=("route", ))
+        self.request_counter = metrics.Count(
+            "num_http_requests", "The number of HTTP requests processed",
+            "requests", ["route"])
 
         self.router = Router()
         await self.router.setup(name, instance_name)
@@ -71,9 +66,6 @@ class HTTPProxy:
         current_path = scope["path"]
         if current_path == "/-/routes":
             await Response(self.route_table).send(scope, receive, send)
-        elif current_path == "/-/metrics":
-            metric_info = await self.metric_exporter.inspect_metrics.remote()
-            await Response(metric_info).send(scope, receive, send)
         else:
             await Response(
                 "System path {} not found".format(current_path),
@@ -90,7 +82,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.labels(route=current_path).add()
+        self.request_counter.record(1, {"route": current_path})
 
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)

@@ -93,7 +93,7 @@ def optimizer_creator(model, config):
         momentum=config.get("momentum", 0.9))
 
 
-ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
+ray.init(address="auto" if not args.smoke_test else None, _log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
 executor = FailureInjectorExecutor(queue_trials=True)
