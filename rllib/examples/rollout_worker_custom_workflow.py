@@ -33,6 +33,7 @@ class CustomPolicy(Policy):
 
     def __init__(self, observation_space, action_space, config):
         super().__init__(observation_space, action_space, config)
+        self.config["framework"] = None
         # example parameter
         self.w = 1.0
 
@@ -116,4 +117,5 @@ if __name__ == "__main__":
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,
         },
+        verbose=1,
     )

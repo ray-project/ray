@@ -95,11 +95,17 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
             "framework": "torch" if args.torch else "tf",
         }
         group = True
     else:
-        config = {"framework": "torch" if args.torch else "tf"}
+        config = {
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
+            "framework": "torch" if args.torch else "tf",
+        }
         group = False
 
     ray.init(num_cpus=args.num_cpus or None)

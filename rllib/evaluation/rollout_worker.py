@@ -996,7 +996,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if merged_conf["framework"] in ["tf2", "tf", "tfe"]:
+            if merged_conf.get("framework") in ["tf2", "tf", "tfe"]:
                 if tf1.executing_eagerly():
                     if hasattr(cls, "as_eager"):
                         cls = cls.as_eager()
@@ -1069,7 +1069,7 @@ class RolloutWorker(ParallelIteratorWorker):
             config.pop("eager")
 
         # Handle tf Policy.
-        if config["framework"] in ["tf2", "tf", "tfe"]:
+        if config.get("framework") in ["tf2", "tf", "tfe"]:
             # Tf not installed.
             if not tf1:
                 raise ValueError(
@@ -1094,7 +1094,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "This is currently not supported. Setup your Policies "
                     "either with `framework=tf` or with framework=`tfe|tf2`.")
         # PyTorch Policy.
-        elif config["framework"] == "torch":
+        elif config.get("framework") == "torch":
             if not torch:
                 raise ValueError(
                     "One of your Policies is configured to run on PyTorch "

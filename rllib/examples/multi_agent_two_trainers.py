@@ -39,9 +39,9 @@ if __name__ == "__main__":
     # Simple environment with 4 independent cartpole entities
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 4}))
-    single_env = gym.make("CartPole-v0")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
+    single_dummy_env = gym.make("CartPole-v0")
+    obs_space = single_dummy_env.observation_space
+    act_space = single_dummy_env.action_space
 
     # You can also have multiple policies per trainer, but here we just
     # show one each for PPO and DQN.
@@ -70,6 +70,8 @@ if __name__ == "__main__":
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",
+            # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
+            "num_gpus": RLLIB_FORCE_NUM_GPUS,
             "framework": "torch" if args.torch else "tf",
         })
 

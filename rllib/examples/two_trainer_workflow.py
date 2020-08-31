@@ -139,9 +139,9 @@ if __name__ == "__main__":
             "policy_mapping_fn": policy_mapping_fn,
             "policies_to_train": ["dqn_policy", "ppo_policy"],
         },
-        "framework": "torch" if args.torch else "tf",
         # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
         "num_gpus": RLLIB_FORCE_NUM_GPUS,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {
