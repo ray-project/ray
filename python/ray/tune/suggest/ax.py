@@ -1,5 +1,6 @@
 from typing import Dict
 
+from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -32,7 +33,7 @@ class AxSearch(Searcher):
         $ pip install ax-platform sqlalchemy
 
     Parameters:
-        parameters (list[dict]): Parameters in the experiment search space.
+        space (list[dict]): Parameters in the experiment search space.
             Required elements in the dictionaries are: "name" (name of
             this parameter, string), "type" (type of the parameter: "range",
             "fixed", or "choice", string), "bounds" for range parameters
@@ -49,8 +50,11 @@ class AxSearch(Searcher):
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
-        max_concurrent (int): Deprecated.
+        ax_client (AxClient): Optional AxClient instance. If this is set, do
+            not pass any values to these parameters: `space`, `objective_name`,
+            `parameter_constraints`, `outcome_constraints`.
         use_early_stopped_trials: Deprecated.
+        max_concurrent (int): Deprecated.
 
     .. code-block:: python
 
@@ -68,20 +72,58 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        client = AxClient(enforce_sequential_optimization=False)
-        client.create_experiment(parameters=parameters, objective_name="score")
-        algo = AxSearch(client)
+        client = AxClient()
+        algo = AxSearch(space=parameters, objective_name="score")
         tune.run(easy_objective, search_alg=algo)
 
     """
 
     def __init__(self,
-                 ax_client,
+                 space=None,
+                 objective_name=None,
                  mode="max",
+                 parameter_constraints=None,
+                 outcome_constraints=None,
+                 ax_client=None,
                  use_early_stopped_trials=None,
                  max_concurrent=None):
         assert ax is not None, "Ax must be installed!"
+        assert mode in ["min", "max"], "`mode` must be one of ['min', 'max']"
+
+        if not ax_client:
+            ax_client = AxClient()
         self._ax = ax_client
+
+        try:
+            exp = self._ax.experiment
+            has_experiment = True
+        except ValueError:
+            has_experiment = False
+
+        if not has_experiment:
+            if not space:
+                raise ValueError(
+                    "You either have to create an Ax experiment by calling "
+                    "`AxClient.create_experiment()` or you should pass an "
+                    "Ax search space as the `space` parameter to `AxSearch`.")
+            self._ax.create_experiment(
+                parameters=space,
+                objective_name=objective_name,
+                parameter_constraints=parameter_constraints,
+                outcome_constraints=outcome_constraints,
+                minimize=mode != "max")
+        else:
+            if any([
+                    space, objective_name, parameter_constraints,
+                    outcome_constraints
+            ]):
+                raise ValueError(
+                    "If you create the Ax experiment yourself, do not pass "
+                    "values for these parameters to `AxSearch`: {}.".format([
+                        "space", "objective_name", "parameter_constraints",
+                        "outcome_constraints"
+                    ]))
+
         exp = self._ax.experiment
         self._objective_name = exp.optimization_config.objective.metric.name
         self.max_concurrent = max_concurrent
@@ -125,6 +167,17 @@ class AxSearch(Searcher):
         metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
         self._ax.complete_trial(
             trial_index=ax_trial_index, raw_data=metric_dict)
+
+    @classmethod
+    def from_config(cls,
+                    config,
+                    objective_name=None,
+                    mode="max",
+                    use_early_stopped_trials=None,
+                    max_concurrent=None):
+        space = cls.convert_search_space(config)
+        return cls(space, objective_name, mode, use_early_stopped_trials,
+                   max_concurrent)
 
     @staticmethod
     def convert_search_space(spec: Dict):

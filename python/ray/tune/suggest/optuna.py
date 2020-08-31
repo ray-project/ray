@@ -59,8 +59,8 @@ class OptunaSearch(Searcher):
             minimizing or maximizing the metric attribute.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
-        config (dict): Base config dict that gets overwritten by the Optuna
-            sampling and is returned to each Tune trial. This could e.g.
+        base_config (dict): Base config dict that gets overwritten by the
+            Optuna sampling and is returned to each Tune trial. This could e.g.
             contain static variables or configurations that should be passed
             to each trial.
 
@@ -90,7 +90,7 @@ class OptunaSearch(Searcher):
             metric="episode_reward_mean",
             mode="max",
             sampler=None,
-            config=None,
+            base_config=None,
     ):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
@@ -102,7 +102,7 @@ class OptunaSearch(Searcher):
 
         self._space = space
 
-        self._config = config or {}
+        self._config = base_config or {}
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
@@ -161,6 +161,15 @@ class OptunaSearch(Searcher):
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
             self._ot_trials, self._ot_study = save_object
+
+    @classmethod
+    def from_config(cls,
+                    config,
+                    metric="episode_reward_mean",
+                    mode="max",
+                    sampler=None):
+        space = cls.convert_search_space(config)
+        return cls(space, metric, mode, sampler, config)
 
     @staticmethod
     def convert_search_space(spec: Dict):

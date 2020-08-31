@@ -134,11 +134,11 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(parameters=converted_config)
-        searcher1 = AxSearch(client1)
+        searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(parameters=ax_config)
-        searcher2 = AxSearch(client2)
+        searcher2 = AxSearch(ax_client=client2)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -149,6 +149,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
+
+        AxSearch.from_config(config)
 
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
@@ -178,6 +180,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
+
+        BayesOptSearch.from_config(config, metric="None")
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -216,6 +220,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
+        HyperOptSearch.from_config(config)
+
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
@@ -237,11 +243,11 @@ class SearchSpaceTest(unittest.TestCase):
 
         sampler1 = RandomSampler(seed=1234)
         searcher1 = OptunaSearch(
-            space=converted_config, sampler=sampler1, config=config)
+            space=converted_config, sampler=sampler1, base_config=config)
 
         sampler2 = RandomSampler(seed=1234)
         searcher2 = OptunaSearch(
-            space=optuna_config, sampler=sampler2, config=config)
+            space=optuna_config, sampler=sampler2, base_config=config)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -252,6 +258,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
+
+        OptunaSearch.from_config(config)
 
 
 if __name__ == "__main__":

@@ -244,6 +244,24 @@ class HyperOptSearch(Searcher):
         else:
             self.set_state(trials_object)
 
+    @classmethod
+    def from_config(
+            cls,
+            config,
+            metric="episode_reward_mean",
+            mode="max",
+            points_to_evaluate=None,
+            n_initial_points=20,
+            random_state_seed=None,
+            gamma=0.25,
+            max_concurrent=None,
+            use_early_stopped_trials=None,
+    ):
+        space = cls.convert_search_space(config)
+        return cls(space, metric, mode, points_to_evaluate, n_initial_points,
+                   random_state_seed, gamma, max_concurrent,
+                   use_early_stopped_trials)
+
     @staticmethod
     def convert_search_space(spec: Dict):
         spec = copy.deepcopy(spec)

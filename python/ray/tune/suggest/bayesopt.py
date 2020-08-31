@@ -289,6 +289,25 @@ class BayesOptSearch(Searcher):
              self._total_random_search_trials,
              self._config_counter) = pickle.load(f)
 
+    @classmethod
+    def from_config(cls,
+                    config,
+                    metric,
+                    mode="max",
+                    utility_kwargs=None,
+                    random_state=42,
+                    random_search_steps=10,
+                    verbose=0,
+                    patience=5,
+                    skip_duplicate=True,
+                    analysis=None,
+                    max_concurrent=None,
+                    use_early_stopped_trials=None):
+        space = cls.convert_search_space(config)
+        return cls(space, metric, mode, utility_kwargs, random_state,
+                   random_search_steps, verbose, patience, skip_duplicate,
+                   analysis, max_concurrent, use_early_stopped_trials)
+
     @staticmethod
     def convert_search_space(spec: Dict):
         spec = flatten_dict(spec)
