@@ -3,6 +3,7 @@ package io.ray.streaming.runtime.serialization;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -18,7 +19,7 @@ public class MsgPackSerializerTest {
     MsgPackSerializer serializer = new MsgPackSerializer();
 
     assertEquals(serializer.deserialize(
-        serializer.serialize((byte)1)), (byte)1);
+        serializer.serialize((byte) 1)), (byte) 1);
   }
 
   @Test

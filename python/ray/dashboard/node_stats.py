@@ -126,6 +126,7 @@ class NodeStats(threading.Thread):
             errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
             self._node_stats[hostname]["error_count"] = errs_by_pid
 
+
     def _purge_outdated_stats(self):
         def current(then, now):
             if (now - then) > 5:
