@@ -25,29 +25,10 @@ StreamingQueueProducer::~StreamingQueueProducer() {
 StreamingStatus StreamingQueueProducer::CreateTransferChannel() {
   CreateQueue();
 
-  uint64_t queue_last_seq_id = 0;
-  uint64_t last_message_id_in_queue = 0;
+  STREAMING_LOG(WARNING) << "Message id in channel => "
+                         << channel_info_.current_message_id;
 
-  if (!last_message_id_in_queue) {
-    if (last_message_id_in_queue < channel_info_.current_message_id) {
-      STREAMING_LOG(WARNING) << "last message id in queue : " << last_message_id_in_queue
-                             << " is less than message checkpoint loaded id : "
-                             << channel_info_.current_message_id
-                             << ", an old queue object " << channel_info_.channel_id
-                             << " was fond in store";
-    }
-    last_message_id_in_queue = channel_info_.current_message_id;
-  }
-  if (queue_last_seq_id == static_cast<uint64_t>(-1)) {
-    queue_last_seq_id = 0;
-  }
-
-  STREAMING_LOG(WARNING) << "existing last message id => " << last_message_id_in_queue
-                         << ", message id in channel =>  "
-                         << channel_info_.current_message_id << ", queue last seq id => "
-                         << queue_last_seq_id;
-
-  channel_info_.message_last_commit_id = last_message_id_in_queue;
+  channel_info_.message_last_commit_id = 0;
   return StreamingStatus::OK;
 }
 
