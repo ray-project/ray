@@ -461,7 +461,8 @@ class _CliLogger():
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 
         rendered_message = _format_msg(msg, *args, **kwargs)
-        if rendered_message and rendered_message[-1] != "\n":
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
             rendered_message += " "
 
         msg_len = len(rendered_message.split("\n")[-1])
@@ -525,9 +526,10 @@ class _CliLogger():
         if self.old_style:
             return
 
-        complete_str = cf.blue(cf.underlined(msg))
+        complete_str = cf.underlined(msg)
         rendered_message = _format_msg(complete_str, *args, **kwargs)
-        if rendered_message and rendered_message[-1] != "\n":
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
             rendered_message += " "
         self._print(rendered_message, linefeed=False)
 
