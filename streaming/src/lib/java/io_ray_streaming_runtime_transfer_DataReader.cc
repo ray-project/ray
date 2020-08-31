@@ -108,7 +108,7 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_streaming_runtime_transfer_DataReader_g
   std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map = nullptr;
   reader->GetOffsetInfo(offset_map);
   STREAMING_CHECK(offset_map);
-  // queue nums + (plasma queue id + seq id + message id) * queue nums
+  // queue nums + (queue id + seq id + message id) * queue nums
   int offset_data_size =
       sizeof(uint32_t) +
       (kUniqueIDSize + sizeof(uint64_t) * 2) * offset_map->size();

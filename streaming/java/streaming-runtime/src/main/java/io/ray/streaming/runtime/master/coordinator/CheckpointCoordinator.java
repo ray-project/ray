@@ -3,7 +3,7 @@ package io.ray.streaming.runtime.master.coordinator;
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.exception.RayException;
+import io.ray.runtime.exception.RayException;
 import io.ray.api.id.ActorId;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.master.JobMaster;

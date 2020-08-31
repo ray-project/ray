@@ -60,7 +60,7 @@ class DataWriter {
       const ObjectID &q_id, uint8_t *data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);
 
-  /// send barrier to all channel. note there are user define data in barrier bundle
+  /// Send barrier to all channel. note there are user define data in barrier bundle
   /// \param barrier_id
   /// \param data
   /// \param data_size
@@ -78,7 +78,7 @@ class DataWriter {
   /// \param barrier_id: user-defined numerical checkpoint id
   void ClearCheckpoint(uint64_t barrier_id);
 
-  /// replay all queue from checkpoint, it's useful under FO
+  /// Replay all queue from checkpoint, it's useful under FO
   /// \param result offset vector
   void GetChannelOffset(std::vector<uint64_t> &result);
 
