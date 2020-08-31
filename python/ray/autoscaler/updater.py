@@ -419,10 +419,9 @@ class NodeUpdater:
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
                             source, target)
 
-        if isinstance(self.cmd_runner, DockerCommandRunner):
-            self.cmd_runner.run_rsync_up(source, target, file_mount=file_mount)
-        else:
-            self.cmd_runner.run_rsync_up(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_up(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
@@ -430,10 +429,9 @@ class NodeUpdater:
         cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
                             source, target)
 
-        if isinstance(self.cmd_runner, DockerCommandRunner):
-            self.cmd_runner.run_rsync_up(source, target, file_mount=file_mount)
-        else:
-            self.cmd_runner.run_rsync_up(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_down(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))
 

@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import List, Tuple, Dict
+from typing import Any, List, Tuple, Dict
 import click
 import hashlib
 import json
@@ -145,7 +145,10 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_up(self, source: str, target: str) -> None:
+    def run_rsync_up(self,
+                     source: str,
+                     target: str,
+                     options: Dict[str, Any] = {}) -> None:
         """Rsync files up to the cluster node.
 
         Args:
@@ -154,7 +157,10 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_down(self, source: str, target: str) -> None:
+    def run_rsync_down(self,
+                       source: str,
+                       target: str,
+                       options: Dict[str, Any] = {}) -> None:
         """Rsync files down from the cluster node.
 
         Args:
@@ -242,7 +248,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 else:
                     raise
 
-    def run_rsync_up(self, source, target):
+    def run_rsync_up(self, source, target, options={}):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
@@ -268,7 +274,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                                             target)
         ])
 
-    def run_rsync_down(self, source, target):
+    def run_rsync_down(self, source, target, options={}):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
@@ -537,7 +543,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self._run_helper(final_cmd, with_output, exit_on_fail)
 
-    def run_rsync_up(self, source, target):
+    def run_rsync_up(self, source, target, options={}):
         self._set_ssh_ip_if_required()
         command = [
             "rsync", "--rsh",
@@ -549,7 +555,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
-    def run_rsync_down(self, source, target):
+    def run_rsync_down(self, source, target, options={}):
         self._set_ssh_ip_if_required()
 
         command = [
@@ -615,15 +621,17 @@ class DockerCommandRunner(CommandRunnerInterface):
             with_output=with_output,
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
-    def run_rsync_up(self, source, target, file_mount):
+    def run_rsync_up(self, source, target, options={}):
         host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
                                         target.lstrip("/"))
 
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
 
-        self.ssh_command_runner.run_rsync_up(source, host_destination)
-        if self._check_container_status() and not file_mount:
+        self.ssh_command_runner.run_rsync_up(
+            source, host_destination, options={})
+        if self._check_container_status() and not options.get(
+                "file_mount", False):
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
@@ -632,7 +640,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 host_destination, self.container_name,
                 self._docker_expand_user(target)))
 
-    def run_rsync_down(self, source, target, file_mount):
+    def run_rsync_down(self, source, target, options={}):
         host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
         self.ssh_command_runner.run(
             f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
@@ -640,11 +648,11 @@ class DockerCommandRunner(CommandRunnerInterface):
             source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
-        if not file_mount:
+        if not options.get("file_mount", False):
             self.ssh_command_runner.run("docker cp {}:{} {}".format(
                 self.container_name, self._docker_expand_user(source),
                 host_source))
-        self.ssh_command_runner.run_rsync_down(host_source, target)
+        self.ssh_command_runner.run_rsync_down(host_source, target, options={})
 
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
