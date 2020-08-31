@@ -10,7 +10,7 @@ public class StateBackendFactory {
   public static StateBackend getStateBackend(final StreamingGlobalConfig config) {
     StateBackend stateBackend;
     StateBackendType type = StateBackendType.valueOf(
-      config.stateBackendConfig.stateBackendType().toUpperCase());
+        config.stateBackendConfig.stateBackendType().toUpperCase());
 
     switch (type) {
       case MEMORY:

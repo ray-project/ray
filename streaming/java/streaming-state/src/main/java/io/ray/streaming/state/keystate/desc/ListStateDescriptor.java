@@ -39,8 +39,9 @@ public class ListStateDescriptor<T> extends AbstractStateDescriptor<ListState<T>
     return build(name, type, false);
   }
 
-  public static <T> ListStateDescriptor<T> build(String name, Class<T> type,
-                                                 boolean isOperatorList) {
+  public static <T> ListStateDescriptor<T> build(
+      String name, Class<T> type,
+      boolean isOperatorList) {
     return new ListStateDescriptor<>(name, type, isOperatorList);
   }
 

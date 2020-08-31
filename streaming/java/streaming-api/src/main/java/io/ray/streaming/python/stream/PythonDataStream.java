@@ -18,14 +18,16 @@ import java.util.List;
  */
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator) {
+  protected PythonDataStream(
+      StreamingContext streamingContext,
+      PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator,
-                             Partition<Object> partition) {
+  protected PythonDataStream(
+      StreamingContext streamingContext,
+      PythonOperator pythonOperator,
+      Partition<Object> partition) {
     super(streamingContext, pythonOperator, partition);
   }
 
@@ -33,9 +35,10 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
     super(input, pythonOperator);
   }
 
-  public PythonDataStream(PythonDataStream input,
-                          PythonOperator pythonOperator,
-                          Partition<Object> partition) {
+  public PythonDataStream(
+      PythonDataStream input,
+      PythonOperator pythonOperator,
+      Partition<Object> partition) {
     super(input, pythonOperator, partition);
   }
 

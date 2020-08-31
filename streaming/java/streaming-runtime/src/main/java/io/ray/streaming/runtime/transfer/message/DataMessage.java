@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
  * DataMessage represents data between upstream and downstream operator
  */
 public class DataMessage extends ChannelMessage {
+
   private final ByteBuffer body;
 
   public DataMessage(ByteBuffer body, long timestamp, long msgId, String channelId) {

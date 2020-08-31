@@ -10,6 +10,7 @@ import java.util.UUID;
  * For example, ${@link ContainerId }
  */
 public class AbstractId implements Serializable {
+
   private UUID id;
 
   public AbstractId() {
@@ -28,7 +29,7 @@ public class AbstractId implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("id", id)
-      .toString();
+        .add("id", id)
+        .toString();
   }
 }

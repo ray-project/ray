@@ -11,8 +11,9 @@ public class BarrierMessage extends ChannelMessage {
   private final long checkpointId;
   private final Map<String, OffsetInfo> inputOffsets;
 
-  public BarrierMessage(long msgId, long timestamp, String channelId,
-                        ByteBuffer data, long checkpointId, Map<String, OffsetInfo> inputOffsets) {
+  public BarrierMessage(
+      long msgId, long timestamp, String channelId,
+      ByteBuffer data, long checkpointId, Map<String, OffsetInfo> inputOffsets) {
     super(msgId, timestamp, channelId);
     this.data = data;
     this.checkpointId = checkpointId;

@@ -22,7 +22,7 @@ public class OffsetInfo implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("streamingMsgId", streamingMsgId)
-      .toString();
+        .add("streamingMsgId", streamingMsgId)
+        .toString();
   }
 }

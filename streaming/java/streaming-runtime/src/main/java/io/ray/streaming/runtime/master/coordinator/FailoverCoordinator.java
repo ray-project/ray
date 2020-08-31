@@ -32,14 +32,15 @@ public class FailoverCoordinator extends BaseCoordinator {
   private final AsyncRemoteCaller asyncRemoteCaller;
   private long curCascadingGroupId = 0;
   private final Map<ExecutionVertex, Boolean> isRollbacking =
-    DefaultedMap.decorate(new ConcurrentHashMap<ExecutionVertex, Boolean>(), false);
+      DefaultedMap.decorate(new ConcurrentHashMap<ExecutionVertex, Boolean>(), false);
 
   public FailoverCoordinator(JobMaster jobMaster, boolean isRecover) {
     this(jobMaster, new AsyncRemoteCaller(), isRecover);
   }
 
-  public FailoverCoordinator(JobMaster jobMaster, AsyncRemoteCaller asyncRemoteCaller,
-                             boolean isRecover) {
+  public FailoverCoordinator(
+      JobMaster jobMaster, AsyncRemoteCaller asyncRemoteCaller,
+      boolean isRecover) {
     super(jobMaster);
 
     this.asyncRemoteCaller = asyncRemoteCaller;
@@ -111,7 +112,7 @@ public class FailoverCoordinator extends BaseCoordinator {
 
     // Reset pid for new-rollback actor.
     if (null != rollbackRequest.getPid() &&
-      !rollbackRequest.getPid().equals(WorkerRollbackRequest.DEFAULT_PID)) {
+        !rollbackRequest.getPid().equals(WorkerRollbackRequest.DEFAULT_PID)) {
       exeVertex.setPid(rollbackRequest.getPid());
     }
 
@@ -122,8 +123,8 @@ public class FailoverCoordinator extends BaseCoordinator {
 
     String hostname = "";
     Optional<Container> container = ResourceUtil.getContainerById(
-      jobMaster.getResourceManager().getRegisteredContainers(),
-      exeVertex.getContainerId()
+        jobMaster.getResourceManager().getRegisteredContainers(),
+        exeVertex.getContainerId()
     );
     if (container.isPresent()) {
       hostname = container.get().getHostname();
@@ -140,7 +141,7 @@ public class FailoverCoordinator extends BaseCoordinator {
         interruptCpAndRollback(rollbackRequest);
       }, throwable -> {
         LOG.error("Exception when calling checkIfNeedRollbackAsync, maybe vertex is dead" +
-          ", ignore this request, vertex={}.", exeVertex, throwable);
+            ", ignore this request, vertex={}.", exeVertex, throwable);
       });
     }
 
@@ -154,7 +155,7 @@ public class FailoverCoordinator extends BaseCoordinator {
     }
     // get last valid checkpoint id then call worker rollback
     rollback(jobMaster.getRuntimeContext().getLastValidCheckpointId(), rollbackRequest,
-      curCascadingGroupId);
+        curCascadingGroupId);
     // we interrupt current checkpoint for 2 considerations:
     // 1. current checkpoint might be timeout, because barrier might be lost after failover. so we
     // interrupt current checkpoint to avoid waiting.
@@ -167,15 +168,16 @@ public class FailoverCoordinator extends BaseCoordinator {
    * call worker rollback, and deal with it's reports. callback won't be finished until
    * the entire DAG back to normal.
    *
-   * @param checkpointId     checkpointId to be rollback
-   * @param rollbackRequest  worker rollback request
+   * @param checkpointId checkpointId to be rollback
+   * @param rollbackRequest worker rollback request
    * @param cascadingGroupId all rollback of a cascading group should have same ID
    */
-  private void rollback(long checkpointId, WorkerRollbackRequest rollbackRequest,
-                        long cascadingGroupId) {
+  private void rollback(
+      long checkpointId, WorkerRollbackRequest rollbackRequest,
+      long cascadingGroupId) {
     ExecutionVertex exeVertex = getExeVertexFromRequest(rollbackRequest);
     LOG.info("Call vertex {} to rollback, checkpoint id is {}, cascadingGroupId={}.",
-      exeVertex, checkpointId, cascadingGroupId);
+        exeVertex, checkpointId, cascadingGroupId);
 
     isRollbacking.put(exeVertex, true);
 
@@ -185,25 +187,25 @@ public class FailoverCoordinator extends BaseCoordinator {
         case SUCCESS:
           ChannelRecoverInfo recoverInfo = result.getResultObj();
           LOG.info("Vertex {} rollback done, dataLostQueues={}, msg={}, cascadingGroupId={}.",
-            exeVertex, recoverInfo.getDataLostQueues(), result.getResultMsg(), cascadingGroupId);
+              exeVertex, recoverInfo.getDataLostQueues(), result.getResultMsg(), cascadingGroupId);
           // rollback upstream if vertex reports abnormal input queues
           newRollbackRequests =
-            cascadeUpstreamActors(recoverInfo.getDataLostQueues(), exeVertex, cascadingGroupId);
+              cascadeUpstreamActors(recoverInfo.getDataLostQueues(), exeVertex, cascadingGroupId);
           break;
         case SKIPPED:
           LOG.info("Vertex skip rollback, result = {}, cascadingGroupId={}.", result,
-            cascadingGroupId);
+              cascadingGroupId);
           break;
         default:
           LOG.error(
-            "Rollback vertex {} failed, result={}, cascadingGroupId={}," +
-              " rollback this worker again after {} ms.",
-            exeVertex, result, cascadingGroupId, ROLLBACK_RETRY_TIME_MS);
+              "Rollback vertex {} failed, result={}, cascadingGroupId={}," +
+                  " rollback this worker again after {} ms.",
+              exeVertex, result, cascadingGroupId, ROLLBACK_RETRY_TIME_MS);
           Thread.sleep(ROLLBACK_RETRY_TIME_MS);
           LOG.info("Add rollback request for {} again, cascadingGroupId={}.", exeVertex,
-            cascadingGroupId);
+              cascadingGroupId);
           newRollbackRequests.add(
-            new WorkerRollbackRequest(exeVertex, "", "Rollback failed, try again.", false)
+              new WorkerRollbackRequest(exeVertex, "", "Rollback failed, try again.", false)
           );
           break;
       }
@@ -228,12 +230,12 @@ public class FailoverCoordinator extends BaseCoordinator {
   }
 
   private List<WorkerRollbackRequest> cascadeUpstreamActors(
-    Set<String> dataLostQueues, ExecutionVertex fromVertex, long cascadingGroupId) {
+      Set<String> dataLostQueues, ExecutionVertex fromVertex, long cascadingGroupId) {
     List<WorkerRollbackRequest> cascadedRollbackRequest = new ArrayList<>();
     // rollback upstream if vertex reports abnormal input queues
     dataLostQueues.forEach(q -> {
       BaseActorHandle upstreamActor =
-        graphManager.getExecutionGraph().getPeerActor(fromVertex.getWorkerActor(), q);
+          graphManager.getExecutionGraph().getPeerActor(fromVertex.getWorkerActor(), q);
       ExecutionVertex upstreamExeVertex = getExecutionVertex(upstreamActor);
       // vertexes that has already cascaded by other vertex in the same level
       // of graph should be ignored.
@@ -241,18 +243,18 @@ public class FailoverCoordinator extends BaseCoordinator {
         return;
       }
       LOG.info("Call upstream vertex {} of vertex {} to rollback, cascadingGroupId={}.",
-        upstreamExeVertex, fromVertex, cascadingGroupId);
+          upstreamExeVertex, fromVertex, cascadingGroupId);
       String hostname = "";
       Optional<Container> container = ResourceUtil.getContainerById(
-        jobMaster.getResourceManager().getRegisteredContainers(),
-        upstreamExeVertex.getContainerId()
+          jobMaster.getResourceManager().getRegisteredContainers(),
+          upstreamExeVertex.getContainerId()
       );
       if (container.isPresent()) {
         hostname = container.get().getHostname();
       }
       // force upstream vertexes to rollback
       WorkerRollbackRequest upstreamRequest = new WorkerRollbackRequest(
-        upstreamExeVertex, hostname, String.format("Cascading rollback from %s", fromVertex), true
+          upstreamExeVertex, hostname, String.format("Cascading rollback from %s", fromVertex), true
       );
       upstreamRequest.cascadingGroupId = cascadingGroupId;
       cascadedRollbackRequest.add(upstreamRequest);

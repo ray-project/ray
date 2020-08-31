@@ -26,7 +26,7 @@ public class TestFailover {
 
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStreamSource<Integer> source =
-      DataStreamSource.fromSource(streamingContext, new DemoSource(recordCount));
+        DataStreamSource.fromSource(streamingContext, new DemoSource(recordCount));
 
     source.disableChain().sink(value -> {
       LOG.info("got value={}", value);
@@ -34,7 +34,6 @@ public class TestFailover {
 
     streamingContext.withConfig(conf);
     streamingContext.execute("simple_failover");
-
 
     // find source and kill it
 
@@ -68,7 +67,7 @@ public class TestFailover {
 
     @Override
     public void fetch(
-      SourceContext<Integer> ctx, long checkpointId) throws Exception {
+        SourceContext<Integer> ctx, long checkpointId) throws Exception {
       Thread.sleep(10);
       if (value < total) {
         ctx.collect(value++);

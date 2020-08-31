@@ -44,10 +44,10 @@ public class ExecutionGraphTest extends BaseUnitTest {
     Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertices().size());
 
     int totalVertexNum = jobGraph.getJobVertices().stream()
-      .mapToInt(JobVertex::getParallelism).sum();
+        .mapToInt(JobVertex::getParallelism).sum();
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(), totalVertexNum);
     Assert.assertEquals(executionGraph.getAllExecutionVertices().size(),
-      executionGraph.getExecutionVertexIdGenerator().get());
+        executionGraph.getExecutionVertexIdGenerator().get());
 
     executionGraph.getAllExecutionVertices().forEach(vertex -> {
       Assert.assertNotNull(vertex.getStreamOperator());
@@ -55,7 +55,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
       Assert.assertNotNull(vertex.getVertexType());
       Assert.assertNotNull(vertex.getLanguage());
       Assert.assertEquals(vertex.getExecutionVertexName(),
-        vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
+          vertex.getExecutionJobVertexName() + "-" + vertex.getExecutionVertexIndex());
     });
 
     int startIndex = 0;
@@ -69,7 +69,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
       Assert.assertEquals((double) vertex.getResource().get(ResourceType.CPU.name()), 2.0);
       vertex.getOutputEdges().forEach(upStreamOutPutEdge -> {
         Assert
-          .assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
+            .assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetExecutionVertex()));
       });
     });
   }
@@ -85,7 +85,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
   public static JobGraph buildJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = DataStreamSource.fromCollection(streamingContext,
-      Lists.newArrayList("a", "b", "c"));
+        Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
 
     Map<String, String> jobConfig = new HashMap<>();
@@ -95,7 +95,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
     jobConfig.put(ResourceConfig.TASK_RESOURCE_MEM, "2.0");
 
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(
-      Lists.newArrayList(streamSink), "test", jobConfig);
+        Lists.newArrayList(streamSink), "test", jobConfig);
 
     return jobGraphBuilder.build();
   }

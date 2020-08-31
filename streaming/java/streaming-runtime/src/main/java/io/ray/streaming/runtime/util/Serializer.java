@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.util;
 
 public class Serializer {
+
   public static byte[] encode(Object obj) {
     return KryoUtils.writeToByteArray(obj);
   }

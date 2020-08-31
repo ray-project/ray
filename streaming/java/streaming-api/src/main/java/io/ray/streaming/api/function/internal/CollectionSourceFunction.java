@@ -1,7 +1,6 @@
 package io.ray.streaming.api.function.internal;
 
 import io.ray.streaming.api.function.impl.SourceFunction;
-
 import java.util.Collection;
 
 /**

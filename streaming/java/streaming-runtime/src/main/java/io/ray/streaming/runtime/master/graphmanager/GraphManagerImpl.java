@@ -36,8 +36,8 @@ public class GraphManagerImpl implements GraphManager {
 
     // set max parallelism
     int maxParallelism = jobGraph.getJobVertices().stream()
-      .map(JobVertex::getParallelism)
-      .max(Integer::compareTo).get();
+        .map(JobVertex::getParallelism)
+        .max(Integer::compareTo).get();
     executionGraph.setMaxParallelism(maxParallelism);
 
     // set job config
@@ -58,11 +58,11 @@ public class GraphManagerImpl implements GraphManager {
     for (JobVertex jobVertex : jobGraph.getJobVertices()) {
       int jobVertexId = jobVertex.getVertexId();
       exeJobVertexMap.put(jobVertexId,
-        new ExecutionJobVertex(
-          jobVertex,
-          jobConfig,
-          executionGraph.getExecutionVertexIdGenerator(),
-          buildTime));
+          new ExecutionJobVertex(
+              jobVertex,
+              jobConfig,
+              executionGraph.getExecutionVertexIdGenerator(),
+              buildTime));
     }
 
     // for each job edge, connect all source exeVertices and target exeVertices
@@ -82,7 +82,7 @@ public class GraphManagerImpl implements GraphManager {
           executionVertexMap.put(sourceExeVertex.getExecutionVertexId(), sourceExeVertex);
           // build execution edge
           ExecutionEdge executionEdge =
-            new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
+              new ExecutionEdge(sourceExeVertex, targetExeVertex, executionJobEdge);
           sourceExeVertex.getOutputEdges().add(executionEdge);
           targetExeVertex.getInputEdges().add(executionEdge);
         });
@@ -97,12 +97,12 @@ public class GraphManagerImpl implements GraphManager {
   }
 
   private void addActorToChannelGroupedActors(
-    Map<String, Set<BaseActorHandle>> channelGroupedActors,
-    String channelId,
-    BaseActorHandle actor) {
+      Map<String, Set<BaseActorHandle>> channelGroupedActors,
+      String channelId,
+      BaseActorHandle actor) {
 
     Set<BaseActorHandle> actorSet =
-      channelGroupedActors.computeIfAbsent(channelId, k -> new HashSet<>());
+        channelGroupedActors.computeIfAbsent(channelId, k -> new HashSet<>());
     actorSet.add(actor);
   }
 

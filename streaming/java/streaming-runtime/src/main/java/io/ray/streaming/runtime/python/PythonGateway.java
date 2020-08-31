@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
  */
 @SuppressWarnings("unchecked")
 public class PythonGateway {
+
   private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";
   private static MsgPackSerializer serializer = new MsgPackSerializer();
@@ -51,30 +52,30 @@ public class PythonGateway {
     }
     // Convert all params types to primitive types if it's boxed type
     Class[] unwrappedTypes = Arrays.stream(paramsTypes)
-      .map((Function<Class, Class>) Primitives::unwrap)
-      .toArray(Class[]::new);
+        .map((Function<Class, Class>) Primitives::unwrap)
+        .toArray(Class[]::new);
     Optional<Method> any = methods.stream()
-      .filter(m -> {
-        boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-          Arrays.equals(m.getParameterTypes(), unwrappedTypes);
-        if (exactMatch) {
-          return true;
-        } else if (paramsTypes.length == m.getParameterTypes().length) {
-          for (int i = 0; i < m.getParameterTypes().length; i++) {
-            Class<?> parameterType = m.getParameterTypes()[i];
-            if (!parameterType.isAssignableFrom(paramsTypes[i])) {
-              return false;
+        .filter(m -> {
+          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+          if (exactMatch) {
+            return true;
+          } else if (paramsTypes.length == m.getParameterTypes().length) {
+            for (int i = 0; i < m.getParameterTypes().length; i++) {
+              Class<?> parameterType = m.getParameterTypes()[i];
+              if (!parameterType.isAssignableFrom(paramsTypes[i])) {
+                return false;
+              }
             }
+            return true;
+          } else {
+            return false;
           }
-          return true;
-        } else {
-          return false;
-        }
-      })
-      .findAny();
+        })
+        .findAny();
     Preconditions.checkArgument(any.isPresent(),
-      String.format("Method %s with type %s doesn't exist on class %s",
-        methodName, Arrays.toString(paramsTypes), cls));
+        String.format("Method %s with type %s doesn't exist on class %s",
+            methodName, Arrays.toString(paramsTypes), cls));
     return any.get();
   }
 
@@ -93,7 +94,7 @@ public class PythonGateway {
 
   private static boolean isBasic(Object value) {
     return value == null || (value instanceof Boolean) || (value instanceof Number) ||
-      (value instanceof String) || (value instanceof byte[]);
+        (value instanceof String) || (value instanceof byte[]);
   }
 
   public byte[] createStreamingContext() {
@@ -127,7 +128,7 @@ public class PythonGateway {
     Preconditions.checkNotNull(streamingContext);
     try {
       PythonStreamSource pythonStreamSource = PythonStreamSource.from(
-        streamingContext, new PythonFunction(pySourceFunc));
+          streamingContext, new PythonFunction(pySourceFunc));
       referenceMap.put(getReferenceId(pythonStreamSource), pythonStreamSource);
       return serializer.serialize(getReferenceId(pythonStreamSource));
     } catch (Exception e) {
@@ -159,7 +160,7 @@ public class PythonGateway {
     streams = processParameters(streams);
     LOG.info("Call union with streams {}", streams);
     Preconditions.checkArgument(streams.size() >= 2,
-      "Union needs at least two streams");
+        "Union needs at least two streams");
     Stream unionStream;
     Stream stream1 = (Stream) streams.get(0);
     List otherStreams = streams.subList(1, streams.size());
@@ -183,7 +184,7 @@ public class PythonGateway {
       String funcName = (String) params.get(1);
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
       Class[] paramsTypes = params.subList(2, params.size()).stream()
-        .map(Object::getClass).toArray(Class[]::new);
+          .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, funcName, paramsTypes);
       Object result = method.invoke(null, params.subList(2, params.size()).toArray());
       return serialize(result);
@@ -201,7 +202,7 @@ public class PythonGateway {
       String methodName = (String) params.get(1);
       Class<?> clz = obj.getClass();
       Class[] paramsTypes = params.subList(2, params.size()).stream()
-        .map(Object::getClass).toArray(Class[]::new);
+          .map(Object::getClass).toArray(Class[]::new);
       Method method = findMethod(clz, methodName, paramsTypes);
       Object result = method.invoke(obj, params.subList(2, params.size()).toArray());
       return serialize(result);
@@ -228,13 +229,13 @@ public class PythonGateway {
       return serializer.serialize(getReferenceId(instance));
     } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
       throw new IllegalArgumentException(
-        String.format("Create instance for class %s failed", className), e);
+          String.format("Create instance for class %s failed", className), e);
     }
   }
 
   private List<Object> processParameters(List<Object> params) {
     return params.stream().map(this::processParameter)
-      .collect(Collectors.toList());
+        .collect(Collectors.toList());
   }
 
   private Object processParameter(Object o) {

@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
  * <p>
  */
 public class PythonPartition implements Partition<Object> {
+
   public static final PythonPartition BroadcastPartition = new PythonPartition(
       "ray.streaming.partition", "BroadcastPartition");
   public static final PythonPartition KeyPartition = new PythonPartition(

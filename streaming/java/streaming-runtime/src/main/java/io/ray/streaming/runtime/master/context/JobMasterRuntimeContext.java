@@ -72,10 +72,10 @@ public class JobMasterRuntimeContext implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("jobGraph", jobGraph)
-      .add("executionGraph", executionGraph)
-      .add("conf", conf.getMap())
-      .toString();
+        .add("jobGraph", jobGraph)
+        .add("executionGraph", executionGraph)
+        .add("conf", conf.getMap())
+        .toString();
   }
 
 }

@@ -15,8 +15,8 @@ public final class WorkerCommitReport extends BaseWorkerCmd {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("commitCheckpointId", commitCheckpointId)
-      .add("fromActorId", fromActorId)
-      .toString();
+        .add("commitCheckpointId", commitCheckpointId)
+        .add("fromActorId", fromActorId)
+        .toString();
   }
 }

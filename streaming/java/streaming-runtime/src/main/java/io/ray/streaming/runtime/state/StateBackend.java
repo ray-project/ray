@@ -20,7 +20,7 @@ public interface StateBackend {
   /**
    * put content by key
    *
-   * @param key   key
+   * @param key key
    * @param value content
    */
   void put(final String key, final byte[] value) throws Exception;

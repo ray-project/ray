@@ -11,6 +11,7 @@ import io.ray.streaming.message.Record;
 import java.util.List;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
+
   protected final String name;
   protected F function;
   protected RichFunction richFunction;

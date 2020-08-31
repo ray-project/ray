@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class OpCheckpointInfo implements Serializable {
+
   public Map<String, OffsetInfo> inputPoints;
   public Map<String, OffsetInfo> outputPoints;
   public Object processorCheckpoint;
@@ -19,10 +20,10 @@ public class OpCheckpointInfo implements Serializable {
   }
 
   public OpCheckpointInfo(
-    Map<String, OffsetInfo> inputPoints,
-    Map<String, OffsetInfo> outputPoints,
-    Object processorCheckpoint,
-    long checkpointId) {
+      Map<String, OffsetInfo> inputPoints,
+      Map<String, OffsetInfo> outputPoints,
+      Object processorCheckpoint,
+      long checkpointId) {
     this.inputPoints = inputPoints;
     this.outputPoints = outputPoints;
     this.checkpointId = checkpointId;
@@ -31,10 +32,10 @@ public class OpCheckpointInfo implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("inputPoints", inputPoints)
-      .add("outputPoints", outputPoints)
-      .add("processorCheckpoint", processorCheckpoint)
-      .add("checkpointId", checkpointId)
-      .toString();
+        .add("inputPoints", inputPoints)
+        .add("outputPoints", outputPoints)
+        .add("processorCheckpoint", processorCheckpoint)
+        .add("checkpointId", checkpointId)
+        .toString();
   }
 }

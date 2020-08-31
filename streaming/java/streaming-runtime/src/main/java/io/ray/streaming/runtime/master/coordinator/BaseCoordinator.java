@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class BaseCoordinator implements Runnable {
+
   private static final Logger LOG = LoggerFactory.getLogger(BaseCoordinator.class);
 
   protected final JobMaster jobMaster;
@@ -25,7 +26,7 @@ public abstract class BaseCoordinator implements Runnable {
 
   public void start() {
     t = new Thread(Ray.wrapRunnable(this),
-      this.getClass().getName() + "-" + System.currentTimeMillis());
+        this.getClass().getName() + "-" + System.currentTimeMillis());
     t.start();
   }
 

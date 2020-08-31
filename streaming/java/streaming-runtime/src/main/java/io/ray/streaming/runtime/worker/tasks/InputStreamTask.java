@@ -74,7 +74,7 @@ public abstract class InputStreamTask extends StreamTask {
           Barrier barrier = new Barrier(barrierPb.getId());
           final long checkpointId = barrier.getId();
           LOG.info("Start to do checkpoint {}, worker name is {}.", checkpointId,
-            jobWorker.getWorkerContext().getWorkerName());
+              jobWorker.getWorkerContext().getWorkerName());
 
           final Map<String, OffsetInfo> inputPoints = queueBarrier.getInputOffsets();
           doCheckpoint(checkpointId, inputPoints);
@@ -83,7 +83,7 @@ public abstract class InputStreamTask extends StreamTask {
       }
     } catch (Throwable throwable) {
       if (throwable instanceof ChannelInterruptException ||
-        ExceptionUtils.getRootCause(throwable) instanceof ChannelInterruptException) {
+          ExceptionUtils.getRootCause(throwable) instanceof ChannelInterruptException) {
         LOG.info("queue has stopped.");
       } else {
         // error occurred, need to rollback
@@ -98,7 +98,7 @@ public abstract class InputStreamTask extends StreamTask {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("processor", processor)
-      .toString();
+        .add("processor", processor)
+        .toString();
   }
 }

@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
  * to downstream workers
  */
 public class DataWriter {
+
   private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
 
   private long nativeWriterPtr;
@@ -35,23 +36,24 @@ public class DataWriter {
 
   /**
    * @param outputChannels output channels ids
-   * @param toActors       downstream output actors
-   * @param workerConfig   configuration
-   * @param checkpoints    offset of each channels
+   * @param toActors downstream output actors
+   * @param workerConfig configuration
+   * @param checkpoints offset of each channels
    */
-  public DataWriter(List<String> outputChannels,
-                    List<BaseActorHandle> toActors,
-                    Map<String, OffsetInfo> checkpoints,
-                    StreamingWorkerConfig workerConfig) {
+  public DataWriter(
+      List<String> outputChannels,
+      List<BaseActorHandle> toActors,
+      Map<String, OffsetInfo> checkpoints,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
     this.outputChannels = outputChannels;
 
     ChannelCreationParametersBuilder initialParameters =
-      new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
+        new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
 
     byte[][] outputChannelsBytes = outputChannels.stream()
-      .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
 
     // load message id from checkpoints
@@ -70,29 +72,29 @@ public class DataWriter {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
-      initialParameters,
-      outputChannelsBytes,
-      msgIds,
-      channelSize,
-      ChannelUtils.toNativeConf(workerConfig),
-      isMock
+        initialParameters,
+        outputChannelsBytes,
+        msgIds,
+        channelSize,
+        ChannelUtils.toNativeConf(workerConfig),
+        isMock
     );
     LOG.info("Create DataWriter succeed for worker: {}.",
-      workerConfig.workerInternalConfig.workerName());
+        workerConfig.workerInternalConfig.workerName());
   }
 
   private static native long createWriterNative(
-    ChannelCreationParametersBuilder initialParameters,
-    byte[][] outputQueueIds,
-    long[] msgIds,
-    long channelSize,
-    byte[] confBytes,
-    boolean isMock);
+      ChannelCreationParametersBuilder initialParameters,
+      byte[][] outputQueueIds,
+      long[] msgIds,
+      long channelSize,
+      byte[] confBytes,
+      boolean isMock);
 
   /**
    * Write msg into the specified channel
    *
-   * @param id   channel id
+   * @param id channel id
    * @param item message item data section is specified by [position, limit).
    */
   public void write(ChannelId id, ByteBuffer item) {
@@ -106,9 +108,9 @@ public class DataWriter {
   /**
    * Write msg into the specified channels
    *
-   * @param ids  channel ids
+   * @param ids channel ids
    * @param item message item data section is specified by [position, limit).
-   *             item doesn't have to be a direct buffer.
+   *     item doesn't have to be a direct buffer.
    */
   public void write(Set<ChannelId> ids, ByteBuffer item) {
     int size = item.remaining();
@@ -170,7 +172,7 @@ public class DataWriter {
   }
 
   private native long writeMessageNative(
-    long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
+      long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
 
   private native void stopWriterNative(long nativeQueueProducerPtr);
 
@@ -178,12 +180,13 @@ public class DataWriter {
 
   private native long[] getOutputMsgIdNative(long nativeQueueProducerPtr);
 
-  private native void broadcastBarrierNative(long nativeQueueProducerPtr, long checkpointId,
-                                             byte[] data);
+  private native void broadcastBarrierNative(
+      long nativeQueueProducerPtr, long checkpointId,
+      byte[] data);
 
   private native void clearCheckpointNative(
-    long nativeQueueProducerPtr,
-    long checkpointId
+      long nativeQueueProducerPtr,
+      long checkpointId
   );
 
 }

@@ -82,9 +82,8 @@ public class JobWorker implements Serializable {
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
     this.stateBackend = StateBackendFactory.getStateBackend(this.workerConfig);
 
-
     LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
-      Ray.getRuntimeContext().wasCurrentActorRestarted());
+        Ray.getRuntimeContext().wasCurrentActorRestarted());
     if (!Ray.getRuntimeContext().wasCurrentActorRestarted()) {
       saveContext();
       LOG.info("Job worker is fresh started, init success.");
@@ -97,14 +96,14 @@ public class JobWorker implements Serializable {
     if (bytes != null) {
       JobWorkerContext context = Serializer.decode(bytes);
       LOG.info("Worker recover from checkpoint state, byte len={}, context={}.", bytes.length,
-        context);
+          context);
       init(context);
       requestRollback("LoadCheckpoint request rollback in new actor.");
     } else {
       LOG.error(
-        "Worker is reconstructed, but can't load checkpoint. " +
-          "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
-        stateBackend.getClass().getName());
+          "Worker is reconstructed, but can't load checkpoint. " +
+              "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
+          stateBackend.getClass().getName());
     }
   }
 
@@ -112,7 +111,7 @@ public class JobWorker implements Serializable {
     byte[] contextBytes = Serializer.encode(workerContext);
     String key = getJobWorkerContextKey();
     LOG.info("Saving context, worker context={}, serialized byte length={}, key={}.", workerContext,
-      contextBytes.length, key);
+        contextBytes.length, key);
     CheckpointStateUtil.put(stateBackend, key, contextBytes);
   }
 
@@ -123,7 +122,7 @@ public class JobWorker implements Serializable {
     // IMPORTANT: some test cases depends on this log to find workers' pid,
     // be careful when changing this log.
     LOG.info("Initiating job worker: {}. Worker context is: {}, pid={}.",
-      workerContext.getWorkerName(), workerContext, EnvUtil.getJvmPid());
+        workerContext.getWorkerName(), workerContext, EnvUtil.getJvmPid());
 
     this.workerContext = workerContext;
     this.executionVertex = workerContext.getExecutionVertex();
@@ -140,19 +139,19 @@ public class JobWorker implements Serializable {
    * Start worker's stream tasks with specific checkpoint ID.
    *
    * @return a {@link CallResult} with {@link ChannelRecoverInfo},
-   * contains {@link ChannelCreationStatus} of each input queue.
+   *     contains {@link ChannelCreationStatus} of each input queue.
    */
   public CallResult<ChannelRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
     synchronized (initialStateChangeLock) {
       if (task != null && task.isAlive() && checkpointId == task.lastCheckpointId &&
-        task.isInitialState) {
+          task.isInitialState) {
         return CallResult.skipped("Task is already in initial state, skip this rollback.");
       }
     }
     long remoteCallCost = System.currentTimeMillis() - startRollbackTs;
 
     LOG.info("Start rollback[{}], checkpoint is {}, remote call cost {}ms.",
-      executionVertex.getExecutionJobVertexName(), checkpointId, remoteCallCost);
+        executionVertex.getExecutionJobVertexName(), checkpointId, remoteCallCost);
 
     rollbackCnt++;
     if (rollbackCnt > 1) {
@@ -178,7 +177,7 @@ public class JobWorker implements Serializable {
       isNeedRollback = false;
 
       LOG.info("Rollback job worker success, checkpoint is {}, qRecoverInfo is {}.",
-        checkpointId, qRecoverInfo);
+          checkpointId, qRecoverInfo);
 
       return CallResult.success(qRecoverInfo);
     } catch (Exception e) {
@@ -193,7 +192,7 @@ public class JobWorker implements Serializable {
   private StreamTask createStreamTask(long checkpointId) {
     StreamTask task;
     StreamProcessor streamProcessor = ProcessBuilder
-      .buildProcessor(executionVertex.getStreamOperator());
+        .buildProcessor(executionVertex.getStreamOperator());
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     if (streamProcessor instanceof SourceProcessor) {
@@ -232,8 +231,8 @@ public class JobWorker implements Serializable {
 
   public Boolean clearExpiredCp(Long expiredStateCpId, Long expiredQueueCpId) {
     LOG.info("Clear expired checkpoint state, checkpoint id is {}; " +
-        "Clear expired queue msg, checkpoint id is {}",
-      expiredStateCpId, expiredQueueCpId);
+            "Clear expired queue msg, checkpoint id is {}",
+        expiredStateCpId, expiredQueueCpId);
     if (task != null) {
       if (expiredStateCpId > 0) {
         task.clearExpiredCpState(expiredStateCpId);
@@ -251,12 +250,12 @@ public class JobWorker implements Serializable {
     isNeedRollback = true;
     isRecreate.set(true);
     boolean requestRet = RemoteCallMaster.requestJobWorkerRollback(
-      workerContext.getMaster(), new WorkerRollbackRequest(
-        workerContext.getWorkerActorId(),
-        exceptionMsg,
-        EnvUtil.getHostName(),
-        EnvUtil.getJvmPid()
-      ));
+        workerContext.getMaster(), new WorkerRollbackRequest(
+            workerContext.getWorkerActorId(),
+            exceptionMsg,
+            EnvUtil.getHostName(),
+            EnvUtil.getJvmPid()
+        ));
     if (!requestRet) {
       LOG.warn("Job worker request rollback failed! exceptionMsg={}.", exceptionMsg);
     }
@@ -266,7 +265,7 @@ public class JobWorker implements Serializable {
     // No save checkpoint in this query.
     long remoteCallCost = System.currentTimeMillis() - startCallTs;
     LOG.info("Finished checking if need to rollback with result: {}, rpc delay={}ms.",
-      isNeedRollback, remoteCallCost);
+        isNeedRollback, remoteCallCost);
     return isNeedRollback;
   }
 
@@ -288,8 +287,8 @@ public class JobWorker implements Serializable {
 
   private String getJobWorkerContextKey() {
     return workerConfig.checkpointConfig.jobWorkerContextCpPrefixKey()
-      + workerConfig.commonConfig.jobName()
-      + "_" + executionVertex.getExecutionVertexId();
+        + workerConfig.commonConfig.jobName()
+        + "_" + executionVertex.getExecutionVertexId();
   }
 
   /**

@@ -15,7 +15,7 @@ public class CheckpointStateUtil {
    * DO NOT ALLOW GET EXCEPTION WHEN LOADING CHECKPOINT
    *
    * @param checkpointState state backend
-   * @param cpKey           checkpoint key
+   * @param cpKey checkpoint key
    */
   public static byte[] get(StateBackend checkpointState, String cpKey) {
     byte[] val;
@@ -23,7 +23,7 @@ public class CheckpointStateUtil {
       val = checkpointState.get(cpKey);
     } catch (Exception e) {
       throw new CheckpointStateRuntimeException(
-        String.format("Failed to get %s from state backend.", cpKey), e);
+          String.format("Failed to get %s from state backend.", cpKey), e);
     }
     return val;
   }
@@ -32,8 +32,8 @@ public class CheckpointStateUtil {
    * ALLOW PUT EXCEPTION WHEN SAVING CHECKPOINT
    *
    * @param checkpointState state backend
-   * @param key             checkpoint key
-   * @param val             checkpoint value
+   * @param key checkpoint key
+   * @param val checkpoint value
    */
   public static void put(StateBackend checkpointState, String key, byte[] val) {
     try {

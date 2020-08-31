@@ -18,10 +18,10 @@ public class CrossLangSerializerTest {
     Record record = new Record("value");
     record.setStream("stream1");
     assertTrue(EqualsBuilder.reflectionEquals(record,
-      serializer.deserialize(serializer.serialize(record))));
+        serializer.deserialize(serializer.serialize(record))));
     KeyRecord keyRecord = new KeyRecord("key", "value");
     keyRecord.setStream("stream2");
     assertEquals(keyRecord,
-      serializer.deserialize(serializer.serialize(keyRecord)));
+        serializer.deserialize(serializer.serialize(keyRecord)));
   }
 }

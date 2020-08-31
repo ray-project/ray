@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 
 public class ChannelRecoverInfo implements Serializable {
+
   private static final Logger LOG = LoggerFactory.getLogger(ChannelRecoverInfo.class);
   public Map<String, ChannelCreationStatus> queueCreationStatusMap;
 
@@ -31,8 +32,8 @@ public class ChannelRecoverInfo implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("dataLostQueues", getDataLostQueues())
-      .toString();
+        .add("dataLostQueues", getDataLostQueues())
+        .toString();
   }
 
   public enum ChannelCreationStatus {

@@ -8,11 +8,12 @@ import java.util.List;
  * Represents a union DataStream.
  *
  * <p>This stream does not create a physical operation, it only affects how upstream data are
- *  connected to downstream data.
+ * connected to downstream data.
  *
  * @param <T> The type of union data.
  */
 public class UnionStream<T> extends DataStream<T> {
+
   private List<DataStream<T>> unionStreams;
 
   public UnionStream(DataStream<T> input, List<DataStream<T>> streams) {

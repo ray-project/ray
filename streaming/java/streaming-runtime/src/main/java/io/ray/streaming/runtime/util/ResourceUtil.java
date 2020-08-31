@@ -29,7 +29,7 @@ public class ResourceUtil {
    * Refer to: https://docs.oracle.com/javase/8/docs/jre/api/management/extension/com/sun/management/OperatingSystemMXBean.html
    */
   private static OperatingSystemMXBean osmxb =
-    (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
+      (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
   /**
    * Log current jvm process's memory detail
@@ -43,9 +43,9 @@ public class ResourceUtil {
     StringBuilder sb = new StringBuilder(32);
 
     sb.append("used memory: ").append((runtime.totalMemory() - runtime.freeMemory()) / mb)
-      .append(", free memory: ").append(runtime.freeMemory() / mb)
-      .append(", total memory: ").append(runtime.totalMemory() / mb)
-      .append(", max memory: ").append(runtime.maxMemory() / mb);
+        .append(", free memory: ").append(runtime.freeMemory() / mb)
+        .append(", total memory: ").append(runtime.totalMemory() / mb)
+        .append(", max memory: ").append(runtime.maxMemory() / mb);
 
     if (LOG.isInfoEnabled()) {
       LOG.info(sb.toString());
@@ -54,7 +54,7 @@ public class ResourceUtil {
 
   /**
    * @return jvm heap usage ratio. note that one of the survivor space is not include in total
-   * memory while calculating this ratio.
+   *     memory while calculating this ratio.
    */
   public static double getJvmHeapUsageRatio() {
     Runtime runtime = Runtime.getRuntime();
@@ -63,7 +63,7 @@ public class ResourceUtil {
 
   /**
    * @return jvm heap usage(in bytes).
-   * note that this value doesn't include one of the survivor space.
+   *     note that this value doesn't include one of the survivor space.
    */
   public static long getJvmHeapUsageInBytes() {
     Runtime runtime = Runtime.getRuntime();
@@ -105,9 +105,9 @@ public class ResourceUtil {
 
   /**
    * @return the system cpu usage.
-   * This value is a double in the [0.0,1.0]
-   * We will try to use `vsar` to get cpu usage by default,
-   * and use MXBean if any exception raised.
+   *     This value is a double in the [0.0,1.0]
+   *     We will try to use `vsar` to get cpu usage by default,
+   *     and use MXBean if any exception raised.
    */
   public static double getSystemCpuUsage() {
     double cpuUsage = 0.0;
@@ -174,19 +174,19 @@ public class ResourceUtil {
   /**
    * Get containers by hostname of address
    *
-   * @param containers     container list
+   * @param containers container list
    * @param containerHosts container hostname or address set
    * @return matched containers
    */
   public static List<Container> getContainersByHostname(
-    List<Container> containers,
-    Collection<String> containerHosts) {
+      List<Container> containers,
+      Collection<String> containerHosts) {
 
     return containers.stream()
-      .filter(container ->
-        containerHosts.contains(container.getHostname()) ||
-          containerHosts.contains(container.getAddress()))
-      .collect(Collectors.toList());
+        .filter(container ->
+            containerHosts.contains(container.getHostname()) ||
+                containerHosts.contains(container.getAddress()))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -195,12 +195,13 @@ public class ResourceUtil {
    * @param hostName container hostname
    * @return container
    */
-  public static Optional<Container> getContainerByHostname(List<Container> containers,
-                                                           String hostName) {
+  public static Optional<Container> getContainerByHostname(
+      List<Container> containers,
+      String hostName) {
     return containers.stream()
-      .filter(container -> container.getHostname().equals(hostName) ||
-        container.getAddress().equals(hostName))
-      .findFirst();
+        .filter(container -> container.getHostname().equals(hostName) ||
+            container.getAddress().equals(hostName))
+        .findFirst();
   }
 
   /**
@@ -209,11 +210,12 @@ public class ResourceUtil {
    * @param containerID container id
    * @return container
    */
-  public static Optional<Container> getContainerById(List<Container> containers,
-                                                     ContainerId containerID) {
+  public static Optional<Container> getContainerById(
+      List<Container> containers,
+      ContainerId containerID) {
     return containers.stream()
-      .filter(container -> container.getId().equals(containerID))
-      .findFirst();
+        .filter(container -> container.getId().equals(containerID))
+        .findFirst();
   }
 
   /**
@@ -222,11 +224,12 @@ public class ResourceUtil {
    * @param nodeId node unique id
    * @return container
    */
-  public static Optional<Container> getContainerByNodeId(List<Container> containers,
-                                                         UniqueId nodeId) {
+  public static Optional<Container> getContainerByNodeId(
+      List<Container> containers,
+      UniqueId nodeId) {
     return containers.stream()
-      .filter(container -> container.getNodeId().equals(nodeId))
-      .findFirst();
+        .filter(container -> container.getNodeId().equals(nodeId))
+        .findFirst();
   }
 
   /**

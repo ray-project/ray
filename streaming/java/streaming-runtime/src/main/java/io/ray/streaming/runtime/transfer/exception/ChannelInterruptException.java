@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
  * which means the read/write operation is failed.
  */
 public class ChannelInterruptException extends RuntimeException {
+
   public ChannelInterruptException() {
     super();
   }

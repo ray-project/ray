@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.transfer.message;
 
 public class ChannelMessage {
+
   private final long msgId;
   private final long timestamp;
   private final String channelId;

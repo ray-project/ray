@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
  * Abstract base class for chained operators.
  */
 public abstract class ChainedOperator extends StreamOperator<Function> {
+
   protected final List<StreamOperator> operators;
   protected final Operator headOperator;
   protected final Operator tailOperator;
@@ -96,7 +97,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   public void loadCheckpoint(Object checkpointObject, long checkpointId) {
     Object[] checkpoints = (Object[]) checkpointObject;
     for (int i = 0; i < operators.size(); ++i) {
-       operators.get(i).loadCheckpoint(checkpoints[i], checkpointId);
+      operators.get(i).loadCheckpoint(checkpoints[i], checkpointId);
     }
   }
 
@@ -130,6 +131,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedSourceOperator<T> extends ChainedOperator
       implements SourceOperator<T> {
+
     private final SourceOperator<T> sourceOperator;
 
     @SuppressWarnings("unchecked")
@@ -152,6 +154,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedOneInputOperator<T> extends ChainedOperator
       implements OneInputOperator<T> {
+
     private final OneInputOperator<T> inputOperator;
 
     @SuppressWarnings("unchecked")
@@ -169,6 +172,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedTwoInputOperator<L, R> extends ChainedOperator
       implements TwoInputOperator<L, R> {
+
     private final TwoInputOperator<L, R> inputOperator;
 
     @SuppressWarnings("unchecked")

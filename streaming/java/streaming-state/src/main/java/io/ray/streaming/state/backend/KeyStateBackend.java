@@ -39,8 +39,9 @@ public class KeyStateBackend extends AbstractKeyStateBackend {
   protected final int numberOfKeyGroups;
   protected final KeyGroup keyGroup;
 
-  public KeyStateBackend(int numberOfKeyGroups, KeyGroup keyGroup,
-                         AbstractStateBackend abstractStateBackend) {
+  public KeyStateBackend(
+      int numberOfKeyGroups, KeyGroup keyGroup,
+      AbstractStateBackend abstractStateBackend) {
     super(abstractStateBackend);
     this.numberOfKeyGroups = numberOfKeyGroups;
     this.keyGroup = keyGroup;

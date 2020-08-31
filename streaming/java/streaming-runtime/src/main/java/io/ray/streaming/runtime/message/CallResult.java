@@ -4,6 +4,7 @@ import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 
 public class CallResult<T> implements Serializable {
+
   protected T resultObj;
   private boolean success;
   private int resultCode;
@@ -50,11 +51,11 @@ public class CallResult<T> implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("resultObj", resultObj)
-      .add("success", success)
-      .add("resultCode", resultCode)
-      .add("resultMsg", resultMsg)
-      .toString();
+        .add("resultObj", resultObj)
+        .add("success", success)
+        .add("resultCode", resultCode)
+        .add("resultMsg", resultMsg)
+        .toString();
   }
 
   public boolean isSuccess() {

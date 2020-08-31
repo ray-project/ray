@@ -21,6 +21,7 @@ import org.apache.commons.lang3.StringUtils;
  * <p>
  */
 public class PythonFunction implements Function {
+
   public enum FunctionInterface {
     SOURCE_FUNCTION("SourceFunction"),
     MAP_FUNCTION("MapFunction"),
@@ -71,8 +72,9 @@ public class PythonFunction implements Function {
    * @param functionName function name of streaming function. {@code functionName} is the name
    *     of a python function, or class name of subclass of `ray.streaming.function.`
    */
-  public PythonFunction(String moduleName,
-                        String functionName) {
+  public PythonFunction(
+      String moduleName,
+      String functionName) {
     Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
     Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
     this.function = null;

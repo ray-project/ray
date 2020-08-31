@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class EnvUtil {
+
   private static final Logger LOG = LoggerFactory.getLogger(EnvUtil.class);
 
   public static String getJvmPid() {

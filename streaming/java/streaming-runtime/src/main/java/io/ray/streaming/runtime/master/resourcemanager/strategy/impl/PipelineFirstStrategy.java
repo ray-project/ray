@@ -40,14 +40,14 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
   /**
    * Assign resource to each execution vertex in the given execution graph.
    *
-   * @param containers     registered containers
+   * @param containers registered containers
    * @param executionGraph execution graph
    * @return allocating map, key is container ID, value is list of vertextId, and contains vertices
    */
   @Override
   public ResourceAssignmentView assignResource(
-    List<Container> containers,
-    ExecutionGraph executionGraph) {
+      List<Container> containers,
+      ExecutionGraph executionGraph) {
 
     Map<Integer, ExecutionJobVertex> vertices = executionGraph.getExecutionJobVertexMap();
     Map<Integer, Integer> vertexRemainingNum = new HashMap<>();
@@ -57,8 +57,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
       vertexRemainingNum.put(k, size);
     });
     int totalExecutionVerticesNum = vertexRemainingNum.values().stream()
-      .mapToInt(Integer::intValue)
-      .sum();
+        .mapToInt(Integer::intValue)
+        .sum();
     int containerNum = containers.size();
     int capacityPerContainer = Math.max(totalExecutionVerticesNum / containerNum, 1);
 
@@ -71,7 +71,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
       LOG.info("Need to enlarge capacity per container, threshold: {}.", enlargeCapacityThreshold);
     }
     LOG.info("Total execution vertices num: {}, container num: {}, capacity per container: {}.",
-      totalExecutionVerticesNum, containerNum, capacityPerContainer);
+        totalExecutionVerticesNum, containerNum, capacityPerContainer);
 
     int maxParallelism = executionGraph.getMaxParallelism();
 
@@ -87,7 +87,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
         Map<String, Double> requiredResource = executionVertex.getResource();
         if (requiredResource.containsKey(ResourceType.CPU.getValue())) {
           LOG.info("Required resource contain {} value : {}, no limitation by default.",
-            ResourceType.CPU, requiredResource.get(ResourceType.CPU.getValue()));
+              ResourceType.CPU, requiredResource.get(ResourceType.CPU.getValue()));
           requiredResource.remove(ResourceType.CPU.getValue());
         }
 
@@ -97,7 +97,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
         allocatedVertexCount++;
         // Once allocatedVertexCount reaches threshold, we should enlarge capacity
         if (!enlarged && enlargeCapacityThreshold > 0
-          && allocatedVertexCount >= enlargeCapacityThreshold) {
+            && allocatedVertexCount >= enlargeCapacityThreshold) {
           updateContainerCapacity(containers, capacityPerContainer + 1);
           enlarged = true;
           LOG.info("Enlarge capacity per container to: {}.", containers.get(0).getCapacity());
@@ -127,12 +127,12 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
    * Find a container which matches required resource
    *
    * @param requiredResource required resource
-   * @param containers       registered containers
+   * @param containers registered containers
    * @return container that matches the required resource
    */
   private Container findMatchedContainer(
-    Map<String, Double> requiredResource,
-    List<Container> containers) {
+      Map<String, Double> requiredResource,
+      List<Container> containers) {
 
     LOG.info("Check resource, required: {}.", requiredResource);
 
@@ -143,8 +143,8 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
       forwardToNextContainer(containers);
       if (checkedNum >= containers.size()) {
         throw new ScheduleException(
-          String.format("No enough resource left, required resource: %s, available resource: %s.",
-            requiredResource, containers));
+            String.format("No enough resource left, required resource: %s, available resource: %s.",
+                requiredResource, containers));
       }
     }
     return getCurrentContainer(containers);
@@ -154,7 +154,7 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
    * Check if current container has enough resource
    *
    * @param requiredResource required resource
-   * @param container        container
+   * @param container container
    * @return true if matches, false else
    */
   private boolean hasEnoughResource(Map<String, Double> requiredResource, Container container) {
@@ -174,12 +174,12 @@ public class PipelineFirstStrategy implements ResourceAssignStrategy {
       if (availableResource.containsKey(entry.getKey())) {
         if (availableResource.get(entry.getKey()) < entry.getValue()) {
           LOG.warn("No enough resource for container {}. required: {}, available: {}.",
-            container.getAddress(), requiredResource, availableResource);
+              container.getAddress(), requiredResource, availableResource);
           return false;
         }
       } else {
         LOG.warn("No enough resource for container {}. required: {}, available: {}.",
-          container.getAddress(), requiredResource, availableResource);
+            container.getAddress(), requiredResource, availableResource);
         return false;
       }
     }

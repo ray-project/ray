@@ -33,9 +33,10 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(streamingContext, streamOperator);
   }
 
-  public DataStream(StreamingContext streamingContext,
-                    StreamOperator streamOperator,
-                    Partition<T> partition) {
+  public DataStream(
+      StreamingContext streamingContext,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(streamingContext, streamOperator, partition);
   }
 
@@ -43,9 +44,10 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(input, streamOperator);
   }
 
-  public <R> DataStream(DataStream<R> input,
-                        StreamOperator streamOperator,
-                        Partition<T> partition) {
+  public <R> DataStream(
+      DataStream<R> input,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(input, streamOperator, partition);
   }
 

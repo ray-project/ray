@@ -21,6 +21,7 @@ import java.util.Map;
  */
 public abstract class Stream<S extends Stream<S, T>, T>
     implements Serializable {
+
   private final int id;
   private final StreamingContext streamingContext;
   private final Stream inputStream;
@@ -34,9 +35,10 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this(streamingContext, null, streamOperator, getForwardPartition(streamOperator));
   }
 
-  public Stream(StreamingContext streamingContext,
-                StreamOperator streamOperator,
-                Partition<T> partition) {
+  public Stream(
+      StreamingContext streamingContext,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     this(streamingContext, null, streamOperator, partition);
   }
 
@@ -49,10 +51,11 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this(inputStream.getStreamingContext(), inputStream, streamOperator, partition);
   }
 
-  protected Stream(StreamingContext streamingContext,
-                   Stream inputStream,
-                   StreamOperator streamOperator,
-                   Partition<T> partition) {
+  protected Stream(
+      StreamingContext streamingContext,
+      Stream inputStream,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     this.streamingContext = streamingContext;
     this.inputStream = inputStream;
     this.operator = streamOperator;
