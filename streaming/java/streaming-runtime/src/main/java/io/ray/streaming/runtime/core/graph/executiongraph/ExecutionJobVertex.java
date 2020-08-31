@@ -56,13 +56,13 @@ public class ExecutionJobVertex {
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
   public ExecutionJobVertex(
-    JobVertex jobVertex,
-    Map<String, String> jobConfig,
-    AtomicInteger idGenerator,
-    long buildTime) {
+      JobVertex jobVertex,
+      Map<String, String> jobConfig,
+      AtomicInteger idGenerator,
+      long buildTime) {
     this.executionJobVertexId = jobVertex.getVertexId();
     this.executionJobVertexName = generateExecutionJobVertexName(
-      executionJobVertexId, jobVertex.getStreamOperator().getName());
+        executionJobVertexId, jobVertex.getStreamOperator().getName());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.language = jobVertex.getLanguage();
@@ -78,7 +78,7 @@ public class ExecutionJobVertex {
 
     for (int subIndex = 0; subIndex < parallelism; subIndex++) {
       executionVertices.add(new ExecutionVertex(
-        idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
+          idGenerator.getAndIncrement(), subIndex, this, resourceConfig));
     }
     return executionVertices;
   }
@@ -91,12 +91,12 @@ public class ExecutionJobVertex {
     Map<Integer, BaseActorHandle> executionVertexWorkersMap = new HashMap<>();
 
     Preconditions.checkArgument(
-      executionVertices != null && !executionVertices.isEmpty(),
-      "Empty execution vertex.");
+        executionVertices != null && !executionVertices.isEmpty(),
+        "Empty execution vertex.");
     executionVertices.stream().forEach(vertex -> {
       Preconditions.checkArgument(
-        vertex.getWorkerActor() != null,
-        "Empty execution vertex worker actor.");
+          vertex.getWorkerActor() != null,
+          "Empty execution vertex worker actor.");
       executionVertexWorkersMap.put(vertex.getExecutionVertexId(), vertex.getWorkerActor());
     });
 
@@ -129,7 +129,7 @@ public class ExecutionJobVertex {
   }
 
   public void setExecutionVertices(
-    List<ExecutionVertex> executionVertex) {
+      List<ExecutionVertex> executionVertex) {
     this.executionVertices = executionVertex;
   }
 
@@ -138,7 +138,7 @@ public class ExecutionJobVertex {
   }
 
   public void setOutputEdges(
-    List<ExecutionJobEdge> outputEdges) {
+      List<ExecutionJobEdge> outputEdges) {
     this.outputEdges = outputEdges;
   }
 
@@ -147,7 +147,7 @@ public class ExecutionJobVertex {
   }
 
   public void setInputEdges(
-    List<ExecutionJobEdge> inputEdges) {
+      List<ExecutionJobEdge> inputEdges) {
     this.inputEdges = inputEdges;
   }
 
@@ -186,10 +186,10 @@ public class ExecutionJobVertex {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("executionJobVertexId", executionJobVertexId)
-      .add("executionJobVertexName", executionJobVertexName)
-      .add("vertexType", vertexType)
-      .add("parallelism", parallelism)
-      .toString();
+        .add("executionJobVertexId", executionJobVertexId)
+        .add("executionJobVertexName", executionJobVertexName)
+        .add("vertexType", vertexType)
+        .add("parallelism", parallelism)
+        .toString();
   }
 }

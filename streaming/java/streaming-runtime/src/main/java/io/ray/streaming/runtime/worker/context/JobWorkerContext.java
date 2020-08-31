@@ -27,8 +27,8 @@ public class JobWorkerContext implements Serializable {
   private ExecutionVertex executionVertex;
 
   public JobWorkerContext(
-    ActorHandle<JobMaster> master,
-    ExecutionVertex executionVertex) {
+      ActorHandle<JobMaster> master,
+      ExecutionVertex executionVertex) {
     this.master = master;
     this.executionVertex = executionVertex;
   }
@@ -56,22 +56,22 @@ public class JobWorkerContext implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("workerId", getWorkerId())
-      .add("workerName", getWorkerName())
-      .add("config", getConfig())
-      .toString();
+        .add("workerId", getWorkerId())
+        .add("workerName", getWorkerName())
+        .add("config", getConfig())
+        .toString();
   }
 
   public byte[] getPythonWorkerContextBytes() {
     // create python worker context
     RemoteCall.ExecutionVertexContext executionVertexContext =
-      new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
+        new GraphPbBuilder().buildExecutionVertexContext(executionVertex);
 
     byte[] contextBytes = RemoteCall.PythonJobWorkerContext.newBuilder()
-      .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
-      .setExecutionVertexContext(executionVertexContext)
-      .build()
-      .toByteArray();
+        .setMasterActor(ByteString.copyFrom((((NativeActorHandle) (master)).toBytes())))
+        .setExecutionVertexContext(executionVertexContext)
+        .build()
+        .toByteArray();
 
     return contextBytes;
   }

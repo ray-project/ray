@@ -33,7 +33,7 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof PyActorHandle) {
       result = ((PyActorHandle) actor).task(PyActorMethod.of("init", Boolean.class),
-        context.getPythonWorkerContextBytes()).remote();
+          context.getPythonWorkerContextBytes()).remote();
     } else {
       // java
       result = ((ActorHandle<JobWorker>) actor).task(JobWorker::init, context).remote();
@@ -56,7 +56,7 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof PyActorHandle) {
       result = ((PyActorHandle) actor)
-        .task(PyActorMethod.of("start", Boolean.class)).remote();
+          .task(PyActorMethod.of("start", Boolean.class)).remote();
     } else {
       // java
       result = ((ActorHandle<JobWorker>) actor).task(JobWorker::start).remote();
@@ -74,7 +74,7 @@ public class RemoteCallWorker {
    */
   public static Boolean shutdownWithoutReconstruction(BaseActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
-      actor.getId());
+        actor.getId());
     Boolean result = false;
 
     // TODO (datayjz): ray call worker to destroy

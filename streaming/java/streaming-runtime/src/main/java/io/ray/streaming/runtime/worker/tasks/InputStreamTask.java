@@ -56,8 +56,8 @@ public abstract class InputStreamTask extends StreamTask {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("taskId", taskId)
-      .add("processor", processor)
-      .toString();
+        .add("taskId", taskId)
+        .add("processor", processor)
+        .toString();
   }
 }

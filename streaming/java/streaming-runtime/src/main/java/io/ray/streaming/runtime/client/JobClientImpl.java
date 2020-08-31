@@ -24,7 +24,7 @@ public class JobClientImpl implements JobClient {
   @Override
   public void submit(JobGraph jobGraph, Map<String, String> jobConfig) {
     LOG.info("Submitting job [{}] with job graph [{}] and job config [{}].",
-      jobGraph.getJobName(), jobGraph, jobConfig);
+        jobGraph.getJobName(), jobGraph, jobConfig);
     Map<String, Double> resources = new HashMap<>();
 
     // set job name and id at start
@@ -35,13 +35,13 @@ public class JobClientImpl implements JobClient {
 
     // create job master actor
     this.jobMasterActor = Ray.actor(JobMaster::new, jobConfig)
-      .setResources(resources)
-      .setMaxRestarts(-1)
-      .remote();
+        .setResources(resources)
+        .setMaxRestarts(-1)
+        .remote();
 
     try {
       ObjectRef<Boolean> submitResult = jobMasterActor.task(JobMaster::submitJob,
-        jobMasterActor, jobGraph).remote();
+          jobMasterActor, jobGraph).remote();
 
       if (submitResult.get()) {
         LOG.info("Finish submitting job: {}.", jobGraph.getJobName());
