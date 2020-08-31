@@ -3,6 +3,7 @@ package io.ray.docdemo;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.docdemo.WalkthroughDemo.Counter;
+import java.util.Optional;
 import org.testng.Assert;
 
 public class UsingActorsDemo {
@@ -71,6 +72,16 @@ public class UsingActorsDemo {
     {
       ActorHandle<Foo> actorHandle = Ray.actor(Foo::new).remote();
       actorHandle.kill(/*noRestart=*/true);
+    }
+
+    {
+      // Create an actor with a name
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
+    }
+    {
+      // Retrieve the actor later
+      Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
+      Assert.assertTrue(counter.isPresent());
     }
   }
 }

@@ -380,34 +380,65 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 Named Actors
 ------------
 
-An actor can be given a globally unique name via ``.options(name="some_name")``,
-which allows you to retrieve the actor from any job in the Ray cluster via
-``ray.get_actor("some_name")``. This can be useful if you cannot directly
+An actor can be given a globally unique name.
+This allows you to retrieve the actor from any job in the Ray cluster.
+This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
+
+.. tabs::
+
+  .. code-tab:: python
+
+    # Create an actor with a name
+    counter = Counter.options(name="some_name").remote()
+
+    ...
+
+    # Retrieve the actor later somewhere
+    counter = ray.get_actor("some_name")
+
+  .. code-tab:: java
+
+    // Create an actor with a name
+    ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
+
+    ...
+
+    // Retrieve the actor later somewhere
+    Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
+    Assert.assertTrue(counter.isPresent());
+
 
 Actor Lifetimes
 ---------------
 
-Separately, actor lifetimes can be decoupled from the job, allowing an actor to
-persist even after the driver process of the job exits.
+.. tabs::
+  .. group-tab:: Python
 
-.. code-block:: python
+    Separately, actor lifetimes can be decoupled from the job, allowing an actor to
+    persist even after the driver process of the job exits.
 
-  counter = Counter.options(name="CounterActor", lifetime="detached").remote()
+    .. code-block:: python
 
-The CounterActor will be kept alive even after the driver running above script
-exits. Therefore it is possible to run the following script in a different
-driver:
+      counter = Counter.options(name="CounterActor", lifetime="detached").remote()
 
-.. code-block:: python
+    The CounterActor will be kept alive even after the driver running above script
+    exits. Therefore it is possible to run the following script in a different
+    driver:
 
-  counter = ray.get_actor("CounterActor")
-  print(ray.get(counter.get_counter.remote()))
+    .. code-block:: python
 
-Note that the lifetime option is decoupled from the name. If we only specified
-the name without specifying ``lifetime="detached"``, then the CounterActor can
-only be retrieved as long as the original driver is still running.
+      counter = ray.get_actor("CounterActor")
+      print(ray.get(counter.get_counter.remote()))
+
+    Note that the lifetime option is decoupled from the name. If we only specified
+    the name without specifying ``lifetime="detached"``, then the CounterActor can
+    only be retrieved as long as the original driver is still running.
+
+  .. group-tab:: Java
+
+    Customizing lifetime of an actor hasn't been implemented in Java yet.
 
 Actor Pool
 ----------
