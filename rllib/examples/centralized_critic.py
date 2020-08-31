@@ -158,12 +158,20 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
     return policy.loss_obj.loss
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    # copied from PPO
+def setup_tf_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTFPolicy (w/o ValueNetworkMixin).
     KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+def setup_torch_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTorchPolicy  (w/o ValueNetworkMixin).
+    TorchKLCoeffMixin.__init__(policy, config)
+    TorchEntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                       config["entropy_coeff_schedule"])
+    TorchLR.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 def central_vf_stats(policy, train_batch, grads):
@@ -179,7 +187,7 @@ CCPPOTFPolicy = PPOTFPolicy.with_updates(
     name="CCPPOTFPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_loss_init=setup_mixins,
+    before_loss_init=setup_tf_mixins,
     grad_stats_fn=central_vf_stats,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
@@ -190,7 +198,7 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
     name="CCPPOTorchPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_init=setup_mixins,
+    before_init=setup_torch_mixins,
     mixins=[
         TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
         CentralizedValueMixin
