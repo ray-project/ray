@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class ClusterStarter {
+
   private static final Logger LOG = LoggerFactory.getLogger(ClusterStarter.class);
   private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/plasma_store_socket";
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/raylet_socket";
@@ -69,7 +70,7 @@ class ClusterStarter {
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions,
-        "--internal-config=" + new Gson().toJson(config)
+        "--system-config=" + new Gson().toJson(config)
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");

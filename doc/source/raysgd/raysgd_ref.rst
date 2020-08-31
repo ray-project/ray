@@ -33,3 +33,25 @@ TFTrainer
     :members:
 
     .. automethod:: __init__
+
+Dataset
+-------
+
+.. autoclass:: ray.util.sgd.data.Dataset
+    :members:
+
+    .. automethod:: __init__
+
+.. _ref-utils:
+
+Utils
+-----
+
+.. autoclass:: ray.util.sgd.utils.AverageMeter
+    :members:
+
+.. autoclass:: ray.util.sgd.utils.AverageMeterCollection
+    :members:
+
+
+

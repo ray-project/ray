@@ -1,5 +1,4 @@
-#ifndef RAY_CHANNEL_H
-#define RAY_CHANNEL_H
+#pragma once
 
 #include "config/streaming_config.h"
 #include "queue/queue_handler.h"
@@ -9,6 +8,14 @@
 
 namespace ray {
 namespace streaming {
+
+enum class TransferCreationStatus : uint32_t {
+  FreshStarted = 0,
+  PullOk = 1,
+  Timeout = 2,
+  DataLost = 3,
+  Invalid = 999,
+};
 
 struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
@@ -99,7 +106,7 @@ class ConsumerChannel {
   explicit ConsumerChannel(std::shared_ptr<Config> &transfer_config,
                            ConsumerChannelInfo &c_channel_info);
   virtual ~ConsumerChannel() = default;
-  virtual StreamingStatus CreateTransferChannel() = 0;
+  virtual TransferCreationStatus CreateTransferChannel() = 0;
   virtual StreamingStatus DestroyTransferChannel() = 0;
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
@@ -130,7 +137,7 @@ class StreamingQueueProducer : public ProducerChannel {
  private:
   StreamingStatus CreateQueue();
   Status PushQueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size,
-                       uint64_t timestamp);
+                       uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end);
 
  private:
   std::shared_ptr<WriterQueue> queue_;
@@ -141,7 +148,7 @@ class StreamingQueueConsumer : public ConsumerChannel {
   explicit StreamingQueueConsumer(std::shared_ptr<Config> &transfer_config,
                                   ConsumerChannelInfo &c_channel_info);
   ~StreamingQueueConsumer() override;
-  StreamingStatus CreateTransferChannel() override;
+  TransferCreationStatus CreateTransferChannel() override;
   StreamingStatus DestroyTransferChannel() override;
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
@@ -149,6 +156,10 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
+
+ private:
+  StreamingQueueStatus GetQueue(const ObjectID &queue_id, uint64_t start_msg_id,
+                                const ChannelCreationParameter &init_param);
 
  private:
   std::shared_ptr<ReaderQueue> queue_;
@@ -184,7 +195,9 @@ class MockConsumer : public ConsumerChannel {
   explicit MockConsumer(std::shared_ptr<Config> &transfer_config,
                         ConsumerChannelInfo &c_channel_info)
       : ConsumerChannel(transfer_config, c_channel_info){};
-  StreamingStatus CreateTransferChannel() override { return StreamingStatus::OK; }
+  TransferCreationStatus CreateTransferChannel() override {
+    return TransferCreationStatus::PullOk;
+  }
   StreamingStatus DestroyTransferChannel() override { return StreamingStatus::OK; }
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override {
@@ -198,5 +211,3 @@ class MockConsumer : public ConsumerChannel {
 
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_CHANNEL_H

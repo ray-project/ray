@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_STATUS_H
-#define RAY_STREAMING_STATUS_H
+#pragma once
+
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -43,5 +43,3 @@ static inline std::ostream &operator<<(std::ostream &os, const StreamingStatus &
 
 }  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_STREAMING_STATUS_H

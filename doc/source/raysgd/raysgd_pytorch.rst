@@ -18,6 +18,8 @@ For end to end examples leveraging RaySGD TorchTrainer, jump to :ref:`raysgd-tor
 Setting up training
 -------------------
 
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* restructuring your code, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
+
 The ``TorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it requires constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
 
 Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor. One of the replicas will be on the main process, which can simplify the debugging and logging experience.
@@ -155,7 +157,7 @@ Now that the trainer is constructed, here's how to train the model.
         val_metrics = trainer.validate()
 
 
-Each ``train`` call makes one pass over the training data, and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
+Each ``train`` call makes one pass over the training data (trains on 1 epoch), and each ``validate`` call runs the model on the validation data passed in by the ``data_creator``.
 
 You can also obtain profiling information:
 
@@ -394,6 +396,49 @@ The trained torch model can be extracted for use within the same Python program 
     trainer.train()
     model = trainer.get_model()  # Returns multiple models if the model_creator does.
 
+Training & Validation Results
+-----------------------------
+The output for ``trainer.train()`` and ``trainer.validate()`` are first collected on a per-batch basis. These results are then averaged: first across each batch in the epoch, and then across all workers.
+
+By default, the output of ``train`` contains the following:
+
+.. code-block:: python
+
+    # Total number of samples trained on in this epoch.
+    num_samples
+    # Current training epoch.
+    epoch
+    # Number of batches trained on in this epoch averaged across all workers.
+    batch_count
+    # Training loss averaged across all batches on all workers.
+    train_loss
+    # Training loss for the last batch in epoch averaged across all workers.
+    last_train_loss
+
+And for ``validate``:
+
+.. code-block:: python
+
+    # Total number of samples validated on.
+    num_samples
+    # Number of batches validated on averaged across all workers.
+    batch_count
+    # Validation loss averaged across all batches on all workers.
+    val_loss
+    # Validation loss for last batch averaged across all workers.
+    last_val_loss
+    # Validation accuracy for last batch averaged across all workers.
+    val_accuracy
+    # Validation accuracy for last batch averaged across all workers.
+    last_val_accuracy
+
+If ``train`` or ``validate`` are run with ``reduce_results=False``, results are not averaged across workers and a list of results for each worker is returned.
+If run with ``profile=True``, timing stats for a single worker is returned alongside the results above.
+
+To add additional metrics to return you should implement your own custom training operator (:ref:`raysgd-custom-training`).
+If overriding ``train_batch`` or ``validate_batch``, the result outputs are automatically averaged across all batches, and the results for the last batch are automatically returned.
+If overriding ``train_epoch`` or ``validate`` you may find ``ray.util.sgd.utils.AverageMeterCollection`` (:ref:`ref-utils`) useful to handle this averaging.
+
 Mixed Precision (FP16) Training
 -------------------------------
 
@@ -441,7 +486,7 @@ Distributed Multi-node Training
 
 You can scale your training to multiple nodes without making any modifications to your training code.
 
-To train across a cluster, first make sure that the Ray cluster is started. You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+To train across a cluster, first make sure that the Ray cluster is started (see :ref:`cluster-index` for more details).
 
 Then, in your program, you'll need to connect to this cluster via ``ray.init``:
 

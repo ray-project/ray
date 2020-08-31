@@ -5,16 +5,17 @@ The implementation has a couple assumptions:
 - Each agent is bound to a policy of the same name.
 - Discrete actions are sent as logits (pre-softmax).
 
-For a minimal example, see twostep_game.py, and the README for how to run
-with the multi-agent particle envs.
+For a minimal example, see rllib/examples/two_step_game.py,
+and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
 
-from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils import merge_dicts
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -22,6 +23,9 @@ logger.setLevel(logging.INFO)
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # === Framework to run the algorithm ===
+    "framework": "tf",
+
     # === Settings for each individual policy ===
     # ID of the agent controlled by this policy
     "agent_id": None,
@@ -66,13 +70,15 @@ DEFAULT_CONFIG = with_common_config({
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
-    # In multi-agent mode, whether to replay experiences from the same time
-    # step for all policies. This is required for MADDPG.
-    "multiagent_sync_replay": True,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
+    # Force lockstep replay mode for MADDPG.
+    "multiagent": merge_dicts(COMMON_CONFIG["multiagent"], {
+        "replay_mode": "lockstep",
+    }),
 
     # === Optimization ===
     # Learning rate for the critic (Q-function) optimizer.

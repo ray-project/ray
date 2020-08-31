@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GLOBAL_STATE_ACCESSOR_H
-#define RAY_GCS_GLOBAL_STATE_ACCESSOR_H
+#pragma once
 
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
-#include "service_based_gcs_client.h"
 
 namespace ray {
 namespace gcs {
@@ -79,6 +78,20 @@ class GlobalStateAccessor {
   /// protobuf function.
   std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
 
+  /// Get information of a node resource from GCS Service.
+  ///
+  /// \param node_id The ID of node to look up in the GCS Service.
+  /// \return node resource map info. To support multi-language, we serialize each
+  /// ResourceTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::string GetNodeResourceInfo(const ClientID &node_id);
+
+  /// Get internal config from GCS Service.
+  ///
+  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
+  /// and serialized as a string to allow multi-language support.
+  std::string GetInternalConfig();
+
   /// Get information of all actors from GCS Service.
   ///
   /// \return All actor info. To support multi-language, we serialize each ActorTableData
@@ -101,6 +114,37 @@ class GlobalStateAccessor {
   /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
+
+  /// Get information of a worker from GCS Service.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS Service.
+  /// \return Worker info. To support multi-language, we serialize each WorkerTableData
+  /// and return the serialized string. Where used, it needs to be deserialized with
+  /// protobuf function.
+  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id);
+
+  /// Get information of all workers from GCS Service.
+  ///
+  /// \return All worker info. To support multi-language, we serialize each
+  /// WorkerTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllWorkerInfo();
+
+  /// Add information of a worker to GCS Service.
+  ///
+  /// \param serialized_string The serialized data of worker to be added in the GCS
+  /// Service, use string is convenient for python to use.
+  /// \return Is operation success.
+  bool AddWorkerInfo(const std::string &serialized_string);
+
+  /// Get information of a placement group from GCS Service.
+  ///
+  /// \param placement_group The ID of placement group to look up in the GCS Service.
+  /// \return Placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetPlacementGroupInfo(
+      const PlacementGroupID &placement_group_id);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -143,5 +187,3 @@ class GlobalStateAccessor {
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_GLOBAL_STATE_ACCESSOR_H

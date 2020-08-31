@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_SUBSCRIPTION_EXECUTOR_H
-#define RAY_GCS_SUBSCRIPTION_EXECUTOR_H
+#pragma once
 
 #include <atomic>
 #include <list>
 #include <mutex>
+
 #include "ray/gcs/callback.h"
 #include "ray/gcs/tables.h"
 
@@ -106,5 +106,3 @@ class SubscriptionExecutor {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_SUBSCRIPTION_EXECUTOR_H

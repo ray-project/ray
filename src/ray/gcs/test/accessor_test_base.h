@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_ACCESSOR_TEST_BASE_H
-#define RAY_GCS_ACCESSOR_TEST_BASE_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -94,5 +93,3 @@ class AccessorTestBase : public ::testing::Test {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_ACCESSOR_TEST_BASE_H

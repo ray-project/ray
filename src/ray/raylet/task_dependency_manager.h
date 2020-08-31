@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
-#define RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H
+#pragma once
 
 // clang-format off
 #include "ray/common/id.h"
@@ -45,10 +44,7 @@ class TaskDependencyManager {
  public:
   /// Create a task dependency manager.
   TaskDependencyManager(ObjectManagerInterface &object_manager,
-                        ReconstructionPolicyInterface &reconstruction_policy,
-                        boost::asio::io_service &io_service, const ClientID &client_id,
-                        int64_t initial_lease_period_ms,
-                        std::shared_ptr<gcs::GcsClient> gcs_client);
+                        ReconstructionPolicyInterface &reconstruction_policy);
 
   /// Check whether an object is locally available.
   ///
@@ -72,8 +68,8 @@ class TaskDependencyManager {
   /// \param required_objects The objects required by the task.
   /// \return Whether all of the given dependencies for the given task are
   /// local.
-  bool SubscribeGetDependencies(const TaskID &task_id,
-                                const std::vector<ObjectID> &required_objects);
+  bool SubscribeGetDependencies(
+      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Subscribe to object depedencies required by the worker. This should be called for
   /// ray.wait calls during task execution.
@@ -87,8 +83,9 @@ class TaskDependencyManager {
   /// \param worker_id The ID of the worker that called `ray.wait`.
   /// \param required_objects The objects required by the worker.
   /// \return Void.
-  void SubscribeWaitDependencies(const WorkerID &worker_id,
-                                 const std::vector<ObjectID> &required_objects);
+  void SubscribeWaitDependencies(
+      const WorkerID &worker_id,
+      const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Unsubscribe from the object dependencies required by this task through the task
   /// arguments or `ray.get`. If the objects were remote and are no longer required by any
@@ -142,12 +139,6 @@ class TaskDependencyManager {
   /// this object dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
 
-  /// Get a list of all Tasks currently marked as pending object dependencies in the task
-  /// dependency manager.
-  ///
-  /// \return Return a vector of TaskIDs for tasks registered as pending.
-  std::vector<TaskID> GetPendingTasks() const;
-
   /// Remove all of the tasks specified. These tasks will no longer be
   /// considered pending and the objects they depend on will no longer be
   /// required.
@@ -164,14 +155,29 @@ class TaskDependencyManager {
   /// Record metrics.
   void RecordMetrics() const;
 
+  /// Get the address of the owner of this object. An address will only be
+  /// returned if the caller previously specified that this object is required
+  /// on this node, through a call to SubscribeGetDependencies or
+  /// SubscribeWaitDependencies.
+  ///
+  /// \param[in] object_id The object whose owner to get.
+  /// \param[out] owner_address The address of the object's owner, if
+  /// available.
+  /// \return True if we have owner information for the object.
+  bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
+
  private:
   struct ObjectDependencies {
+    ObjectDependencies(const rpc::ObjectReference &ref)
+        : owner_address(ref.owner_address()) {}
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
     std::unordered_set<TaskID> dependent_tasks;
     /// The workers that depend on this object because they called `ray.wait` on the
     /// object.
     std::unordered_set<WorkerID> dependent_workers;
+    /// The address of the worker that owns this object.
+    rpc::Address owner_address;
 
     bool Empty() const { return dependent_tasks.empty() && dependent_workers.empty(); }
   };
@@ -193,26 +199,11 @@ class TaskDependencyManager {
   /// will be automatically removed from this set once it becomes local.
   using WorkerDependencies = std::unordered_set<ObjectID>;
 
-  struct PendingTask {
-    PendingTask(int64_t initial_lease_period_ms, boost::asio::io_service &io_service)
-        : lease_period(initial_lease_period_ms),
-          expires_at(INT64_MAX),
-          lease_timer(new boost::asio::deadline_timer(io_service)) {}
-
-    /// The timeout within which the lease should be renewed.
-    int64_t lease_period;
-    /// The time at which the current lease will expire, according to this
-    /// node's steady clock.
-    int64_t expires_at;
-    /// A timer used to determine when to next renew the lease.
-    std::unique_ptr<boost::asio::deadline_timer> lease_timer;
-  };
-
   /// Check whether the given object needs to be made available through object
   /// transfer or reconstruction. These are objects for which: (1) there is a
   /// subscribed task dependent on it, (2) the object is not local, and (3) the
   /// task that creates the object is not pending execution locally.
-  bool CheckObjectRequired(const ObjectID &object_id) const;
+  bool CheckObjectRequired(const ObjectID &object_id, rpc::Address *owner_address) const;
   /// If the given object is required, then request that the object be made
   /// available through object transfer or reconstruction.
   void HandleRemoteDependencyRequired(const ObjectID &object_id);
@@ -220,29 +211,12 @@ class TaskDependencyManager {
   /// operations to make the object available through object transfer or
   /// reconstruction.
   void HandleRemoteDependencyCanceled(const ObjectID &object_id);
-  /// Acquire the task lease in the GCS for the given task. This is used to
-  /// indicate to other nodes that the task is currently pending on this node.
-  /// The task lease has an expiration time. If we do not renew the lease
-  /// before that time, then other nodes may choose to execute the task.
-  void AcquireTaskLease(const TaskID &task_id);
 
   /// The object manager, used to fetch required objects from remote nodes.
   ObjectManagerInterface &object_manager_;
   /// The reconstruction policy, used to reconstruct required objects that no
   /// longer exist on any live nodes.
   ReconstructionPolicyInterface &reconstruction_policy_;
-  /// The event loop, used to set timers for renewing task leases. The task
-  /// leases are used to indicate which tasks are pending execution on this
-  /// node and must be periodically renewed.
-  boost::asio::io_service &io_service_;
-  /// This node's GCS client ID, used in the task lease information.
-  const ClientID client_id_;
-  /// For a given task, the expiration period of the initial task lease that is
-  /// added to the GCS. The lease expiration period is doubled every time the
-  /// lease is renewed.
-  const int64_t initial_lease_period_ms_;
-  /// A client connection to the GCS.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies, either task arguments or objects passed into `ray.get`.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;
@@ -262,11 +236,9 @@ class TaskDependencyManager {
   std::unordered_set<ray::ObjectID> local_objects_;
   /// The set of tasks that are pending execution. Any objects created by these
   /// tasks that are not already local are pending creation.
-  std::unordered_map<ray::TaskID, PendingTask> pending_tasks_;
+  std::unordered_set<ray::TaskID> pending_tasks_;
 };
 
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_TASK_DEPENDENCY_MANAGER_H

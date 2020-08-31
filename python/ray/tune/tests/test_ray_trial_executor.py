@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import unittest
 
 import ray
@@ -145,7 +144,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         """Tests that reset works as expected."""
 
         class B(Trainable):
-            def _train(self):
+            def step(self):
                 return dict(timesteps_this_iter=1, done=True)
 
             def reset_config(self, config):
@@ -190,9 +189,9 @@ class RayExecutorQueueTest(unittest.TestCase):
             connect=True,
             head_node_args={
                 "num_cpus": 1,
-                "_internal_config": json.dumps({
+                "_system_config": {
                     "num_heartbeats_timeout": 10
-                })
+                }
             })
         # Pytest doesn't play nicely with imports
         _register_all()

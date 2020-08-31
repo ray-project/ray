@@ -6,7 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_internal_config_map, SignalActor
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +32,29 @@ def test_shutdown():
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [generate_internal_config_map(num_heartbeats_timeout=20)],
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
+    ],
     indirect=True)
-def test_internal_config(ray_start_cluster_head):
+def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
     We set the cluster to timeout nodes after 2 seconds of no timeouts. We
     then remove a node, wait for 1 second to check that the cluster is out
     of sync, then wait another 2 seconds (giving 1 second of leeway) to check
-    that the client has timed out.
+    that the client has timed out. We also check to see if the config is set.
     """
     cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
+
+    @ray.remote
+    def f():
+        assert ray._config.object_timeout_milliseconds() == 12345
+        assert ray._config.num_heartbeats_timeout() == 20
+
+    ray.get([f.remote() for _ in range(5)])
 
     cluster.remove_node(worker, allow_graceful=False)
     time.sleep(1)
@@ -182,18 +191,6 @@ def test_wait_for_nodes(ray_start_cluster_head):
     cluster.remove_node(worker2)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
-
-
-def test_worker_plasma_store_failure(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
-    worker = cluster.add_node()
-    cluster.wait_for_nodes()
-    worker.kill_reporter()
-    worker.kill_plasma_store()
-    if ray_constants.PROCESS_TYPE_REAPER in worker.all_processes:
-        worker.kill_reaper()
-    worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
-    assert not worker.any_processes_alive(), worker.live_processes()
 
 
 if __name__ == "__main__":

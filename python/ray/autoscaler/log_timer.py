@@ -1,17 +1,28 @@
 import datetime
 import logging
 
+from ray.autoscaler.cli_logger import cli_logger
+
 logger = logging.getLogger(__name__)
 
 
 class LogTimer:
-    def __init__(self, message):
+    def __init__(self, message, show_status=False):
         self._message = message
+        self._show_status = show_status
 
     def __enter__(self):
         self._start_time = datetime.datetime.utcnow()
 
-    def __exit__(self, *_):
+    def __exit__(self, *error_vals):
+        if not cli_logger.old_style:
+            return
+
         td = datetime.datetime.utcnow() - self._start_time
-        logger.info(self._message +
-                    " [LogTimer={:.0f}ms]".format(td.total_seconds() * 1000))
+        status = ""
+        if self._show_status:
+            status = "failed" if any(error_vals) else "succeeded"
+        logger.info(" ".join([
+            self._message, status,
+            "[LogTimer={:.0f}ms]".format(td.total_seconds() * 1000)
+        ]))

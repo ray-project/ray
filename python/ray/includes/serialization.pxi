@@ -1,6 +1,5 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
-from libcpp cimport nullptr
 import cython
 
 DEF MEMCOPY_THREADS = 6
@@ -24,7 +23,7 @@ cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
         const Element* data() const
 
-cdef extern from "ray/protobuf/serialization.pb.h" nogil:
+cdef extern from "src/ray/protobuf/serialization.pb.h" nogil:
     cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
         void set_address(uint64_t value)
         uint64_t address() const
@@ -116,6 +115,9 @@ cdef class SubBuffer:
             <const char*> self.buf, self.len)
 
     def __getbuffer__(self, Py_buffer* buffer, int flags):
+        if flags & cpython.PyBUF_WRITABLE:
+            # Ray ensures all buffers are immutable.
+            raise BufferError
         buffer.readonly = self.readonly
         buffer.buf = self.buf
         buffer.format = <char *>self._format.c_str()
@@ -177,7 +179,8 @@ cdef class MessagePackSerializer(object):
                 raise Exception('Unrecognized ext type id: {}'.format(code))
         try:
             gc.disable()  # Performance optimization for msgpack.
-            return msgpack.loads(s, ext_hook=_ext_hook, raw=False)
+            return msgpack.loads(s, ext_hook=_ext_hook, raw=False,
+                                 strict_map_key=False)
         finally:
             gc.enable()
 
@@ -371,11 +374,11 @@ cdef class Pickle5Writer:
 cdef class SerializedObject(object):
     cdef:
         object _metadata
-        object _contained_object_ids
+        object _contained_object_refs
 
-    def __init__(self, metadata, contained_object_ids=None):
+    def __init__(self, metadata, contained_object_refs=None):
         self._metadata = metadata
-        self._contained_object_ids = contained_object_ids or []
+        self._contained_object_refs = contained_object_refs or []
 
     @property
     def total_bytes(self):
@@ -387,8 +390,8 @@ cdef class SerializedObject(object):
         return self._metadata
 
     @property
-    def contained_object_ids(self):
-        return self._contained_object_ids
+    def contained_object_refs(self):
+        return self._contained_object_refs
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
@@ -404,9 +407,9 @@ cdef class Pickle5SerializedObject(SerializedObject):
         object _total_bytes
 
     def __init__(self, metadata, inband, Pickle5Writer writer,
-                 contained_object_ids):
+                 contained_object_refs):
         super(Pickle5SerializedObject, self).__init__(metadata,
-                                                      contained_object_ids)
+                                                      contained_object_refs)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -438,13 +441,17 @@ cdef class MessagePackSerializedObject(SerializedObject):
     def __init__(self, metadata, msgpack_data,
                  SerializedObject nest_serialized_object=None):
         if nest_serialized_object:
-            contained_object_ids = nest_serialized_object.contained_object_ids
+            contained_object_refs = (
+                nest_serialized_object.contained_object_refs
+            )
             total_bytes = nest_serialized_object.total_bytes
         else:
-            contained_object_ids = []
+            contained_object_refs = []
             total_bytes = 0
-        super(MessagePackSerializedObject, self).__init__(metadata,
-                                                          contained_object_ids)
+        super(MessagePackSerializedObject, self).__init__(
+            metadata,
+            contained_object_refs,
+        )
         self.nest_serialized_object = nest_serialized_object
         self.msgpack_header = msgpack_header = msgpack.dumps(len(msgpack_data))
         self.msgpack_data = msgpack_data

@@ -1,0 +1,130 @@
+import {
+  createStyles,
+  Divider,
+  Grid,
+  makeStyles,
+  Theme,
+} from "@material-ui/core";
+import React from "react";
+import { ActorState, InvalidStateType } from "../../../api";
+import LabeledDatum from "../../../common/LabeledDatum";
+
+type ActorStateReprProps = {
+  state: ActorState;
+  ist?: InvalidStateType;
+};
+
+const actorStateReprStyles = makeStyles((theme: Theme) =>
+  createStyles({
+    infeasible: {
+      color: theme.palette.error.light,
+    },
+    pending: {
+      color: theme.palette.warning.light,
+    },
+    unknown: {
+      color: theme.palette.warning.light,
+    },
+    creating: {
+      color: theme.palette.success.light,
+    },
+    alive: {
+      color: theme.palette.success.dark,
+    },
+    restarting: {
+      color: theme.palette.warning.light,
+    },
+    dead: {
+      color: "#cccccc",
+    },
+  }),
+);
+
+const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, ist }) => {
+  const classes = actorStateReprStyles();
+  const {
+    Alive,
+    Dead,
+    PendingCreation,
+    Restarting,
+    DependenciesUnready,
+    Invalid,
+  } = ActorState;
+  switch (state) {
+    case Invalid:
+      console.log(ist);
+      if (ist === "infeasibleActor") {
+        return <div className={classes.infeasible}>Infeasible</div>;
+      }
+      if (ist === "pendingActor") {
+        return <div className={classes.pending}>Pending</div>;
+      }
+      return <div className={classes.unknown}>Unknown</div>;
+    case PendingCreation:
+      return <div className={classes.creating}>Creating</div>;
+    case DependenciesUnready:
+      return <div className={classes.creating}>Dependencies Unready</div>;
+    case Alive:
+      return <div className={classes.alive}>Alive</div>;
+    case Restarting:
+      return <div className={classes.restarting}>Restarting</div>;
+    case Dead:
+      return <div className={classes.dead}>Dead</div>;
+  }
+};
+
+type ActorDetailsPaneProps = {
+  actorTitle: string;
+  invalidStateType?: InvalidStateType;
+  actorState: ActorState;
+  actorDetails: {
+    label: string;
+    value: any;
+    tooltip?: string;
+  }[];
+};
+
+const useStyles = makeStyles((theme: Theme) => ({
+  divider: {
+    width: "100%",
+    margin: "0 auto",
+  },
+  actorTitleWrapper: {
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    fontWeight: "bold",
+    fontSize: "130%",
+  },
+  detailsPane: {
+    margin: theme.spacing(1),
+  },
+}));
+
+const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
+  actorTitle,
+  actorDetails,
+  actorState,
+  invalidStateType,
+}) => {
+  const classes = useStyles();
+  return (
+    <React.Fragment>
+      <div className={classes.actorTitleWrapper}>
+        <div>{actorTitle}</div>
+        <ActorStateRepr ist={invalidStateType} state={actorState} />
+      </div>
+      <Divider className={classes.divider} />
+      <Grid container className={classes.detailsPane}>
+        {actorDetails.map(
+          ({ label, value, tooltip }) =>
+            value &&
+            value.length > 0 && (
+              <LabeledDatum label={label} datum={value} tooltip={tooltip} />
+            ),
+        )}
+      </Grid>
+    </React.Fragment>
+  );
+};
+
+export default ActorDetailsPane;

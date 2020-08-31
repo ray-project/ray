@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@material-ui/core": "^4.9.7",
+    "@material-ui/core": "4.11.0",
     "@material-ui/icons": "^4.9.1",
     "@reduxjs/toolkit": "^1.3.1",
     "@types/classnames": "^2.2.10",
@@ -33,6 +33,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "lint": "npm run eslint && npm run prettier",
+    "lint-fix": "npm run prettier -- --write && npm run eslint -- --fix",
     "prettier": "./node_modules/.bin/prettier -c src/",
     "eslint": "./node_modules/.bin/eslint \"src/**\""
   },

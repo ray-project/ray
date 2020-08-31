@@ -3,10 +3,13 @@ from six.moves import queue
 
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 
 LEARNER_QUEUE_MAX_SIZE = 16
+
+tf1, tf, tfv = try_import_tf()
 
 
 class LearnerThread(threading.Thread):
@@ -33,6 +36,9 @@ class LearnerThread(threading.Thread):
         self.stats = {}
 
     def run(self):
+        # Switch on eager mode if configured.
+        if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
+            tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
 

@@ -53,7 +53,7 @@ def test_global_gc(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
     finally:
         gc.enable()
 
@@ -97,7 +97,7 @@ def test_global_gc_when_full(shutdown_only):
 
         # GC should be triggered for all workers, including the local driver,
         # when the driver tries to ray.put a value that doesn't fit in the
-        # object store. This should cause the captured ObjectIDs' numpy arrays
+        # object store. This should cause the captured ObjectRefs' numpy arrays
         # to be evicted.
         ray.put(np.zeros(80 * 1024 * 1024, dtype=np.uint8))
 
@@ -105,7 +105,7 @@ def test_global_gc_when_full(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
 
         # Local driver.
         local_ref = weakref.ref(LargeObjectWithCyclicRef())
@@ -116,7 +116,7 @@ def test_global_gc_when_full(shutdown_only):
 
         # GC should be triggered for all workers, including the local driver,
         # when a remote task tries to put a return value that doesn't fit in
-        # the object store. This should cause the captured ObjectIDs' numpy
+        # the object store. This should cause the captured ObjectRefs' numpy
         # arrays to be evicted.
         ray.get(actors[0].return_large_array.remote())
 
@@ -124,7 +124,7 @@ def test_global_gc_when_full(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        assert wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced)
     finally:
         gc.enable()
 

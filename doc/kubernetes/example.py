@@ -7,10 +7,10 @@ import ray
 
 @ray.remote
 def gethostname(x):
+    import platform
     import time
-    import socket
     time.sleep(0.01)
-    return x + (socket.gethostname(), )
+    return x + (platform.node(), )
 
 
 def wait_for_nodes(expected):

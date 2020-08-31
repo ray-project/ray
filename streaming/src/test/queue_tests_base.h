@@ -1,3 +1,6 @@
+#pragma once
+
+#include "hiredis/hiredis.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
 
@@ -18,9 +21,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
   StreamingQueueTestBase(int num_nodes, int port)
       : gcs_options_("127.0.0.1", 6379, ""), node_manager_port_(port) {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
     TestSetupUtil::StartUpRedisServers(std::vector<int>{6379, 6380});
 
     // flush redis first.
@@ -83,8 +83,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str,
                         queue_ids, rescale_queue_ids, suite_name, test_name, param);
 
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, resources};
@@ -92,15 +92,15 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids);
   }
 
   void SubmitTestToActor(ActorID &actor_id, const std::string test) {
     auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, resources};
@@ -108,15 +108,15 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", test, "execute_test", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
   }
 
   bool CheckCurTest(ActorID &actor_id, const std::string test_name) {
     auto &driver = CoreWorkerProcess::GetCoreWorker();
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{1, resources};
@@ -124,7 +124,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "check_current_test_status", "")};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
@@ -183,8 +183,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "actor creation task", "")};
-    std::vector<TaskArg> args;
-    args.emplace_back(TaskArg::PassByValue(
+    std::vector<std::unique_ptr<TaskArg>> args;
+    args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
     std::string name = "";
@@ -223,6 +223,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::DRIVER,             // worker_type
         Language::PYTHON,               // langauge
@@ -242,11 +243,16 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
         nullptr,                        // gc_collect
+        nullptr,                        // spill_objects
+        nullptr,                        // restore_spilled_objects
         nullptr,                        // get_lang_stack
         nullptr,                        // kill_main
         true,                           // ref_counting_enabled
         false,                          // is_local_mode
         1,                              // num_workers
+        nullptr,                        // terminate_asyncio_thread
+        "",                             // serialized_job_config
+        -1,                             // metrics_agent_port
     };
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);

@@ -3,8 +3,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn.apex as apex
-from ray.rllib.utils.test_utils import check, framework_iterator, \
-    check_compute_action
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 
 
 class TestApexDQN(unittest.TestCase):
@@ -17,11 +17,12 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_zero_workers(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
+        config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
         config["optimizer"]["num_replay_buffer_shards"] = 1
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        for _ in framework_iterator(config):
             trainer = apex.ApexTrainer(config=config, env="CartPole-v0")
             trainer.train()
             trainer.stop()
@@ -30,6 +31,7 @@ class TestApexDQN(unittest.TestCase):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
+        config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
@@ -45,7 +47,7 @@ class TestApexDQN(unittest.TestCase):
             expected = [0.4, 0.016190862, 0.00065536]
             check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            check_compute_action(trainer)
+            check_compute_single_action(trainer)
 
             # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
             #            for i in range(1):

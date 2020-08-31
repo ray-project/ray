@@ -9,21 +9,15 @@ import {
 } from "@material-ui/core";
 import React from "react";
 import { connect } from "react-redux";
-import {
-  getNodeInfo,
-  getRayletInfo,
-  getTuneAvailability,
-  getMemoryTable,
-  stopMemoryTableCollection,
-} from "../../api";
+import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
+import MemoryInfo from "./memory/Memory";
 import NodeInfo from "./node-info/NodeInfo";
 import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
-import MemoryInfo from "./memory/Memory";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -44,7 +38,6 @@ const styles = (theme: Theme) =>
 const mapStateToProps = (state: StoreState) => ({
   tab: state.dashboard.tab,
   tuneAvailability: state.dashboard.tuneAvailability,
-  shouldObtainMemoryTable: state.dashboard.shouldObtainMemoryTable,
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -64,25 +57,15 @@ class Dashboard extends React.Component<
   ];
 
   refreshInfo = async () => {
-    let { shouldObtainMemoryTable } = this.props;
     try {
-      const [
-        nodeInfo,
-        rayletInfo,
-        memoryTable,
-        tuneAvailability,
-      ] = await Promise.all([
+      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
         getRayletInfo(),
-        getMemoryTable(shouldObtainMemoryTable),
         getTuneAvailability(),
       ]);
       this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setTuneAvailability(tuneAvailability);
       this.props.setError(null);
-      if (shouldObtainMemoryTable) {
-        this.props.setMemoryTable(memoryTable);
-      }
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
@@ -98,19 +81,12 @@ class Dashboard extends React.Component<
     clearTimeout(this.timeoutId);
   }
 
-  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) => {
+  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) =>
     this.props.setTab(value);
-    if (this.tabs[value].label === "Memory") {
-      this.props.setShouldObtainMemoryTable(true);
-    } else {
-      this.props.setShouldObtainMemoryTable(false);
-      await stopMemoryTableCollection();
-    }
-  };
 
   render() {
     const { classes, tab, tuneAvailability } = this.props;
-    let tabs = this.tabs.slice();
+    const tabs = this.tabs.slice();
 
     // if Tune information is not available, remove Tune tab from the dashboard
     if (tuneAvailability === null || !tuneAvailability.available) {

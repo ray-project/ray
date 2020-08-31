@@ -12,19 +12,12 @@ import errno
 import json
 import logging
 import os
-import re
-import socket
+import platform
 import threading
 import time
 import traceback
 import yaml
 import uuid
-
-from base64 import b64decode
-from collections import defaultdict
-from operator import itemgetter
-from typing import Dict
-
 import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
@@ -38,9 +31,13 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.interface import BaseDashboardController
 from ray.dashboard.interface import BaseDashboardRouteHandler
-from ray.dashboard.memory import construct_memory_table, MemoryTable
+from ray.dashboard.memory import construct_memory_table, MemoryTable, \
+     GroupByType, SortingType
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
+from ray.dashboard.node_stats import NodeStats
+from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
     from ray.tune import Analysis
@@ -52,54 +49,6 @@ except ImportError:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-
-def to_unix_time(dt):
-    return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
-
-
-def round_resource_value(quantity):
-    if quantity.is_integer():
-        return int(quantity)
-    else:
-        return round(quantity, 2)
-
-
-def format_resource(resource_name, quantity):
-    if resource_name == "object_store_memory" or resource_name == "memory":
-        # Convert to 50MiB chunks and then to GiB
-        quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
-        return "{} GiB".format(round_resource_value(quantity))
-    return "{}".format(round_resource_value(quantity))
-
-
-def format_reply_id(reply):
-    if isinstance(reply, dict):
-        for k, v in reply.items():
-            if isinstance(v, dict) or isinstance(v, list):
-                format_reply_id(v)
-            else:
-                if k.endswith("Id"):
-                    v = b64decode(v)
-                    reply[k] = ray.utils.binary_to_hex(v)
-    elif isinstance(reply, list):
-        for item in reply:
-            format_reply_id(item)
-
-
-def measures_to_dict(measures):
-    measures_dict = {}
-    for measure in measures:
-        tags = measure["tags"].split(",")[-1]
-        if "intValue" in measure:
-            measures_dict[tags] = measure["intValue"]
-        elif "doubleValue" in measure:
-            measures_dict[tags] = measure["doubleValue"]
-    return measures_dict
-
-
-def b64_decode(reply):
-    return b64decode(reply).decode("utf-8")
 
 
 async def json_response(is_dev, result=None, error=None,
@@ -143,8 +92,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actor_tree = self.node_stats.get_actor_tree(
-            workers_info_by_node, infeasible_tasks, ready_tasks)
+        actors = self.node_stats.get_actors(workers_info_by_node,
+                                            infeasible_tasks, ready_tasks)
 
         for address, data in D.items():
             # process view data
@@ -183,15 +132,14 @@ class DashboardController(BaseDashboardController):
                         stats_name, stats_value))
                 data["extraInfo"] += ", ".join(extra_info_strings)
                 # process actor info
-                actor_tree_str = json.dumps(
-                    actor_tree, indent=2, sort_keys=True)
-                lines = actor_tree_str.split("\n")
+                actors_str = json.dumps(actors, indent=2, sort_keys=True)
+                lines = actors_str.split("\n")
                 max_line_length = max(map(len, lines))
                 to_print = []
                 for line in lines:
                     to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
-        return {"nodes": D, "actors": actor_tree}
+        return {"nodes": D, "actors": actors}
 
     def get_ray_config(self):
         try:
@@ -228,7 +176,9 @@ class DashboardController(BaseDashboardController):
     def get_raylet_info(self):
         return self._construct_raylet_info()
 
-    def get_memory_table_info(self) -> MemoryTable:
+    def get_memory_table_info(self,
+                              group_by=GroupByType.NODE_ADDRESS,
+                              sort_by=SortingType.OBJECT_SIZE) -> MemoryTable:
         # Collecting memory info adds big overhead to the cluster.
         # This must be collected only when it is necessary.
         self.raylet_stats.include_memory_info = True
@@ -237,7 +187,8 @@ class DashboardController(BaseDashboardController):
             data["nodeId"]: data.get("workersStats")
             for data in D.values()
         }
-        self.memory_table = construct_memory_table(workers_info_by_node)
+        self.memory_table = construct_memory_table(
+            workers_info_by_node, group_by=group_by, sort_by=sort_by)
         return self.memory_table
 
     def stop_collecting_memory_table_info(self):
@@ -333,7 +284,19 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
         return await json_response(self.is_dev, result=result)
 
     async def memory_table_info(self, req) -> aiohttp.web.Response:
-        memory_table = self.dashboard_controller.get_memory_table_info()
+        group_by = req.query.get("group_by")
+        sort_by = req.query.get("sort_by")
+        kwargs = {}
+        try:
+            if group_by:
+                kwargs["group_by"] = GroupByType(group_by)
+            if sort_by:
+                kwargs["sort_by"] = SortingType(sort_by)
+        except ValueError as e:
+            return aiohttp.web.HTTPBadRequest(reason=str(e))
+
+        memory_table = self.dashboard_controller.get_memory_table_info(
+            **kwargs)
         return await json_response(self.is_dev, result=memory_table.__dict__())
 
     async def stop_collecting_memory_table_info(self,
@@ -546,6 +509,8 @@ class Dashboard:
         self.dashboard_id = str(uuid.uuid4())
         self.dashboard_controller = DashboardController(
             redis_address, redis_password)
+        self.service_discovery = PrometheusServiceDiscoveryWriter(
+            redis_address, redis_password, temp_dir)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -624,249 +589,10 @@ class Dashboard:
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
+        self.service_discovery.start()
         if self.metrics_export_address:
             self._start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
-
-
-class NodeStats(threading.Thread):
-    def __init__(self, redis_address, redis_password=None):
-        self.redis_key = "{}.*".format(ray.gcs_utils.REPORTER_CHANNEL)
-        self.redis_client = ray.services.create_redis_client(
-            redis_address, password=redis_password)
-
-        self._node_stats = {}
-        self._addr_to_owner_addr = {}
-        self._addr_to_actor_id = {}
-        self._addr_to_extra_info_dict = {}
-        self._node_stats_lock = threading.Lock()
-
-        self._default_info = {
-            "actorId": "",
-            "children": {},
-            "currentTaskFuncDesc": [],
-            "ipAddress": "",
-            "jobId": "",
-            "numExecutedTasks": 0,
-            "numLocalObjects": 0,
-            "numObjectIdsInScope": 0,
-            "port": 0,
-            "state": 0,
-            "taskQueueLength": 0,
-            "usedObjectStoreMemory": 0,
-            "usedResources": {},
-        }
-
-        # Mapping from IP address to PID to list of log lines
-        self._logs = defaultdict(lambda: defaultdict(list))
-
-        # Mapping from IP address to PID to list of error messages
-        self._errors = defaultdict(lambda: defaultdict(list))
-
-        ray.state.state._initialize_global_state(
-            redis_address=redis_address, redis_password=redis_password)
-
-        super().__init__()
-
-    def _calculate_log_counts(self):
-        return {
-            ip: {
-                pid: len(logs_for_pid)
-                for pid, logs_for_pid in logs_for_ip.items()
-            }
-            for ip, logs_for_ip in self._logs.items()
-        }
-
-    def _calculate_error_counts(self):
-        return {
-            ip: {
-                pid: len(errors_for_pid)
-                for pid, errors_for_pid in errors_for_ip.items()
-            }
-            for ip, errors_for_ip in self._errors.items()
-        }
-
-    def _purge_outdated_stats(self):
-        def current(then, now):
-            if (now - then) > 5:
-                return False
-
-            return True
-
-        now = to_unix_time(datetime.datetime.utcnow())
-        self._node_stats = {
-            k: v
-            for k, v in self._node_stats.items() if current(v["now"], now)
-        }
-
-    def get_node_stats(self) -> Dict:
-        with self._node_stats_lock:
-            self._purge_outdated_stats()
-            node_stats = sorted(
-                (v for v in self._node_stats.values()),
-                key=itemgetter("boot_time"))
-            return {
-                "clients": node_stats,
-                "log_counts": self._calculate_log_counts(),
-                "error_counts": self._calculate_error_counts(),
-            }
-
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
-                       ready_tasks) -> Dict:
-        now = time.time()
-        # construct flattened actor tree
-        flattened_tree = {"root": {"children": {}}}
-        child_to_parent = {}
-        with self._node_stats_lock:
-            for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
-                flattened_tree[actor_id].update(
-                    self._addr_to_extra_info_dict[addr])
-                parent_id = self._addr_to_actor_id.get(
-                    self._addr_to_owner_addr[addr], "root")
-                child_to_parent[actor_id] = parent_id
-
-            for node_id, workers_info in workers_info_by_node.items():
-                for worker_info in workers_info:
-                    if "coreWorkerStats" in worker_info:
-                        core_worker_stats = worker_info["coreWorkerStats"]
-                        addr = (core_worker_stats["ipAddress"],
-                                str(core_worker_stats["port"]))
-                        if addr in self._addr_to_actor_id:
-                            actor_info = flattened_tree[self._addr_to_actor_id[
-                                addr]]
-                            format_reply_id(core_worker_stats)
-                            actor_info.update(core_worker_stats)
-                            actor_info["averageTaskExecutionSpeed"] = round(
-                                actor_info["numExecutedTasks"] /
-                                (now - actor_info["timestamp"] / 1000), 2)
-                            actor_info["nodeId"] = node_id
-                            actor_info["pid"] = worker_info["pid"]
-
-            def _update_flatten_tree(task, task_spec_type, invalid_state_type):
-                actor_id = ray.utils.binary_to_hex(
-                    b64decode(task[task_spec_type]["actorId"]))
-                caller_addr = (task["callerAddress"]["ipAddress"],
-                               str(task["callerAddress"]["port"]))
-                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
-                child_to_parent[actor_id] = caller_id
-                task["state"] = -1
-                task["invalidStateType"] = invalid_state_type
-                task["actorTitle"] = task["functionDescriptor"][
-                    "pythonFunctionDescriptor"]["className"]
-                format_reply_id(task)
-                flattened_tree[actor_id] = task
-
-            for infeasible_task in infeasible_tasks:
-                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
-                                     "infeasibleActor")
-
-            for ready_task in ready_tasks:
-                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
-                                     "pendingActor")
-
-        # construct actor tree
-        actor_tree = flattened_tree
-        for actor_id, parent_id in child_to_parent.items():
-            actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
-        return actor_tree["root"]["children"]
-
-    def get_logs(self, hostname, pid):
-        ip = self._node_stats.get(hostname, {"ip": None})["ip"]
-        logs = self._logs.get(ip, {})
-        if pid:
-            logs = {pid: logs.get(pid, [])}
-        return logs
-
-    def get_errors(self, hostname, pid):
-        ip = self._node_stats.get(hostname, {"ip": None})["ip"]
-        errors = self._errors.get(ip, {})
-        if pid:
-            errors = {pid: errors.get(pid, [])}
-        return errors
-
-    def run(self):
-        p = self.redis_client.pubsub(ignore_subscribe_messages=True)
-
-        p.psubscribe(self.redis_key)
-        logger.info("NodeStats: subscribed to {}".format(self.redis_key))
-
-        log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
-        p.subscribe(log_channel)
-        logger.info("NodeStats: subscribed to {}".format(log_channel))
-
-        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
-        p.subscribe(error_channel)
-        logger.info("NodeStats: subscribed to {}".format(error_channel))
-
-        actor_channel = ray.gcs_utils.TablePubsub.Value("ACTOR_PUBSUB")
-        p.subscribe(actor_channel)
-        logger.info("NodeStats: subscribed to {}".format(actor_channel))
-
-        current_actor_table = ray.actors()
-        with self._node_stats_lock:
-            for actor_data in current_actor_table.values():
-                addr = (actor_data["Address"]["IPAddress"],
-                        str(actor_data["Address"]["Port"]))
-                owner_addr = (actor_data["OwnerAddress"]["IPAddress"],
-                              str(actor_data["OwnerAddress"]["Port"]))
-                self._addr_to_owner_addr[addr] = owner_addr
-                self._addr_to_actor_id[addr] = actor_data["ActorID"]
-                self._addr_to_extra_info_dict[addr] = {
-                    "jobId": actor_data["JobID"],
-                    "state": actor_data["State"],
-                    "timestamp": actor_data["Timestamp"]
-                }
-
-        for x in p.listen():
-            try:
-                with self._node_stats_lock:
-                    channel = ray.utils.decode(x["channel"])
-                    data = x["data"]
-                    if channel == log_channel:
-                        data = json.loads(ray.utils.decode(data))
-                        ip = data["ip"]
-                        pid = str(data["pid"])
-                        self._logs[ip][pid].extend(data["lines"])
-                    elif channel == str(error_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
-                        error_data = ray.gcs_utils.ErrorTableData.FromString(
-                            gcs_entry.entries[0])
-                        message = error_data.error_message
-                        message = re.sub(r"\x1b\[\d+m", "", message)
-                        match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
-                        if match:
-                            pid = match.group(1)
-                            ip = match.group(2)
-                            self._errors[ip][pid].append({
-                                "message": message,
-                                "timestamp": error_data.timestamp,
-                                "type": error_data.type
-                            })
-                    elif channel == str(actor_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
-                        actor_data = ray.gcs_utils.ActorTableData.FromString(
-                            gcs_entry.entries[0])
-                        addr = (actor_data.address.ip_address,
-                                str(actor_data.address.port))
-                        owner_addr = (actor_data.owner_address.ip_address,
-                                      str(actor_data.owner_address.port))
-                        self._addr_to_owner_addr[addr] = owner_addr
-                        self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
-                            actor_data.actor_id)
-                        self._addr_to_extra_info_dict[addr] = {
-                            "jobId": ray.utils.binary_to_hex(
-                                actor_data.job_id),
-                            "state": actor_data.state,
-                            "timestamp": actor_data.timestamp
-                        }
-                    else:
-                        data = json.loads(ray.utils.decode(data))
-                        self._node_stats[data["hostname"]] = data
-
-            except Exception:
-                logger.exception(traceback.format_exc())
-                continue
 
 
 class RayletStats(threading.Thread):
@@ -926,7 +652,7 @@ class RayletStats(threading.Thread):
                 self.reporter_stubs), (self.stubs.keys(),
                                        self.reporter_stubs.keys())
 
-    def get_raylet_stats(self) -> Dict:
+    def get_raylet_stats(self):
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
 
@@ -951,8 +677,8 @@ class RayletStats(threading.Thread):
             return {"status": "pending"}
 
         reply = self._profiling_stats[profiling_id]
-        if reply.stderr:
-            return {"status": "error", "error": reply.stderr}
+        if reply.std_err:
+            return {"status": "error", "error": reply.std_err}
         else:
             return {"status": "finished"}
 
@@ -1168,7 +894,7 @@ class TuneCollector(threading.Thread):
 
             # round all floats
             for key in float_keys:
-                details[key] = round(details[key], 3)
+                details[key] = round(details[key], 12)
 
             # group together config attributes
             for key in config_keys:
@@ -1258,7 +984,7 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(socket.gethostname(), traceback_str))
+                   "error:\n{}".format(platform.node(), traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:

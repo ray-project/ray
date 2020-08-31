@@ -20,6 +20,7 @@ class StreamTask(ABC):
         self.task_id = task_id
         self.processor = processor
         self.worker = worker
+        self.config = worker.config
         self.reader = None  # DataReader
         self.writers = {}  # ExecutionEdge -> DataWriter
         self.thread = None
@@ -35,18 +36,20 @@ class StreamTask(ABC):
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
-        execution_graph = self.worker.execution_graph
-        execution_node = self.worker.execution_node
+        execution_vertex_context = self.worker.execution_vertex_context
+        build_time = execution_vertex_context.build_time
+
         # writers
         collectors = []
-        for edge in execution_node.output_edges:
-            output_actors_map = {}
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
-                edge.target_node_id)
-            for target_task_id, target_actor in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(self.task_id, target_task_id,
-                                                execution_graph.build_time())
-                output_actors_map[channel_name] = target_actor
+        output_actors_map = {}
+        for edge in execution_vertex_context.output_execution_edges:
+            target_task_id = edge.target_execution_vertex_id
+            target_actor = execution_vertex_context\
+                .get_target_actor_by_vertex_id(target_task_id)
+            channel_name = ChannelID.gen_id(self.task_id, target_task_id,
+                                            build_time)
+            output_actors_map[channel_name] = target_actor
+
             if len(output_actors_map) > 0:
                 channel_ids = list(output_actors_map.keys())
                 target_actors = list(output_actors_map.values())
@@ -61,13 +64,14 @@ class StreamTask(ABC):
 
         # readers
         input_actor_map = {}
-        for edge in execution_node.input_edges:
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
-                edge.src_node_id)
-            for src_task_id, src_actor in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(src_task_id, self.task_id,
-                                                execution_graph.build_time())
-                input_actor_map[channel_name] = src_actor
+        for edge in execution_vertex_context.input_execution_edges:
+            source_task_id = edge.source_execution_vertex_id
+            source_actor = execution_vertex_context\
+                .get_source_actor_by_vertex_id(source_task_id)
+            channel_name = ChannelID.gen_id(source_task_id, self.task_id,
+                                            build_time)
+            input_actor_map[channel_name] = source_actor
+
         if len(input_actor_map) > 0:
             channel_ids = list(input_actor_map.keys())
             from_actors = list(input_actor_map.values())
@@ -85,8 +89,9 @@ class StreamTask(ABC):
 
         # TODO(chaokunyang) add task/job config
         runtime_context = RuntimeContextImpl(
-            self.worker.execution_task.task_id,
-            self.worker.execution_task.task_index, execution_node.parallelism)
+            self.worker.task_id,
+            execution_vertex_context.execution_vertex.execution_vertex_index,
+            execution_vertex_context.get_parallelism())
         logger.info("open Processor {}".format(self.processor))
         self.processor.open(collectors, runtime_context)
 

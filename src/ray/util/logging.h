@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_LOGGING_H
-#define RAY_UTIL_LOGGING_H
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -33,6 +32,16 @@
 enum { ERROR = 0 };
 #endif
 #endif
+
+#if defined(DEBUG) && DEBUG == 1
+// Bazel defines the DEBUG macro for historical reasons:
+// https://github.com/bazelbuild/bazel/issues/3513#issuecomment-323829248
+// Undefine the DEBUG macro to prevent conflicts with our usage below
+#undef DEBUG
+// Redefine DEBUG as itself to allow any '#ifdef DEBUG' to keep working regardless
+#define DEBUG DEBUG
+#endif
+
 namespace ray {
 
 enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
@@ -161,5 +170,3 @@ class Voidify {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_LOGGING_H

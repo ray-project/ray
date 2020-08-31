@@ -8,10 +8,10 @@ import java.util.List;
  */
 public final class WaitResult<T> {
 
-  private final List<RayObject<T>> ready;
-  private final List<RayObject<T>> unready;
+  private final List<ObjectRef<T>> ready;
+  private final List<ObjectRef<T>> unready;
 
-  public WaitResult(List<RayObject<T>> ready, List<RayObject<T>> unready) {
+  public WaitResult(List<ObjectRef<T>> ready, List<ObjectRef<T>> unready) {
     this.ready = ready;
     this.unready = unready;
   }
@@ -19,14 +19,14 @@ public final class WaitResult<T> {
   /**
    * Get the list of ready objects.
    */
-  public List<RayObject<T>> getReady() {
+  public List<ObjectRef<T>> getReady() {
     return ready;
   }
 
   /**
    * Get the list of unready objects.
    */
-  public List<RayObject<T>> getUnready() {
+  public List<ObjectRef<T>> getUnready() {
     return unready;
   }
 

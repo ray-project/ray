@@ -1,5 +1,6 @@
 import logging
 from types import FunctionType
+from typing import Callable, List, Optional, Type, TypeVar, Union
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -7,11 +8,18 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput
-from ray.rllib.utils import merge_dicts, try_import_tf
+from ray.rllib.env.env_context import EnvContext
+from ray.rllib.policy import Policy
+from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
+
+# Generic type var for foreach_* methods.
+T = TypeVar("T")
 
 
 @DeveloperAPI
@@ -22,21 +30,23 @@ class WorkerSet:
     """
 
     def __init__(self,
-                 env_creator,
-                 policy,
-                 trainer_config=None,
-                 num_workers=0,
-                 logdir=None,
-                 _setup=True):
+                 *,
+                 env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
+                 policy_class: Optional[Type[Policy]] = None,
+                 trainer_config: Optional[TrainerConfigDict] = None,
+                 num_workers: int = 0,
+                 logdir: Optional[str] = None,
+                 _setup: bool = True):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
-            env_creator (func): Function that returns env given env config.
-            policy (cls): rllib.policy.Policy class.
-            trainer_config (dict): Optional dict that extends the common
-                config of the Trainer class.
+            env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
+                that returns env given env config.
+            policy (Optional[Type[Policy]]): A rllib.policy.Policy class.
+            trainer_config (Optional[TrainerConfigDict]): Optional dict that
+                extends the common config of the Trainer class.
             num_workers (int): Number of remote rollout workers to create.
-            logdir (str): Optional logging directory for workers.
+            logdir (Optional[str]): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
         """
 
@@ -45,7 +55,7 @@ class WorkerSet:
             trainer_config = COMMON_CONFIG
 
         self._env_creator = env_creator
-        self._policy = policy
+        self._policy_class = policy_class
         self._remote_config = trainer_config
         self._logdir = logdir
 
@@ -54,30 +64,31 @@ class WorkerSet:
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
 
-            # Always create a local worker
-            self._local_worker = self._make_worker(
-                RolloutWorker, env_creator, policy, 0, self._local_config)
-
             # Create a number of remote workers
             self._remote_workers = []
             self.add_workers(num_workers)
 
-    def local_worker(self):
+            # Always create a local worker
+            self._local_worker = self._make_worker(RolloutWorker, env_creator,
+                                                   self._policy_class, 0,
+                                                   self._local_config)
+
+    def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""
         return self._local_worker
 
-    def remote_workers(self):
+    def remote_workers(self) -> List["ActorHandle"]:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self):
+    def sync_weights(self) -> None:
         """Syncs weights of remote workers with the local worker."""
         if self.remote_workers():
             weights = ray.put(self.local_worker().get_weights())
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
-    def add_workers(self, num_workers):
+    def add_workers(self, num_workers: int) -> None:
         """Creates and add a number of remote workers to this worker set.
 
         Args:
@@ -94,15 +105,16 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(cls, self._env_creator, self._policy, i + 1,
-                              self._remote_config) for i in range(num_workers)
+            self._make_worker(cls, self._env_creator, self._policy_class,
+                              i + 1, self._remote_config)
+            for i in range(num_workers)
         ])
 
-    def reset(self, new_remote_workers):
+    def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
         """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop all rollout workers."""
         self.local_worker().stop()
         for w in self.remote_workers():
@@ -110,7 +122,7 @@ class WorkerSet:
             w.__ray_terminate__.remote()
 
     @DeveloperAPI
-    def foreach_worker(self, func):
+    def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
         """Apply the given function to each worker instance."""
 
         local_result = [func(self.local_worker())]
@@ -119,7 +131,8 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
-    def foreach_worker_with_index(self, func):
+    def foreach_worker_with_index(
+            self, func: Callable[[RolloutWorker, int], T]) -> List[T]:
         """Apply the given function to each worker instance.
 
         The index will be passed as the second arg to the given function.
@@ -132,7 +145,7 @@ class WorkerSet:
         return local_result + remote_results
 
     @DeveloperAPI
-    def foreach_policy(self, func):
+    def foreach_policy(self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply the given function to each worker's (policy, policy_id) tuple.
 
         Args:
@@ -152,12 +165,13 @@ class WorkerSet:
         return local_results + remote_results
 
     @DeveloperAPI
-    def trainable_policies(self):
+    def trainable_policies(self) -> List[PolicyID]:
         """Return the list of trainable policy ids."""
         return self.local_worker().foreach_trainable_policy(lambda _, pid: pid)
 
     @DeveloperAPI
-    def foreach_trainable_policy(self, func):
+    def foreach_trainable_policy(
+            self, func: Callable[[Policy, PolicyID], T]) -> List[T]:
         """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
@@ -178,18 +192,26 @@ class WorkerSet:
         return local_results + remote_results
 
     @staticmethod
-    def _from_existing(local_worker, remote_workers=None):
-        workers = WorkerSet(None, None, {}, _setup=False)
+    def _from_existing(local_worker: RolloutWorker,
+                       remote_workers: List["ActorHandle"] = None):
+        workers = WorkerSet(
+            env_creator=None,
+            policy_class=None,
+            trainer_config={},
+            _setup=False)
         workers._local_worker = local_worker
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self, cls, env_creator, policy, worker_index, config):
+    def _make_worker(
+            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
+            policy: Type[Policy], worker_index: int,
+            config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
-            return tf.Session(
-                config=tf.ConfigProto(**config["tf_session_args"]))
+            return tf1.Session(
+                config=tf1.ConfigProto(**config["tf_session_args"]))
 
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
@@ -226,7 +248,7 @@ class WorkerSet:
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy if 'None' is specified in multiagent
+        # Fill in the default policy if 'None' is specified in multiagent.
         if config["multiagent"]["policies"]:
             tmp = config["multiagent"]["policies"]
             _validate_multiagent_config(tmp, allow_none_graph=True)

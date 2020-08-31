@@ -1,37 +1,52 @@
 
 #include "abstract_ray_runtime.h"
 
-#include <cassert>
-
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
+
+#include <cassert>
+
 #include "../util/address_helper.h"
+#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
+#include "native_ray_runtime.h"
 
 namespace ray {
 namespace api {
 AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config) {
   AbstractRayRuntime *runtime;
-  if (config->runMode == RunMode::SINGLE_PROCESS) {
+  if (config->run_mode == RunMode::SINGLE_PROCESS) {
     GenerateBaseAddressOfCurrentLibrary();
     runtime = new LocalModeRayRuntime(config);
   } else {
-    throw RayException("Only single process mode supported now");
+    ProcessHelper::getInstance().RayStart(config);
+    runtime = new NativeRayRuntime(config);
   }
   RAY_CHECK(runtime);
   return runtime;
 }
 
+void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
+  if (config->run_mode == RunMode::CLUSTER) {
+    ProcessHelper::getInstance().RayStop(config);
+  }
+}
+
+void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
+                             ObjectID *object_id) {
+  object_store_->Put(data, object_id);
+}
+
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
                              const ObjectID &object_id) {
-  object_store_->Put(object_id, data);
+  object_store_->Put(data, object_id);
 }
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   ObjectID object_id =
-      ObjectID::ForPut(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
-  Put(data, object_id);
+      ObjectID::FromIndex(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
+  Put(data, &object_id);
   return object_id;
 }
 

@@ -1,6 +1,5 @@
 package io.ray.streaming.api.stream;
 
-
 import io.ray.streaming.api.Language;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
@@ -17,6 +16,9 @@ import io.ray.streaming.operator.impl.KeyByOperator;
 import io.ray.streaming.operator.impl.MapOperator;
 import io.ray.streaming.operator.impl.SinkOperator;
 import io.ray.streaming.python.stream.PythonDataStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Represents a stream of data.
@@ -30,9 +32,10 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(streamingContext, streamOperator);
   }
 
-  public DataStream(StreamingContext streamingContext,
-                    StreamOperator streamOperator,
-                    Partition<T> partition) {
+  public DataStream(
+      StreamingContext streamingContext,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(streamingContext, streamOperator, partition);
   }
 
@@ -40,15 +43,16 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(input, streamOperator);
   }
 
-  public <R> DataStream(DataStream<R> input,
-                        StreamOperator streamOperator,
-                        Partition<T> partition) {
+  public <R> DataStream(
+      DataStream<R> input,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(input, streamOperator, partition);
   }
 
   /**
-   * Create a java stream that reference passed python stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a java stream that reference passed python stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public DataStream(PythonDataStream referencedStream) {
     super(referencedStream);
@@ -81,13 +85,36 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply a union transformation to this stream, with another stream.
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of the same
+   * type with each other.
    *
-   * @param other Another stream.
+   * @param stream The DataStream to union output with.
+   * @param others The other DataStreams to union output with.
    * @return A new UnionStream.
    */
-  public UnionStream<T> union(DataStream<T> other) {
-    return new UnionStream<>(this, null, other);
+  @SafeVarargs
+  public final DataStream<T> union(DataStream<T> stream, DataStream<T>... others) {
+    List<DataStream<T>> streams = new ArrayList<>();
+    streams.add(stream);
+    streams.addAll(Arrays.asList(others));
+    return union(streams);
+  }
+
+  /**
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of the same
+   * type with each other.
+   *
+   * @param streams The DataStreams to union output with.
+   * @return A new UnionStream.
+   */
+  public final DataStream<T> union(List<DataStream<T>> streams) {
+    if (this instanceof UnionStream) {
+      UnionStream<T> unionStream = (UnionStream<T>) this;
+      streams.forEach(unionStream::addStream);
+      return unionStream;
+    } else {
+      return new UnionStream<>(this, streams);
+    }
   }
 
   /**
@@ -151,8 +178,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * If parent stream is a python stream, we can't call partition related methods
-   * in the java stream.
+   * If parent stream is a python stream, we can't call partition related methods in the java
+   * stream.
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.PYTHON) {
@@ -162,9 +189,9 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Convert this stream as a python stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a python stream. The converted stream and this stream are the same
+   * logical stream, which has same stream id. Changes in converted stream will be reflected in this
+   * stream and vice versa.
    */
   public PythonDataStream asPythonStream() {
     return new PythonDataStream(this);

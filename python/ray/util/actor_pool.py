@@ -10,7 +10,8 @@ class ActorPool:
     Examples:
         >>> a1, a2 = Actor.remote(), Actor.remote()
         >>> pool = ActorPool([a1, a2])
-        >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+        >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
+        ...                     [1, 2, 3, 4])))
         [2, 4, 6, 8]
     """
 
@@ -42,8 +43,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -52,7 +53,8 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
+            ...                     [1, 2, 3, 4])))
             [2, 4, 6, 8]
         """
         for v in values:
@@ -69,8 +71,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             values (list): List of values that fn(actor, value) should be
                 applied to.
 
@@ -79,7 +81,8 @@ class ActorPool:
 
         Examples:
             >>> pool = ActorPool(...)
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+            >>> print(list(pool.map_unordered(lambda a, v: a.double.remote(v),\
+            ...                               [1, 2, 3, 4])))
             [6, 2, 4, 8]
         """
         for v in values:
@@ -96,8 +99,8 @@ class ActorPool:
 
         Arguments:
             fn (func): Function that takes (actor, value) as argument and
-                returns an ObjectID computing the result over the value. The
-                actor will be considered busy until the ObjectID completes.
+                returns an ObjectRef computing the result over the value. The
+                actor will be considered busy until the ObjectRef completes.
             value (object): Value to compute a result for.
 
         Examples:

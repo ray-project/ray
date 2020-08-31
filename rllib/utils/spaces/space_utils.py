@@ -1,9 +1,6 @@
 from gym.spaces import Tuple, Dict
 import numpy as np
-
-from ray.rllib.utils import try_import_tree
-
-tree = try_import_tree()
+import tree
 
 
 def flatten_space(space):
@@ -21,10 +18,11 @@ def flatten_space(space):
     """
 
     def _helper_flatten(space_, l):
+        from ray.rllib.utils.spaces.flexdict import FlexDict
         if isinstance(space_, Tuple):
             for s in space_:
                 _helper_flatten(s, l)
-        elif isinstance(space_, Dict):
+        elif isinstance(space_, (Dict, FlexDict)):
             for k in space_.spaces:
                 _helper_flatten(space_[k], l)
         else:
@@ -69,7 +67,7 @@ def flatten_to_single_ndarray(input_):
     """Returns a single np.ndarray given a list/tuple of np.ndarrays.
 
     Args:
-        input_ (Union[List[np.ndarray],np.ndarray]): The list of ndarrays or
+        input_ (Union[List[np.ndarray], np.ndarray]): The list of ndarrays or
             a single ndarray.
 
     Returns:

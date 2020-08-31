@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
+
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -132,6 +134,24 @@ class StoreClientTestBase : public ::testing::Test {
     WaitPendingDone();
   }
 
+  void GetByIndex() {
+    auto get_calllback =
+        [this](const std::unordered_map<std::string, std::string> &result) {
+          if (!result.empty()) {
+            auto key = ActorID::FromBinary(result.begin()->first);
+            auto it = key_to_index_.find(key);
+            RAY_CHECK(it != key_to_index_.end());
+            RAY_CHECK(index_to_keys_[it->second].size() == result.size());
+          }
+          pending_count_ -= result.size();
+        };
+    auto iter = index_to_keys_.begin();
+    pending_count_ += iter->second.size();
+    RAY_CHECK_OK(
+        store_client_->AsyncGetByIndex(table_name_, iter->first.Hex(), get_calllback));
+    WaitPendingDone();
+  }
+
   void DeleteByIndex() {
     auto delete_calllback = [this](const Status &status) {
       RAY_CHECK_OK(status);
@@ -181,6 +201,37 @@ class StoreClientTestBase : public ::testing::Test {
     WaitPendingDone();
   }
 
+  void DeleteWithIndex() {
+    auto delete_calllback = [this](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    for (const auto &elem : key_to_value_) {
+      ++pending_count_;
+      RAY_CHECK_OK(store_client_->AsyncDeleteWithIndex(table_name_, elem.first.Binary(),
+                                                       key_to_index_[elem.first].Hex(),
+                                                       delete_calllback));
+    }
+    WaitPendingDone();
+  }
+
+  void BatchDeleteWithIndex() {
+    auto delete_calllback = [this](const Status &status) {
+      RAY_CHECK_OK(status);
+      --pending_count_;
+    };
+    ++pending_count_;
+    std::vector<std::string> keys;
+    std::vector<std::string> index_keys;
+    for (auto &elem : key_to_value_) {
+      keys.push_back(elem.first.Binary());
+      index_keys.push_back(key_to_index_[elem.first].Hex());
+    }
+    RAY_CHECK_OK(store_client_->AsyncBatchDeleteWithIndex(table_name_, keys, index_keys,
+                                                          delete_calllback));
+    WaitPendingDone();
+  }
+
   void TestAsyncPutAndAsyncGet() {
     // AsyncPut without index.
     Put();
@@ -198,6 +249,9 @@ class StoreClientTestBase : public ::testing::Test {
     // AsyncPut with index
     PutWithIndex();
 
+    // AsyncGet with index
+    GetByIndex();
+
     // AsyncDelete by index
     DeleteByIndex();
 
@@ -214,6 +268,34 @@ class StoreClientTestBase : public ::testing::Test {
 
     // AsyncBatchDelete
     BatchDelete();
+
+    // AsyncGet
+    GetEmpty();
+  }
+
+  void TestAsyncDeleteWithIndex() {
+    // AsyncPut with index
+    PutWithIndex();
+
+    // AsyncGet with index
+    GetByIndex();
+
+    // AsyncDelete key-value and index-key
+    DeleteWithIndex();
+
+    // AsyncGet
+    GetEmpty();
+  }
+
+  void TestAsyncBatchDeleteWithIndex() {
+    // AsyncPut with index
+    PutWithIndex();
+
+    // AsyncGetAll
+    GetByIndex();
+
+    // AsyncBatchDeleteWithIndex
+    BatchDeleteWithIndex();
 
     // AsyncGet
     GetEmpty();

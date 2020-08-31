@@ -141,7 +141,9 @@ message GetActorCheckpointIDReply {
 
 // Service for actor info access.
 service ActorInfoGcsService {
-  // Create actor via gcs service.
+  // Register actor to gcs service.
+  rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+  // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
@@ -160,6 +162,20 @@ service ActorInfoGcsService {
   // Get actor checkpoint id data from GCS Service.
   rpc GetActorCheckpointID(GetActorCheckpointIDRequest)
       returns (GetActorCheckpointIDReply);
+}
+
+// Service for placement group info access.
+service PlacementGroupInfoGcsService {
+  // Create placement group via gcs service.
+  rpc CreatePlacementGroup(CreatePlacementGroupRequest)
+      returns (CreatePlacementGroupReply);
+
+  // Remove placement group via gcs service.
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
+
+  // Get placement group information via gcs service.
+  rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
 }
 
 message RegisterNodeRequest {
@@ -231,6 +247,22 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
+message SetInternalConfigRequest {
+  StoredConfig config = 1;
+}
+
+message SetInternalConfigReply {
+  GcsStatus status = 1;
+}
+
+message GetInternalConfigRequest {
+}
+
+message GetInternalConfigReply {
+  GcsStatus status = 1;
+  StoredConfig config = 2;
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -247,6 +279,10 @@ service NodeInfoGcsService {
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
   rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
+  // Set cluster internal config.
+  rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message GetObjectLocationsRequest {
@@ -396,38 +432,39 @@ service StatsGcsService {
   rpc GetAllProfileInfo(GetAllProfileInfoRequest) returns (GetAllProfileInfoReply);
 }
 
-message ReportJobErrorRequest {
-  ErrorTableData error_data = 1;
-}
-
-message ReportJobErrorReply {
-  GcsStatus status = 1;
-}
-
-// Service for error info access.
-service ErrorInfoGcsService {
-  // Report a job error to GCS Service.
-  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
-}
-
 message ReportWorkerFailureRequest {
-  WorkerFailureData worker_failure = 1;
+  WorkerTableData worker_failure = 1;
 }
 
 message ReportWorkerFailureReply {
   GcsStatus status = 1;
 }
 
-message RegisterWorkerRequest {
-  /// The type of the worker.
-  WorkerType worker_type = 1;
-  /// The ID of the worker.
-  bytes worker_id = 2;
-  /// The information of the worker in a dictionary.
-  map<string, bytes> worker_info = 3;
+message GetWorkerInfoRequest {
+  // ID of this worker.
+  bytes worker_id = 1;
 }
 
-message RegisterWorkerReply {
+message GetWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker.
+  WorkerTableData worker_table_data = 2;
+}
+
+message GetAllWorkerInfoRequest {
+}
+
+message GetAllWorkerInfoReply {
+  GcsStatus status = 1;
+  // Data of worker
+  repeated WorkerTableData worker_table_data = 2;
+}
+
+message AddWorkerInfoRequest {
+  WorkerTableData worker_data = 1;
+}
+
+message AddWorkerInfoReply {
   GcsStatus status = 1;
 }
 
@@ -435,8 +472,12 @@ message RegisterWorkerReply {
 service WorkerInfoGcsService {
   // Report a worker failure to GCS Service.
   rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
-  // Register a worker to GCS Service.
-  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerReply);
+  // Get worker information from GCS Service by worker id.
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoReply);
+  // Get information of all workers from GCS Service.
+  rpc GetAllWorkerInfo(GetAllWorkerInfoRequest) returns (GetAllWorkerInfoReply);
+  // Add worker information to GCS Service.
+  rpc AddWorkerInfo(AddWorkerInfoRequest) returns (AddWorkerInfoReply);
 }
 
 message CreateActorRequest {
@@ -445,4 +486,42 @@ message CreateActorRequest {
 
 message CreateActorReply {
   GcsStatus status = 1;
+}
+
+message RegisterActorRequest {
+  TaskSpec task_spec = 1;
+}
+
+message RegisterActorReply {
+  GcsStatus status = 1;
+}
+
+message CreatePlacementGroupRequest {
+  PlacementGroupSpec placement_group_spec = 1;
+}
+
+message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message RemovePlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message GetPlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message GetPlacementGroupReply {
+  GcsStatus status = 1;
+  PlacementGroupTableData placement_group_table_data = 2;
+}
+
+enum GcsServiceFailureType {
+  RPC_DISCONNECT = 0;
+  GCS_SERVER_RESTART = 1;
 }

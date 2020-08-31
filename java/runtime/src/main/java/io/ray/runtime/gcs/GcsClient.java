@@ -9,8 +9,6 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
-import io.ray.runtime.config.RayConfig;
-import io.ray.runtime.gcs.GlobalStateAccessor;
 import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
@@ -70,19 +68,12 @@ public class GcsClient {
       final UniqueId nodeId = UniqueId
           .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
-      if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
-        //Code path of node insertion.
-        NodeInfo nodeInfo = new NodeInfo(
-            nodeId, data.getNodeManagerAddress(),
-            data.getNodeManagerHostname(),
-            true, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      } else {
-        // Code path of node deletion.
-        NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
-            nodes.get(nodeId).nodeHostname, false, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      }
+      // NOTE(lingxuan.zlx): we assume no duplicated node id in fetched node list
+      // and it's only one final state for each node in recorded table.
+      NodeInfo nodeInfo = new NodeInfo(
+          nodeId, data.getNodeManagerAddress(), data.getNodeManagerHostname(),
+          data.getState() == GcsNodeInfo.GcsNodeState.ALIVE, new HashMap<>());
+      nodes.put(nodeId, nodeInfo);
     }
 
     // Fill resources.
@@ -95,20 +86,28 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
+  public Map<String, String> getInternalConfig() {
+    Gcs.StoredConfig storedConfig;
+    byte[] conf = globalStateAccessor.getInternalConfig();
+    try {
+      storedConfig = Gcs.StoredConfig.parseFrom(conf);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
+    }
+    return storedConfig.getConfigMap();
+  }
+
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
-    final String prefix = TablePrefix.NODE_RESOURCE.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
-    Map<byte[], byte[]> results = primary.hgetAll(key);
-    Map<String, Double> resources = new HashMap<>();
-    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
-      String resourceName = new String(entry.getKey());
-      Gcs.ResourceTableData resourceTableData;
-      try {
-        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invalid protobuf data from GCS.");
-      }
-      resources.put(resourceName, resourceTableData.getResourceCapacity());
+    byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
+    Gcs.ResourceMap resourceMap;
+    try {
+      resourceMap = Gcs.ResourceMap.parseFrom(resourceMapBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    HashMap<String, Double> resources = new HashMap<>();
+    for (Map.Entry<String, Gcs.ResourceTableData> entry : resourceMap.getItemsMap().entrySet()) {
+      resources.put(entry.getKey(), entry.getValue().getResourceCapacity());
     }
     return resources;
   }
@@ -123,9 +122,6 @@ public class GcsClient {
 
   public boolean wasCurrentActorRestarted(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-    if (!RayConfig.getInstance().gcsServiceEnabled) {
-      return primary.exists(key);
-    }
 
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
     byte[] value = globalStateAccessor.getActorInfo(actorId);

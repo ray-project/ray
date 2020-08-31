@@ -2,6 +2,7 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
+import io.ray.api.id.UniqueId;
 import java.util.List;
 
 /**
@@ -66,6 +67,26 @@ public class GlobalStateAccessor {
   }
 
   /**
+   * @param nodeId node unique id.
+   * @return A map of node resource info in protobuf schema.
+   */
+  public byte[] getNodeResourceInfo(UniqueId nodeId) {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get resource info by node id when global state accessor have been destroyed.");
+      return nativeGetNodeResourceInfo(globalStateAccessorNativePointer, nodeId.getBytes());
+    }
+  }
+
+  public byte[] getInternalConfig() {
+    synchronized (GlobalStateAccessor.class) {
+      Preconditions.checkState(globalStateAccessorNativePointer != 0,
+          "Get internal config when global state accessor have been destroyed.");
+      return nativeGetInternalConfig(globalStateAccessorNativePointer);
+    }
+  }
+
+  /**
    * @return A list of actor info with ActorInfo protobuf schema.
    */
   public List<byte[]> getAllActorInfo() {
@@ -114,11 +135,13 @@ public class GlobalStateAccessor {
 
   private native boolean nativeConnect(long nativePtr);
 
-  private native void nativeDisconnect(long nativePtr);
-
   private native List<byte[]> nativeGetAllJobInfo(long nativePtr);
 
   private native List<byte[]> nativeGetAllNodeInfo(long nativePtr);
+
+  private native byte[] nativeGetNodeResourceInfo(long nativePtr, byte[] nodeId);
+
+  private native byte[] nativeGetInternalConfig(long nativePtr);
 
   private native List<byte[]> nativeGetAllActorInfo(long nativePtr);
 

@@ -129,6 +129,11 @@ def test_replica_config_validation():
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"name": None})
     with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"detached": None})
+        ReplicaConfig(Class, ray_actor_options={"lifetime": None})
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"max_restarts": None})
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

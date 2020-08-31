@@ -1,7 +1,7 @@
 import numpy as np
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def normc_initializer(std=1.0):
@@ -24,7 +24,7 @@ def conv2d(x,
     if dtype is None:
         dtype = tf.float32
 
-    with tf.variable_scope(name):
+    with tf1.variable_scope(name):
         stride_shape = [1, stride[0], stride[1], 1]
         filter_shape = [
             filter_size[0], filter_size[1],
@@ -40,24 +40,24 @@ def conv2d(x,
         # Initialize weights with random weights.
         w_bound = np.sqrt(6 / (fan_in + fan_out))
 
-        w = tf.get_variable(
+        w = tf1.get_variable(
             "W",
             filter_shape,
             dtype,
-            tf.random_uniform_initializer(-w_bound, w_bound),
+            tf1.random_uniform_initializer(-w_bound, w_bound),
             collections=collections)
-        b = tf.get_variable(
+        b = tf1.get_variable(
             "b", [1, 1, 1, num_filters],
-            initializer=tf.constant_initializer(0.0),
+            initializer=tf1.constant_initializer(0.0),
             collections=collections)
-        return tf.nn.conv2d(x, w, stride_shape, pad) + b
+        return tf1.nn.conv2d(x, w, stride_shape, pad) + b
 
 
 def linear(x, size, name, initializer=None, bias_init=0):
-    w = tf.get_variable(
+    w = tf1.get_variable(
         name + "/w", [x.get_shape()[1], size], initializer=initializer)
-    b = tf.get_variable(
-        name + "/b", [size], initializer=tf.constant_initializer(bias_init))
+    b = tf1.get_variable(
+        name + "/b", [size], initializer=tf1.constant_initializer(bias_init))
     return tf.matmul(x, w) + b
 
 

@@ -1,5 +1,6 @@
+from collections import Counter
 import shutil
-
+import tempfile
 import copy
 import os
 import time
@@ -23,7 +24,7 @@ from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
-from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
 from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
@@ -32,10 +33,12 @@ from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
+        self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
+        shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
         """Checks logging is the same between APIs.
@@ -63,11 +66,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 function_output.append(result)
 
         class _WrappedTrainable(Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 del config
                 self._result_iter = copy.deepcopy(class_results)
 
-            def _train(self):
+            def step(self):
                 if sleep_per_iter:
                     time.sleep(sleep_per_iter)
                 res = self._result_iter.pop(0)  # This should not fail
@@ -233,7 +236,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def default_resource_request(cls, config):
                 return Resources(cpu=config["cpu"], gpu=config["gpu"])
 
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
         register_trainable("B", B)
@@ -514,10 +517,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= top)
 
-        patience = 10
+        patience = 5
         stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
 
-        analysis = tune.run(train, num_samples=100, stop=stopper)
+        analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
         self.assertTrue(len(analysis.dataframe()) <= patience)
@@ -546,6 +549,44 @@ class TrainableFunctionApiTest(unittest.TestCase):
         with self.assertRaises(TuneError):
             tune.run(train, stop=stop)
 
+    def testCustomTrialDir(self):
+        def train(config):
+            for i in range(10):
+                tune.report(test=i)
+
+        custom_name = "TRAIL_TRIAL"
+
+        def custom_trial_dir(trial):
+            return custom_name
+
+        trials = tune.run(
+            train,
+            config={
+                "t1": tune.grid_search([1, 2, 3])
+            },
+            trial_dirname_creator=custom_trial_dir,
+            local_dir=self.tmpdir).trials
+        logdirs = {t.logdir for t in trials}
+        assert len(logdirs) == 3
+        assert all(custom_name in dirpath for dirpath in logdirs)
+
+    def testTrialDirRegression(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        trials = tune.run(
+            train,
+            config={
+                "t1": tune.grid_search([1, 2, 3])
+            },
+            local_dir=self.tmpdir).trials
+        logdirs = {t.logdir for t in trials}
+        for i in [1, 2, 3]:
+            assert any(f"t1={i}" in dirpath for dirpath in logdirs)
+        for t in trials:
+            assert any(t.trainable_name in dirpath for dirpath in logdirs)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)
@@ -568,6 +609,38 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = ray.tune.run(experiment).trials
         print(trial.last_result)
         self.assertEqual(trial.last_result[DONE], True)
+
+    def testRerun(self):
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(tmpdir))
+
+        def test(config):
+            tid = config["id"]
+            fail = config["fail"]
+            marker = os.path.join(tmpdir, f"t{tid}-{fail}.log")
+            if not os.path.exists(marker) and fail:
+                open(marker, "w").close()
+                raise ValueError
+            for i in range(10):
+                time.sleep(0.1)
+                tune.report(hello=123)
+
+        config = dict(
+            name="hi-2",
+            config={
+                "fail": tune.grid_search([True, False]),
+                "id": tune.grid_search(list(range(5)))
+            },
+            verbose=1,
+            local_dir=tmpdir,
+            loggers=None)
+        trials = tune.run(test, raise_on_failed_trial=False, **config).trials
+        self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
+        new_trials = tune.run(
+            test, resume=True, run_errored_only=True, **config).trials
+        self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
+        self.assertTrue(
+            all(t.last_result.get("hello") == 123 for t in new_trials))
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -628,7 +701,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
-            def _train(self):
+            def step(self):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
                 print(result)
                 return result
@@ -659,11 +732,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
     @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):
         class TestTrainable(Trainable):
-            def _train(self):
+            def step(self):
                 result = {"name": self.trial_name, "trial_id": self.trial_id}
                 return result
 
-            def _stop(self):
+            def cleanup(self):
                 time.sleep(2)
                 open(os.path.join(self.logdir, "marker"), "a").close()
                 return 1
@@ -825,17 +898,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testDurableTrainable(self):
         class TestTrain(DurableTrainable):
-            def _setup(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
-            def _train(self):
+            def step(self):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         sync_client = mock_storage_client()
@@ -853,16 +926,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1}
 
-            def _train(self):
+            def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         test_trainable = TestTrain()
@@ -883,17 +956,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testMultipleCheckpoints(self):
         class TestTrain(Trainable):
-            def _setup(self, config):
+            def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
-            def _train(self):
+            def step(self):
                 self.state["iter"] += 1
                 return {"timesteps_this_iter": 1, "done": True}
 
-            def _save(self, path):
+            def save_checkpoint(self, path):
                 return self.state
 
-            def _restore(self, state):
+            def load_checkpoint(self, state):
                 self.state = state
 
         test_trainable = TestTrain()
@@ -937,6 +1010,99 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 100)
         self.assertEqual(trial.last_result["itr"], 99)
+
+    def testBackwardsCompat(self):
+        class TestTrain(Trainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        test_trainable = TestTrain()
+        checkpoint_1 = test_trainable.save()
+        test_trainable.train()
+        checkpoint_2 = test_trainable.save()
+        self.assertNotEqual(checkpoint_1, checkpoint_2)
+        test_trainable.restore(checkpoint_2)
+        self.assertEqual(test_trainable.state["iter"], 1)
+        test_trainable.restore(checkpoint_1)
+        self.assertEqual(test_trainable.state["iter"], 0)
+
+        trials = run_experiments({
+            "foo": {
+                "run": TestTrain,
+                "checkpoint_at_end": True
+            }
+        })
+        for trial in trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertTrue(trial.has_checkpoint())
+
+    def testLogToFile(self):
+        def train(config, reporter):
+            import sys
+            from ray import logger
+            for i in range(10):
+                reporter(timesteps_total=i)
+            print("PRINT_STDOUT")
+            print("PRINT_STDERR", file=sys.stderr)
+            logger.info("LOG_STDERR")
+
+        register_trainable("f1", train)
+
+        # Do not log to file
+        [trial] = tune.run("f1", log_to_file=False).trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+
+        # Log to default files
+        [trial] = tune.run("f1", log_to_file=True).trials
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        with open(os.path.join(trial.logdir, "stdout"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+        with open(os.path.join(trial.logdir, "stderr"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
+
+        # Log to one file
+        [trial] = tune.run("f1", log_to_file="combined").trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "combined")))
+        with open(os.path.join(trial.logdir, "combined"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
+
+        # Log to two files
+        [trial] = tune.run(
+            "f1", log_to_file=("alt.stdout", "alt.stderr")).trials
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "alt.stdout")))
+        self.assertTrue(
+            os.path.exists(os.path.join(trial.logdir, "alt.stderr")))
+
+        with open(os.path.join(trial.logdir, "alt.stdout"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDOUT", content)
+        with open(os.path.join(trial.logdir, "alt.stderr"), "rt") as fp:
+            content = fp.read()
+            self.assertIn("PRINT_STDERR", content)
+            self.assertIn("LOG_STDERR", content)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_models, \
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
 
 torch, nn = try_import_torch()
@@ -53,7 +53,7 @@ def build_q_losses(policy, model, dist_class, train_batch):
         is_training=True)
 
     # q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(q_t * one_hot_selection, 1)
 
@@ -96,5 +96,5 @@ SimpleQTorchPolicy = build_torch_policy(
     make_model_and_action_dist=build_q_model_and_distribution,
     mixins=[TargetNetworkMixin],
     action_distribution_fn=get_distribution_inputs_and_class,
-    stats_fn=lambda policy, config: {"td_error": policy.td_error},
+    extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
 )

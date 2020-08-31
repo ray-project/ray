@@ -68,6 +68,20 @@
             "metadata": {
                 "description": "If true creates a public ip"
             }
+        },
+        "priority": {
+            "type": "string",
+            "defaultValue": "Regular",
+            "metadata": {
+                "description": "Specifies the priority for the virtual machine."
+            }
+        },
+        "billingProfile": {
+            "type": "object",
+            "defaultValue": {},
+            "metadata": {
+                "description": "Specifies the maximum price to pay for Azure Spot VM."
+            }
         }
     },
     "variables": {
@@ -212,7 +226,9 @@
                             ]
                         }
                     }
-                }
+                },
+                "priority": "[parameters('priority')]",
+                "billingProfile": "[parameters('billingProfile')]"
             },
             "identity": {
                 "type": "UserAssigned",

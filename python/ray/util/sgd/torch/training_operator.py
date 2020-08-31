@@ -72,23 +72,18 @@ class TrainingOperator:
         self._models = models  # List of models
         assert isinstance(
             models,
-            Iterable), ("Components need to be iterable. Got: {}".format(
-                type(models)))
+            Iterable), (f"Components need to be iterable. Got: {type(models)}")
         self._optimizers = optimizers  # List of optimizers
-        assert isinstance(
-            optimizers,
-            Iterable), ("Components need to be iterable. Got: {}".format(
-                type(optimizers)))
+        assert isinstance(optimizers, Iterable), (
+            f"Components need to be iterable. Got: {type(optimizers)}")
         self._train_loader = train_loader
         self._validation_loader = validation_loader
         self._world_rank = world_rank
         self._criterion = criterion
         self._schedulers = schedulers
         if schedulers:
-            assert isinstance(
-                schedulers,
-                Iterable), ("Components need to be iterable. Got: {}".format(
-                    type(schedulers)))
+            assert isinstance(schedulers, Iterable), (
+                f"Components need to be iterable. Got: {type(schedulers)}")
         self._config = config
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
@@ -165,10 +160,9 @@ class TrainingOperator:
             desc = ""
             if info is not None and "epoch_idx" in info:
                 if "num_epochs" in info:
-                    desc = "{}/{}e".format(info["epoch_idx"] + 1,
-                                           info["num_epochs"])
+                    desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
                 else:
-                    desc = "{}e".format(info["epoch_idx"] + 1)
+                    desc = f"{info['epoch_idx'] + 1}e"
             _progress_bar = tqdm(
                 total=info[NUM_STEPS] or len(self.train_loader),
                 desc=desc,
@@ -212,7 +206,7 @@ class TrainingOperator:
         updating the model.
 
         By default, this method implementation assumes that batches
-        are in (\*features, labels) format. So we also support multiple inputs
+        are in (\\*features, labels) format. So we also support multiple inputs
         model. If using amp/fp16 training, it will also scale the loss
         automatically.
 
@@ -309,7 +303,7 @@ class TrainingOperator:
         You can override this method to provide arbitrary metrics.
 
         Same as ``train_batch``, this method implementation assumes that
-        batches are in (\*features, labels) format by default. So we also
+        batches are in (\\*features, labels) format by default. So we also
         support multiple inputs model.
 
         Args:

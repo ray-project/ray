@@ -2,8 +2,8 @@ import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -34,7 +34,7 @@ class OnlineLinearRegression(nn.Module):
     def partial_fit(self, x, y):
         # TODO: Handle batch of data rather than individual points
         self._check_inputs(x, y)
-        x = x.squeeze()
+        x = x.squeeze(0)
         y = y.item()
         self.time += 1
         self.delta_f += y * x

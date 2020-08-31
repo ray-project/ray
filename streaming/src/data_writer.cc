@@ -1,15 +1,11 @@
-#include <memory>
+#include "data_writer.h"
 
-#include <memory>
-
-#include <signal.h>
-#include <unistd.h>
 #include <chrono>
 #include <functional>
 #include <list>
+#include <memory>
 #include <numeric>
 
-#include "data_writer.h"
 #include "util/streaming_util.h"
 
 namespace ray {
@@ -269,7 +265,7 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   auto &q_id = channel_info.channel_id;
 
   std::list<StreamingMessagePtr> message_list;
-  uint64_t bundle_buffer_size = 0;
+  uint32_t bundle_buffer_size = 0;
   const uint32_t max_queue_item_size = channel_info.queue_size;
   while (message_list.size() < runtime_context_->GetConfig().GetRingBufferCapacity() &&
          !buffer_ptr->IsEmpty()) {

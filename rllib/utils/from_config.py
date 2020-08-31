@@ -73,6 +73,8 @@ def from_config(cls, config=None, **kwargs):
         pass
     if isinstance(config, dict):
         type_ = config.pop("type", None)
+        if type_ is None and isinstance(cls, str):
+            type_ = cls
         ctor_kwargs = config
         # Give kwargs priority over things defined in config dict.
         # This way, one can pass a generic `spec` and then override single

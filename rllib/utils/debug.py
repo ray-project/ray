@@ -1,5 +1,6 @@
 import numpy as np
 import pprint
+from typing import Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
@@ -17,7 +18,7 @@ def summarize(obj):
 
 
 def _summarize(obj):
-    if isinstance(obj, dict):
+    if isinstance(obj, Mapping):
         return {k: _summarize(v) for k, v in obj.items()}
     elif hasattr(obj, "_asdict"):
         return {
@@ -32,7 +33,7 @@ def _summarize(obj):
         if obj.size == 0:
             return _StringValue("np.ndarray({}, dtype={})".format(
                 obj.shape, obj.dtype))
-        elif obj.dtype == np.object:
+        elif obj.dtype == np.object or obj.dtype.type is np.str_:
             return _StringValue("np.ndarray({}, dtype={}, head={})".format(
                 obj.shape, obj.dtype, _summarize(obj[0])))
         else:

@@ -2,7 +2,7 @@ import os
 import yaml
 import ray
 
-from ray.autoscaler.commands import fillout_defaults, validate_config
+from ray.autoscaler.commands import prepare_config, validate_config
 from ray.tests.aws.utils.constants import DEFAULT_CLUSTER_NAME
 
 
@@ -17,7 +17,7 @@ def load_aws_example_config_file(file_name):
 
 
 def bootstrap_aws_config(config):
-    config = fillout_defaults(config)
+    config = prepare_config(config)
     validate_config(config)
     config["cluster_name"] = DEFAULT_CLUSTER_NAME
     return ray.autoscaler.aws.config.bootstrap_aws(config)

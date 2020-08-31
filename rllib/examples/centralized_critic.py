@@ -3,10 +3,11 @@
 Here the model and policy are hard-coded to implement a centralized critic
 for TwoStepGame, but you can adapt this for your own use cases.
 
-Compared to simply running `twostep_game.py --run=PPO`, this centralized
-critic version reaches vf_explained_variance=1.0 more stably since it takes
-into account the opponent actions as well as the policy's. Note that this is
-also using two independent policies instead of weight-sharing with one.
+Compared to simply running `rllib/examples/two_step_game.py --run=PPO`,
+this centralized critic version reaches vf_explained_variance=1.0 more stably
+since it takes into account the opponent actions as well as the policy's.
+Note that this is also using two independent policies instead of weight-sharing
+with one.
 
 See also: centralized_critic_2.py for a simpler approach that instead
 modifies the environment.
@@ -34,13 +35,12 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule
-from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 OPPONENT_OBS = "opponent_obs"
@@ -84,10 +84,13 @@ def centralized_critic_postprocessing(policy,
         # overwrite default VF prediction with the central VF
         if args.torch:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
-                convert_to_torch_tensor(sample_batch[SampleBatch.CUR_OBS]),
-                convert_to_torch_tensor(sample_batch[OPPONENT_OBS]),
-                convert_to_torch_tensor(sample_batch[OPPONENT_ACTION])). \
-                detach().numpy()
+                convert_to_torch_tensor(
+                    sample_batch[SampleBatch.CUR_OBS], policy.device),
+                convert_to_torch_tensor(
+                    sample_batch[OPPONENT_OBS], policy.device),
+                convert_to_torch_tensor(
+                    sample_batch[OPPONENT_ACTION], policy.device)) \
+                .detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],

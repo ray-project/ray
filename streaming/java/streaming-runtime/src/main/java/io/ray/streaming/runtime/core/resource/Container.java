@@ -47,8 +47,7 @@ public class Container implements Serializable {
   private Map<String, Double> availableResources = new HashMap<>();
 
   /**
-   * List of {@link ExecutionVertex} ids
-   * belong to the container.
+   * List of {@link ExecutionVertex} ids belong to the container.
    */
   private List<Integer> executionVertexIds = new ArrayList<>();
 
@@ -138,21 +137,21 @@ public class Container implements Serializable {
   public void allocateActor(ExecutionVertex vertex) {
     LOG.info("Allocating vertex [{}] in container [{}].", vertex, this);
 
-    executionVertexIds.add(vertex.getId());
+    executionVertexIds.add(vertex.getExecutionVertexId());
     vertex.setContainerIfNotExist(this.getId());
     // Binding dynamic resource
-    vertex.getResources().put(getName(), 1.0);
-    decreaseResource(vertex.getResources());
+    vertex.getResource().put(getName(), 1.0);
+    decreaseResource(vertex.getResource());
   }
 
   public void releaseActor(ExecutionVertex vertex) {
     LOG.info("Release actor, vertex: {}, container: {}.", vertex, vertex.getContainerId());
-    if (executionVertexIds.contains(vertex.getId())) {
-      executionVertexIds.removeIf(id -> id == vertex.getId());
-      reclaimResource(vertex.getResources());
+    if (executionVertexIds.contains(vertex.getExecutionVertexId())) {
+      executionVertexIds.removeIf(id -> id == vertex.getExecutionVertexId());
+      reclaimResource(vertex.getResource());
     } else {
       throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
-          this, vertex.getJobVertexName()));
+          this, vertex.getExecutionJobVertexName()));
     }
   }
 

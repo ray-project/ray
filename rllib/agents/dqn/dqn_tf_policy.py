@@ -12,12 +12,13 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
     minimize_and_clip
 from ray.rllib.utils.tf_ops import make_tf_callable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
@@ -54,11 +55,11 @@ class QLoss:
             r_tau = tf.clip_by_value(r_tau, v_min, v_max)
             b = (r_tau - v_min) / ((v_max - v_min) / float(num_atoms - 1))
             lb = tf.floor(b)
-            ub = tf.ceil(b)
+            ub = tf.math.ceil(b)
             # indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0
-            floor_equal_ceil = tf.to_float(tf.less(ub - lb, 0.5))
+            floor_equal_ceil = tf.cast(tf.less(ub - lb, 0.5), tf.float32)
 
             l_project = tf.one_hot(
                 tf.cast(lb, dtype=tf.int32),
@@ -253,8 +254,12 @@ def build_q_losses(policy, model, _, train_batch):
 
 
 def adam_optimizer(policy, config):
-    return tf.train.AdamOptimizer(
-        learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    if policy.config["framework"] in ["tf2", "tfe"]:
+        return tf.keras.optimizers.Adam(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
+    else:
+        return tf1.train.AdamOptimizer(
+            learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
 def clip_gradients(policy, optimizer, loss):
@@ -373,8 +378,8 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
             batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
-        new_priorities = (
-            np.abs(td_errors) + policy.config["prioritized_replay_eps"])
+        new_priorities = (np.abs(convert_to_numpy(td_errors)) +
+                          policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
 
     return batch

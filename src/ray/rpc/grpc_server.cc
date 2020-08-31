@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/rpc/grpc_server.h"
+#include "ray/rpc/grpc_server.h"
 
 #include <grpcpp/impl/service_type.h>
+
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
@@ -30,32 +31,41 @@ GrpcServer::GrpcServer(std::string name, const uint32_t port, int num_threads)
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
   std::string server_address("0.0.0.0:" + std::to_string(port_));
+  int num_retries = RayConfig::instance().grpc_server_num_retries();
+  while (num_retries >= 0) {
+    grpc::ServerBuilder builder;
+    // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
+    // (default behavior in grpc), we may see multiple workers listen on the same port and
+    // the requests sent to this port may be handled by any of the workers.
+    builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+    builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
+                               RayConfig::instance().max_grpc_message_size());
+    builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
+                               RayConfig::instance().max_grpc_message_size());
+    // TODO(hchen): Add options for authentication.
+    builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
+    // Register all the services to this server.
+    if (services_.empty()) {
+      RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
+    }
+    for (auto &entry : services_) {
+      builder.RegisterService(&entry.get());
+    }
+    // Get hold of the completion queue used for the asynchronous communication
+    // with the gRPC runtime.
+    for (int i = 0; i < num_threads_; i++) {
+      cqs_[i] = builder.AddCompletionQueue();
+    }
+    // Build and start server.
+    server_ = builder.BuildAndStart();
+    if (port_ > 0) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().grpc_server_retry_timeout_milliseconds()));
+    num_retries--;
+  }
 
-  grpc::ServerBuilder builder;
-  // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
-  // (default behavior in grpc), we may see multiple workers listen on the same port and
-  // the requests sent to this port may be handled by any of the workers.
-  builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
-  builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
-                             RayConfig::instance().max_grpc_message_size());
-  builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
-                             RayConfig::instance().max_grpc_message_size());
-  // TODO(hchen): Add options for authentication.
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
-  // Register all the services to this server.
-  if (services_.empty()) {
-    RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
-  }
-  for (auto &entry : services_) {
-    builder.RegisterService(&entry.get());
-  }
-  // Get hold of the completion queue used for the asynchronous communication
-  // with the gRPC runtime.
-  for (int i = 0; i < num_threads_; i++) {
-    cqs_[i] = builder.AddCompletionQueue();
-  }
-  // Build and start server.
-  server_ = builder.BuildAndStart();
   // If the grpc server failed to bind the port, the `port_` will be set to 0.
   RAY_CHECK(port_ > 0)
       << "Port " << specified_port

@@ -51,7 +51,7 @@ class OptimusFn(object):
 
 def get_optimus_trainable(parent_cls):
     class OptimusTrainable(parent_cls):
-        def _setup(self, config):
+        def setup(self, config):
             self.iter = 0
             if config.get("seed"):
                 np.random.seed(config["seed"])
@@ -61,7 +61,7 @@ def get_optimus_trainable(parent_cls):
             self.initial_samples_per_step = 500
             self.mock_data = open("/dev/urandom", "rb").read(1024)
 
-        def _train(self):
+        def step(self):
             self.iter += 1
             new_loss = self.func.eval(self.iter)
             time.sleep(0.5)
@@ -71,7 +71,7 @@ def get_optimus_trainable(parent_cls):
                 "samples": self.initial_samples_per_step
             }
 
-        def _save(self, checkpoint_dir):
+        def save_checkpoint(self, checkpoint_dir):
             time.sleep(0.5)
             return {
                 "func": cloudpickle.dumps(self.func),
@@ -80,7 +80,7 @@ def get_optimus_trainable(parent_cls):
                 "iter": self.iter
             }
 
-        def _restore(self, checkpoint):
+        def load_checkpoint(self, checkpoint):
             self.func = cloudpickle.loads(checkpoint["func"])
             self.data = checkpoint["data"]
             self.iter = checkpoint["iter"]

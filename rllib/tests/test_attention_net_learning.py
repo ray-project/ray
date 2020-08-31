@@ -17,7 +17,7 @@ class TestAttentionNetLearning(unittest.TestCase):
     }
 
     stop = {
-        "episode_reward_mean": 180.0,
+        "episode_reward_mean": 150.0,
         "timesteps_total": 5000000,
     }
 

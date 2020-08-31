@@ -1,7 +1,7 @@
 package io.ray.exercise;
 
+import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.RayObject;
 
 /**
  * Execute remote functions in parallel with some dependencies.
@@ -28,10 +28,10 @@ public class Exercise02 {
   }
 
   public static String sayHelloWorld() {
-    RayObject<String> hello = Ray.call(Exercise02::sayHello);
-    RayObject<String> world = Ray.call(Exercise02::sayWorld);
+    ObjectRef<String> hello = Ray.task(Exercise02::sayHello).remote();
+    ObjectRef<String> world = Ray.task(Exercise02::sayWorld).remote();
     // Pass unfinished results as the parameters to another remote function.
-    return Ray.call(Exercise02::merge, hello, world).get();
+    return Ray.task(Exercise02::merge, hello, world).remote().get();
   }
 
   public static void main(String[] args) throws Exception {

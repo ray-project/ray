@@ -8,7 +8,7 @@ from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 torch, nn = try_import_torch()
 
 
-class SACTorchModel(TorchModelV2):
+class SACTorchModel(TorchModelV2, nn.Module):
     """Extension of standard TorchModelV2 for SAC.
 
     Data flow:
@@ -52,6 +52,7 @@ class SACTorchModel(TorchModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
+        nn.Module.__init__(self)
         super(SACTorchModel, self).__init__(obs_space, action_space,
                                             num_outputs, model_config, name)
 

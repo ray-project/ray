@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_LOGGING_H
-#define RAY_STREAMING_LOGGING_H
+#pragma once
+
 #include "ray/util/logging.h"
 
 #define STREAMING_LOG RAY_LOG
@@ -7,5 +7,3 @@
 namespace ray {
 namespace streaming {}  // namespace streaming
 }  // namespace ray
-
-#endif  // RAY_STREAMING_LOGGING_H

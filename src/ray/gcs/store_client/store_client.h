@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
-#define RAY_GCS_STORE_CLIENT_STORE_CLIENT_H
+#pragma once
 
 #include <memory>
 #include <string>
+
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -65,6 +65,16 @@ class StoreClient {
   virtual Status AsyncGet(const std::string &table_name, const std::string &key,
                           const OptionalItemCallback<std::string> &callback) = 0;
 
+  /// Get data by index from the given table asynchronously.
+  ///
+  /// \param table_name The name of the table to be read.
+  /// \param index_key The secondary key that will be used to get the indexed data.
+  /// \param callback Callback that will be called after read finishes.
+  /// \return Status
+  virtual Status AsyncGetByIndex(
+      const std::string &table_name, const std::string &index_key,
+      const MapCallback<std::string, std::string> &callback) = 0;
+
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
@@ -82,6 +92,19 @@ class StoreClient {
   virtual Status AsyncDelete(const std::string &table_name, const std::string &key,
                              const StatusCallback &callback) = 0;
 
+  /// Delete data from the given table asynchronously, this can delete
+  /// key--value and index--key.
+  ///
+  /// \param table_name The name of the table from which data is to be deleted.
+  /// \param key The key that will be deleted from the table.
+  /// \param index_key The index key of the given key.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  virtual Status AsyncDeleteWithIndex(const std::string &table_name,
+                                      const std::string &key,
+                                      const std::string &index_key,
+                                      const StatusCallback &callback) = 0;
+
   /// Batch delete data from the given table asynchronously.
   ///
   /// \param table_name The name of the table from which data is to be deleted.
@@ -91,6 +114,20 @@ class StoreClient {
   virtual Status AsyncBatchDelete(const std::string &table_name,
                                   const std::vector<std::string> &keys,
                                   const StatusCallback &callback) = 0;
+
+  /// Batch delete data from the given table asynchronously, this can delete all
+  /// key--value data and index--key data.
+  ///
+  /// \param table_name The name of the table from which data is to be deleted.
+  /// \param keys The keys that will be deleted from the table.
+  /// \param index_keys The index keys of the given keys, they are in one-to-one
+  ///                   correspondence
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  virtual Status AsyncBatchDeleteWithIndex(const std::string &table_name,
+                                           const std::vector<std::string> &keys,
+                                           const std::vector<std::string> &index_keys,
+                                           const StatusCallback &callback) = 0;
 
   /// Delete by index from the given table asynchronously.
   ///
@@ -110,5 +147,3 @@ class StoreClient {
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_STORE_CLIENT_STORE_CLIENT_H

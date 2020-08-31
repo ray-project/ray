@@ -1,19 +1,20 @@
 import jsonschema
 import os
-import unittest
-import yaml
-import urllib
+import sys
 import tempfile
+import unittest
+import urllib
+import yaml
 
-from ray.autoscaler.autoscaler import fillout_defaults, validate_config
+from ray.autoscaler.util import prepare_config, validate_config
 from ray.test_utils import recursive_fnmatch
 
-RAY_PATH = os.path.abspath(os.path.join(__file__, "../../"))
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(
     os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
 
 CONFIG_PATHS += recursive_fnmatch(
-    os.path.join(RAY_PATH, "tune/examples/"), "*.yaml")
+    os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
 
 
 class AutoscalingConfigTest(unittest.TestCase):
@@ -21,7 +22,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         for config_path in CONFIG_PATHS:
             with open(config_path) as f:
                 config = yaml.safe_load(f)
-            config = fillout_defaults(config)
+            config = prepare_config(config)
             try:
                 validate_config(config)
             except Exception:
@@ -36,7 +37,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             f.write(content)
             f.seek(0)
             config = yaml.safe_load(f)
-        config = fillout_defaults(config)
+        config = prepare_config(config)
         try:
             validate_config(config)
         except Exception:
@@ -51,8 +52,10 @@ class AutoscalingConfigTest(unittest.TestCase):
         except jsonschema.ValidationError:
             pass
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testInvalidConfig(self):
-        self._test_invalid_config("tests/additional_property.yaml")
+        self._test_invalid_config(
+            os.path.join("tests", "additional_property.yaml"))
 
 
 if __name__ == "__main__":

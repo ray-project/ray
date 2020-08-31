@@ -40,7 +40,7 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings (Experimental) ===
+    # === Exploration Settings ===
     "exploration_config": {
         # The Exploration class to use.
         "type": "EpsilonGreedy",
@@ -83,14 +83,12 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # In multi-agent mode, whether to replay experiences from the same time
-    # step for all policies. This is required for MADDPG.
-    "multiagent_sync_replay": False,
     # Callback to run before learning on a multi-agent batch of experiences.
     "before_learn_on_batch": None,
-    # If set, this will fix the ratio of sampled to replayed timesteps.
-    # Otherwise, replay will proceed at the native ratio determined by
-    # (train_batch_size / rollout_fragment_length).
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
     "training_intensity": None,
 
     # === Optimization ===
@@ -227,6 +225,14 @@ def validate_config(config):
                               config.get("n_step", 1))
     config["rollout_fragment_length"] = adjusted_batch_size
 
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+        elif config["replay_sequence_length"] > 1:
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_sequence_length > 1.")
+
 
 def execution_plan(workers, config):
     if config.get("prioritized_replay"):
@@ -243,7 +249,8 @@ def execution_plan(workers, config):
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
-        multiagent_sync_replay=config.get("multiagent_sync_replay"),
+        replay_mode=config["multiagent"]["replay_mode"],
+        replay_sequence_length=config["replay_sequence_length"],
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")

@@ -1,6 +1,7 @@
 import os
 import logging
 from os.path import dirname
+import platform
 import sys
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,11 @@ if sys.platform == "win32":
     import ray.compat  # noqa: E402
     ray.compat.patch_redis_empty_recv()
 
+if (platform.system() == "Linux"
+        and "Microsoft".lower() in platform.release().lower()):
+    import ray.compat  # noqa: E402
+    ray.compat.patch_psutil()
+
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
 python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
@@ -59,9 +65,11 @@ from ray._raylet import (
     WorkerID,
     FunctionID,
     ObjectID,
+    ObjectRef,
     TaskID,
     UniqueID,
     Language,
+    PlacementGroupID,
 )  # noqa: E402
 
 _config = _Config()
@@ -69,36 +77,20 @@ _config = _Config()
 from ray.profiling import profile  # noqa: E402
 from ray.state import (jobs, nodes, actors, objects, timeline,
                        object_transfer_timeline, cluster_resources,
-                       available_resources, errors)  # noqa: E402
-from ray.worker import (
-    LOCAL_MODE,
-    SCRIPT_MODE,
-    WORKER_MODE,
-    cancel,
-    connect,
-    disconnect,
-    get,
-    get_actor,
-    get_gpu_ids,
-    get_resource_ids,
-    get_webui_url,
-    init,
-    is_initialized,
-    put,
-    kill,
-    register_custom_serializer,
-    remote,
-    shutdown,
-    show_in_webui,
-    wait,
+                       available_resources)  # noqa: E402
+from ray.worker import (  # noqa: F401
+    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
+    disconnect, get, get_actor, get_gpu_ids, get_resource_ids,
+    get_dashboard_url, init, is_initialized, put, kill, remote, shutdown,
+    show_in_dashboard, wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
-import ray.projects  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
+from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
@@ -106,48 +98,45 @@ __commit__ = "{{RAY_COMMIT_SHA}}"
 __version__ = "0.9.0.dev0"
 
 __all__ = [
-    "jobs",
-    "nodes",
-    "actors",
-    "objects",
-    "timeline",
-    "object_transfer_timeline",
-    "cluster_resources",
-    "available_resources",
-    "errors",
-    "LOCAL_MODE",
-    "PYTHON_MODE",
-    "SCRIPT_MODE",
-    "WORKER_MODE",
     "__version__",
     "_config",
-    "_get_runtime_context",
+    "get_runtime_context",
     "actor",
+    "actors",
+    "available_resources",
     "cancel",
+    "cluster_resources",
     "connect",
     "disconnect",
     "get",
     "get_actor",
     "get_gpu_ids",
     "get_resource_ids",
-    "get_webui_url",
+    "get_dashboard_url",
     "init",
     "internal",
     "is_initialized",
-    "method",
-    "profile",
-    "projects",
-    "put",
+    "java_actor_class",
+    "java_function",
+    "jobs",
     "kill",
-    "register_custom_serializer",
+    "Language",
+    "method",
+    "nodes",
+    "objects",
+    "object_transfer_timeline",
+    "profile",
+    "put",
     "remote",
     "shutdown",
-    "show_in_webui",
-    "wait",
-    "Language",
-    "java_function",
-    "java_actor_class",
+    "show_in_dashboard",
+    "timeline",
     "util",
+    "wait",
+    "LOCAL_MODE",
+    "PYTHON_MODE",
+    "SCRIPT_MODE",
+    "WORKER_MODE",
 ]
 
 # ID types
@@ -160,6 +149,8 @@ __all__ += [
     "WorkerID",
     "FunctionID",
     "ObjectID",
+    "ObjectRef",
     "TaskID",
     "UniqueID",
+    "PlacementGroupID",
 ]

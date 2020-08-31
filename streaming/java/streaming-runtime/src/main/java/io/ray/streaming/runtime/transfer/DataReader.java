@@ -1,52 +1,58 @@
 package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.BaseActor;
+import io.ray.api.BaseActorHandle;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
+import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.util.Platform;
-import io.ray.streaming.util.Config;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * DataReader is wrapper of streaming c++ DataReader, which read data
- * from channels of upstream workers
+ * DataReader is wrapper of streaming c++ DataReader, which read data from channels of upstream
+ * workers
  */
 public class DataReader {
-  private static final Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
+
+  private static final Logger LOG = LoggerFactory.getLogger(DataReader.class);
 
   private long nativeReaderPtr;
   private Queue<DataMessage> buf = new LinkedList<>();
 
-  public DataReader(List<String> inputChannels,
-                    Map<String, BaseActor> fromActors,
-                    Map<String, String> conf) {
+  /**
+   * @param inputChannels input channels ids
+   * @param fromActors upstream input actors
+   * @param workerConfig configuration
+   */
+  public DataReader(
+      List<String> inputChannels,
+      List<BaseActorHandle> fromActors,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
-        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
+        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
       seqIds[i] = 0;
       msgIds[i] = 0;
     }
-    long timerInterval = Long.parseLong(
-        conf.getOrDefault(Config.TIMER_INTERVAL_MS, "-1"));
-    String channelType = conf.get(Config.CHANNEL_TYPE);
+    long timerInterval = workerConfig.transferConfig.readerTimerIntervalMs();
+    TransferChannelType channelType = workerConfig.transferConfig.channelType();
     boolean isMock = false;
-    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+    if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
-    boolean isRecreate = Boolean.parseBoolean(
-        conf.getOrDefault(Config.IS_RECREATE, "false"));
+    boolean isRecreate = workerConfig.transferConfig.readerIsRecreate();
+
     this.nativeReaderPtr = createDataReaderNative(
         initialParameters,
         inputChannelsBytes,
@@ -54,10 +60,11 @@ public class DataReader {
         msgIds,
         timerInterval,
         isRecreate,
-        ChannelUtils.toNativeConf(conf),
+        ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    LOGGER.info("create DataReader succeed");
+    LOG.info("Create DataReader succeed for worker: {}.",
+        workerConfig.workerInternalConfig.workerName());
   }
 
   // params set by getBundleNative: bundle data address + size
@@ -148,10 +155,10 @@ public class DataReader {
     if (nativeReaderPtr == 0) {
       return;
     }
-    LOGGER.info("closing DataReader.");
+    LOG.info("Closing DataReader.");
     closeReaderNative(nativeReaderPtr);
     nativeReaderPtr = 0;
-    LOGGER.info("closing DataReader done.");
+    LOG.info("Finish closing DataReader.");
   }
 
   private static native long createDataReaderNative(
@@ -164,10 +171,11 @@ public class DataReader {
       byte[] configBytes,
       boolean isMock);
 
-  private native void getBundleNative(long nativeReaderPtr,
-                                      long timeoutMillis,
-                                      long params,
-                                      long metaAddress);
+  private native void getBundleNative(
+      long nativeReaderPtr,
+      long timeoutMillis,
+      long params,
+      long metaAddress);
 
   private native void stopReaderNative(long nativeReaderPtr);
 
@@ -186,6 +194,7 @@ public class DataReader {
   }
 
   static class BundleMeta {
+
     // kMessageBundleHeaderSize + kUniqueIDSize:
     // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
     // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
@@ -221,9 +230,9 @@ public class DataReader {
     }
 
     private String getQidString(ByteBuffer buffer) {
-      byte[] bytes = new byte[ChannelID.ID_LENGTH];
+      byte[] bytes = new byte[ChannelId.ID_LENGTH];
       buffer.get(bytes);
-      return ChannelID.idBytesToStr(bytes);
+      return ChannelId.idBytesToStr(bytes);
     }
 
     public int getMagicNum() {

@@ -3,9 +3,9 @@ import logging
 
 from ray.util.debug import log_once
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 # Variable scope in which created variables will be placed under
 TOWER_SCOPE_NAME = "tower"
@@ -26,7 +26,7 @@ class LocalSyncParallelOptimizer:
     `load_data`, so you can make multiple passes (possibly in randomized order)
     over the same data once loaded.
 
-    This is similar to tf.train.SyncReplicasOptimizer, but works within a
+    This is similar to tf1.train.SyncReplicasOptimizer, but works within a
     single TensorFlow graph, i.e. implements in-graph replicated training:
 
       https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
@@ -63,21 +63,21 @@ class LocalSyncParallelOptimizer:
         self.build_graph = build_graph
 
         # First initialize the shared loss network
-        with tf.name_scope(TOWER_SCOPE_NAME):
+        with tf1.name_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_graph(self.loss_inputs)
-        shared_ops = tf.get_collection(
-            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        shared_ops = tf1.get_collection(
+            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
 
         # Then setup the per-device loss graphs that use the shared weights
-        self._batch_index = tf.placeholder(tf.int32, name="batch_index")
+        self._batch_index = tf1.placeholder(tf.int32, name="batch_index")
 
         # Dynamic batch size, which may be shrunk if there isn't enough data
-        self._per_device_batch_size = tf.placeholder(
+        self._per_device_batch_size = tf1.placeholder(
             tf.int32, name="per_device_batch_size")
         self._loaded_per_device_batch_size = max_per_device_batch_size
 
         # When loading RNN input, we dynamically determine the max seq len
-        self._max_seq_len = tf.placeholder(tf.int32, name="max_seq_len")
+        self._max_seq_len = tf1.placeholder(tf.int32, name="max_seq_len")
         self._loaded_max_seq_len = 1
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
@@ -103,15 +103,15 @@ class LocalSyncParallelOptimizer:
         # gather update ops for any batch norm layers. TODO(ekl) here we will
         # use all the ops found which won't work for DQN / DDPG, but those
         # aren't supported with multi-gpu right now anyways.
-        self._update_ops = tf.get_collection(
-            tf.GraphKeys.UPDATE_OPS, scope=tf.get_variable_scope().name)
+        self._update_ops = tf1.get_collection(
+            tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
         for op in shared_ops:
             self._update_ops.remove(op)  # only care about tower update ops
         if self._update_ops:
             logger.debug("Update ops to run on apply gradient: {}".format(
                 self._update_ops))
 
-        with tf.control_dependencies(self._update_ops):
+        with tf1.control_dependencies(self._update_ops):
             self._train_op = self.optimizer.apply_gradients(avg)
 
     def load_data(self, sess, inputs, state_inputs):
@@ -265,11 +265,11 @@ class LocalSyncParallelOptimizer:
     def _setup_device(self, device, device_input_placeholders, num_data_in):
         assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
-            with tf.name_scope(TOWER_SCOPE_NAME):
+            with tf1.name_scope(TOWER_SCOPE_NAME):
                 device_input_batches = []
                 device_input_slices = []
                 for i, ph in enumerate(device_input_placeholders):
-                    current_batch = tf.Variable(
+                    current_batch = tf1.Variable(
                         ph,
                         trainable=False,
                         validate_shape=False,

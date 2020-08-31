@@ -2,7 +2,8 @@ import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
-from ray.rllib.utils.test_utils import check_compute_action, framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, \
+    framework_iterator
 
 
 class TestA3C(unittest.TestCase):
@@ -23,14 +24,15 @@ class TestA3C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config, ("tf", "torch")):
+        for fw in framework_iterator(config):
             config["sample_async"] = fw == "tf"
             for env in ["CartPole-v0", "Pendulum-v0", "PongDeterministic-v0"]:
                 trainer = a3c.A3CTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-                check_compute_action(trainer)
+                check_compute_single_action(trainer)
+                trainer.stop()
 
 
 if __name__ == "__main__":
