@@ -47,7 +47,7 @@ public class SourceStreamTask extends StreamTask {
           if (pendingBarrier.compareAndSet(barrier, null)) {
             // source fetcher only have outputPoints
             LOG.info("Start to do checkpoint {}, worker name is {}.",
-                barrier.getId(), jobWorker.getWorkerContext().getWorkerName());
+              barrier.getId(), jobWorker.getWorkerContext().getWorkerName());
 
             doCheckpoint(barrier.getId(), null);
 
@@ -55,7 +55,7 @@ public class SourceStreamTask extends StreamTask {
           } else {
             // pendingCheckpointId has modify, should not happen
             LOG.warn("Pending checkpointId modify unexpected, expect={}, now={}.", barrier,
-                pendingBarrier.get());
+              pendingBarrier.get());
           }
         }
 
@@ -63,7 +63,7 @@ public class SourceStreamTask extends StreamTask {
       }
     } catch (Throwable e) {
       if (e instanceof ChannelInterruptException ||
-          ExceptionUtils.getRootCause(e) instanceof ChannelInterruptException) {
+        ExceptionUtils.getRootCause(e) instanceof ChannelInterruptException) {
         LOG.info("queue has stopped.");
       } else {
         // occur error, need to rollback

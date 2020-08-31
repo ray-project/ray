@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import io.ray.streaming.runtime.state.StateBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +23,7 @@ public class CheckpointStateUtil {
       val = checkpointState.get(cpKey);
     } catch (Exception e) {
       throw new CheckpointStateRuntimeException(
-          String.format("Failed to get %s from state backend.", cpKey), e);
+        String.format("Failed to get %s from state backend.", cpKey), e);
     }
     return val;
   }

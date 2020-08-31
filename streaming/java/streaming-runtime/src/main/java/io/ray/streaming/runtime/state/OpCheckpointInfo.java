@@ -19,10 +19,10 @@ public class OpCheckpointInfo implements Serializable {
   }
 
   public OpCheckpointInfo(
-      Map<String, OffsetInfo> inputPoints,
-      Map<String, OffsetInfo> outputPoints,
-      Object processorCheckpoint,
-      long checkpointId) {
+    Map<String, OffsetInfo> inputPoints,
+    Map<String, OffsetInfo> outputPoints,
+    Object processorCheckpoint,
+    long checkpointId) {
     this.inputPoints = inputPoints;
     this.outputPoints = outputPoints;
     this.checkpointId = checkpointId;

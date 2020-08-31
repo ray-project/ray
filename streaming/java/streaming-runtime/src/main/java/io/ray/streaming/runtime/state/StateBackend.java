@@ -1,7 +1,5 @@
 package io.ray.streaming.runtime.state;
 
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
-
 public interface StateBackend {
 
   /**

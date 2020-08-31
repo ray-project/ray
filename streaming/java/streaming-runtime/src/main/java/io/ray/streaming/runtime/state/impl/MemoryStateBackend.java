@@ -3,9 +3,7 @@ package io.ray.streaming.runtime.state.impl;
 import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import io.ray.streaming.runtime.state.StateBackend;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.NotImplementedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

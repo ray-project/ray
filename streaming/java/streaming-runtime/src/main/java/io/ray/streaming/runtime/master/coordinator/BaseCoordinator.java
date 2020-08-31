@@ -25,7 +25,7 @@ public abstract class BaseCoordinator implements Runnable {
 
   public void start() {
     t = new Thread(Ray.wrapRunnable(this),
-        this.getClass().getName() + "-" + System.currentTimeMillis());
+      this.getClass().getName() + "-" + System.currentTimeMillis());
     t.start();
   }
 

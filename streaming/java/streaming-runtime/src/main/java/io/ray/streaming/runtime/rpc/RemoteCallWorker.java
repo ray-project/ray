@@ -7,7 +7,6 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.RayFunc3;
-import io.ray.api.id.ObjectId;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
@@ -40,7 +39,7 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof PyActorHandle) {
       result = ((PyActorHandle) actor).task(PyActorMethod.of("init", Boolean.class),
-          context.getPythonWorkerContextBytes()).remote();
+        context.getPythonWorkerContextBytes()).remote();
     } else {
       // java
       result = ((ActorHandle<JobWorker>) actor).task(JobWorker::init, context).remote();
@@ -63,16 +62,16 @@ public class RemoteCallWorker {
     // python
     if (actor instanceof PyActorHandle) {
       RemoteCall.CheckpointId checkpointIdPb = RemoteCall.CheckpointId.newBuilder()
-          .setCheckpointId(checkpointId)
-          .build();
+        .setCheckpointId(checkpointId)
+        .build();
       result = ((PyActorHandle) actor)
-          .task(PyActorMethod.of("rollback"),
-              checkpointIdPb.toByteArray()
-          ).remote();
+        .task(PyActorMethod.of("rollback"),
+          checkpointIdPb.toByteArray()
+        ).remote();
     } else {
       // java
       result = ((ActorHandle<JobWorker>) actor)
-          .task(JobWorker::rollback, checkpointId, System.currentTimeMillis()).remote();
+        .task(JobWorker::rollback, checkpointId, System.currentTimeMillis()).remote();
     }
 
     LOG.info("Finished calling worker to start.");
@@ -87,7 +86,7 @@ public class RemoteCallWorker {
    */
   public static Boolean shutdownWithoutReconstruction(BaseActorHandle actor) {
     LOG.info("Call worker to shutdown without reconstruction, actor is {}.",
-        actor.getId());
+      actor.getId());
     Boolean result = false;
 
     // TODO (datayjz): ray call worker to destroy
@@ -101,7 +100,7 @@ public class RemoteCallWorker {
     if (actor instanceof PyActorHandle) {
       RemoteCall.Barrier barrierPb = RemoteCall.Barrier.newBuilder().setId(barrier.getId()).build();
       return ((PyActorHandle) actor).task(
-          PyActorMethod.of("commit"), barrierPb.toByteArray()).remote();
+        PyActorMethod.of("commit"), barrierPb.toByteArray()).remote();
     } else {
       // java
       return ((ActorHandle<JobWorker>) actor).task(JobWorker::triggerCheckpoint, barrier).remote();
@@ -112,11 +111,11 @@ public class RemoteCallWorker {
                                             Long queueCheckpointId) {
     if (LOG.isInfoEnabled()) {
       LOG.info("Call worker clearExpiredCpParallel, state checkpoint id is {}," +
-          " queue checkpoint id is {}.", stateCheckpointId, queueCheckpointId);
+        " queue checkpoint id is {}.", stateCheckpointId, queueCheckpointId);
     }
 
     List<Object> result = cpCompleteCommonCallTwoWay(actors, stateCheckpointId, queueCheckpointId,
-        "clear_expired_cp", JobWorker::clearExpiredCp);
+      "clear_expired_cp", JobWorker::clearExpiredCp);
 
     if (LOG.isInfoEnabled()) {
       result.forEach(obj -> LOG.info("Finish call worker clearExpiredCpParallel, ret is {}.", obj));
@@ -130,13 +129,13 @@ public class RemoteCallWorker {
     actors.forEach(actor -> {
       if (actor instanceof PyActorHandle) {
         RemoteCall.CheckpointId checkpointIdPb = RemoteCall.CheckpointId.newBuilder()
-            .setCheckpointId(checkpointId)
-            .build();
+          .setCheckpointId(checkpointId)
+          .build();
         ((PyActorHandle) actor).task(PyActorMethod.of("notify_checkpoint_timeout"),
-            checkpointIdPb.toByteArray()).remote();
+          checkpointIdPb.toByteArray()).remote();
       } else {
         ((ActorHandle<JobWorker>) actor).task(JobWorker::notifyCheckpointTimeout, checkpointId)
-            .remote();
+          .remote();
       }
     });
 
@@ -144,35 +143,36 @@ public class RemoteCallWorker {
   }
 
   private static List<Object> cpCompleteCommonCallTwoWay(
-      List<BaseActorHandle> actors, Long stateCheckpointId, Long queueCheckpointId,
-      String pyFuncName, RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
-    List<ObjectRef<Object>> waitFor = cpCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
+    List<BaseActorHandle> actors, Long stateCheckpointId, Long queueCheckpointId,
+    String pyFuncName, RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
+    List<ObjectRef<Object>> waitFor =
+      cpCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
         pyFuncName, rayFunc);
     return Ray.get(waitFor);
   }
 
   private static List<ObjectRef<Object>> cpCompleteCommonCall(
-      List<BaseActorHandle> actors,
-      Long stateCheckpointId, Long queueCheckpointId,
-      String pyFuncName,
-      RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
+    List<BaseActorHandle> actors,
+    Long stateCheckpointId, Long queueCheckpointId,
+    String pyFuncName,
+    RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
     List<ObjectRef<Object>> waitFor = new ArrayList<>();
     actors.forEach(actor -> {
       // python
       if (actor instanceof PyActorHandle) {
         RemoteCall.CheckpointId stateCheckpointIdPb = RemoteCall.CheckpointId.newBuilder()
-            .setCheckpointId(stateCheckpointId)
-            .build();
+          .setCheckpointId(stateCheckpointId)
+          .build();
 
         RemoteCall.CheckpointId queueCheckpointIdPb = RemoteCall.CheckpointId.newBuilder()
-            .setCheckpointId(queueCheckpointId)
-            .build();
+          .setCheckpointId(queueCheckpointId)
+          .build();
         waitFor.add(((PyActorHandle) actor).task(PyActorMethod.of(pyFuncName),
-            stateCheckpointIdPb.toByteArray(), queueCheckpointIdPb.toByteArray()).remote());
+          stateCheckpointIdPb.toByteArray(), queueCheckpointIdPb.toByteArray()).remote());
       } else {
         // java
         waitFor.add(((ActorHandle) actor).task(rayFunc, stateCheckpointId, queueCheckpointId)
-            .remote());
+          .remote());
       }
     });
     return waitFor;

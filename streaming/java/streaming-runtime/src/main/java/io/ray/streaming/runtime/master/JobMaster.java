@@ -9,7 +9,6 @@ import io.ray.api.id.ActorId;
 import io.ray.streaming.jobgraph.JobGraph;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.StreamingMasterConfig;
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.resource.Container;
@@ -181,9 +180,9 @@ public class JobMaster {
       ActorId actorId = ActorId.fromBytes(reportPb.getActorId().toByteArray());
       long remoteCallCost = System.currentTimeMillis() - reportPb.getTimestamp();
       LOG.info("Vertex {}, request job worker commit cost {}ms, actorId={}.",
-          getExecutionVertex(actorId), remoteCallCost, actorId);
+        getExecutionVertex(actorId), remoteCallCost, actorId);
       RemoteCall.WorkerCommitReport commit =
-          reportPb.getDetail().unpack(RemoteCall.WorkerCommitReport.class);
+        reportPb.getDetail().unpack(RemoteCall.WorkerCommitReport.class);
       WorkerCommitReport report = new WorkerCommitReport(actorId, commit.getCommitCheckpointId());
       ret = checkpointCoordinator.reportJobWorkerCommit(report);
     } catch (InvalidProtocolBufferException e) {
@@ -207,26 +206,26 @@ public class JobMaster {
       }
       ExecutionVertex exeVertex = getExecutionVertex(actorId);
       LOG.info("Vertex {}, request job worker rollback cost {}ms, actorId={}.",
-          exeVertex, remoteCallCost, actorId);
+        exeVertex, remoteCallCost, actorId);
       RemoteCall.WorkerRollbackRequest rollbackPb
-          = RemoteCall.WorkerRollbackRequest.parseFrom(requestPb.getDetail().getValue());
+        = RemoteCall.WorkerRollbackRequest.parseFrom(requestPb.getDetail().getValue());
       exeVertex.setPid(rollbackPb.getWorkerPid());
       // To find old container where slot is located in.
       String hostname = "";
       Optional<Container> container = ResourceUtil.getContainerById(
-          resourceManager.getRegisteredContainers(),
-          exeVertex.getContainerId()
+        resourceManager.getRegisteredContainers(),
+        exeVertex.getContainerId()
       );
       if (container.isPresent()) {
         hostname = container.get().getHostname();
       }
       WorkerRollbackRequest request = new WorkerRollbackRequest(
-          actorId, rollbackPb.getExceptionMsg(), hostname, exeVertex.getPid()
+        actorId, rollbackPb.getExceptionMsg(), hostname, exeVertex.getPid()
       );
 
       ret = failoverCoordinator.requestJobWorkerRollback(request);
       LOG.info("Vertex {} request rollback, exception msg : {}.",
-          exeVertex, rollbackPb.getExceptionMsg());
+        exeVertex, rollbackPb.getExceptionMsg());
 
     } catch (Throwable e) {
       LOG.error("Parse job worker rollback has exception.", e);

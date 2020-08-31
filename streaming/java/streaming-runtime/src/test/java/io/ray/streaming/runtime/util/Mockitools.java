@@ -26,6 +26,7 @@ public class Mockitools {
 
   /**
    * Mock get all node info from GCS
+   *
    * @return
    */
   public static List<NodeInfo> mockGetAllNodeInfo() {
@@ -55,6 +56,7 @@ public class Mockitools {
 
   /**
    * Mock get node info map
+   *
    * @param nodeInfos all node infos fetched from GCS
    * @return node info map, key is node unique id, value is node info
    */

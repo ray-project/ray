@@ -3,8 +3,8 @@ package io.ray.streaming.runtime.master.coordinator;
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.runtime.exception.RayException;
 import io.ray.api.id.ActorId;
+import io.ray.runtime.exception.RayException;
 import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.coordinator.command.BaseWorkerCmd;
@@ -60,8 +60,8 @@ public class CheckpointCoordinator extends BaseCoordinator {
           // if wait commit report timeout, this cp fail, and restart next cp
           if (isTimeoutOfWaitCp()) {
             LOG.warn("Waiting for checkpoint {} timeout, pending cp actors is {}.",
-                runtimeContext.lastCheckpointId,
-                graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
+              runtimeContext.lastCheckpointId,
+              graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
 
             interruptCheckpoint();
           }
@@ -92,13 +92,13 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
   private void processCommitReport(WorkerCommitReport commitReport) {
     LOG.info("Start process commit report {}, from actor name={}.", commitReport,
-        graphManager.getExecutionGraph().getActorName(commitReport.fromActorId));
+      graphManager.getExecutionGraph().getActorName(commitReport.fromActorId));
 
     try {
       Preconditions.checkArgument(
-          commitReport.commitCheckpointId == runtimeContext.lastCheckpointId,
-          "expect checkpointId %s, but got %s",
-          runtimeContext.lastCheckpointId, commitReport);
+        commitReport.commitCheckpointId == runtimeContext.lastCheckpointId,
+        "expect checkpointId %s, but got %s",
+        runtimeContext.lastCheckpointId, commitReport);
 
       if (!pendingCheckpointActors.contains(commitReport.fromActorId)) {
         LOG.warn("Invalid commit report, skipped.");
@@ -107,7 +107,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
       pendingCheckpointActors.remove(commitReport.fromActorId);
       LOG.info("Pending actors after this commit: {}.",
-          graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
+        graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
 
       // checkpoint finish
       if (pendingCheckpointActors.isEmpty()) {
@@ -147,12 +147,12 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
     graphManager.getExecutionGraph().getSourceActors().forEach(actor -> {
       sourcesRet.add(RemoteCallWorker.triggerCheckpoint(
-          actor, new Barrier(runtimeContext.lastCheckpointId)));
+        actor, new Barrier(runtimeContext.lastCheckpointId)));
     });
 
     for (ObjectRef rayObject : sourcesRet) {
       if (rayObject.get() instanceof RayException) {
-        LOG.warn("Trigger checkpoint has exception.", (RayException)rayObject.get());
+        LOG.warn("Trigger checkpoint has exception.", (RayException) rayObject.get());
         throw (RayException) rayObject.get();
       }
     }
@@ -173,7 +173,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
     List<BaseActorHandle> allActor = graphManager.getExecutionGraph().getAllActors();
     if (runtimeContext.lastCheckpointId > runtimeContext.getLastValidCheckpointId()) {
       RemoteCallWorker
-          .notifyCheckpointTimeoutParallel(allActor, runtimeContext.lastCheckpointId);
+        .notifyCheckpointTimeoutParallel(allActor, runtimeContext.lastCheckpointId);
     }
 
     if (!pendingCheckpointActors.isEmpty()) {
@@ -206,7 +206,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
   private boolean isReadyToTrigger() {
     return (System.currentTimeMillis() - runtimeContext.lastCpTimestamp) >=
-        cpIntervalSecs * 1000;
+      cpIntervalSecs * 1000;
   }
 
   private boolean isTimeoutOfWaitCp() {

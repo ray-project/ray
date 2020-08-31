@@ -85,10 +85,10 @@ public class ExecutionVertex implements Serializable {
 
 
   public ExecutionVertex(
-      int globalIndex,
-      int index,
-      ExecutionJobVertex executionJobVertex,
-      ResourceConfig resourceConfig) {
+    int globalIndex,
+    int index,
+    ExecutionJobVertex executionJobVertex,
+    ResourceConfig resourceConfig) {
     this.executionVertexId = globalIndex;
     this.executionJobVertexId = executionJobVertex.getExecutionJobVertexId();
     this.executionJobVertexName = executionJobVertex.getExecutionJobVertexName();
@@ -183,7 +183,7 @@ public class ExecutionVertex implements Serializable {
   }
 
   public void setInputEdges(
-      List<ExecutionEdge> inputEdges) {
+    List<ExecutionEdge> inputEdges) {
     this.inputEdges = inputEdges;
   }
 
@@ -192,20 +192,20 @@ public class ExecutionVertex implements Serializable {
   }
 
   public void setOutputEdges(
-      List<ExecutionEdge> outputEdges) {
+    List<ExecutionEdge> outputEdges) {
     this.outputEdges = outputEdges;
   }
 
   public List<ExecutionVertex> getInputVertices() {
     return inputEdges.stream()
-        .map(ExecutionEdge::getSourceExecutionVertex)
-        .collect(Collectors.toList());
+      .map(ExecutionEdge::getSourceExecutionVertex)
+      .collect(Collectors.toList());
   }
 
   public List<ExecutionVertex> getOutputVertices() {
     return outputEdges.stream()
-        .map(ExecutionEdge::getTargetExecutionVertex)
-        .collect(Collectors.toList());
+      .map(ExecutionEdge::getTargetExecutionVertex)
+      .collect(Collectors.toList());
   }
 
   public ActorId getActorId() {
@@ -298,9 +298,9 @@ public class ExecutionVertex implements Serializable {
     List<ExecutionEdge> inputEdges = getInputEdges();
     for (ExecutionEdge edge : inputEdges) {
       String channelId = ChannelId.genIdStr(
-          edge.getSourceExecutionVertex().getExecutionVertexId(),
-          getExecutionVertexId(),
-          getBuildTime());
+        edge.getSourceExecutionVertex().getExecutionVertexId(),
+        getExecutionVertexId(),
+        getBuildTime());
       inputChannelIdList.add(channelId);
       inputActorList.add(edge.getSourceExecutionVertex().getWorkerActor());
       exeVertexChannelMap.put(edge.getSourceExecutionVertex().getExecutionVertexId(), channelId);
@@ -309,9 +309,9 @@ public class ExecutionVertex implements Serializable {
     List<ExecutionEdge> outputEdges = getOutputEdges();
     for (ExecutionEdge edge : outputEdges) {
       String channelId = ChannelId.genIdStr(
-          getExecutionVertexId(),
-          edge.getTargetExecutionVertex().getExecutionVertexId(),
-          getBuildTime());
+        getExecutionVertexId(),
+        edge.getTargetExecutionVertex().getExecutionVertexId(),
+        getBuildTime());
       outputChannelIdList.add(channelId);
       outputActorList.add(edge.getTargetExecutionVertex().getWorkerActor());
       exeVertexChannelMap.put(edge.getTargetExecutionVertex().getExecutionVertexId(), channelId);
@@ -346,12 +346,12 @@ public class ExecutionVertex implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("id", executionVertexId)
-        .add("name", getExecutionVertexName())
-        .add("resources", resource)
-        .add("state", state)
-        .add("containerId", containerId)
-        .add("workerActor", workerActor)
-        .toString();
+      .add("id", executionVertexId)
+      .add("name", getExecutionVertexName())
+      .add("resources", resource)
+      .add("state", state)
+      .add("containerId", containerId)
+      .add("workerActor", workerActor)
+      .toString();
   }
 }

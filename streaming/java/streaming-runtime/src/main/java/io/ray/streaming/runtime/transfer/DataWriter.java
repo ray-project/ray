@@ -48,10 +48,10 @@ public class DataWriter {
     this.outputChannels = outputChannels;
 
     ChannelCreationParametersBuilder initialParameters =
-        new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
+      new ChannelCreationParametersBuilder().buildOutputQueueParameters(outputChannels, toActors);
 
     byte[][] outputChannelsBytes = outputChannels.stream()
-        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+      .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
     long channelSize = workerConfig.transferConfig.channelSize();
 
     // load message id from checkpoints
@@ -70,24 +70,24 @@ public class DataWriter {
       isMock = true;
     }
     this.nativeWriterPtr = createWriterNative(
-        initialParameters,
-        outputChannelsBytes,
-        msgIds,
-        channelSize,
-        ChannelUtils.toNativeConf(workerConfig),
-        isMock
+      initialParameters,
+      outputChannelsBytes,
+      msgIds,
+      channelSize,
+      ChannelUtils.toNativeConf(workerConfig),
+      isMock
     );
     LOG.info("Create DataWriter succeed for worker: {}.",
-        workerConfig.workerInternalConfig.workerName());
+      workerConfig.workerInternalConfig.workerName());
   }
 
   private static native long createWriterNative(
-      ChannelCreationParametersBuilder initialParameters,
-      byte[][] outputQueueIds,
-      long[] msgIds,
-      long channelSize,
-      byte[] confBytes,
-      boolean isMock);
+    ChannelCreationParametersBuilder initialParameters,
+    byte[][] outputQueueIds,
+    long[] msgIds,
+    long channelSize,
+    byte[] confBytes,
+    boolean isMock);
 
   /**
    * Write msg into the specified channel
@@ -170,7 +170,7 @@ public class DataWriter {
   }
 
   private native long writeMessageNative(
-      long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
+    long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
 
   private native void stopWriterNative(long nativeQueueProducerPtr);
 
@@ -182,8 +182,8 @@ public class DataWriter {
                                              byte[] data);
 
   private native void clearCheckpointNative(
-      long nativeQueueProducerPtr,
-      long checkpointId
+    long nativeQueueProducerPtr,
+    long checkpointId
   );
 
 }

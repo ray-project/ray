@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.state.impl;
 
 import io.ray.streaming.runtime.config.global.StateBackendConfig;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

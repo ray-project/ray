@@ -63,12 +63,12 @@ public class KryoUtils {
   private static final String LAMBDA_OVERFLOW_EXCEPTION_MESSAGE = "Could not serialize lambda";
   // must be thread safely, see: https://github.com/EsotericSoftware/kryo#thread-safety
   private static final ThreadLocal<KryoThreadLocalContext> kryoThreadLocalContext =
-      ThreadLocal.withInitial(() -> {
-        Kryo kryo = createKryoInstance();
-        Input input = new Input();
-        Output output = new Output(BUFFER_SIZE);
-        return new KryoThreadLocalContext(kryo, input, output);
-      });
+    ThreadLocal.withInitial(() -> {
+      Kryo kryo = createKryoInstance();
+      Input input = new Input();
+      Output output = new Output(BUFFER_SIZE);
+      return new KryoThreadLocalContext(kryo, input, output);
+    });
 
   private static Kryo createKryoInstance() {
     Kryo kryo = new Kryo();
@@ -82,15 +82,15 @@ public class KryoUtils {
     kryo.register(Collections.EMPTY_MAP.getClass(), new CollectionsEmptyMapSerializer());
     kryo.register(Collections.EMPTY_SET.getClass(), new CollectionsEmptySetSerializer());
     kryo.register(Collections.singletonList("").getClass(),
-        new CollectionsSingletonListSerializer());
+      new CollectionsSingletonListSerializer());
     kryo.register(Collections.singleton("").getClass(), new CollectionsSingletonSetSerializer());
     kryo.register(Collections.singletonMap("", "").getClass(),
-        new CollectionsSingletonMapSerializer());
+      new CollectionsSingletonMapSerializer());
     kryo.register(Config.class, new KryoConfigSerializer());
     kryo.register(StreamingConfig.class, new KryoStreamingConfigSerializer());
     try {
       kryo.register(Class.forName("com.typesafe.config.impl.SimpleConfig"),
-          new KryoConfigSerializer());
+        new KryoConfigSerializer());
     } catch (ClassNotFoundException e) {
       // do nothing.
     }
@@ -101,7 +101,7 @@ public class KryoUtils {
     kryo.register(ArrayBlockingQueue.class, new KryoArrayBlockingQueueSerializer());
     kryo.register(LinkedBlockingQueue.class, new LinkedBlockingQueueSerializer());
     kryo.register(Collections.newSetFromMap(new HashMap()).getClass(),
-        new CollectionsSetFromMapSerializer());
+      new CollectionsSetFromMapSerializer());
 
     ArrayListMultimapSerializer.registerSerializers(kryo);
     HashMultimapSerializer.registerSerializers(kryo);
@@ -153,8 +153,8 @@ public class KryoUtils {
       } catch (KryoException e) {
         // need resize
         if (e.getMessage() != null
-            && (e.getMessage().startsWith(BUFFER_OVERFLOW_EXCEPTION_MESSAGE)
-            || e.getMessage().contains(LAMBDA_OVERFLOW_EXCEPTION_MESSAGE))) {
+          && (e.getMessage().startsWith(BUFFER_OVERFLOW_EXCEPTION_MESSAGE)
+          || e.getMessage().contains(LAMBDA_OVERFLOW_EXCEPTION_MESSAGE))) {
           output = kryoThreadLocalContext.get().resizeOutputBuffer();
         } else {
           LOG.warn("Kryo write has exception, message is: {}.", e.getMessage());
@@ -212,7 +212,7 @@ public class KryoUtils {
 
     private Output resizeOutputBuffer() {
       LOG.info("Resize output buffer size from [{}] to [{}].", outputBufferSize,
-          outputBufferSize * 2);
+        outputBufferSize * 2);
       this.outputBufferSize *= 2;
       this.output = new Output(outputBufferSize);
       return this.output;
@@ -306,9 +306,9 @@ public class KryoUtils {
       Tuple2<Integer, LinkedList> tuple2 = kryo.readObject(input, Tuple2.class);
       ArrayBlockingQueue arrayBlockingQueue = new ArrayBlockingQueue(tuple2.a);
       tuple2.b.stream().forEach(
-          obj -> {
-            arrayBlockingQueue.add(obj);
-          }
+        obj -> {
+          arrayBlockingQueue.add(obj);
+        }
       );
       return arrayBlockingQueue;
     }
@@ -329,9 +329,9 @@ public class KryoUtils {
       Tuple2<Integer, LinkedList> tuple2 = kryo.readObject(input, Tuple2.class);
       LinkedBlockingQueue linkedBlockingQueue = new LinkedBlockingQueue(tuple2.a);
       tuple2.b.stream().forEach(
-          obj -> {
-            linkedBlockingQueue.add(obj);
-          }
+        obj -> {
+          linkedBlockingQueue.add(obj);
+        }
       );
       return linkedBlockingQueue;
     }
