@@ -210,8 +210,8 @@ def update_backend_config(
 
     Args:
         backend_tag(str): A registered backend.
-        config_options(dict, serve.BackendConfig): Backend config options to 
-        update. Either a BackendConfig object or a dict mapping strings to 
+        config_options(dict, serve.BackendConfig): Backend config options to
+        update. Either a BackendConfig object or a dict mapping strings to
         values for the following options:
 
             Supported options:
@@ -250,8 +250,7 @@ def create_backend(
         func_or_class: Union[Callable, Type[Callable]],
         *actor_init_args: Any,
         ray_actor_options: Optional[Dict] = None,
-        config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-) -> None:
+        config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
