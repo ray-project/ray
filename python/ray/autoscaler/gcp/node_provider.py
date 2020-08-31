@@ -48,9 +48,7 @@ class GCPNodeProvider(NodeProvider):
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
-        self.provider_cache = provider_cache
-        if provider_cache == None:
-            self.provider_cache = NodeProviderCache()
+        self.provider_cache = provider_cache or NodeProviderCache()
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -90,7 +88,7 @@ class GCPNodeProvider(NodeProvider):
 
             instances = response.get("items", [])
 
-            self.provider_cache.cleanup_by_tags(tag_filters)
+            self.provider_cache.cleanup()
             for instance in instances:
                 # Note: All the operations use "name" as the unique instance id
                 node_id = instance["name"]

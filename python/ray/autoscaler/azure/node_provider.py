@@ -74,9 +74,7 @@ class AzureNodeProvider(NodeProvider):
         self.lock = RLock()
 
         # cache node objects
-        self.provider_cache = provider_cache
-        if provider_cache == None:
-            self.provider_cache = NodeProviderCache()
+        self.provider_cache = provider_cache or NodeProviderCache()
 
     @synchronized
     def _get_filtered_nodes(self, tag_filters):
@@ -91,7 +89,7 @@ class AzureNodeProvider(NodeProvider):
 
         nodes = [self._extract_metadata(vm) for vm in filter(match_tags, vms)]
 
-        self.provider_cache.cleanup_by_tags(tag_filters)
+        self.provider_cache.cleanup()
         for node in nodes:
             # Note: All the operations use "name" as the unique instance id
             node_id = node["name"]

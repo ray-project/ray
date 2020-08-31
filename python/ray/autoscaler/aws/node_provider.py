@@ -69,9 +69,7 @@ class AWSNodeProvider(NodeProvider):
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
-        self.provider_cache = provider_cache
-        if provider_cache == None:
-            self.provider_cache = NodeProviderCache()
+        self.provider_cache = provider_cache or NodeProviderCache()
 
         self.tag_cache_pending = {}  # Tags that we will soon upload.
         self.tag_cache_lock = threading.Lock()
@@ -142,7 +140,7 @@ class AWSNodeProvider(NodeProvider):
                 "Failed to fetch running instances from AWS."):
             nodes = list(self.ec2.instances.filter(Filters=filters))
 
-        self.provider_cache.cleanup_by_tags(tag_filters)
+        self.provider_cache.cleanup()
 
         for node in nodes:
             self.provider_cache.set_node(node.id, node)
@@ -198,14 +196,6 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache_update_event.set()
 
             self.node_provider.set_tags(node_id, tags)
-
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        assert instance_type is not None
-        node_config["InstanceType"] = instance_type
-        return self.create_node(node_config, tags, count)
-
-    def get_instance_type(self, node_config):
-        return node_config["InstanceType"]
 
     def create_node(self, node_config, tags, count):
         tags = copy.deepcopy(tags)
