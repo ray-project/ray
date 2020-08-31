@@ -13,7 +13,7 @@ import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest;
 import io.ray.streaming.runtime.message.CallResult;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
-import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.ContextBackend;
 import io.ray.streaming.runtime.state.StateBackendFactory;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
@@ -54,7 +54,7 @@ public class JobWorker implements Serializable {
    * isRecreate=true means this worker is initialized more than once after actor created.
    */
   public AtomicBoolean isRecreate = new AtomicBoolean(false);
-  public StateBackend stateBackend;
+  public ContextBackend contextBackend;
   private JobWorkerContext workerContext;
   private ExecutionVertex executionVertex;
   private StreamingWorkerConfig workerConfig;
@@ -79,7 +79,7 @@ public class JobWorker implements Serializable {
     // TODO: the following 3 lines is duplicated with that in init(), try to optimise it later.
     this.executionVertex = executionVertex;
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
-    this.stateBackend = StateBackendFactory.getStateBackend(this.workerConfig);
+    this.contextBackend = StateBackendFactory.getStateBackend(this.workerConfig);
 
     LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
         Ray.getRuntimeContext().wasCurrentActorRestarted());
@@ -91,7 +91,7 @@ public class JobWorker implements Serializable {
 
     LOG.info("Begin load job worker checkpoint state.");
 
-    byte[] bytes = CheckpointStateUtil.get(stateBackend, getJobWorkerContextKey());
+    byte[] bytes = CheckpointStateUtil.get(contextBackend, getJobWorkerContextKey());
     if (bytes != null) {
       JobWorkerContext context = Serializer.decode(bytes);
       LOG.info("Worker recover from checkpoint state, byte len={}, context={}.", bytes.length,
@@ -102,7 +102,7 @@ public class JobWorker implements Serializable {
       LOG.error(
           "Worker is reconstructed, but can't load checkpoint. " +
               "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
-          stateBackend.getClass().getName());
+          contextBackend.getClass().getName());
     }
   }
 
@@ -111,7 +111,7 @@ public class JobWorker implements Serializable {
     String key = getJobWorkerContextKey();
     LOG.info("Saving context, worker context={}, serialized byte length={}, key={}.", workerContext,
         contextBytes.length, key);
-    CheckpointStateUtil.put(stateBackend, key, contextBytes);
+    CheckpointStateUtil.put(contextBackend, key, contextBytes);
   }
 
   /**
@@ -127,7 +127,7 @@ public class JobWorker implements Serializable {
     this.executionVertex = workerContext.getExecutionVertex();
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
     // init state backend
-    this.stateBackend = StateBackendFactory.getStateBackend(this.workerConfig);
+    this.contextBackend = StateBackendFactory.getStateBackend(this.workerConfig);
 
     LOG.info("Initiating job worker succeeded: {}.", workerContext.getWorkerName());
     saveContext();

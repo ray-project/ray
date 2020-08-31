@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
  * Achieves an atomic `put` method.
  * known issue: if you crashed while write a key at first time, this code will not work.
  */
-public class AtomicFsBackend extends LocalFileStateBackend {
+public class AtomicFsBackend extends LocalFileContextBackend {
 
   private static final Logger LOG = LoggerFactory.getLogger(AtomicFsBackend.class);
   private static final String TMP_FLAG = "_tmp";

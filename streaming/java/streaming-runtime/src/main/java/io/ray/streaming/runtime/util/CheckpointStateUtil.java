@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.ContextBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,7 +17,7 @@ public class CheckpointStateUtil {
    * @param checkpointState state backend
    * @param cpKey checkpoint key
    */
-  public static byte[] get(StateBackend checkpointState, String cpKey) {
+  public static byte[] get(ContextBackend checkpointState, String cpKey) {
     byte[] val;
     try {
       val = checkpointState.get(cpKey);
@@ -35,7 +35,7 @@ public class CheckpointStateUtil {
    * @param key checkpoint key
    * @param val checkpoint value
    */
-  public static void put(StateBackend checkpointState, String key, byte[] val) {
+  public static void put(ContextBackend checkpointState, String key, byte[] val) {
     try {
       checkpointState.put(key, val);
     } catch (Exception e) {

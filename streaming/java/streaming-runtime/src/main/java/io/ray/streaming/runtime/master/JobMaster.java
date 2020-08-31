@@ -23,7 +23,7 @@ import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManager;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceManagerImpl;
 import io.ray.streaming.runtime.master.scheduler.JobSchedulerImpl;
-import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.ContextBackend;
 import io.ray.streaming.runtime.state.StateBackendFactory;
 import io.ray.streaming.runtime.util.CheckpointStateUtil;
 import io.ray.streaming.runtime.util.ResourceUtil;
@@ -48,7 +48,7 @@ public class JobMaster {
   private GraphManager graphManager;
   private StreamingMasterConfig conf;
 
-  private StateBackend stateBackend;
+  private ContextBackend contextBackend;
 
   private ActorHandle<JobMaster> jobMasterActor;
 
@@ -61,7 +61,7 @@ public class JobMaster {
 
     StreamingConfig streamingConfig = new StreamingConfig(confMap);
     this.conf = streamingConfig.masterConfig;
-    this.stateBackend = StateBackendFactory.getStateBackend(this.conf);
+    this.contextBackend = StateBackendFactory.getStateBackend(this.conf);
 
     // init runtime context
     runtimeContext = new JobMasterRuntimeContext(streamingConfig);
@@ -81,7 +81,7 @@ public class JobMaster {
   private void loadMasterCheckpoint() {
     LOG.info("Start to load JobMaster's checkpoint.");
     // recover runtime context
-    byte[] bytes = CheckpointStateUtil.get(stateBackend, getJobMasterRuntimeContextKey(getConf()));
+    byte[] bytes = CheckpointStateUtil.get(contextBackend, getJobMasterRuntimeContextKey(getConf()));
     if (bytes == null) {
       LOG.warn("JobMaster got empty checkpoint from state backend. Skip loading checkpoint.");
       // cp 0 was automatically saved when job started, see StreamTask.
@@ -168,7 +168,7 @@ public class JobMaster {
       }
 
       byte[] contextBytes = Serializer.encode(runtimeContext);
-      CheckpointStateUtil.put(stateBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
+      CheckpointStateUtil.put(contextBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
     }
   }
 

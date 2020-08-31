@@ -16,7 +16,7 @@ import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerCommitReport;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
 import io.ray.streaming.runtime.state.OpCheckpointInfo;
-import io.ray.streaming.runtime.state.StateBackend;
+import io.ray.streaming.runtime.state.ContextBackend;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
@@ -44,7 +44,7 @@ import org.slf4j.LoggerFactory;
 public abstract class StreamTask implements Runnable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
-  private final StateBackend checkpointState;
+  private final ContextBackend checkpointState;
   public volatile boolean isInitialState = true;
   public long lastCheckpointId;
   protected Processor processor;
@@ -60,7 +60,7 @@ public abstract class StreamTask implements Runnable {
   protected StreamTask(Processor processor, JobWorker jobWorker, long lastCheckpointId) {
     this.processor = processor;
     this.jobWorker = jobWorker;
-    this.checkpointState = jobWorker.stateBackend;
+    this.checkpointState = jobWorker.contextBackend;
     this.lastCheckpointId = lastCheckpointId;
 
     this.thread = new Thread(Ray.wrapRunnable(this),

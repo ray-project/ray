@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.state;
 
-public interface StateBackend {
+public interface ContextBackend {
 
   /**
    * check if key exists in state
