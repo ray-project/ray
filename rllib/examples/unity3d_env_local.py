@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
 
     args = parser.parse_args()
 

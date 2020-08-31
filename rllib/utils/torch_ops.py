@@ -73,8 +73,9 @@ def one_hot(x, space):
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x, space.n)
     elif isinstance(space, MultiDiscrete):
-        !!TODO !!
-        return nn.functional.one_hot(x, space.nvec)
+        return torch.cat([
+            nn.functional.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)
+        ], dim=-1)
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
