@@ -21,7 +21,7 @@ public class RemoteCallWorker {
   /**
    * Call JobWorker actor to init.
    *
-   * @param actor   target JobWorker actor
+   * @param actor target JobWorker actor
    * @param context JobWorker's context
    * @return init result
    */

@@ -73,7 +73,7 @@ public class JobMaster {
    * </ol>
    *
    * @param jobMasterActor JobMaster actor
-   * @param jobGraph       logical plan
+   * @param jobGraph logical plan
    * @return submit result
    */
   public boolean submitJob(ActorHandle<JobMaster> jobMasterActor, JobGraph jobGraph) {

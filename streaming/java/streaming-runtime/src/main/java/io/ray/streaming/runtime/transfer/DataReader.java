@@ -25,8 +25,8 @@ public class DataReader {
 
   /**
    * @param inputChannels input channels ids
-   * @param fromActors    upstream input actors
-   * @param workerConfig  configuration
+   * @param fromActors upstream input actors
+   * @param workerConfig configuration
    */
   public DataReader(
       List<String> inputChannels,
