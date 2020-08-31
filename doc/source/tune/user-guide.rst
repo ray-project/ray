@@ -143,13 +143,11 @@ During training, Tune will automatically log the below metrics in addition to th
 Checkpointing
 -------------
 
-When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. Checkpointing is used for
+When running a hyperparameter search, Tune can automatically and periodically save/checkpoint your model. This allows you to:
 
- * saving a model throughout training
- * fault-tolerance when using pre-emptible machines.
+ * save intermediate models throughout training
+ * use pre-emptible machines (by automatically restoring from last checkpoint)
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
-
-Checkpointing assumes that the model state will be saved to disk on whichever node the Trainable is running on.
 
 To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
 
@@ -194,6 +192,21 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
         config={"env": "CartPole-v0"},
     )
 
+Distributed Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>` and also requires rsync to be installed.
+
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
+
+If you do not use the cluster launcher, you should set up a NFS or global file system and
+disable cross-node syncing:
+
+.. code-block:: python
+
+    tune.run(func, sync_to_driver=False)
+
+
 Handling Large Datasets
 -----------------------
 
@@ -212,7 +225,7 @@ You often will want to compute a large object (e.g., training data, model weight
     # X_id can be referenced in closures
     X_id = pin_in_object_store(np.random.random(size=100000000))
 
-    def f(config, reporter):
+    def f(config):
         X = get_pinned_object(X_id)
         # use X
 
@@ -431,13 +444,35 @@ If a string is provided, then it must include replacement fields ``{source}`` an
 
 By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
 
+.. _tune-kubernetes:
+
+Using Tune with Kubernetes
+--------------------------
+Tune automatically syncs files and checkpoints between different remote
+nodes as needed.
+To make this work in your Kubernetes cluster, you will need to pass a
+``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.run()``.
+You have to specify your Kubernetes namespace explicitly:
+
+.. code-block:: python
+
+    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
+    tune.run(train,
+             sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True))
+
+
+The ``KubernetesSyncer`` supports two modes for file synchronisation. Per
+default, files are synchronized with ``kubectl cp``, requiring the ``tar``
+binary in your pods. If you would like to use ``rsync`` instead your pods
+will have to have ``rsync`` installed. Use the ``use_rsync`` parameter to
+decide between the two options.
+
 .. _tune-log_to_file:
 
 Redirecting stdout and stderr to files
 --------------------------------------
 The stdout and stderr streams are usually printed to the console. For remote actors,
-Ray collects these logs and prints them to the head process, as long as it
-has been initialized with ``log_to_driver=True``, which is the default.
+Ray collects these logs and prints them to the head process.
 
 However, if you would like to collect the stream outputs in files for later
 analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
@@ -471,17 +506,6 @@ too.
 
 If ``log_to_file`` is set, Tune will automatically register a new logging handler
 for Ray's base logger and log the output to the specified stderr output file.
-
-Setting ``log_to_file`` does not disable logging to the driver. If you would
-like to disable the logs showing up in the driver output (i.e. they should only
-show up in the logfiles), initialize Ray accordingly:
-
-.. code-block:: python
-
-    ray.init(log_to_driver=False)
-    tune.run(
-        trainable,
-        log_to_file=True)
 
 .. _tune-debugging:
 

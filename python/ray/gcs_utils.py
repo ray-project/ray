@@ -1,3 +1,4 @@
+from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ActorTableData,
@@ -5,7 +6,6 @@ from ray.core.generated.gcs_pb2 import (
     JobTableData,
     JobConfig,
     ErrorTableData,
-    ErrorType,
     GcsEntry,
     HeartbeatBatchTableData,
     HeartbeatTableData,
@@ -19,6 +19,7 @@ from ray.core.generated.gcs_pb2 import (
     ObjectLocationInfo,
     PubSubMessage,
     WorkerTableData,
+    PlacementGroupTableData,
 )
 
 __all__ = [
@@ -43,6 +44,7 @@ __all__ = [
     "ObjectLocationInfo",
     "PubSubMessage",
     "WorkerTableData",
+    "PlacementGroupTableData",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"

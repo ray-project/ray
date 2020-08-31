@@ -700,6 +700,7 @@ class _MockTrial(Trial):
         self.restored_checkpoint = None
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
+        self.custom_dirname = None
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -716,6 +717,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                    explore=None,
                    perturbation_interval=10,
                    log_config=False,
+                   require_attrs=True,
                    hyperparams=None,
                    hyperparam_mutations=None,
                    step_once=True):
@@ -731,7 +733,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             quantile_fraction=0.25,
             hyperparam_mutations=hyperparam_mutations,
             custom_explore_fn=explore,
-            log_config=log_config)
+            log_config=log_config,
+            require_attrs=require_attrs)
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -749,6 +752,44 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testMetricError(self):
+        pbt, runner = self.basicSetup()
+        trials = runner.get_trials()
+
+        # Should error if training_iteration not in result dict.
+        with self.assertRaises(RuntimeError):
+            pbt.on_trial_result(
+                runner, trials[0], result={"episode_reward_mean": 4})
+
+        # Should error if episode_reward_mean not in result dict.
+        with self.assertRaises(RuntimeError):
+            pbt.on_trial_result(
+                runner,
+                trials[0],
+                result={
+                    "random_metric": 10,
+                    "training_iteration": 20
+                })
+
+    def testMetricLog(self):
+        pbt, runner = self.basicSetup(require_attrs=False)
+        trials = runner.get_trials()
+
+        # Should not error if training_iteration not in result dict
+        with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
+            pbt.on_trial_result(
+                runner, trials[0], result={"episode_reward_mean": 4})
+
+        # Should not error if episode_reward_mean not in result dict.
+        with self.assertLogs("ray.tune.schedulers.pbt", level="WARN"):
+            pbt.on_trial_result(
+                runner,
+                trials[0],
+                result={
+                    "random_metric": 10,
+                    "training_iteration": 20
+                })
 
     def testCheckpointsMostPromisingTrials(self):
         pbt, runner = self.basicSetup()
@@ -838,6 +879,32 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(trials[0].config["int_factor"], 10)
         self.assertEqual(type(trials[0].config["int_factor"]), int)
         self.assertEqual(trials[0].config["const_factor"], 3)
+
+    def testTuneSamplePrimitives(self):
+        pbt, runner = self.basicSetup(
+            resample_prob=1.0,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": lambda: 10,
+                "id_factor": tune.choice([100])
+            })
+        trials = runner.get_trials()
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(20, -100)),
+            TrialScheduler.CONTINUE)
+        self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
+        self.assertEqual(trials[0].config["id_factor"], 100)
+        self.assertEqual(trials[0].config["float_factor"], 100.0)
+        self.assertEqual(type(trials[0].config["float_factor"]), float)
+        self.assertEqual(trials[0].config["int_factor"], 10)
+        self.assertEqual(type(trials[0].config["int_factor"]), int)
+        self.assertEqual(trials[0].config["const_factor"], 3)
+
+    def testTuneSampleFromError(self):
+        with self.assertRaises(ValueError):
+            pbt, runner = self.basicSetup(hyperparam_mutations={
+                "float_factor": tune.sample_from(lambda: 100.0)
+            })
 
     def testPerturbationValues(self):
         def assertProduces(fn, values):
@@ -1075,11 +1142,24 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testReplay(self):
+        # Returns unique increasing parameter mutations
+        class _Counter:
+            def __init__(self, start=0):
+                self.count = start - 1
+
+            def __call__(self, *args, **kwargs):
+                self.count += 1
+                return self.count
+
         pbt, runner = self.basicSetup(
             num_trials=4,
             perturbation_interval=5,
             log_config=True,
-            step_once=False)
+            step_once=False,
+            hyperparam_mutations={
+                "float_factor": lambda: 100.0,
+                "int_factor": _Counter(1000)
+            })
         trials = runner.get_trials()
         tmpdir = tempfile.mkdtemp()
 

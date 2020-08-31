@@ -9,11 +9,13 @@ hpbandster
 hyperopt==0.1.2
 jupyter
 keras
+kubernetes
 lightgbm
 matplotlib
 mlflow
 mxnet
 nevergrad
+optuna
 pytest-remotedata>=0.3.1
 pytorch-lightning
 scikit-optimize

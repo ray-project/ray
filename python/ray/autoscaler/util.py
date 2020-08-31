@@ -9,7 +9,7 @@ from typing import Any, Dict
 import ray
 import ray.services as services
 from ray.autoscaler.node_provider import get_default_config
-from ray.autoscaler.docker import dockerize_if_needed
+from ray.autoscaler.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -56,7 +56,7 @@ def validate_config(config: Dict[str, Any]) -> None:
     try:
         jsonschema.validate(config, schema)
     except jsonschema.ValidationError as e:
-        raise jsonschema.ValidationError(message=e.message) from None
+        raise e from None
 
     # Detect out of date defaults. This happens when the autoscaler that filled
     # out the default values is older than the version of the autoscaler that
@@ -70,11 +70,27 @@ def validate_config(config: Dict[str, Any]) -> None:
             "machine and make sure the versions match.".format(
                 ray_version=ray.__version__))
 
+    if "available_node_types" in config:
+        if "head_node_type" not in config:
+            raise ValueError(
+                "You must specify `head_node_type` if `available_node_types "
+                "is set.")
+        if config["head_node_type"] not in config["available_node_types"]:
+            raise ValueError(
+                "`head_node_type` must be one of `available_node_types`.")
+        if "worker_default_node_type" not in config:
+            raise ValueError("You must specify `worker_default_node_type` if "
+                             "`available_node_types is set.")
+        if (config["worker_default_node_type"] not in config[
+                "available_node_types"]):
+            raise ValueError("`worker_default_node_type` must be one of "
+                             "`available_node_types`.")
+
 
 def prepare_config(config):
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
-    dockerize_if_needed(with_defaults)
+    validate_docker_config(with_defaults)
     return with_defaults
 
 
@@ -103,8 +119,17 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
+    # For hashing, we replace the path to the key with the
+    # key itself. This is to make sure the hashes are the
+    # same even if keys live at different locations on different
+    # machines.
+    full_auth = auth.copy()
+    for key_type in ["ssh_private_key", "ssh_public_key"]:
+        if key_type in auth:
+            with open(os.path.expanduser(auth[key_type])) as key:
+                full_auth[key_type] = key.read()
     hasher.update(
-        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+        json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 

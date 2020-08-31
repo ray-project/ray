@@ -88,7 +88,7 @@ Actor Methods
       @ray.remote
       class Foo(object):
 
-          @ray.method(num_return_vals=2)
+          @ray.method(num_returns=2)
           def bar(self):
               return 1, 2
 
@@ -126,8 +126,8 @@ You can specify that an actor requires CPUs or GPUs in the decorator. While Ray 
   .. group-tab:: Python
 
     When using GPUs, Ray will automatically set the environment variable ``CUDA_VISIBLE_DEVICES`` for the actor after instantiated. The actor will have access to a list of the IDs of the GPUs
-    that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of integers,
-    like ``[]``, or ``[1]``, or ``[2, 5, 6]``.
+    that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of strings,
+    like ``[]``, or ``['1']``, or ``['2', '5', '6']``. Under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices (see the `CUDA programming guide <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars>`__).
 
     .. code-block:: python
 
@@ -253,13 +253,13 @@ Terminating Actors
     collected. The ``ObjectRef`` resulting from the task can be waited on to wait
     for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
     Note that this method of termination will wait until any previously submitted
-    tasks finish executing.
+    tasks finish executing and then exit the process gracefully with sys.exit.
 
   .. group-tab:: Java
 
     Terminating an actor from within one of the actor methods hasn't been implemented in Java yet.
 
-You can terminate an actor immediately.
+You can terminate an actor forcefully.
 
 .. tabs::
   .. code-tab:: python
@@ -268,20 +268,24 @@ You can terminate an actor immediately.
 
   .. code-tab:: java
 
-    actorHandle.kill(/*noRestart=*/true);
+    actorHandle.kill();
 
-This will cause the actor to exit immediately
-and any pending tasks to fail.
+This will call the exit syscall from within the actor, causing it to exit
+immediately and any pending tasks to fail.
 
 .. tabs::
+
   .. group-tab:: Python
 
-    Any exit handlers installed in the actor using
-    ``atexit`` will be called.
+    This will not go through the normal
+    Python sys.exit teardown logic, so any exit handlers installed in the actor using
+    ``atexit`` will not be called.
 
   .. group-tab:: Java
 
-    TODO
+    This will not go through the normal Java System.exit teardown logic, so any
+    shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
+    not be called.
 
 Passing Around Actor Handles
 ----------------------------
@@ -373,6 +377,37 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       System.out.println(counter.task(Counter::getCounter).remote().get());
     }
 
+Named Actors
+------------
+
+An actor can be given a globally unique name via ``.options(name="some_name")``,
+which allows you to retrieve the actor from any job in the Ray cluster via
+``ray.get_actor("some_name")``. This can be useful if you cannot directly
+pass the actor handle to the task that needs it, or if you are trying to
+access an actor launched by another driver.
+
+Actor Lifetimes
+---------------
+
+Separately, actor lifetimes can be decoupled from the job, allowing an actor to
+persist even after the driver process of the job exits.
+
+.. code-block:: python
+
+  counter = Counter.options(name="CounterActor", lifetime="detached").remote()
+
+The CounterActor will be kept alive even after the driver running above script
+exits. Therefore it is possible to run the following script in a different
+driver:
+
+.. code-block:: python
+
+  counter = ray.get_actor("CounterActor")
+  print(ray.get(counter.get_counter.remote()))
+
+Note that the lifetime option is decoupled from the name. If we only specified
+the name without specifying ``lifetime="detached"``, then the CounterActor can
+only be retrieved as long as the original driver is still running.
 
 Actor Pool
 ----------

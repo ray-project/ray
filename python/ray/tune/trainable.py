@@ -398,9 +398,9 @@ class Trainable:
 
         self.log_result(result)
 
-        if self._stdout_stream:
+        if self._stdout_context:
             self._stdout_stream.flush()
-        if self._stderr_stream:
+        if self._stderr_context:
             self._stderr_stream.flush()
 
         return result
@@ -625,10 +625,12 @@ class Trainable:
             self._stdout_stream.flush()
             self._stdout_context.__exit__(None, None, None)
             self._stdout_fp.close()
+            self._stdout_context = None
         if self._stderr_context:
             self._stderr_stream.flush()
             self._stderr_context.__exit__(None, None, None)
             self._stderr_fp.close()
+            self._stderr_context = None
 
     def stop(self):
         """Releases all resources used by this trainable.

@@ -43,6 +43,10 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
+const PlacementGroupID TaskSpecification::PlacementGroupId() const {
+  return PlacementGroupID::FromBinary(message_->placement_group_id());
+}
+
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_->required_resources());
   auto required_placement_resources =
@@ -112,7 +116,7 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
+  return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {

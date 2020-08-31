@@ -51,6 +51,8 @@ namespace ray {
 
 class CoreWorker;
 
+// If you change this options's definition, you must change the options used in
+// other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
@@ -105,6 +107,10 @@ struct CoreWorkerOptions {
   /// runtime. This is required to free distributed references that may otherwise
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
+  /// Application-language callback to spill objects to external storage.
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  /// Application-language callback to restore objects from external storage.
+  std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -466,10 +472,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
   /// \param[in] object_id Object ID specified by the user.
+  /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, const rpc::Address &owner_address,
+                std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -488,9 +496,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
+  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool plasma_objects_only = false);
 
   /// Return whether or not the object store contains the given object.
   ///
@@ -578,6 +588,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SetResource(const std::string &resource_name, const double capacity,
                      const ClientID &client_id);
 
+  /// Request an object to be spilled to external storage.
+  /// \param[in] object_ids The objects to be spilled.
+  /// \return Status. Returns Status::Invalid if any of the objects are not
+  /// eligible for spilling (they have gone out of scope or we do not own the
+  /// object). Otherwise, the return status is ok and we will use best effort
+  /// to spill the object.
+  Status SpillObjects(const std::vector<ObjectID> &object_ids);
+
+  /// Restore objects from external storage.
+  /// \param[in] object_ids The objects to be restored.
+  /// \return Status
+  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
+
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -609,12 +632,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] function The remote function that generates the placement group object.
   /// \param[in] placement_group_creation_options Options for this placement group
-  /// creation task. \param[out] placement_group_id ID of the created placement group.
-  /// This can be used to shedule actor in node \return Status error if placement group
+  /// creation task.
+  /// \param[out] placement_group_id ID of the created placement group.
+  /// This can be used to shedule actor in node
+  /// \return Status error if placement group
   /// creation fails, likely due to raylet failure.
   Status CreatePlacementGroup(
       const PlacementGroupCreationOptions &placement_group_creation_options,
       PlacementGroupID *placement_group_id);
+
+  /// Remove a placement group. Note that this operation is synchronous.
+  ///
+  /// \param[in] placement_group_id The id of a placement group to remove.
+  /// \return Status OK if succeed. TimedOut if request to GCS server times out.
+  /// NotFound if placement group is already removed or doesn't exist.
+  Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
   /// Submit an actor task.
   ///
@@ -764,6 +796,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleAddObjectLocationOwner(const rpc::AddObjectLocationOwnerRequest &request,
+                                    rpc::AddObjectLocationOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleRemoveObjectLocationOwner(
+      const rpc::RemoveObjectLocationOwnerRequest &request,
+      rpc::RemoveObjectLocationOwnerReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleGetObjectLocationsOwner(const rpc::GetObjectLocationsOwnerRequest &request,
+                                     rpc::GetObjectLocationsOwnerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
@@ -790,6 +838,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Trigger local GC on this worker.
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Spill objects to external storage.
+  void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
+                          rpc::SpillObjectsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  // Restore objects from external storage.
+  void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
+                                   rpc::RestoreSpilledObjectsReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -943,6 +1001,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Handler if a raylet node is removed from the cluster.
   void OnNodeRemoved(const rpc::GcsNodeInfo &node_info);
 
+  /// Request the spillage of an object that we own from the primary that hosts
+  /// the primary copy to spill.
+  void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
+                        std::function<void()> callback);
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -978,6 +1041,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  /// Shared core worker client pool.
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// Timer used to periodically check if the raylet has died.
   boost::asio::steady_timer death_check_timer_;

@@ -27,6 +27,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
+#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
@@ -73,6 +74,8 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
+  /// The command used to start agent.
+  std::string agent_command;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
@@ -84,8 +87,6 @@ struct NodeManagerConfig {
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled;
-  /// the maximum lineage size.
-  uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
   /// The path to the ray temp dir.
@@ -233,7 +234,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<ObjectID> object_ids, const JobID &job_id);
+                           const std::vector<rpc::ObjectReference> object_ids,
+                           const JobID &job_id);
   /// This is similar to TreatTaskAsFailed, but it will only mark the task as
   /// failed if at least one of the task's return values is lost. A return
   /// value is lost if it has been created before, but no longer exists on any
@@ -434,13 +436,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Check if certain invariants associated with the task dependency manager
-  /// and the local queues are satisfied. This is only used for debugging
-  /// purposes.
-  ///
-  /// \return True if the invariants are satisfied and false otherwise.
-  bool CheckDependencyManagerInvariant() const;
-
   /// Process client message of SubmitTask
   ///
   /// \param message_data A pointer to the message data.
@@ -606,12 +601,27 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                     rpc::FormatGlobalMemoryInfoReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `RequestObjectSpillage` request.
+  void HandleRequestObjectSpillage(const rpc::RequestObjectSpillageRequest &request,
+                                   rpc::RequestObjectSpillageReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger global GC across the cluster to free up references to actors or
   /// object ids.
   void TriggerGlobalGC();
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
+
+  /// Spill objects to external storage.
+  /// \param objects_ids_to_spill The objects to be spilled.
+  void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+                    std::function<void(const ray::Status &)> callback = nullptr);
+
+  /// Restore spilled objects from external storage.
+  /// \param object_ids Objects to be restored.
+  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
+                             std::function<void(const ray::Status &)> callback = nullptr);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -698,16 +708,24 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// A mapping from actor ID to registration information about that actor
   /// (including which node manager owns it).
   std::unordered_map<ActorID, ActorRegistration> actor_registry_;
-
+  /// A mapping from ObjectIDs to external object URLs for spilled objects.
+  /// TODO(suquark): Move it into object directory.
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_;
   /// This map stores actor ID to the ID of the checkpoint that will be used to
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
+
+  std::unique_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
+
+  /// The agent manager RPC service.
+  std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
+  rpc::AgentManagerGrpcService agent_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
   /// as well as all `CoreWorkerClient`s.

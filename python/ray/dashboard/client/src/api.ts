@@ -155,14 +155,13 @@ export enum ActorState {
   Dead = 4,
 }
 
-export type RayletActorInfo = FullActorInfo | PartialActorInfo;
+export type ActorInfo = FullActorInfo | PartialActorInfo;
 
 export type FullActorInfo = {
   actorId: string;
   actorTitle: string;
   averageTaskExecutionSpeed: number;
-  children: RayletInfoResponse["actors"];
-  // currentTaskFuncDesc: string[];
+  children?: ActorInfo[];
   ipAddress: string;
   jobId: string;
   nodeId: string;
@@ -187,8 +186,8 @@ export type FullActorInfo = {
 };
 
 export type PartialActorInfo = {
-  actorId: string;
-  actorTitle: string;
+  actorId?: string;
+  actorTitle?: string;
   requiredResources?: { [key: string]: number };
   state: ActorState.Invalid;
   invalidStateType?: InvalidStateType;
@@ -196,12 +195,12 @@ export type PartialActorInfo = {
 
 // eslint-disable-next-line
 export function isFullActorInfo(
-  rayletInfo: RayletActorInfo,
-): rayletInfo is FullActorInfo {
+  actorInfo: ActorInfo,
+): actorInfo is FullActorInfo {
   // Lint disabled because arrow functions don't play well with type guards.
   // This function is used to determine what kind of information we have about
   // a given actor in a response based on its state.
-  return rayletInfo.state !== ActorState.Invalid;
+  return actorInfo.state !== ActorState.Invalid;
 }
 
 export type InvalidStateType = "infeasibleActor" | "pendingActor";
@@ -214,7 +213,7 @@ export type RayletInfoResponse = {
     };
   };
   actors: {
-    [actorId: string]: RayletActorInfo;
+    [actorId: string]: ActorInfo;
   };
 };
 
@@ -356,7 +355,7 @@ export type MemoryTableSummary = {
   total_object_size: number;
   total_pinned_in_memory: number;
   total_used_by_pending_task: number;
-} | null;
+};
 
 export type MemoryTableEntry = {
   node_ip_address: string;
@@ -385,12 +384,12 @@ export type MemoryTableResponse = {
 // This doesn't return anything.
 export type StopMemoryTableResponse = {};
 
-export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
-  if (shouldObtainMemoryTable) {
-    return get<MemoryTableResponse>("/api/memory_table", {});
-  } else {
-    return null;
-  }
+export type MemoryGroupByKey = "node" | "stack_trace" | "";
+
+export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
+  return get<MemoryTableResponse>("/api/memory_table", {
+    group_by: groupByKey,
+  });
 };
 
 export const stopMemoryTableCollection = () =>

@@ -1,4 +1,3 @@
-import asyncio
 from collections import defaultdict
 
 import pytest
@@ -64,31 +63,6 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args[0] == 1
     assert got_work.request_kwargs == {}
-
-
-async def test_slo(serve_instance, task_runner_mock_actor):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("")
-    await q.set_traffic.remote("svc", TrafficPolicy({"backend-slo": 1.0}))
-
-    all_request_sent = []
-    for i in range(10):
-        slo_ms = 1000 - 100 * i
-        all_request_sent.append(
-            q.enqueue_request.remote(
-                RequestMetadata("svc", None, relative_slo_ms=slo_ms), i))
-
-    await q.add_new_worker.remote("backend-slo", "replica-1",
-                                  task_runner_mock_actor)
-
-    await asyncio.gather(*all_request_sent)
-
-    i_should_be = 9
-    all_calls = await task_runner_mock_actor.get_all_calls.remote()
-    all_calls = all_calls[-10:]
-    for call in all_calls:
-        assert call.request_args[0] == i_should_be
-        i_should_be -= 1
 
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
@@ -188,12 +162,6 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
 
 
 async def test_router_use_max_concurrency(serve_instance):
-    # The VisibleRouter::get_queues method needs to pickle queries
-    # so we register serializer here. In regular code path, query
-    # serialization is done by Serve manually for performance.
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     signal = SignalActor.remote()
 
     @ray.remote
@@ -223,7 +191,7 @@ async def test_router_use_max_concurrency(serve_instance):
     second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     # Neither queries should be available
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_query, second_query], timeout=0.2)
 
     # Let's retrieve the router internal state

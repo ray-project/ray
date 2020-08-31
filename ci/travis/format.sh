@@ -68,14 +68,14 @@ else
     echo "WARNING: clang-format is not installed!"
 fi
 
+if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
+    echo "WARNING: Ray uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
+fi
+
 SHELLCHECK_FLAGS=(
   --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
   --exclude=1091  # "Not following {file} due to some error"
   --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
-)
-
-SHELLCHECK_BAZEL_FLAGS=(
-  --exclude=2043  # "This loop will only ever run once. Bad quoting or missing glob/expansion?" -- Bazel preprocessing can trigger this needlessly
 )
 
 YAPF_FLAGS=(
@@ -104,10 +104,6 @@ FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E9
 
 shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
-}
-
-shellcheck_bazel() {
-  "${ROOT}"/ci/travis/bazel.py shellcheck "mnemonic(\"Genrule\", deps(//:*))" shellcheck "${SHELLCHECK_FLAGS[@]}" "${SHELLCHECK_BAZEL_FLAGS[@]}" "$@"
 }
 
 # Format specified files
@@ -146,12 +142,6 @@ format_files() {
     fi
 
     if shellcheck --shell=sh --format=diff - < /dev/null; then
-      if [ 0 -lt "${#bazel_files[@]}" ]; then
-        if ! shellcheck_bazel; then
-          echo "Bazel genrule() scripts cannot be fixed automatically; please fix manually." 1>&2
-          shellcheck_bazel --format=diff
-        fi
-      fi
       if [ 0 -lt "${#shell_files[@]}" ]; then
         local difference
         difference="$(shellcheck_scripts --format=diff "${shell_files[@]}" || true && printf "-")"
@@ -182,13 +172,10 @@ format_all() {
 
     echo "$(date)" "clang-format...."
     if command -v clang-format >/dev/null; then
-      git ls-files -- '*.cc' '*.h' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+      git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
     fi
 
     if command -v shellcheck >/dev/null; then
-      echo "$(date)" "shellcheck bazel...."
-      shellcheck_bazel
-
       local shell_files non_shell_files
       non_shell_files=($(git ls-files -- ':(exclude)*.sh'))
       shell_files=($(git ls-files -- '*.sh'))
@@ -238,10 +225,6 @@ format_changed() {
     fi
 
     if command -v shellcheck >/dev/null; then
-        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- 'WORKSPACE' 'WORKSPACE.*' 'BUILD.*' '*.bzl' '*.bazel' &>/dev/null; then
-            shellcheck_bazel
-        fi
-
         local shell_files non_shell_files
         non_shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- ':(exclude)*.sh'))
         shell_files=($(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.sh'))

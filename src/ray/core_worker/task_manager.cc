@@ -185,10 +185,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
+        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
-        reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       } else {
         RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
                       << " in plasma on a dead node, attempting to recover";
@@ -442,7 +442,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(task_id, /*index=*/i + 1);
+    const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
   }
 }

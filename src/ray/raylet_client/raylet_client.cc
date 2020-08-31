@@ -80,10 +80,10 @@ raylet::RayletClient::RayletClient(
 raylet::RayletClient::RayletClient(
     boost::asio::io_service &io_service,
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
-    const std::string &raylet_socket, const WorkerID &worker_id, bool is_worker,
-    const JobID &job_id, const Language &language, const std::string &ip_address,
-    ClientID *raylet_id, int *port,
-    std::unordered_map<std::string, std::string> *internal_config,
+    const std::string &raylet_socket, const WorkerID &worker_id,
+    rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
+    const std::string &ip_address, ClientID *raylet_id, int *port,
+    std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
       worker_id_(worker_id),
@@ -94,9 +94,11 @@ raylet::RayletClient::RayletClient(
       new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
+  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
-      language, fbb.CreateString(ip_address), /*port=*/0, fbb.CreateString(job_config_));
+      fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
+      to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
+      fbb.CreateString(job_config_));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -108,12 +110,12 @@ raylet::RayletClient::RayletClient(
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
-  RAY_CHECK(internal_config);
-  auto keys = reply_message->internal_config_keys();
-  auto values = reply_message->internal_config_values();
+  RAY_CHECK(system_config);
+  auto keys = reply_message->system_config_keys();
+  auto values = reply_message->system_config_values();
   RAY_CHECK(keys->size() == values->size());
   for (size_t i = 0; i < keys->size(); i++) {
-    internal_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
+    system_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
   }
 }
 
@@ -306,6 +308,32 @@ void raylet::RayletClient::RequestWorkerLease(
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
   grpc_client_->RequestWorkerLease(request, callback);
+}
+
+/// Spill objects to external storage.
+void raylet::RayletClient::RequestObjectSpillage(
+    const ObjectID &object_id,
+    const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
+  rpc::RequestObjectSpillageRequest request;
+  request.set_object_id(object_id.Binary());
+  grpc_client_->RequestObjectSpillage(request, callback);
+}
+
+/// Restore spilled objects from external storage.
+/// \param object_ids The IDs of objects to be restored.
+Status raylet::RayletClient::ForceRestoreSpilledObjects(
+    const std::vector<ObjectID> &object_ids) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      protocol::CreateForceRestoreSpilledObjectsRequest(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+  std::vector<uint8_t> reply;
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
+      MessageType::ForceRestoreSpilledObjectsRequest,
+      MessageType::ForceRestoreSpilledObjectsReply, &reply, &fbb));
+  RAY_UNUSED(
+      flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsReply>(reply.data()));
+  return Status::OK();
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
