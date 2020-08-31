@@ -322,8 +322,10 @@ class BayesOptSearch(Searcher):
             raise ValueError("BayesOpt does not support parameters of type "
                              "`{}`".format(type(domain).__name__))
 
-        bounds = {}
-        for path, domain in domain_vars:
-            par = "/".join(path)
-            bounds[par] = resolve_value(domain)
+        # Parameter name is e.g. "a/b/c" for nested dicts
+        bounds = {
+            "/".join(path): resolve_value(domain)
+            for path, domain in domain_vars
+        }
+
         return bounds

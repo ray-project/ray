@@ -136,14 +136,11 @@ class AxSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to an Ax search space.")
 
-        values = []
-
-        for path, val in resolved_vars:
-            values.append({
-                "name": "/".join(path),
-                "type": "fixed",
-                "value": val
-            })
+        values = [{
+            "name": "/".join(path),
+            "type": "fixed",
+            "value": val
+        } for path, val in resolved_vars]
 
         def resolve_value(par, domain):
             sampler = domain.get_sampler()
@@ -199,6 +196,7 @@ class AxSearch(Searcher):
                                  type(domain).__name__,
                                  type(domain.sampler).__name__))
 
+        # Parameter name is e.g. "a/b/c" for nested dicts
         for path, domain in domain_vars:
             par = "/".join(path)
             values.append(resolve_value(par, domain))

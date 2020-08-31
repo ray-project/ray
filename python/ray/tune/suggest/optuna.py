@@ -217,8 +217,10 @@ class OptunaSearch(Searcher):
                     type(domain).__name__,
                     type(domain.sampler).__name__))
 
-        values = []
-        for path, domain in domain_vars:
-            par = "/".join(path)
-            values.append(resolve_value(par, domain))
+        # Parameter name is e.g. "a/b/c" for nested dicts
+        values = [
+            resolve_value("/".join(path), domain)
+            for path, domain in domain_vars
+        ]
+
         return values
