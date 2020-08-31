@@ -2,8 +2,6 @@ import copy
 import os
 import logging
 import pickle
-import typing
-from enum import Enum
 try:
     import sigopt as sgo
 except ImportError:
@@ -12,17 +10,6 @@ except ImportError:
 from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
-
-
-class Objective(Enum):
-    maximize: 1
-    minimize : 2
-
-
-class SigOptMetric(typing.NamedTuple):
-    name: str
-    objective: Objective
-    stddev_name: typing.Optional[str] = None
 
 
 class SigOptSearch(Searcher):
@@ -52,13 +39,13 @@ class SigOptSearch(Searcher):
         observation_budget (int): Optional, can improve SigOpt performance.
         project (str): Optional, Project name to assign this experiment to.
             SigOpt can group experiments by project
-        metric (str or List(SigOptMetric)): If str then the training result
-            objective value attribute. If list(SigOptMetric) then a list of
-            SigOptMetrics that can be optimized together. SigOpt currently
+        metric (str or list(str)): If str then the training result
+            objective value attribute. If list(str) then a list of
+            metrics that can be optimized together. SigOpt currently
             supports up to 2 metrics.
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute. Will not be used
-            if metric is list.
+        mode (str or list(str)): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute. If metrics is a list
+            then mode must be a list of the same length as metric.
 
     Example:
 
@@ -85,6 +72,33 @@ class SigOptSearch(Searcher):
         algo = SigOptSearch(
             space, name="SigOpt Example Experiment",
             max_concurrent=1, metric="mean_loss", mode="min")
+
+
+        Example:
+
+    .. code-block:: python
+
+        space = [
+            {
+                'name': 'width',
+                'type': 'int',
+                'bounds': {
+                    'min': 0,
+                    'max': 20
+                },
+            },
+            {
+                'name': 'height',
+                'type': 'int',
+                'bounds': {
+                    'min': -100,
+                    'max': 100
+                },
+            },
+        ]
+        algo = SigOptSearch(
+            space, name="SigOpt Multi Objective Example Experiment",
+            max_concurrent=1, metric=["average", "std"], mode=["max", "min"])
     """
 
     def __init__(self,
@@ -99,7 +113,12 @@ class SigOptSearch(Searcher):
                  mode="max",
                  **kwargs):
         assert type(max_concurrent) is int and max_concurrent > 0
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if isinstance(mode, str):
+            assert mode in ["min", "max"], "if `mode` is a str must be 'min' or 'max'!"
+        elif isinstance(mode, list):
+            assert all(mod in ["min", "max"] for mod in mode), "All of mode must be 'min' or 'max'!"
+        else:
+            raise ValueError("Mode most either be a list or string")
 
         if connection is not None:
             self.conn = connection
@@ -131,7 +150,12 @@ class SigOptSearch(Searcher):
             sigopt_params["project"] = project
 
         if isinstance(metric, list):
-            sigopt_params["metric"] = self.serialize_metric(metric)
+            if len(metric) > 1 and observation_budget is None:
+                raise ValueError("observation_budget is required for an"
+                                 "experiment with more than one optimized metric")
+            sigopt_params["metrics"] = self.serialize_metric(metric, mode)
+        elif not isinstance(metric, str):
+            raise ValueError("metric must either be a list or string")
 
         self.experiment = self.conn.experiments().create(**sigopt_params)
 
@@ -175,23 +199,24 @@ class SigOptSearch(Searcher):
         del self._live_trial_mapping[trial_id]
 
     @staticmethod
-    def serialize_metric(metrics):
+    def serialize_metric(metrics, modes):
         """
         Converts metrics to https://app.sigopt.com/docs/objects/metric
         """
-        return [
-            dict(name=metric.name,
-                 objective=metric.score.name,
-                 strategy="optimize")
-            for metric in metrics
-        ]
+        serialized_metric = []
+        for metric, mode in zip(metrics, modes):
+            objective = "maximize" if mode == "max" else "minimize"
+            serialized_metric.append(dict(name=metric,
+                                          objective=objective,
+                                          strategy="optimize"))
+        return serialized_metric
 
     def serialize_result(self, result):
         """
         Converts results to https://app.sigopt.com/docs/objects/metric_evaluation
         """
-        missing_scores = [metric.name for metric in self._metric
-                          if metric.name not in result]
+        missing_scores = [metric for metric in self._metric
+                          if metric not in result]
 
         if missing_scores:
             raise ValueError(
@@ -201,9 +226,7 @@ class SigOptSearch(Searcher):
 
         values = []
         for metric in self._metric:
-            value = dict(name=metric.name, value=result[metric.name])
-            if metric.stddev_name is not None:
-                value["value_stddev"] = result[metric.stddev_name]
+            value = dict(name=metric, value=result[metric])
             values.append(value)
         return values
 

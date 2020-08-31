@@ -8,7 +8,7 @@ import ray
 import numpy as np
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.suggest.sigopt import SigOptSearch,
+from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)
 vector1 = np.random.normal(0, 0.1, 100)
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     space = [
         {
             "name": "w1",
-            "type": "float",
+            "type": "double",
             "bounds": {
                 "min": 0,
                 "max": 1
@@ -60,16 +60,13 @@ if __name__ == "__main__":
         }
     }
 
-    metric = [
-
-    ]
-
     algo = SigOptSearch(
         space,
-        name="SigOpt Example Experiment",
+        name="SigOpt Example Multi Objective Experiment",
+        observation_budget=10 if args.smoke_test else 1000,
         max_concurrent=1,
-        metric="mean_loss",
-        mode="min")
+        metric=["average", "std"],
+        mode=["max", "min"])
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     tune.run(
         easy_objective,
