@@ -141,6 +141,7 @@ Academic Papers
 
    cluster/index.rst
    cluster/launcher.rst
+   cluster/autoscaling.rst
    cluster/cloud.rst
    cluster/deploy.rst
 
@@ -206,7 +207,6 @@ Academic Papers
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   projects.rst
 
 .. toctree::
    :hidden:
