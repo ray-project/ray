@@ -19,11 +19,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public abstract class StreamTask implements Runnable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
 
   protected int taskId;
@@ -44,7 +44,7 @@ public abstract class StreamTask implements Runnable {
     prepareTask();
 
     this.thread = new Thread(Ray.wrapRunnable(this),
-      this.getClass().getName() + "-" + System.currentTimeMillis());
+        this.getClass().getName() + "-" + System.currentTimeMillis());
     this.thread.setDaemon(true);
   }
 

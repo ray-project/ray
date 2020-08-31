@@ -17,7 +17,6 @@ import org.aeonbits.owner.ConfigFactory;
 
 /**
  * Physical job vertex.
- *
  * <p>Execution job vertex is the physical form of {@link JobVertex} and
  * every execution job vertex is corresponding to a group of {@link ExecutionVertex}.
  */
@@ -29,8 +28,8 @@ public class ExecutionJobVertex {
   private final int executionJobVertexId;
 
   /**
-   * Use jobVertex id and operator(use {@link StreamOperator}'s name) as name.
-   * e.g. 1-SourceOperator
+   * Use jobVertex id and operator(use {@link StreamOperator}'s name) as name. e.g.
+   * 1-SourceOperator
    */
   private final String executionJobVertexName;
   private final StreamOperator streamOperator;
