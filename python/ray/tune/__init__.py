@@ -7,6 +7,7 @@ from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.suggest import grid_search
+from ray.tune.suggest.create import create_scheduler
 from ray.tune.session import (report, get_trial_dir, get_trial_name,
                               get_trial_id)
 from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
@@ -21,5 +22,5 @@ __all__ = [
     "uniform", "choice", "randint", "randn", "loguniform",
     "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
     "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id"
+    "get_trial_id", "create_scheduler"
 ]
