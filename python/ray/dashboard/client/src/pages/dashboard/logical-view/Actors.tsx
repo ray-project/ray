@@ -8,8 +8,8 @@ type ActorProps = {
 
 const Actors = (props: ActorProps) => {
   const { actors } = props;
-  const actorChildren = Object.values(actors)
-    .sort((actor1, actor2) => {
+  const actorChildren = Object.entries(actors)
+    .sort(([, actor1], [, actor2]) => {
       if (
         actor1.state === ActorState.Dead &&
         actor2.state === ActorState.Dead
@@ -21,7 +21,7 @@ const Actors = (props: ActorProps) => {
         return 1;
       }
     })
-    .map((actor) => <Actor actor={actor} key={actor.actorId} />);
+    .map(([aid, actor]) => <Actor actor={actor} key={aid} />);
   return <Fragment>{actorChildren}</Fragment>;
 };
 

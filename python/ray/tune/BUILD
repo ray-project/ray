@@ -7,7 +7,7 @@ py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["jenkins_only"],
+    tags = ["exclusive"],
     deps = [":tune_lib"],
 )
 
@@ -89,6 +89,14 @@ py_test(
     name = "test_function_api",
     size = "medium",
     srcs = ["tests/test_function_api.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_integration_kubernetes",
+    size = "small",
+    srcs = ["tests/test_integration_kubernetes.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -429,9 +437,45 @@ py_test(
 )
 
 py_test(
+    name = "optuna_example",
+    size = "medium",
+    srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "pbt_convnet_example",
     size = "medium",
     srcs = ["examples/pbt_convnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_convnet_function_example",
+    size = "medium",
+    srcs = ["examples/pbt_convnet_function_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_func",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_trainable",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
@@ -473,6 +517,16 @@ py_test(
 #     tags = ["exclusive", "example"],
 #     args = ["--smoke-test"]
 # )
+
+py_test(
+    name = "pbt_transformers",
+    size = "large",
+    srcs = ["examples/pbt_transformers/pbt_transformers.py"],
+    deps = [":tune_lib"],
+    tags = ["flaky", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
 
 # Requires GPUs. Add smoke test?
 # py_test(

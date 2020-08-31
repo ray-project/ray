@@ -19,7 +19,6 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
-
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -84,13 +83,21 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   // Default exporter is a metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
-                                            (*metrics_io_service), "127.0.0.1"));
+    exporter.reset(new MetricsAgentExporter(stdout_exporter));
   } else {
     exporter = exporter_to_use;
   }
 
-  MetricExporter::Register(exporter, metrics_report_batch_size);
+  // Set interval.
+  StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
+      RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));
+  StatsConfig::instance().SetHarvestInterval(
+      absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
+                                  static_cast<uint64_t>(500))));
+
+  MetricPointExporter::Register(exporter, metrics_report_batch_size);
+  OpenCensusProtoExporter::Register(metrics_agent_port, (*metrics_io_service),
+                                    "127.0.0.1");
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
@@ -102,7 +109,6 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
 /// Shutdown the initialized stats library.
 /// This cleans up various threads and metadata for stats library.
 static inline void Shutdown() {
-  // TODO(sang): Harvest thread is not currently cleaned up.
   absl::MutexLock lock(&stats_mutex);
   if (!StatsConfig::instance().IsInitialized()) {
     // Return if stats had never been initialized.

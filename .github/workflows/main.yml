@@ -17,17 +17,11 @@ jobs:
       matrix:
         # Useful info: https://help.github.com/en/articles/workflow-syntax-for-github-actions
         include:
-          - name: ubuntu
-            os: ubuntu-16.04
-            python-version: 3.6
           - name: windows-msvc
             os: windows-2019
             python-version: 3.8
             # Can be 'msvc' or 'clang-cl'
             config: msvc
-          - name: macos
-            os: macos-10.15
-            python-version: 3.6
     env:
       BAZEL_CONFIG: ${{ matrix.config }}
       PYTHON: ${{ matrix.python-version }}
@@ -99,9 +93,4 @@ jobs:
       continue-on-error: true
       if: runner.os == 'Linux'
       shell: bash -e -o pipefail -l {0}
-      run: |
-        sudo apt-get install -qq -o=Dpkg::Use-Pty=0 iwyu
-        bazel build \
-          --keep_going \
-          --config=iwyu \
-          "//:*"
+      run: ci/travis/iwyu.sh process "//:*"

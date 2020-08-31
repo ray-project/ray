@@ -131,7 +131,6 @@ Academic Papers
    walkthrough.rst
    using-ray.rst
    configure.rst
-   ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
@@ -142,6 +141,7 @@ Academic Papers
 
    cluster/index.rst
    cluster/launcher.rst
+   cluster/autoscaling.rst
    cluster/cloud.rst
    cluster/deploy.rst
 
@@ -154,6 +154,7 @@ Academic Papers
    serve/tutorials/index.rst
    serve/deployment.rst
    serve/advanced.rst
+   serve/architecture.rst
    serve/package-ref.rst
 
 .. toctree::
@@ -206,7 +207,13 @@ Academic Papers
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   projects.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Observability
+
+   ray-metrics.rst
 
 .. toctree::
    :hidden:

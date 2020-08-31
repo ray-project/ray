@@ -31,7 +31,7 @@ dm_tree
 flask
 gym[atari]
 lz4
-opencv-python-headless
+opencv-python-headless==4.3.0.36
 pandas==1.0.5
 scipy==1.4.1
 tabulate
@@ -43,10 +43,13 @@ blist; platform_system != "Windows"
 boto3
 cython==0.29.0
 dataclasses
+dask[complete]
 feather-format
 gym
+gym-minigrid
 kubernetes
 lxml
+moto
 mypy
 networkx
 numba
@@ -61,5 +64,6 @@ pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow
+testfixtures
 werkzeug
 xlrd

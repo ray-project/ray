@@ -1,4 +1,3 @@
-import asyncio
 from collections import defaultdict
 
 import pytest
@@ -50,7 +49,7 @@ def task_runner_mock_actor():
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     q.set_traffic.remote("svc", TrafficPolicy({"backend-single-prod": 1.0}))
     q.add_new_worker.remote("backend-single-prod", "replica-1",
@@ -66,34 +65,9 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     assert got_work.request_kwargs == {}
 
 
-async def test_slo(serve_instance, task_runner_mock_actor):
-    q = ray.remote(Router).remote()
-    await q.setup.remote()
-    await q.set_traffic.remote("svc", TrafficPolicy({"backend-slo": 1.0}))
-
-    all_request_sent = []
-    for i in range(10):
-        slo_ms = 1000 - 100 * i
-        all_request_sent.append(
-            q.enqueue_request.remote(
-                RequestMetadata("svc", None, relative_slo_ms=slo_ms), i))
-
-    await q.add_new_worker.remote("backend-slo", "replica-1",
-                                  task_runner_mock_actor)
-
-    await asyncio.gather(*all_request_sent)
-
-    i_should_be = 9
-    all_calls = await task_runner_mock_actor.get_all_calls.remote()
-    all_calls = all_calls[-10:]
-    for call in all_calls:
-        assert call.request_args[0] == i_should_be
-        i_should_be -= 1
-
-
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-alter": 1}))
     await q.add_new_worker.remote("backend-alter", "replica-1",
@@ -112,7 +86,7 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     await q.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -142,7 +116,7 @@ async def test_queue_remove_replicas(serve_instance):
 
     temp_actor = mock_task_runner()
     q = ray.remote(TestRouter).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
     await q.add_new_worker.remote("backend-remove", "replica-1", temp_actor)
     await q.remove_worker.remote("backend-remove", "replica-1")
     assert ray.get(q.worker_queue_size.remote("backend")) == 0
@@ -150,7 +124,7 @@ async def test_queue_remove_replicas(serve_instance):
 
 async def test_shard_key(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
 
     num_backends = 5
     traffic_dict = {}
@@ -188,12 +162,6 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
 
 
 async def test_router_use_max_concurrency(serve_instance):
-    # The VisibleRouter::get_queues method needs to pickle queries
-    # so we register serializer here. In regular code path, query
-    # serialization is done by Serve manually for performance.
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     signal = SignalActor.remote()
 
     @ray.remote
@@ -211,7 +179,7 @@ async def test_router_use_max_concurrency(serve_instance):
 
     worker = MockWorker.remote()
     q = ray.remote(VisibleRouter).remote()
-    await q.setup.remote()
+    await q.setup.remote("")
     backend_name = "max-concurrent-test"
     config = BackendConfig({"max_concurrent_queries": 1})
     await q.set_traffic.remote("svc", TrafficPolicy({backend_name: 1.0}))
@@ -223,13 +191,14 @@ async def test_router_use_max_concurrency(serve_instance):
     second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     # Neither queries should be available
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_query, second_query], timeout=0.2)
 
     # Let's retrieve the router internal state
     queries_counter, backend_queues = await q.get_queues.remote()
     # There should be just one inflight request
-    assert queries_counter["max-concurrent-test:replica-tag"] == 1
+    assert queries_counter[backend_name][
+        "max-concurrent-test:replica-tag"] == 1
     # The second query is buffered
     assert len(backend_queues["max-concurrent-test"]) == 1
 
@@ -240,7 +209,8 @@ async def test_router_use_max_concurrency(serve_instance):
     # The internal state of router should have changed.
     queries_counter, backend_queues = await q.get_queues.remote()
     # There should still be one inflight request
-    assert queries_counter["max-concurrent-test:replica-tag"] == 1
+    assert queries_counter[backend_name][
+        "max-concurrent-test:replica-tag"] == 1
     # But there shouldn't be any queries in the queue
     assert len(backend_queues["max-concurrent-test"]) == 0
 
@@ -250,7 +220,8 @@ async def test_router_use_max_concurrency(serve_instance):
 
     # Checking the internal state of the router one more time
     queries_counter, backend_queues = await q.get_queues.remote()
-    assert queries_counter["max-concurrent-test:replica-tag"] == 0
+    assert queries_counter[backend_name][
+        "max-concurrent-test:replica-tag"] == 0
     assert len(backend_queues["max-concurrent-test"]) == 0
 
 

@@ -69,6 +69,15 @@ RESULT_DUPLICATE = "__duplicate__"
 # to the Trainable via the constructor.
 TRIAL_INFO = "__trial_info__"
 
+# __stdout_file__/__stderr_file__ are magic keywords used internally
+# to pass log file locations to the Trainable via the constructor.
+STDOUT_FILE = "__stdout_file__"
+STDERR_FILE = "__stderr_file__"
+
+# __logdir_path__ is a magic keyword used internally to pass a new
+# logdir to existing loggers.
+LOGDIR_PATH = "__logdir_path__"
+
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TEST_TMPDIR")
                        or os.environ.get("TUNE_RESULT_DIR")

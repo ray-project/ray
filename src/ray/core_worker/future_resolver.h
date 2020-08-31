@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
@@ -28,9 +29,10 @@ namespace ray {
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 rpc::ClientFactoryFn client_factory, const rpc::Address &rpc_address)
+                 std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+                 const rpc::Address &rpc_address)
       : in_memory_store_(store),
-        client_factory_(client_factory),
+        owner_clients_(core_worker_client_pool),
         rpc_address_(rpc_address) {}
 
   /// Resolve the value for a future. This will periodically contact the given
@@ -47,20 +49,12 @@ class FutureResolver {
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
-  /// Factory for producing new core worker clients.
-  const rpc::ClientFactoryFn client_factory_;
+  std::shared_ptr<rpc::CoreWorkerClientPool> owner_clients_;
 
   /// Address of our RPC server. Used to notify borrowed objects' owners of our
   /// address, so the owner can contact us to ask when our reference to the
   /// object has gone out of scope.
   const rpc::Address rpc_address_;
-
-  /// Protects against concurrent access to internal state.
-  absl::Mutex mu_;
-
-  /// Cache of gRPC clients to the objects' owners.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      owner_clients_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray

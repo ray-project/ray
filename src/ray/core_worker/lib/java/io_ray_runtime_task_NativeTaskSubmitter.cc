@@ -161,7 +161,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 }
 
 inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
-  return 0 == java_strategy ? ray::rpc::PACK : ray::rpc::SPREAD;
+  switch (java_strategy) {
+  case 0:
+    return ray::rpc::PACK;
+  case 1:
+    return ray::rpc::SPREAD;
+  case 2:
+    return ray::rpc::STRICT_PACK;
+  default:
+    return ray::rpc::STRICT_SPREAD;
+  }
 }
 
 inline ray::PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
@@ -197,9 +206,11 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function, task_args,
-                                                     task_options, &return_ids,
-                                                     /*max_retries=*/0);
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options, &return_ids,
+      /*max_retries=*/0,
+      /*placement_options=*/
+      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0));
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {

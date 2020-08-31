@@ -643,14 +643,14 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     def f():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        assert gpu_ids[0] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
 
     @ray.remote(num_gpus=2)
     def g():
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
-        assert gpu_ids[0] in allowed_gpu_ids
-        assert gpu_ids[1] in allowed_gpu_ids
+        assert int(gpu_ids[0]) in allowed_gpu_ids
+        assert int(gpu_ids[1]) in allowed_gpu_ids
 
     ray.get([f.remote() for _ in range(100)])
     ray.get([g.remote() for _ in range(100)])
@@ -671,7 +671,7 @@ def test_local_mode_gpus(save_gpu_ids_shutdown_only):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 3
         for gpu in gpu_ids:
-            assert gpu in allowed_gpu_ids
+            assert int(gpu) in allowed_gpu_ids
 
     ray.get([f.remote() for _ in range(100)])
 

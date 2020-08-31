@@ -1,11 +1,12 @@
 
 #pragma once
 
-#include <mutex>
-
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
+
 #include <msgpack.hpp>
+#include <mutex>
+
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
@@ -17,6 +18,8 @@ namespace api {
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
+
+  void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
 
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
 
@@ -53,6 +56,8 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static AbstractRayRuntime *DoInit(std::shared_ptr<RayConfig> config);
+
+  static void DoShutdown(std::shared_ptr<RayConfig> config);
 
   void Execute(const TaskSpecification &task_spec);
 

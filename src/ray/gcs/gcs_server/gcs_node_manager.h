@@ -36,13 +36,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param main_io_service The main event loop.
   /// \param node_failure_detector_io_service The event loop of node failure detector.
-  /// \param error_info_accessor The error info accessor, which is used to report error.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
   /// when detecting the death of nodes.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           boost::asio::io_service &node_failure_detector_io_service,
-                          gcs::ErrorInfoAccessor &error_info_accessor,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
@@ -145,6 +143,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Start node failure detector.
   void StartNodeFailureDetector();
 
+  // Update node realtime resources.
+  void UpdateNodeRealtimeResources(const ClientID &node_id,
+                                   const rpc::HeartbeatTableData &heartbeat);
+
+  /// Get cluster realtime resources.
+  const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
+      &GetClusterRealtimeResources() const;
+
  protected:
   class NodeFailureDetector {
    public:
@@ -219,8 +225,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   };
 
  private:
-  /// Error info accessor.
-  gcs::ErrorInfoAccessor &error_info_accessor_;
   /// The main event loop for node failure detector.
   boost::asio::io_service &main_io_service_;
   /// Detector to detect the failure of node.
@@ -243,6 +247,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Cluster realtime resources.
+  absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
 };
 
 }  // namespace gcs
