@@ -384,6 +384,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 cli_logger.old_info(
                     logger, "teardown_cluster: "
                     "Shutting down {} nodes...", len(A))
+
                 provider.terminate_nodes(A)
 
                 cli_logger.print(
