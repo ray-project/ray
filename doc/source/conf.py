@@ -31,7 +31,7 @@ class ChildClassMock(mock.MagicMock):
 
 
 MOCK_MODULES = [
-    "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
+    "blist", "gym", "gym.spaces", "kubernetes", "psutil", "ray._raylet",
     "ray.core.generated", "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task", "scipy.signal", "scipy.stats",
     "setproctitle", "tensorflow_probability", "tensorflow",
@@ -41,7 +41,7 @@ MOCK_MODULES = [
     "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
     "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
     "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
-    "zoopt"
+    "wandb", "zoopt"
 ]
 import scipy.stats
 import scipy.linalg
