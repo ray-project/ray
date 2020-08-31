@@ -241,7 +241,7 @@ Terminating Actors
 
   .. group-tab:: Java
 
-    terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
+    Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
 
 .. tabs::
   .. group-tab:: Python
