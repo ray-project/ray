@@ -28,6 +28,7 @@ public class Resources implements Serializable {
 
   /**
    * Get registered containers, the container list is read-only.
+   *
    * @return container list.
    */
   public ImmutableList<Container> getRegisteredContainers() {
@@ -52,13 +53,13 @@ public class Resources implements Serializable {
 
   public ImmutableMap<UniqueId, Container> getRegisteredContainerMap() {
     return ImmutableMap.copyOf(registerContainers.stream()
-        .collect(java.util.stream.Collectors.toMap(Container::getNodeId, c -> c)));
+      .collect(java.util.stream.Collectors.toMap(Container::getNodeId, c -> c)));
   }
 
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("registerContainers", registerContainers)
-        .toString();
+      .add("registerContainers", registerContainers)
+      .toString();
   }
 }

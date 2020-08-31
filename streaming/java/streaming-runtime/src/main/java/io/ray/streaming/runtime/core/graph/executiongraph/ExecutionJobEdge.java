@@ -30,9 +30,9 @@ public class ExecutionJobEdge {
   private final String executionJobEdgeIndex;
 
   public ExecutionJobEdge(
-      ExecutionJobVertex sourceExecutionJobVertex,
-      ExecutionJobVertex targetExecutionJobVertex,
-      JobEdge jobEdge) {
+    ExecutionJobVertex sourceExecutionJobVertex,
+    ExecutionJobVertex targetExecutionJobVertex,
+    JobEdge jobEdge) {
     this.sourceExecutionJobVertex = sourceExecutionJobVertex;
     this.targetExecutionJobVertex = targetExecutionJobVertex;
     this.partition = jobEdge.getPartition();
@@ -41,7 +41,7 @@ public class ExecutionJobEdge {
 
   private String generateExecutionJobEdgeIndex() {
     return sourceExecutionJobVertex.getExecutionJobVertexId() + "—"
-        + targetExecutionJobVertex.getExecutionJobVertexId();
+      + targetExecutionJobVertex.getExecutionJobVertexId();
   }
 
   public ExecutionJobVertex getSourceExecutionJobVertex() {
@@ -59,10 +59,10 @@ public class ExecutionJobEdge {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("source", sourceExecutionJobVertex)
-        .add("target", targetExecutionJobVertex)
-        .add("partition", partition)
-        .add("index", executionJobEdgeIndex)
-        .toString();
+      .add("source", sourceExecutionJobVertex)
+      .add("target", targetExecutionJobVertex)
+      .add("partition", partition)
+      .add("index", executionJobEdgeIndex)
+      .toString();
   }
 }

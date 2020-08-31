@@ -57,9 +57,9 @@ public abstract class StreamTask implements Runnable {
 
     // set vertex info into config for native using
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
-        WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getExecutionVertexName());
+      WorkerInternalConfig.WORKER_NAME_INTERNAL, executionVertex.getExecutionVertexName());
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
-        WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
+      WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
 
     // producer
 
@@ -71,16 +71,16 @@ public abstract class StreamTask implements Runnable {
 
     for (ExecutionEdge edge : outputEdges) {
       String channelId = ChannelId.genIdStr(
-          taskId,
-          edge.getTargetExecutionVertex().getExecutionVertexId(),
-          executionVertex.getBuildTime());
+        taskId,
+        edge.getTargetExecutionVertex().getExecutionVertexId(),
+        executionVertex.getBuildTime());
       outputChannelIds.add(channelId);
       targetActors.add(edge.getTargetExecutionVertex().getWorkerActor());
     }
 
     if (!targetActors.isEmpty()) {
       DataWriter writer = new DataWriter(
-          outputChannelIds, targetActors, jobWorker.getWorkerConfig()
+        outputChannelIds, targetActors, jobWorker.getWorkerConfig()
       );
 
       // create a collector for each output operator
@@ -100,8 +100,8 @@ public abstract class StreamTask implements Runnable {
       }
       opPartitionMap.keySet().forEach(opName -> {
         collectors.add(new OutputCollector(
-            writer, opGroupedChannelId.get(opName),
-            opGroupedActor.get(opName), opPartitionMap.get(opName)
+          writer, opGroupedChannelId.get(opName),
+          opGroupedActor.get(opName), opPartitionMap.get(opName)
         ));
       });
     }
@@ -112,9 +112,9 @@ public abstract class StreamTask implements Runnable {
     List<BaseActorHandle> inputActors = new ArrayList<>();
     for (ExecutionEdge edge : inputEdges) {
       String queueName = ChannelId.genIdStr(
-          edge.getSourceExecutionVertex().getExecutionVertexId(),
-          taskId,
-          executionVertex.getBuildTime());
+        edge.getSourceExecutionVertex().getExecutionVertexId(),
+        taskId,
+        executionVertex.getBuildTime());
       inputChannelIds.add(queueName);
       inputActors.add(edge.getSourceExecutionVertex().getWorkerActor());
     }
@@ -124,7 +124,7 @@ public abstract class StreamTask implements Runnable {
     }
 
     RuntimeContext runtimeContext = new StreamingRuntimeContext(executionVertex,
-        jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
+      jobWorker.getWorkerConfig().configMap, executionVertex.getParallelism());
 
     processor.open(collectors, runtimeContext);
     LOG.debug("Finished preparing stream task.");

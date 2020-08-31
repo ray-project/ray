@@ -74,10 +74,10 @@ public class ExecutionVertex implements Serializable {
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
   public ExecutionVertex(
-      int globalIndex,
-      int index,
-      ExecutionJobVertex executionJobVertex,
-      ResourceConfig resourceConfig) {
+    int globalIndex,
+    int index,
+    ExecutionJobVertex executionJobVertex,
+    ResourceConfig resourceConfig) {
     this.executionVertexId = globalIndex;
     this.executionJobVertexId = executionJobVertex.getExecutionJobVertexId();
     this.executionJobVertexName = executionJobVertex.getExecutionJobVertexName();
@@ -174,7 +174,7 @@ public class ExecutionVertex implements Serializable {
   }
 
   public void setInputEdges(
-      List<ExecutionEdge> inputEdges) {
+    List<ExecutionEdge> inputEdges) {
     this.inputEdges = inputEdges;
   }
 
@@ -183,20 +183,20 @@ public class ExecutionVertex implements Serializable {
   }
 
   public void setOutputEdges(
-      List<ExecutionEdge> outputEdges) {
+    List<ExecutionEdge> outputEdges) {
     this.outputEdges = outputEdges;
   }
 
   public List<ExecutionVertex> getInputVertices() {
     return inputEdges.stream()
-        .map(ExecutionEdge::getSourceExecutionVertex)
-        .collect(Collectors.toList());
+      .map(ExecutionEdge::getSourceExecutionVertex)
+      .collect(Collectors.toList());
   }
 
   public List<ExecutionVertex> getOutputVertices() {
     return outputEdges.stream()
-        .map(ExecutionEdge::getTargetExecutionVertex)
-        .collect(Collectors.toList());
+      .map(ExecutionEdge::getTargetExecutionVertex)
+      .collect(Collectors.toList());
   }
 
   public Map<String, Double> getResource() {
@@ -239,7 +239,7 @@ public class ExecutionVertex implements Serializable {
   @Override
   public boolean equals(Object obj) {
     if (obj instanceof ExecutionVertex) {
-      return this.executionVertexId == ((ExecutionVertex)obj).getExecutionVertexId();
+      return this.executionVertexId == ((ExecutionVertex) obj).getExecutionVertexId();
     }
     return false;
   }
@@ -252,12 +252,12 @@ public class ExecutionVertex implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("id", executionVertexId)
-        .add("name", getExecutionVertexName())
-        .add("resources", resource)
-        .add("state", state)
-        .add("containerId", containerId)
-        .add("workerActor", workerActor)
-        .toString();
+      .add("id", executionVertexId)
+      .add("name", getExecutionVertexName())
+      .add("resources", resource)
+      .add("state", state)
+      .add("containerId", containerId)
+      .add("workerActor", workerActor)
+      .toString();
   }
 }

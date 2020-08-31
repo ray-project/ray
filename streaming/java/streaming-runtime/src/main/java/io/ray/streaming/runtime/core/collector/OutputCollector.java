@@ -35,11 +35,11 @@ public class OutputCollector implements Collector<Record> {
     this.outputQueues = outputChannelIds.stream().map(ChannelId::from).toArray(ChannelId[]::new);
     this.targetActors = targetActors;
     this.targetLanguages = targetActors.stream()
-        .map(actor -> actor instanceof PyActorHandle ? Language.PYTHON : Language.JAVA)
-        .toArray(Language[]::new);
+      .map(actor -> actor instanceof PyActorHandle ? Language.PYTHON : Language.JAVA)
+      .toArray(Language[]::new);
     this.partition = partition;
     LOGGER.debug("OutputCollector constructed, outputChannelIds:{}, partition:{}.",
-        outputChannelIds, this.partition);
+      outputChannelIds, this.partition);
   }
 
   @Override

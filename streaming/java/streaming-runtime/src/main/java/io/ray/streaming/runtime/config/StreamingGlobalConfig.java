@@ -48,7 +48,7 @@ public class StreamingGlobalConfig implements Serializable {
   }
 
   protected Map<String, String> config2Map(org.aeonbits.owner.Config config)
-      throws ClassNotFoundException {
+    throws ClassNotFoundException {
     Map<String, String> result = new HashMap<>();
 
     Class<?> proxyClazz = Class.forName(config.getClass().getName());
@@ -62,7 +62,7 @@ public class StreamingGlobalConfig implements Serializable {
       }
     }
     Preconditions.checkArgument(configInterface != null,
-        "Can not get config interface.");
+      "Can not get config interface.");
     Method[] methods = configInterface.getMethods();
 
     for (Method method : methods) {
@@ -75,7 +75,7 @@ public class StreamingGlobalConfig implements Serializable {
           value = method.invoke(config);
         } catch (Exception e) {
           LOG.warn("Can not get value by method invoking for config key: {}. "
-              + "So use default value instead.", ownerKeyAnnotationValue);
+            + "So use default value instead.", ownerKeyAnnotationValue);
           String defaultValue = method.getAnnotation(DefaultValue.class).value();
           value = defaultValue;
         }

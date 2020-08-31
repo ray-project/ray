@@ -53,7 +53,7 @@ public class JobWorker implements Serializable {
    */
   public Boolean init(JobWorkerContext workerContext) {
     LOG.info("Initiating job worker: {}. Worker context is: {}.",
-        workerContext.getWorkerName(), workerContext);
+      workerContext.getWorkerName(), workerContext);
 
     try {
       this.workerContext = workerContext;
@@ -100,7 +100,7 @@ public class JobWorker implements Serializable {
   private StreamTask createStreamTask() {
     StreamTask task = null;
     StreamProcessor streamProcessor = ProcessBuilder
-        .buildProcessor(executionVertex.getStreamOperator());
+      .buildProcessor(executionVertex.getStreamOperator());
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     try {

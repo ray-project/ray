@@ -31,8 +31,8 @@ public class GraphManagerImpl implements GraphManager {
 
     // set max parallelism
     int maxParallelism = jobGraph.getJobVertices().stream()
-        .map(JobVertex::getParallelism)
-        .max(Integer::compareTo).get();
+      .map(JobVertex::getParallelism)
+      .max(Integer::compareTo).get();
     executionGraph.setMaxParallelism(maxParallelism);
 
     // set job config
@@ -52,11 +52,11 @@ public class GraphManagerImpl implements GraphManager {
     for (JobVertex jobVertex : jobGraph.getJobVertices()) {
       int jobVertexId = jobVertex.getVertexId();
       exeJobVertexMap.put(jobVertexId,
-          new ExecutionJobVertex(
-              jobVertex,
-              jobConfig,
-              executionGraph.getExecutionVertexIdGenerator(),
-              buildTime));
+        new ExecutionJobVertex(
+          jobVertex,
+          jobConfig,
+          executionGraph.getExecutionVertexIdGenerator(),
+          buildTime));
     }
 
     // connect vertex
@@ -65,7 +65,7 @@ public class GraphManagerImpl implements GraphManager {
       ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
 
       ExecutionJobEdge executionJobEdge =
-          new ExecutionJobEdge(source, target, jobEdge);
+        new ExecutionJobEdge(source, target, jobEdge);
 
       source.getOutputEdges().add(executionJobEdge);
       target.getInputEdges().add(executionJobEdge);

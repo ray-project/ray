@@ -104,13 +104,13 @@ public class ChannelId {
     long nativeIdPtr = id.nativeIdPtr;
     if (nativeIdPtr != 0) {
       Reference<ChannelId> reference =
-          new FinalizablePhantomReference<ChannelId>(id, REFERENCE_QUEUE) {
-            @Override
-            public void finalizeReferent() {
-              destroyNativeId(nativeIdPtr);
-              references.remove(this);
-            }
-          };
+        new FinalizablePhantomReference<ChannelId>(id, REFERENCE_QUEUE) {
+          @Override
+          public void finalizeReferent() {
+            destroyNativeId(nativeIdPtr);
+            references.remove(this);
+          }
+        };
       references.add(reference);
     }
     return id;
@@ -141,9 +141,9 @@ public class ChannelId {
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
     Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
-        "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+      "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
     Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
-        "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+      "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
     byte[] channelName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {

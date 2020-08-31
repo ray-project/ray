@@ -45,10 +45,10 @@ public class DataMessage implements Message {
   @Override
   public String toString() {
     return "DataMessage{" +
-        "body=" + body +
-        ", msgId=" + msgId +
-        ", timestamp=" + timestamp +
-        ", channelId='" + channelId + '\'' +
-        '}';
+      "body=" + body +
+      ", msgId=" + msgId +
+      ", timestamp=" + timestamp +
+      ", channelId='" + channelId + '\'' +
+      '}';
   }
 }
