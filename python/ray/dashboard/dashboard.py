@@ -22,6 +22,7 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
 import ray.ray_constants as ray_constants
+from itertools import chain
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -92,8 +93,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actor_groups = self.node_stats.get_actors(workers_info_by_node,
-                                                  infeasible_tasks, ready_tasks)
+        actor_groups = self.node_stats.get_actors(
+            workers_info_by_node, infeasible_tasks, ready_tasks)
 
         for address, data in D.items():
             # process view data

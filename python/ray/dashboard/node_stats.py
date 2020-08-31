@@ -11,13 +11,14 @@ from datetime import datetime
 import time
 from typing import Dict
 import re
-import math
 
 from operator import itemgetter
 
 logger = logging.getLogger(__name__)
 
 PYCLASSNAME_RE = re.compile(r"(.+?)\(")
+
+
 def group_actors_by_python_class(actors):
     groups = defaultdict(list)
     for actor in actors.values():
@@ -37,15 +38,14 @@ def group_actors_by_python_class(actors):
                 groups[actor_title].append(actor)
     return groups
 
+
 def get_actor_group_stats(group):
-    group_stats = {}
     state_to_count = defaultdict(lambda: 0)
-    pending_tasks = 0
     executed_tasks = 0
     min_timestamp = None
     num_timestamps = 0
     sum_timestamps = 0
-    now = time.time() * 1000 # convert S -> MS
+    now = time.time() * 1000  # convert S -> MS
     for actor in group:
         logger.info(actor)
         state_to_count[actor["state"]] += 1
@@ -64,11 +64,12 @@ def get_actor_group_stats(group):
         max_lifetime = 0
     return {
         "stateToCount": state_to_count,
-        "avgLifetime":  avg_lifetime,
+        "avgLifetime": avg_lifetime,
         "maxLifetime": max_lifetime,
         "numExecutedTasks": executed_tasks,
     }
-            
+
+
 class NodeStats(threading.Thread):
     def __init__(self, redis_address, redis_password=None):
         self.redis_key = "{}.*".format(ray.gcs_utils.REPORTER_CHANNEL)
@@ -112,7 +113,7 @@ class NodeStats(threading.Thread):
     def _insert_log_counts(self):
         for ip, logs_by_pid in self._logs.items():
             hostname = self._ip_to_hostname.get(ip)
-            if not hostname or not hostname in self._node_stats:
+            if not hostname or hostname not in self._node_stats:
                 continue
             logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
             self._node_stats[hostname]["log_count"] = logs_by_pid
@@ -120,7 +121,7 @@ class NodeStats(threading.Thread):
     def _insert_error_counts(self):
         for ip, errs_by_pid in self._errors.items():
             hostname = self._ip_to_hostname.get(ip)
-            if not hostname or not hostname in self._node_stats:
+            if not hostname or hostname not in self._node_stats:
                 continue
             errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
             self._node_stats[hostname]["error_count"] = errs_by_pid
@@ -183,7 +184,8 @@ class NodeStats(threading.Thread):
                 elif invalid_state_type == "infeasibleActor":
                     task["state"] = -2
                 else:
-                    raise ValueError(f"Invalid argument invalid_state_type={invalid_state_time}")
+                    raise ValueError(f"Invalid argument"
+                                     "invalid_state_type={invalid_state_type}")
                 task["actorTitle"] = task["functionDescriptor"][
                     "pythonFunctionDescriptor"]["className"]
                 format_reply_id(task)
@@ -198,13 +200,17 @@ class NodeStats(threading.Thread):
                 _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
                                          "pendingActor")
         actor_groups = group_actors_by_python_class(actors)
-        stats_by_group = { name: get_actor_group_stats(group)
-         for name, group in actor_groups.items() }
-        
+        stats_by_group = {
+            name: get_actor_group_stats(group)
+            for name, group in actor_groups.items()
+        }
+
         response_data = {}
         for name, group in actor_groups.items():
-            response_data[name] = {"entries": group,
-                              "summary": stats_by_group[name]}
+            response_data[name] = {
+                "entries": group,
+                "summary": stats_by_group[name]
+            }
         return response_data
 
     def get_logs(self, hostname, pid):
@@ -248,7 +254,8 @@ class NodeStats(threading.Thread):
                               str(actor_data["OwnerAddress"]["Port"]))
                 self._addr_to_owner_addr[addr] = owner_addr
                 self._addr_to_actor_id[addr] = actor_data["ActorID"]
-                logger.info(f"timestamp data in actor table {actor_data['Timestamp']}")
+                logger.info(
+                    f"timestamp data in actor table {actor_data['Timestamp']}")
                 self._addr_to_extra_info_dict[addr] = {
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
