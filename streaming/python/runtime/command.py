@@ -28,14 +28,3 @@ class WorkerRollbackRequest(BaseWorkerCmd):
 
     def exception_msg(self):
         return self.__exception_msg
-
-
-class WorkerReceivePartialBarrierReport(BaseWorkerCmd):
-    """
-    worker receive partial barrier report
-    """
-
-    def __init__(self, actor_id, global_checkpoint_id, partial_checkpoint_id):
-        super().__init__(actor_id)
-        self.global_checkpoint_id = global_checkpoint_id
-        self.partial_checkpoint_id = partial_checkpoint_id

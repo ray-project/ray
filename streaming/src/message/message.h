@@ -17,16 +17,13 @@ enum class StreamingMessageType : uint32_t {
   MAX = Message
 };
 
-enum class StreamingBarrierType : uint32_t { GlobalBarrier = 0, EndOfDataBarrier = 2 };
+enum class StreamingBarrierType : uint32_t { GlobalBarrier = 0 };
 
 struct StreamingBarrierHeader {
   StreamingBarrierType barrier_type;
   uint64_t barrier_id;
   inline bool IsGlobalBarrier() {
     return StreamingBarrierType::GlobalBarrier == barrier_type;
-  }
-  inline bool IsEndOfDataBarrier() {
-    return StreamingBarrierType::EndOfDataBarrier == barrier_type;
   }
 };
 

@@ -8,15 +8,8 @@ namespace ray {
 namespace streaming {
 enum class ConfigEnum : uint32_t {
   QUEUE_ID_VECTOR = 0,
-  RECONSTRUCT_RETRY_TIMES,
-  RECONSTRUCT_TIMEOUT_PER_MB,
-  CURRENT_DRIVER_ID,
-  QUEUE_TYPE,
-  BUFFER_POOL_SIZE,
-  BUFFER_POOL_MIN_BUFFER_SIZE,
-  PLASMA_STORE_PATH,
   MIN = QUEUE_ID_VECTOR,
-  MAX = PLASMA_STORE_PATH
+  MAX = QUEUE_ID_VECTOR
 };
 }
 }  // namespace ray

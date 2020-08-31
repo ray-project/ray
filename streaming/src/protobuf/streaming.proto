@@ -26,7 +26,6 @@ enum ReliabilityLevel {
   NONE = 0;
   AT_LEAST_ONCE = 1;
   EXACTLY_ONCE = 2;
-  EXACTLY_SAME = 3;
 }
 
 enum FlowControlType {
