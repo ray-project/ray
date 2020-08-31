@@ -7,7 +7,7 @@ Basic APIs
 .. autofunction:: ray.serve.shutdown
 .. autoclass:: ray.serve.BackendConfig
     :members:
-    :undoc-members:
+    :exclude-members: internal_metadata, autoscaling_config
 .. autofunction:: ray.serve.create_backend
 .. autofunction:: ray.serve.create_endpoint
 
