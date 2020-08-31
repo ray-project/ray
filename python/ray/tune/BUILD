@@ -246,6 +246,14 @@ py_test(
     tags = ["exclusive", "example"],
 )
 
+py_test(
+    name = "ext_pytorch",
+    size = "medium",
+    srcs = ["tests/ext_pytorch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
+
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
