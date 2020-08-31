@@ -118,6 +118,9 @@ class SigOptSearch(Searcher):
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
     def suggest(self, trial_id):
+        if self._max_concurrent:
+            if len(self._live_trial_mapping) >= self._max_concurrent:
+                return None
         # Get new suggestion from SigOpt
         suggestion = self.conn.experiments(
             self.experiment.id).suggestions().create()
