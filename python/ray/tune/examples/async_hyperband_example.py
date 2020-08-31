@@ -41,9 +41,6 @@ class MyTrainableClass(Trainable):
         with open(checkpoint_path) as f:
             self.timestep = json.loads(f.read())["timestep"]
 
-    def reset_config(self, config):
-        return True
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
