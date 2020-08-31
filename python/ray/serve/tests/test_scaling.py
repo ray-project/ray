@@ -23,7 +23,7 @@ def test_multiple_routers():
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
-    serve.init(http_port=8005)
+    client = serve.start(http_port=8005)  # noqa: F841
 
     def actor_name(index):
         return SERVE_PROXY_NAME + "-{}-{}".format(node_ids[0], index)

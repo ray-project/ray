@@ -1,11 +1,10 @@
 import ray
-from ray import serve
 
 import requests
 
 
 def test_handle_in_endpoint(serve_instance):
-    serve.init()
+    client = serve_instance
 
     class Endpoint1:
         def __call__(self, flask_request):
@@ -13,20 +12,20 @@ def test_handle_in_endpoint(serve_instance):
 
     class Endpoint2:
         def __init__(self):
-            self.handle = serve.get_handle("endpoint1", missing_ok=True)
+            self.handle = client.get_handle("endpoint1")
 
         def __call__(self):
             return ray.get(self.handle.remote())
 
-    serve.create_backend("endpoint1:v0", Endpoint1)
-    serve.create_endpoint(
+    client.create_backend("endpoint1:v0", Endpoint1)
+    client.create_endpoint(
         "endpoint1",
         backend="endpoint1:v0",
         route="/endpoint1",
         methods=["GET", "POST"])
 
-    serve.create_backend("endpoint2:v0", Endpoint2)
-    serve.create_endpoint(
+    client.create_backend("endpoint2:v0", Endpoint2)
+    client.create_endpoint(
         "endpoint2",
         backend="endpoint2:v0",
         route="/endpoint2",
