@@ -157,6 +157,8 @@ def appo_surrogate_loss(
         mean_kl = make_time_major(
             old_policy_action_dist.multi_kl(action_dist), drop_last=True)
 
+        values_time_major = make_time_major(values)
+
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.multi_from_logits(
@@ -165,7 +167,7 @@ def appo_surrogate_loss(
                 actions=tf.unstack(loss_actions, axis=2),
                 discounts=tf.cast(~dones, tf.float32) * policy.config["gamma"],
                 rewards=rewards,
-                values=values,
+                values=values_time_major,
                 bootstrap_value=make_time_major(values)[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
@@ -200,7 +202,7 @@ def appo_surrogate_loss(
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values - vtrace_returns.vs
+        delta = values_time_major - vtrace_returns.vs
         value_targets = vtrace_returns.vs
         mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
@@ -234,7 +236,7 @@ def appo_surrogate_loss(
         # The value function loss.
         value_targets = make_time_major(
             train_batch[Postprocessing.VALUE_TARGETS])
-        delta = values - value_targets
+        delta = make_time_major(values) - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
         # The entropy loss.
