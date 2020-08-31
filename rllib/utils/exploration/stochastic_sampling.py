@@ -72,5 +72,5 @@ class StochasticSampling(Exploration):
             logp = action_dist.sampled_action_logp()
         else:
             action = action_dist.deterministic_sample()
-            logp = torch.zeros((action.size()[0], ), dtype=torch.float32)
+            logp = torch.zeros_like(action_dist.sampled_action_logp())
         return action, logp
