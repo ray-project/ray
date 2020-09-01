@@ -9,7 +9,7 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.sample import Domain, sample_from
+from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
@@ -232,7 +232,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
                                 "a callable.")
-            if type(value) is sample_from:
+            if isinstance(value, Function):
                 raise ValueError("arbitrary tune.sample_from objects are not "
                                  "supported for `hyperparam_mutation` values."
                                  "You must use other built in primitives like"

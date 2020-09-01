@@ -976,7 +976,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
     def testTuneSampleFromError(self):
         with self.assertRaises(ValueError):
             pbt, runner = self.basicSetup(hyperparam_mutations={
-                "float_factor": tune.sample_from(lambda: 100.0)
+                "float_factor": tune.sample_from(lambda _: 100.0)
             })
 
     def testPerturbationValues(self):
