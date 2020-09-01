@@ -58,7 +58,7 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
-        self.reload_config(errors_fatal=True)
+        self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
         self.max_failures = max_failures
@@ -111,7 +111,7 @@ class StandardAutoscaler:
 
     def update(self):
         try:
-            self.reload_config(errors_fatal=False)
+            self.reset(errors_fatal=False)
             self._update()
         except Exception as e:
             logger.exception("StandardAutoscaler: "
@@ -262,7 +262,7 @@ class StandardAutoscaler:
         else:
             return {}
 
-    def reload_config(self, errors_fatal=False):
+    def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
             sync_continuously = self.config.get(
@@ -338,7 +338,7 @@ class StandardAutoscaler:
     def launch_config_ok(self, node_id):
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
-        node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+        node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
 
         launch_config = copy.deepcopy(self.config["worker_nodes"])
         if node_type:
