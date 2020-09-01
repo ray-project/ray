@@ -1,4 +1,3 @@
-from datetime import timedelta
 import numpy as np
 import logging
 import os
@@ -15,10 +14,10 @@ from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
+from ray.util.sgd.torch.worker_group import LocalWorkerGroup
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
-from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -302,12 +301,10 @@ class TorchTrainer:
         return batch_size_per_worker
 
     def _start_workers(self, num_workers):
-        logger.debug(f"start_workers: Setting %d workers." % num_workers)
         worker_config = self.config.copy()
         batch_size_per_worker = self._configure_and_split_batch(num_workers)
         if batch_size_per_worker:
             worker_config[BATCH_SIZE] = batch_size_per_worker
-
         params = dict(
             model_creator=self.model_creator,
             data_creator=self.data_creator,
@@ -334,55 +331,14 @@ class TorchTrainer:
                 backend=self.backend,
                 add_dist_sampler=self.add_dist_sampler,
                 wrap_ddp=self.wrap_ddp)
+            self.worker_group = LocalWorkerGroup(num_workers,
+                                                 params,
+                                                 self.initialization_hook,
+                                                 self.timeout_s,
+                                                 self.num_cpus_per_worker,
+                                                 self.use_gpu)
 
-            # Start local worker
-            self.local_worker = LocalDistributedRunner(
-                num_cpus=self.num_cpus_per_worker,
-                num_gpus=int(self.use_gpu),
-                **params)
 
-            # Generate actor class
-            RemoteRunner = ray.remote(
-                num_cpus=self.num_cpus_per_worker,
-                num_gpus=int(self.use_gpu))(DistributedTorchRunner)
-            # Start workers
-            self.remote_workers = [
-                RemoteRunner.remote(**params) for i in range(num_workers - 1)
-            ]
-            if self.initialization_hook:
-                self.apply_all_workers(self.initialization_hook)
-
-            # Compute URL for initializing distributed PyTorch
-            address = setup_address()
-
-            # Runs the creator functions.
-            remote_component_setup = [
-                worker.setup_components.remote()
-                for i, worker in enumerate(self.remote_workers)
-            ]
-            self.local_worker.setup_components()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_component_setup)
-
-            # Setup the process group among all workers.
-            remote_pgroup_setups = [
-                worker.setup_process_group.remote(address, i + 1, num_workers,
-                                                  timedelta(self.timeout_s))
-                for i, worker in enumerate(self.remote_workers)
-            ]
-            self.local_worker.setup_process_group(address, 0, num_workers,
-                                                  timedelta(self.timeout_s))
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_pgroup_setups)
-
-            # Runs code that requires all creator functions to have run.
-            remote_operator_setups = [
-                worker.setup_ddp_and_operator.remote()
-                for worker in self.remote_workers
-            ]
-            self.local_worker.setup_ddp_and_operator()
-            # Get setup tasks in order to throw errors on failure
-            ray.get(remote_operator_setups)
 
     def train(self,
               num_steps=None,
@@ -518,9 +474,7 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each worker.
 
         """
-        remote_calls = [w.apply.remote(fn) for w in self.remote_workers]
-        local_call = self.local_worker.apply(fn)
-        return [local_call] + ray.get(remote_calls)
+        return self.worker_group.apply_all_workers(fn)
 
     def apply_all_operators(self, fn):
         """Run a function on all operators on the workers.
@@ -533,11 +487,7 @@ class TorchTrainer:
             A list of objects returned by ``fn`` on each operator.
 
         """
-        remote_calls = [
-            w.apply_operator.remote(fn) for w in self.remote_workers
-        ]
-        local_call = self.local_worker.apply_operator(fn)
-        return [local_call] + ray.get(remote_calls)
+        return self.worker_group.apply_all_operators(fn)
 
     def validate(self,
                  num_steps=None,
@@ -586,12 +536,7 @@ class TorchTrainer:
 
     def get_model(self):
         """Returns the learned model(s)."""
-        unwrapped = []
-        for model in self.local_worker.models:
-            unwrapped += [model.module if hasattr(model, "module") else model]
-        if len(unwrapped) == 1:
-            return unwrapped[0]
-        return unwrapped
+        return self.worker_group.get_model()
 
     def get_local_operator(self):
         """Returns the local TrainingOperator object.
@@ -602,23 +547,7 @@ class TorchTrainer:
         Returns:
             TrainingOperator: The local TrainingOperator object.
         """
-        return self.local_worker.training_operator
-
-    def state_dict(self):
-        return self.local_worker.state_dict()
-
-    def load_state_dict(self, state_dict, blocking=False):
-        # This is not the most efficient because you have to wait for
-        # the local worker to save then dump to buffer.
-        self.local_worker.load_state_dict(state_dict)
-        state_id = ray.put(self.local_worker.state_stream())
-
-        remote_calls = [
-            worker.load_state_stream.remote(state_id)
-            for worker in self.remote_workers
-        ]
-        if blocking:
-            ray.get(remote_calls)
+        return self.worker_group.get_local_operator()
 
     def save(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
@@ -626,8 +555,7 @@ class TorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        torch.save(self.state_dict(), checkpoint)
-        return checkpoint
+        return self.worker_group.save(checkpoint)
 
     def load(self, checkpoint):
         """Loads the Trainer and all workers from the provided checkpoint.
@@ -635,8 +563,7 @@ class TorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        state_dict = torch.load(checkpoint)
-        self.load_state_dict(state_dict)
+        self.worker_group.load(checkpoint)
 
     def restore(self, *args):
         raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
