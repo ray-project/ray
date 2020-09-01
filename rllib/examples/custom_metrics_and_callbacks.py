@@ -71,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--stop-iters", type=int, default=2000)
     args = parser.parse_args()
 
-    ray.init(local_mode=True)
+    ray.init()
     trials = tune.run(
         "PG",
         stop={
