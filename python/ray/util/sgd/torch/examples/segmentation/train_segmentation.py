@@ -79,6 +79,31 @@ def criterion(inputs, target):
 
     return losses["out"] + 0.5 * losses["aux"]
 
+def get_optimizer(model, aux_loss):
+    params_to_optimize = [
+        {
+            "params": [
+                p for p in model.backbone.parameters() if p.requires_grad
+            ]
+        },
+        {
+            "params": [
+                p for p in model.classifier.parameters() if p.requires_grad
+            ]
+        },
+    ]
+    if aux_loss:
+        params = [
+            p for p in model.aux_classifier.parameters() if p.requires_grad
+        ]
+        params_to_optimize.append({"params": params, "lr": args.lr * 10})
+    optimizer = torch.optim.SGD(
+        params_to_optimize,
+        lr=args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay)
+    return optimizer
+
 
 class SegOperator(TrainingOperator):
     def setup(self, config):
@@ -113,28 +138,7 @@ class SegOperator(TrainingOperator):
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
         # Create optimizer.
-        params_to_optimize = [
-            {
-                "params": [
-                    p for p in model.backbone.parameters() if p.requires_grad
-                ]
-            },
-            {
-                "params": [
-                    p for p in model.classifier.parameters() if p.requires_grad
-                ]
-            },
-        ]
-        if args.aux_loss:
-            params = [
-                p for p in model.aux_classifier.parameters() if p.requires_grad
-            ]
-            params_to_optimize.append({"params": params, "lr": args.lr * 10})
-        optimizer = torch.optim.SGD(
-            params_to_optimize,
-            lr=args.lr,
-            momentum=args.momentum,
-            weight_decay=args.weight_decay)
+        optimizer = get_optimizer(model, aux_loss=args.aux_loss)
 
         # Register components.
         self.model, self.optimizer = self.register(
