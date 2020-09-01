@@ -250,7 +250,7 @@ The full code looks like this:
 In the example above, Tune runs 10 trials with different hyperparameter configurations.
 An example output could look like so:
 
-.. code-block::
+.. code-block:: bash
   :emphasize-lines: 12
 
     +------------------------------+------------+-------+----------------+----------------+-------------+--------------+----------+-----------------+----------------------+
@@ -329,7 +329,7 @@ change layer sizes during a training run - which is what would happen in PBT.
 
 An example output could look like this:
 
-.. code-block::
+.. code-block:: bash
 
     +-----------------------------------------+------------+-------+----------------+----------------+-----------+--------------+-----------+-----------------+----------------------+
     | Trial name                              | status     | loc   |   layer_1_size |   layer_2_size |        lr |   batch_size |      loss |   mean_accuracy |   training_iteration |
