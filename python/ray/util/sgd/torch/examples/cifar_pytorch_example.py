@@ -37,20 +37,20 @@ class CifarTrainingOperator(TrainingOperator):
             momentum=config.get("momentum", 0.9))
 
         # Load in training and validation data.
-        with RayFileLock():
-            transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                     (0.2023, 0.1994, 0.2010)),
-            ])  # meanstd transformation
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])  # meanstd transformation
 
-            transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                     (0.2023, 0.1994, 0.2010)),
-            ])
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])
+        with RayFileLock():
             train_dataset = CIFAR10(
                 root="~/data",
                 train=True,
@@ -62,17 +62,17 @@ class CifarTrainingOperator(TrainingOperator):
                 download=False,
                 transform=transform_test)
 
-            if config["test_mode"]:
-                train_dataset = Subset(train_dataset, list(range(64)))
-                validation_dataset = Subset(validation_dataset, list(
-                    range(64)))
+        if config["test_mode"]:
+            train_dataset = Subset(train_dataset, list(range(64)))
+            validation_dataset = Subset(validation_dataset, list(
+                range(64)))
 
-            train_loader = DataLoader(
-                train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-            validation_loader = DataLoader(
-                validation_dataset,
-                batch_size=config[BATCH_SIZE],
-                num_workers=2)
+        train_loader = DataLoader(
+            train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+        validation_loader = DataLoader(
+            validation_dataset,
+            batch_size=config[BATCH_SIZE],
+            num_workers=2)
 
         # Create scheduler.
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
