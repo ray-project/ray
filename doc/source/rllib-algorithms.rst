@@ -25,7 +25,8 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
-`LinUCB`_, `LinTS`_            torch      **Yes** `+parametric`_  No                 **Yes**
+`LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
+`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
 =================== ========== ======================= ================== =========== =====================
 
 Multi-Agent only Methods
@@ -33,7 +34,6 @@ Multi-Agent only Methods
 ============================= ========== ======================= ================== =========== =====================
 Algorithm                     Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 ============================= ========== ======================= ================== =========== =====================
-`AlphaZero`_                   torch      **Yes** `+parametric`_  No                 No
 `QMIX`_                        torch      **Yes** `+parametric`_  No                 **Yes**     `+RNN`_
 `MADDPG`_                      tf         **Yes**                 Partial            **Yes**
 `Parameter Sharing`_           Depends on bootstrapped algorithm
@@ -609,6 +609,22 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
     :width: 24
 
 
+.. _alphazero:
+
+Single-Player Alpha Zero (contrib/AlphaZero)
+--------------------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
+
+**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+
+
 Multi-Agent Methods
 -------------------
 
@@ -642,21 +658,6 @@ Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/mad
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
-
-.. _alphazero:
-
-Single-Player Alpha Zero (contrib/AlphaZero)
---------------------------------------------
-|pytorch|
-`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be sscaled to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
-
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
-
-**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
 
 Parameter Sharing
 -----------------
