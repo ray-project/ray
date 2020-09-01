@@ -10,7 +10,7 @@ from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
 
 from ray.tune.function_runner import wrap_function
-from ray.tune.integration._horovod_job import HorovodJob
+from horovod.ray import RayExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,12 @@ class _HorovodTrainable(tune.Trainable):
         trainable = wrap_function(self.__class__._function)
         if self._ssh_identity_file:
             with FileLock(self._ssh_identity_file + ".lock"):
-                settings = HorovodJob.create_settings(
+                settings = RayExecutor.create_settings(
                     self._timeout_s, self._ssh_identity_file, self._ssh_str)
         else:
-            settings = HorovodJob.create_settings(
+            settings = RayExecutor.create_settings(
                 self._timeout_s, self._ssh_identity_file, self._ssh_str)
-        self._job = HorovodJob(
+        self._job = RayExecutor(
             settings,
             cpus_per_slot=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
