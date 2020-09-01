@@ -204,7 +204,7 @@ class AxSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict):
-        spec = flatten_dict(spec)
+        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
