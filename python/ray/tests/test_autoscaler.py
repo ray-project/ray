@@ -12,6 +12,7 @@ import ray
 import ray.services as services
 from ray.autoscaler.util import prepare_config, validate_config
 from ray.autoscaler.commands import get_or_create_head_node
+from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
@@ -42,6 +43,7 @@ class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds
+        self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
@@ -51,7 +53,18 @@ class MockProcessRunner:
 
     def check_output(self, cmd):
         self.check_call(cmd)
-        return "command-output".encode()
+        return_string = "command-output"
+        key_to_delete = None
+        for pattern, pair in self.call_response.items():
+            if pattern in str(cmd):
+                return_string = pair[0]
+                if pair[1] - 1 == 0:
+                    key_to_delete = pattern
+                break
+        if key_to_delete:
+            del self.call_response[key_to_delete]
+
+        return return_string.encode()
 
     def assert_has_call(self, ip, pattern=None, exact=None):
         assert pattern or exact, \
@@ -94,6 +107,9 @@ class MockProcessRunner:
 
     def clear_history(self):
         self.calls = []
+
+    def respond_to_call(self, pattern, response, num_times=1):
+        self.call_response[pattern] = (response, num_times)
 
 
 class MockProvider(NodeProvider):
@@ -1144,11 +1160,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1164,11 +1179,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
         file_mount_dir = tempfile.mkdtemp()
@@ -1197,11 +1212,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1215,11 +1230,10 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
-            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_not_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         # Simulate a second `ray up` call
         from ray.autoscaler import util
@@ -1241,11 +1255,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
 
 if __name__ == "__main__":
