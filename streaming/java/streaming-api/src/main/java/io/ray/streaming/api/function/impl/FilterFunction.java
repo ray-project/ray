@@ -3,8 +3,8 @@ package io.ray.streaming.api.function.impl;
 import io.ray.streaming.api.function.Function;
 
 /**
- * A filter function is a predicate applied individually to each record.
- * The predicate decides whether to keep the element, or to discard it.
+ * A filter function is a predicate applied individually to each record. The predicate decides
+ * whether to keep the element, or to discard it.
  *
  * @param <T> type of the input data.
  */

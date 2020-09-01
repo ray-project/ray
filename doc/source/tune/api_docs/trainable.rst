@@ -294,10 +294,13 @@ Ray also offers lightweight integrations to distribute your model training on Ra
 
 
 .. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
+   :noindex:
 
 .. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
+   :noindex:
 
 .. autofunction:: ray.tune.integration.torch.is_distributed_trainable
+   :noindex:
 
 tune.DurableTrainable
 ---------------------

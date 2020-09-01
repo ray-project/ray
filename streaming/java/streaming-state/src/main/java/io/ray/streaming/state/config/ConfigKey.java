@@ -21,8 +21,7 @@ package io.ray.streaming.state.config;
 import java.util.Map;
 
 /**
- * state config keys.
- * Todo replace this to config module.
+ * state config keys. Todo replace this to config module.
  */
 public final class ConfigKey {
 

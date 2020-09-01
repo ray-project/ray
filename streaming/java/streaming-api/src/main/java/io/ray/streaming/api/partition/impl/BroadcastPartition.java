@@ -7,6 +7,7 @@ import java.util.stream.IntStream;
  * Broadcast the record to all downstream partitions.
  */
 public class BroadcastPartition<T> implements Partition<T> {
+
   private int[] partitions = new int[0];
 
   public BroadcastPartition() {

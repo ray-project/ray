@@ -2,6 +2,7 @@ package io.ray.streaming.jobgraph;
 
 import static org.testng.Assert.assertEquals;
 
+
 import com.google.common.collect.Lists;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.stream.DataStream;
@@ -12,13 +13,14 @@ import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
 
 public class JobGraphOptimizerTest {
-  private static final Logger LOG = LoggerFactory.getLogger( JobGraphOptimizerTest.class );
+
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraphOptimizerTest.class);
 
   @Test
   public void testOptimize() {
     StreamingContext context = StreamingContext.buildContext();
     DataStream<Integer> source1 = DataStreamSource.fromCollection(context,
-        Lists.newArrayList(1 ,2 ,3));
+        Lists.newArrayList(1, 2, 3));
     DataStream<String> source2 = DataStreamSource.fromCollection(context,
         Lists.newArrayList("1", "2", "3"));
     DataStream<String> source3 = DataStreamSource.fromCollection(context,
@@ -43,7 +45,7 @@ public class JobGraphOptimizerTest {
   public void testOptimizeHybridStream() {
     StreamingContext context = StreamingContext.buildContext();
     DataStream<Integer> source1 = DataStreamSource.fromCollection(context,
-        Lists.newArrayList(1 ,2 ,3));
+        Lists.newArrayList(1, 2, 3));
     DataStream<String> source2 = DataStreamSource.fromCollection(context,
         Lists.newArrayList("1", "2", "3"));
     source1.asPythonStream()
