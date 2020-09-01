@@ -82,6 +82,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
+    values_time_major = _make_time_major(values)
 
     policy.model_vars = policy.model.variables()
     policy.target_model_vars = policy.target_model.variables()
@@ -131,7 +132,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             discounts=(1.0 - dones.float()) * policy.config["gamma"],
             rewards=rewards,
             values=values,
-            bootstrap_value=_make_time_major(values)[-1],
+            bootstrap_value=values_time_major[-1],
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=model,
             clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
@@ -159,7 +160,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values - vtrace_returns.vs
+        delta = values_time_major - vtrace_returns.vs
         value_targets = vtrace_returns.vs
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
@@ -190,7 +191,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         # The value function loss.
         value_targets = _make_time_major(
             train_batch[Postprocessing.VALUE_TARGETS])
-        delta = values - value_targets
+        delta = values_time_major - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss.
