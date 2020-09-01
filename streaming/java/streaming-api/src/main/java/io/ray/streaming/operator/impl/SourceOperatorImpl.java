@@ -13,6 +13,7 @@ import java.util.List;
 
 public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
     implements SourceOperator {
+
   private SourceContextImpl sourceContext;
 
   public SourceOperatorImpl(SourceFunction<T> function) {
@@ -47,6 +48,7 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
   }
 
   class SourceContextImpl implements SourceContext<T> {
+
     private List<Collector> collectors;
 
     public SourceContextImpl(List<Collector> collectors) {
