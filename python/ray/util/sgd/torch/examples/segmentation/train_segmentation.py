@@ -79,6 +79,7 @@ def criterion(inputs, target):
 
     return losses["out"] + 0.5 * losses["aux"]
 
+
 def get_optimizer(model, aux_loss):
     params_to_optimize = [
         {

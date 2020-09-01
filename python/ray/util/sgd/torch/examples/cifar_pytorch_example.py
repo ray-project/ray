@@ -64,15 +64,12 @@ class CifarTrainingOperator(TrainingOperator):
 
         if config["test_mode"]:
             train_dataset = Subset(train_dataset, list(range(64)))
-            validation_dataset = Subset(validation_dataset, list(
-                range(64)))
+            validation_dataset = Subset(validation_dataset, list(range(64)))
 
         train_loader = DataLoader(
             train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
         validation_loader = DataLoader(
-            validation_dataset,
-            batch_size=config[BATCH_SIZE],
-            num_workers=2)
+            validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
 
         # Create scheduler.
         scheduler = torch.optim.lr_scheduler.MultiStepLR(

@@ -3,7 +3,6 @@ import logging
 
 import torch
 import torch.nn as nn
-from ray.util.sgd.torch import CreatorOperator
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES, RayFileLock)
@@ -679,9 +678,9 @@ class TrainingOperator:
             raise ValueError(
                 "Must provide a callable model_creator and optimizer_creator.")
 
-        CreatorOperator.set_creators(model_creator, optimizer_creator,
-                                     data_creator, loss_creator,
-                                     scheduler_creator, serialize_data_creation)
+        CreatorOperator.set_creators(
+            model_creator, optimizer_creator, data_creator, loss_creator,
+            scheduler_creator, serialize_data_creation)
 
         return CreatorOperator
 
@@ -732,14 +731,20 @@ class TrainingOperator:
         """
         return self._scheduler_step_freq
 
+
 class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
     state using creator functions.
     """
+
     @classmethod
-    def set_creators(cls, model_creator, optimizer_creator,
-                     data_creator=None, loss_creator=None,
-                     scheduler_creator=None, serialize_data_creation=True):
+    def set_creators(cls,
+                     model_creator,
+                     optimizer_creator,
+                     data_creator=None,
+                     loss_creator=None,
+                     scheduler_creator=None,
+                     serialize_data_creation=True):
         cls.model_creator = model_creator
         cls.optimizer_creator = optimizer_creator
         cls.data_creator = data_creator
@@ -779,9 +784,9 @@ class CreatorOperator(TrainingOperator):
         train_loader = None
         validation_loader = None
         if CreatorOperator.data_creator and callable(
-            CreatorOperator.data_creator):
-                train_loader, validation_loader = self._initialize_dataloaders(
-                    config)
+                CreatorOperator.data_creator):
+            train_loader, validation_loader = self._initialize_dataloaders(
+                config)
         kwargs["train_loader"] = train_loader
         kwargs["validation_loader"] = validation_loader
 
@@ -803,7 +808,7 @@ class CreatorOperator(TrainingOperator):
         if CreatorOperator.loss_creator:
             logger.debug("Creating loss.")
             if inspect.isclass(CreatorOperator.loss_creator) and issubclass(
-                CreatorOperator.loss_creator, torch.nn.modules.loss._Loss):
+                    CreatorOperator.loss_creator, torch.nn.modules.loss._Loss):
                 criterion = CreatorOperator.loss_creator()
             else:
                 criterion = CreatorOperator.loss_creator(config)
