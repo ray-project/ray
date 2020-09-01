@@ -215,6 +215,9 @@ def DistributedTrainableCreator(func,
     return WrappedHorovodTrainable
 
 
+# pytest presents a bunch of serialization problems
+# that force us to include mocks as part of the module.
+
 def _train_simple(config):
     import horovod.torch as hvd
     hvd.init()
