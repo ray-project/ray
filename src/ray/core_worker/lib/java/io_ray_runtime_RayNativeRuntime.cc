@@ -237,7 +237,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       -1,                                            // metrics_agent_port
   };
 
-  RAY_CHECK(!env->ExceptionCheck());
   ray::CoreWorkerProcess::Initialize(options);
 }
 
