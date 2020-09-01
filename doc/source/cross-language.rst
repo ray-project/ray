@@ -164,6 +164,9 @@ automatically if their types are the following:
       - From Java to Python: *raise an exception*
       - From Java to Java: **OK**
 
+The following example shows how to pass these types as parameters and how to
+return return these types.
+
 You can write a Python function which returns the input data:
 
 .. code-block:: python
