@@ -60,11 +60,21 @@ class Uniform(Sampler):
 
 
 class LogUniform(Sampler):
+    def __init__(self, base: float = 10):
+        self.base = base
+        assert self.base > 0, "Base has to be strictly greater than 0"
+
     def __str__(self):
         return "LogUniform"
 
 
 class Normal(Sampler):
+    def __init__(self, mean: float = 0., sd: float = 0.):
+        self.mean = mean
+        self.sd = sd
+
+        assert self.sd > 0, "SD has to be strictly greater than 0"
+
     def __str__(self):
         return "Normal"
 
@@ -93,10 +103,6 @@ class Float(Domain):
             return items if len(items) > 1 else items[0]
 
     class _LogUniform(LogUniform):
-        def __init__(self, base: float = 10):
-            self.base = base
-            assert self.base > 0, "Base has to be strictly greater than 0"
-
         def sample(self,
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
@@ -112,12 +118,6 @@ class Float(Domain):
             return items if len(items) > 1 else items[0]
 
     class _Normal(Normal):
-        def __init__(self, mean: float = 0., sd: float = 0.):
-            self.mean = mean
-            self.sd = sd
-
-            assert self.sd > 0, "SD has to be strictly greater than 0"
-
         def sample(self,
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
