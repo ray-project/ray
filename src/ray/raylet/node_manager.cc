@@ -37,7 +37,6 @@ struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
   int restarting_actors = 0;
-  int max_num_handles = 0;
 };
 
 /// A helper function to return the statistical data of actors in this node manager.
@@ -51,9 +50,6 @@ ActorStats GetActorStatisticalData(
       item.restarting_actors += 1;
     } else {
       item.dead_actors += 1;
-    }
-    if (pair.second.NumHandles() > item.max_num_handles) {
-      item.max_num_handles = pair.second.NumHandles();
     }
   }
   return item;
@@ -156,12 +152,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id, const ObjectID &required_object_id) {
             HandleTaskReconstruction(task_id, required_object_id);
           },
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_, object_directory_),
-      task_dependency_manager_(
-          object_manager, reconstruction_policy_, io_service, self_node_id_,
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_),
+          RayConfig::instance().object_timeout_milliseconds(), self_node_id_, gcs_client_,
+          object_directory_),
+      task_dependency_manager_(object_manager, reconstruction_policy_),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -773,7 +766,10 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+      << "monitor: GCS didn't receive heartbeats within timeout "
+      << RayConfig::instance().num_heartbeats_timeout() *
+             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+      << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -1266,16 +1262,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> internal_config_keys;
-    std::vector<std::string> internal_config_values;
+    std::vector<std::string> system_config_keys;
+    std::vector<std::string> system_config_values;
     for (auto kv : initial_config_.raylet_config) {
-      internal_config_keys.push_back(kv.first);
-      internal_config_values.push_back(kv.second);
+      system_config_keys.push_back(kv.first);
+      system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, internal_config_keys),
-        string_vec_to_flatbuf(fbb, internal_config_values));
+        string_vec_to_flatbuf(fbb, system_config_keys),
+        string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -2116,18 +2112,6 @@ void NodeManager::ScheduleTasks(
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetTasks(TaskState::PLACEABLE).size() == 0);
-}
-
-bool NodeManager::CheckDependencyManagerInvariant() const {
-  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the queues.
-  for (const auto &task_id : pending_task_ids) {
-    if (!local_queues_.HasTask(task_id)) {
-      return false;
-    }
-  }
-  // TODO(atumanov): perform the check in the opposite direction.
-  return true;
 }
 
 void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
@@ -3026,7 +3010,6 @@ std::string NodeManager::DebugString() const {
   result << "\n- num live actors: " << statistical_data.live_actors;
   result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
-  result << "\n- max num handles: " << statistical_data.max_num_handles;
 
   result << "\nRemote node manager clients: ";
   for (const auto &entry : remote_node_manager_clients_) {
@@ -3164,6 +3147,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3228,6 +3212,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
@@ -3237,7 +3225,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
           worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_worker_id(worker->WorkerId().Binary());
           worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          worker_stats->set_language(worker->GetLanguage());
           reply->set_num_workers(reply->num_workers() + 1);
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
@@ -3410,18 +3400,12 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
-  reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
-  stats::ActorStats().Record(statistical_data.live_actors,
-                             {{stats::ValueTypeKey, "live_actors"}});
-  stats::ActorStats().Record(statistical_data.restarting_actors,
-                             {{stats::ValueTypeKey, "restarting_actors"}});
-  stats::ActorStats().Record(statistical_data.dead_actors,
-                             {{stats::ValueTypeKey, "dead_actors"}});
-  stats::ActorStats().Record(statistical_data.max_num_handles,
-                             {{stats::ValueTypeKey, "max_num_handles"}});
+  stats::LiveActors().Record(statistical_data.live_actors);
+  stats::RestartingActors().Record(statistical_data.restarting_actors);
+  stats::DeadActors().Record(statistical_data.dead_actors);
 }
 
 }  // namespace raylet

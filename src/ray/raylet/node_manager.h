@@ -87,8 +87,6 @@ struct NodeManagerConfig {
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled;
-  /// the maximum lineage size.
-  uint64_t max_lineage_size;
   /// The store socket name.
   std::string store_socket_name;
   /// The path to the ray temp dir.
@@ -437,13 +435,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param job_data Data associated with the finished job.
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
-
-  /// Check if certain invariants associated with the task dependency manager
-  /// and the local queues are satisfied. This is only used for debugging
-  /// purposes.
-  ///
-  /// \return True if the invariants are satisfied and false otherwise.
-  bool CheckDependencyManagerInvariant() const;
 
   /// Process client message of SubmitTask
   ///

@@ -117,7 +117,7 @@ class StandardAutoscaler:
         # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = None
+        self.resource_demand_vector = []
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -197,14 +197,18 @@ class StandardAutoscaler:
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler and self.resource_demand_vector:
-            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
-                self.provider.non_terminated_nodes(tag_filters={}),
-                self.pending_launches.breakdown(),
-                self.resource_demand_vector))
-            # TODO(ekl) also enforce max launch concurrency here?
-            for node_type, count in to_launch:
-                self.launch_new_node(count, node_type=node_type)
+        if self.resource_demand_scheduler:
+            resource_demand_vector = self.resource_demand_vector + \
+                self.load_metrics.get_resource_demand_vector()
+            if resource_demand_vector:
+                to_launch = (
+                    self.resource_demand_scheduler.get_nodes_to_launch(
+                        self.provider.non_terminated_nodes(tag_filters={}),
+                        self.pending_launches.breakdown(),
+                        resource_demand_vector))
+                # TODO(ekl) also enforce max launch concurrency here?
+                for node_type, count in to_launch:
+                    self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -385,9 +389,23 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
+            is_head_node=False,
             docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
+
+    def _get_node_type_specific_commands(self, node_id: str,
+                                         commands_key: str):
+        commands = self.config[commands_key]
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+            if node_type not in self.available_node_types:
+                raise ValueError(f"Unknown node type tag: {node_type}.")
+            node_specific_config = self.available_node_types[node_type]
+            if commands_key in node_specific_config:
+                commands = node_specific_config[commands_key]
+        return commands
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
@@ -402,10 +420,12 @@ class StandardAutoscaler:
             init_commands = []
             ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_commands(
+                node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
         return (node_id, init_commands, ray_commands)
@@ -420,11 +440,13 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
+                self._get_node_type_specific_commands(
+                    node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
             process_runner=self.process_runner,
             use_internal_ip=True,

@@ -20,8 +20,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The streaming worker implementation class, it is ray actor. JobWorker is created by
- * {@link JobMaster} through ray api, and JobMaster communicates
- * with JobWorker through Ray.call().
+ * {@link JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
  *
  * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
  * between workers.
@@ -147,8 +146,7 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by upstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by upstream streaming queue to send data to this actor and receive result from this actor
    */
   public byte[] onReaderMessageSync(byte[] buffer) {
     if (transferHandler == null) {
@@ -165,8 +163,8 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Used by downstream streaming queue to send data to this actor
-   * and receive result from this actor
+   * Used by downstream streaming queue to send data to this actor and receive result from this
+   * actor
    */
   public byte[] onWriterMessageSync(byte[] buffer) {
     if (transferHandler == null) {

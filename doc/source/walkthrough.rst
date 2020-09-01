@@ -253,7 +253,7 @@ Multiple returns
 
     .. code-block:: python
 
-      @ray.remote(num_return_vals=3)
+      @ray.remote(num_returns=3)
       def return_multiple():
           return 1, 2, 3
 
@@ -341,7 +341,7 @@ If the current node's object store does not contain the object, the object is do
       assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
 
       # You can also set a timeout to return early from a ``get`` that's blocking for too long.
-      from ray.exceptions import RayTimeoutError
+      from ray.exceptions import GetTimeoutError
 
       @ray.remote
       def long_running_function()
@@ -350,7 +350,7 @@ If the current node's object store does not contain the object, the object is do
       obj_ref = long_running_function.remote()
       try:
           ray.get(obj_ref, timeout=4)
-      except RayTimeoutError:
+      except GetTimeoutError:
           print("`get` timed out.")
 
   .. group-tab:: Java

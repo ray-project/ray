@@ -162,12 +162,6 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
 
 
 async def test_router_use_max_concurrency(serve_instance):
-    # The VisibleRouter::get_queues method needs to pickle queries
-    # so we register serializer here. In regular code path, query
-    # serialization is done by Serve manually for performance.
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     signal = SignalActor.remote()
 
     @ray.remote
@@ -197,7 +191,7 @@ async def test_router_use_max_concurrency(serve_instance):
     second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     # Neither queries should be available
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_query, second_query], timeout=0.2)
 
     # Let's retrieve the router internal state

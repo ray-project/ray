@@ -127,9 +127,9 @@ class ReplicaConfig:
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
-        elif "detached" in self.ray_actor_options:
+        elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying detached in actor_init_args is not allowed.")
+                "Specifying lifetime in actor_init_args is not allowed.")
         elif "name" in self.ray_actor_options:
             raise ValueError(
                 "Specifying name in actor_init_args is not allowed.")

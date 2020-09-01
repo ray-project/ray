@@ -227,6 +227,13 @@ class TBXLogger(Logger):
                   and len(value) > 0) or (type(value) == np.ndarray
                                           and value.size > 0):
                 valid_result[full_attr] = value
+
+                # Must be video
+                if type(value) == np.ndarray and value.ndim == 5:
+                    self._file_writer.add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
                 try:
                     self._file_writer.add_histogram(
                         full_attr, value, global_step=step)

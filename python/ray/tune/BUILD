@@ -7,7 +7,7 @@ py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["jenkins_only"],
+    tags = ["exclusive"],
     deps = [":tune_lib"],
 )
 
@@ -97,6 +97,14 @@ py_test(
     name = "test_integration_kubernetes",
     size = "small",
     srcs = ["tests/test_integration_kubernetes.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_integration_pytorch_lightning",
+    size = "small",
+    srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -242,6 +250,14 @@ py_test(
     name = "example",
     size = "small",
     srcs = ["tests/example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
+
+py_test(
+    name = "ext_pytorch",
+    size = "medium",
+    srcs = ["tests/ext_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
 )
@@ -458,6 +474,24 @@ py_test(
     name = "pbt_convnet_function_example",
     size = "medium",
     srcs = ["examples/pbt_convnet_function_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_func",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_trainable",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]

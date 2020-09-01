@@ -3,7 +3,7 @@ import sys
 import ray
 import pytest
 from ray.test_utils import (
-    generate_internal_config_map,
+    generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
@@ -22,7 +22,7 @@ def increase(x):
 
 @pytest.mark.parametrize(
     "ray_start_regular",
-    [generate_internal_config_map(num_heartbeats_timeout=20)],
+    [generate_system_config_map(num_heartbeats_timeout=20)],
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):
     actor1 = Increase.remote()
@@ -45,7 +45,7 @@ def test_gcs_server_restart(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_regular",
-    [generate_internal_config_map(num_heartbeats_timeout=20)],
+    [generate_system_config_map(num_heartbeats_timeout=20)],
     indirect=True)
 def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ids = []
@@ -56,7 +56,7 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    ready, unready = ray.wait(ids, 100, 240)
+    ready, unready = ray.wait(ids, num_returns=100, timeout=240)
     print("Ready objects is {}.".format(ready))
     print("Unready objects is {}.".format(unready))
     assert len(unready) == 0
@@ -64,7 +64,7 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_cluster_head",
-    [generate_internal_config_map(num_heartbeats_timeout=20)],
+    [generate_system_config_map(num_heartbeats_timeout=20)],
     indirect=True)
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     """Checks that the node failure detector is correct when gcs server restart.

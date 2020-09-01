@@ -153,7 +153,6 @@ test_python() {
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
-      -python/ray/tests:test_projects
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
@@ -174,6 +173,7 @@ test_python() {
 }
 
 test_cpp() {
+  bazel build --config=ci //cpp:all
   bazel test --config=ci //cpp:all --build_tests_only
 }
 
@@ -278,12 +278,12 @@ build_wheels() {
       # caused timeouts in the past. See the "cache: false" line below.
       local MOUNT_BAZEL_CACHE=(
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
-        -e TRAVIS=true
-        -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST:-false}"
-        -e encrypted_1c30b31fe1ee_key="${encrypted_1c30b31fe1ee_key-}"
-        -e encrypted_1c30b31fe1ee_iv="${encrypted_1c30b31fe1ee_iv-}"
-        -e TRAVIS_COMMIT="${TRAVIS_COMMIT}"
-        -e CI="${CI}"
+        -e "TRAVIS=true"
+        -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
+        -e "encrypted_1c30b31fe1ee_key=${encrypted_1c30b31fe1ee_key-}"
+        -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
+        -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
+        -e "CI=${CI}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
