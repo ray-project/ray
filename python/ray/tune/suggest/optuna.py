@@ -86,7 +86,7 @@ class OptunaSearch(Searcher):
 
     def __init__(
             self,
-            space,
+            space=None,
             metric="episode_reward_mean",
             mode="max",
             sampler=None,
@@ -114,6 +114,11 @@ class OptunaSearch(Searcher):
         self._storage = ot.storages.InMemoryStorage()
 
         self._ot_trials = {}
+        self._ot_study = None
+        if self._space:
+            self.setup_study(mode)
+
+    def setup_study(self, mode):
         self._ot_study = ot.study.create_study(
             storage=self._storage,
             sampler=self._sampler,
@@ -122,7 +127,24 @@ class OptunaSearch(Searcher):
             direction="minimize" if mode == "min" else "maximize",
             load_if_exists=True)
 
+    def set_search_properties(self, metric, mode, config):
+        if self._space:
+            return False
+        space = self.convert_search_space(config)
+        self._space = space
+        self._metric = metric
+        self._mode = mode
+        self.setup_study(mode)
+        self._config = config
+
     def suggest(self, trial_id):
+        if not self._space:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+
         if trial_id not in self._ot_trials:
             ot_trial_id = self._storage.create_new_trial(
                 self._ot_study._study_id)
@@ -161,15 +183,6 @@ class OptunaSearch(Searcher):
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
             self._ot_trials, self._ot_study = save_object
-
-    @classmethod
-    def from_config(cls,
-                    config,
-                    metric="episode_reward_mean",
-                    mode="max",
-                    sampler=None):
-        space = cls.convert_search_space(config)
-        return cls(space, metric, mode, sampler, config)
 
     @staticmethod
     def convert_search_space(spec: Dict):

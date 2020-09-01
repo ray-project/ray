@@ -92,7 +92,7 @@ class HyperOptSearch(Searcher):
 
     def __init__(
             self,
-            space,
+            space=None,
             metric="episode_reward_mean",
             mode="max",
             points_to_evaluate=None,
@@ -124,7 +124,6 @@ class HyperOptSearch(Searcher):
                 hpo.tpe.suggest, n_startup_jobs=n_initial_points)
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
-        self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
             self._hpopt_trials = hpo.Trials()
             self._points_to_evaluate = 0
@@ -140,7 +139,33 @@ class HyperOptSearch(Searcher):
         else:
             self.rstate = np.random.RandomState(random_state_seed)
 
+        self.domain = None
+        if space:
+            self.domain = hpo.Domain(lambda spc: spc, space)
+
+    def set_search_properties(self, metric, mode, config):
+        if self.domain:
+            return False
+        space = self.convert_search_space(config)
+        self.domain = hpo.Domain(lambda spc: spc, space)
+
+        self._metric = metric
+        self._mode = mode
+
+        if mode == "max":
+            self.metric_op = -1.
+        elif mode == "min":
+            self.metric_op = 1.
+
+        return True
+
     def suggest(self, trial_id):
+        if not self.domain:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -243,24 +268,6 @@ class HyperOptSearch(Searcher):
             self.rstate.set_state(trials_object[1])
         else:
             self.set_state(trials_object)
-
-    @classmethod
-    def from_config(
-            cls,
-            config,
-            metric="episode_reward_mean",
-            mode="max",
-            points_to_evaluate=None,
-            n_initial_points=20,
-            random_state_seed=None,
-            gamma=0.25,
-            max_concurrent=None,
-            use_early_stopped_trials=None,
-    ):
-        space = cls.convert_search_space(config)
-        return cls(space, metric, mode, points_to_evaluate, n_initial_points,
-                   random_state_seed, gamma, max_concurrent,
-                   use_early_stopped_trials)
 
     @staticmethod
     def convert_search_space(spec: Dict):

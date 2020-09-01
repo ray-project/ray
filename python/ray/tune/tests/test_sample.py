@@ -18,11 +18,6 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             bounded.normal().uniform()
 
-        # Normal
-        samples = bounded.normal(-4, 2).sample(size=1000)
-        self.assertTrue(any(-4.2 < s < 8.3 for s in samples))
-        self.assertTrue(np.mean(samples) < -2)
-
         # Uniform
         samples = bounded.uniform().sample(size=1000)
         self.assertTrue(any(-4.2 < s < 8.3 for s in samples))
@@ -37,11 +32,16 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any(1e-4 < s < 1e-1 for s in samples))
 
     def testUnboundedFloat(self):
-        unbounded = tune.sample.Float()
+        unbounded = tune.sample.Float(None, None)
 
         # Require min and max bounds for loguniform
         with self.assertRaises(ValueError):
             unbounded.loguniform()
+
+        # Normal
+        samples = tune.sample.Float(None, None).normal().sample(size=1000)
+        self.assertTrue(any(-5 < s < 5 for s in samples))
+        self.assertTrue(-1 < np.mean(samples) < 1)
 
     def testBoundedInt(self):
         bounded = tune.sample.Integer(-3, 12)
@@ -150,7 +150,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        AxSearch.from_config(config)
+        searcher = AxSearch()
+        searcher.set_search_properties("none", "max", config)
 
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
@@ -181,7 +182,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        BayesOptSearch.from_config(config, metric="None")
+        searcher = BayesOptSearch()
+        searcher.set_search_properties("none", "max", config)
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -220,7 +222,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        HyperOptSearch.from_config(config)
+        searcher = HyperOptSearch()
+        searcher.set_search_properties("none", "max", config)
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
@@ -259,7 +262,8 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        OptunaSearch.from_config(config)
+        searcher = OptunaSearch()
+        searcher.set_search_properties("none", "max", config)
 
 
 if __name__ == "__main__":

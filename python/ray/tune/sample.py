@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, \
     Union
 
 import numpy as np
-from scipy import stats
 
 logger = logging.getLogger(__name__)
 
@@ -382,8 +381,7 @@ def qrandint(min: int, max: int, q: int = 1):
     return Integer(min, max).uniform().quantized(q)
 
 
-def randn(mean: float = 0.,
-          sd: float = 1.):
+def randn(mean: float = 0., sd: float = 1.):
     """Sample a float value normally with ``mean`` and ``sd``.
 
     Args:
@@ -396,9 +394,7 @@ def randn(mean: float = 0.,
     return Float(None, None).normal(mean, sd)
 
 
-def qrandn(q: float,
-           mean: float = 0.,
-           sd: float = 1.):
+def qrandn(q: float, mean: float = 0., sd: float = 1.):
     """Sample a float value normally with ``mean`` and ``sd``.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.

@@ -80,7 +80,7 @@ class AxSearch(Searcher):
 
     def __init__(self,
                  space=None,
-                 objective_name=None,
+                 metric="episode_reward_mean",
                  mode="max",
                  parameter_constraints=None,
                  outcome_constraints=None,
@@ -90,9 +90,29 @@ class AxSearch(Searcher):
         assert ax is not None, "Ax must be installed!"
         assert mode in ["min", "max"], "`mode` must be one of ['min', 'max']"
 
-        if not ax_client:
-            ax_client = AxClient()
+        super(AxSearch, self).__init__(
+            metric=metric,
+            mode=mode,
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
+
         self._ax = ax_client
+        self._space = space
+        self._parameter_constraints = parameter_constraints
+        self._outcome_constraints = outcome_constraints
+
+        self.max_concurrent = max_concurrent
+
+        self._objective_name = metric
+        self._parameters = []
+        self._live_trial_mapping = {}
+
+        if self._space:
+            self.setup_experiment()
+
+    def setup_experiment(self):
+        if not self._ax:
+            self._ax = AxClient()
 
         try:
             exp = self._ax.experiment
@@ -101,44 +121,55 @@ class AxSearch(Searcher):
             has_experiment = False
 
         if not has_experiment:
-            if not space:
+            if not self._space:
                 raise ValueError(
-                    "You either have to create an Ax experiment by calling "
-                    "`AxClient.create_experiment()` or you should pass an "
-                    "Ax search space as the `space` parameter to `AxSearch`.")
+                    "You have to create an Ax experiment by calling "
+                    "`AxClient.create_experiment()`, or you should pass an "
+                    "Ax search space as the `space` parameter to `AxSearch`, "
+                    "or pass a `config` dict to `tune.run()`.")
             self._ax.create_experiment(
-                parameters=space,
-                objective_name=objective_name,
-                parameter_constraints=parameter_constraints,
-                outcome_constraints=outcome_constraints,
-                minimize=mode != "max")
+                parameters=self._space,
+                objective_name=self._metric,
+                parameter_constraints=self._parameter_constraints,
+                outcome_constraints=self._outcome_constraints,
+                minimize=self._mode != "max")
         else:
             if any([
-                    space, objective_name, parameter_constraints,
-                    outcome_constraints
+                    self._space, self._metric, self._parameter_constraints,
+                    self._outcome_constraints
             ]):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
                     "values for these parameters to `AxSearch`: {}.".format([
-                        "space", "objective_name", "parameter_constraints",
+                        "space", "metric", "parameter_constraints",
                         "outcome_constraints"
                     ]))
 
         exp = self._ax.experiment
         self._objective_name = exp.optimization_config.objective.metric.name
-        self.max_concurrent = max_concurrent
         self._parameters = list(exp.parameters)
-        self._live_trial_mapping = {}
-        super(AxSearch, self).__init__(
-            metric=self._objective_name,
-            mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+
         if self._ax._enforce_sequential_optimization:
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
+    def set_search_properties(self, metric, mode, config):
+        if self._ax:
+            return False
+        space = self.convert_search_space(config)
+        self._space = space
+        self._metric = metric
+        self._mode = mode
+        self.setup_experiment()
+
     def suggest(self, trial_id):
+        if not self._ax:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -167,17 +198,6 @@ class AxSearch(Searcher):
         metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
         self._ax.complete_trial(
             trial_index=ax_trial_index, raw_data=metric_dict)
-
-    @classmethod
-    def from_config(cls,
-                    config,
-                    objective_name=None,
-                    mode="max",
-                    use_early_stopped_trials=None,
-                    max_concurrent=None):
-        space = cls.convert_search_space(config)
-        return cls(space, objective_name, mode, use_early_stopped_trials,
-                   max_concurrent)
 
     @staticmethod
     def convert_search_space(spec: Dict):

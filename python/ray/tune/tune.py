@@ -67,6 +67,8 @@ def _report_progress(runner, reporter, done=False):
 
 def run(run_or_experiment,
         name=None,
+        metric="episode_reward_mean",
+        mode="max",
         stop=None,
         config=None,
         resources_per_trial=None,
@@ -144,6 +146,8 @@ def run(run_or_experiment,
             ``tune.register_trainable("lambda_id", lambda x: ...)``. You can
             then use ``tune.run("lambda_id")``.
         name (str): Name of experiment.
+        metric (str): Metric to optimize.
+        mode (str): One one ["min", "max"]. Direction to optimize.
         stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
             the keys may be any field in the return result of 'train()',
             whichever is reached first. If function, it must take (trial_id,
@@ -327,6 +331,13 @@ def run(run_or_experiment,
 
     if not search_alg:
         search_alg = BasicVariantGenerator()
+
+    if config and not search_alg.set_search_properties(metric, mode, config):
+        logger.warning(
+            "You passed a `config` parameter to `tune.run()`, but the "
+            "search algorithm was already instantiated with a search space. "
+            "Any search definitions in the `config` passed to `tune.run()` "
+            "will be ignored.")
 
     runner = TrialRunner(
         search_alg=search_alg,
