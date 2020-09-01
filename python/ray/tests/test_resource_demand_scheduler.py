@@ -468,7 +468,6 @@ class AutoscalingTest(unittest.TestCase):
             "field_changed"] = 1
         config_path = self.write_config(config)
         autoscaler.update()
-        print([n.node_type for n in self.provider.mock_nodes.values()])
         self.waitForNodes(0)
 
 
