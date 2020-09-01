@@ -528,10 +528,7 @@ def get_or_create_head_node(config,
             head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
             head_node_config.update(config["available_node_types"][config[
                 "head_node_type"]]["node_config"])
-        launch_hash = hash_launch_conf(
-            head_node_config,
-            config["auth"]
-        )
+        launch_hash = hash_launch_conf(head_node_config, config["auth"])
 
         if head_node is None or provider.node_tags(head_node).get(
                 TAG_RAY_LAUNCH_CONFIG) != launch_hash:

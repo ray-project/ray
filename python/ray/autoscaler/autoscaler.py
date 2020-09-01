@@ -337,17 +337,15 @@ class StandardAutoscaler:
 
     def launch_config_ok(self, node_id):
         node_tags = self.provider.node_tags(node_id)
-        tag_launch_conf = node_tags.get(
-            TAG_RAY_LAUNCH_CONFIG)
+        tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
 
         launch_config = copy.deepcopy(self.config["worker_nodes"])
         if node_type:
-            launch_config.update(self.config["available_node_types"][node_type]["node_config"])
-        calculated_launch_hash = hash_launch_conf(
-            launch_config,
-            self.config["auth"]
-        )
+            launch_config.update(
+                self.config["available_node_types"][node_type]["node_config"])
+        calculated_launch_hash = hash_launch_conf(launch_config,
+                                                  self.config["auth"])
 
         if calculated_launch_hash != tag_launch_conf:
             return False

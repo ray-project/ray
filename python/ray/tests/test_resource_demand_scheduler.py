@@ -464,11 +464,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         config["min_workers"] = 0
-        config["available_node_types"]["m4.large"]["node_config"]["field_changed"] = 1
+        config["available_node_types"]["m4.large"]["node_config"][
+            "field_changed"] = 1
         config_path = self.write_config(config)
         autoscaler.update()
         print([n.node_type for n in self.provider.mock_nodes.values()])
         self.waitForNodes(0)
+
 
 if __name__ == "__main__":
     import sys

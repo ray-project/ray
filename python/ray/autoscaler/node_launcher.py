@@ -39,11 +39,9 @@ class NodeLauncher(threading.Thread):
 
         launch_config = copy.deepcopy(config["worker_nodes"])
         if node_type:
-            launch_config.update(config["available_node_types"][node_type]["node_config"])
-        launch_hash = hash_launch_conf(
-            launch_config,
-            config["auth"]
-        )
+            launch_config.update(
+                config["available_node_types"][node_type]["node_config"])
+        launch_hash = hash_launch_conf(launch_config, config["auth"])
         self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config["worker_nodes"])
         node_tags = {
@@ -58,8 +56,7 @@ class NodeLauncher(threading.Thread):
         # TODO(ekl) this logic is duplicated in commands.py (keep in sync)
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
-            node_config.update(
-                launch_config)
+            node_config.update(launch_config)
         self.provider.create_node(node_config, node_tags, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
