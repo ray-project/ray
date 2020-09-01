@@ -672,8 +672,8 @@ Fully Independent Learning
 
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
-
 Centralized Critic Methods
 --------------------------
 
-`[Implementation] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__ `[example] <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__ is when you apply parameter share the parameters solely of the critic networks in actor critic methods, allowing for a far greater deal of flexibility than naive parameter sharing by giving each agent a sperate policy network for acting, though with theoretically reduced performance. Note that a centralized critic method based on DDPG is essentially MADDPG, and doing this will be more general and performant than the specialty MADDPG implementation that was uniquely tailored to work on the MPE environments.
+`[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__Centralized critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are essentially centralized critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
+Tuned examples:  `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__ 
