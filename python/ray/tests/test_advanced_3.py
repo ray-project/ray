@@ -208,7 +208,7 @@ class CaptureOutputAndError:
 
 
 def test_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, _log_to_driver=True)
+    ray.init(num_cpus=1, log_to_driver=True)
 
     @ray.remote
     def f():
@@ -233,7 +233,7 @@ def test_logging_to_driver(shutdown_only):
 
 
 def test_not_logging_to_driver(shutdown_only):
-    ray.init(num_cpus=1, _log_to_driver=False)
+    ray.init(num_cpus=1, log_to_driver=False)
 
     @ray.remote
     def f():

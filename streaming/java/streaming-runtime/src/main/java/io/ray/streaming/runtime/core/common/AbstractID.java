@@ -6,10 +6,10 @@ import java.io.Serializable;
 import java.util.UUID;
 
 /**
- * Streaming system unique identity base class.
- * For example, ${@link ContainerID }
+ * Streaming system unique identity base class. For example, ${@link ContainerID }
  */
 public class AbstractID implements Serializable {
+
   private UUID id;
 
   public AbstractID() {
@@ -18,7 +18,7 @@ public class AbstractID implements Serializable {
 
   @Override
   public boolean equals(Object obj) {
-    return id.equals(((AbstractID)obj).getId());
+    return id.equals(((AbstractID) obj).getId());
   }
 
   public UUID getId() {

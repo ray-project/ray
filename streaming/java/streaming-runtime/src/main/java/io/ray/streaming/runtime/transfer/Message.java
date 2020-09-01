@@ -6,7 +6,7 @@ public interface Message {
 
   /**
    * Message data
-   *
+   * <p>
    * Message body is a direct byte buffer, which may be invalid after call next
    * <code>DataReader#getBundleNative</code>. Please consume this buffer fully
    * before next call <code>getBundleNative</code>.

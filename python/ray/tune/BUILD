@@ -102,6 +102,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_pytorch_lightning",
+    size = "small",
+    srcs = ["tests/test_integration_pytorch_lightning.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_integration_wandb",
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
@@ -242,6 +250,14 @@ py_test(
     name = "example",
     size = "small",
     srcs = ["tests/example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
+
+py_test(
+    name = "ext_pytorch",
+    size = "medium",
+    srcs = ["tests/ext_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
 )
