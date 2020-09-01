@@ -16,13 +16,13 @@ class LoadMetrics:
     can be removed.
     """
 
-    def __init__(self):
+    def __init__(self, local_ip=None):
         self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.resource_load_by_ip = {}
-        self.local_ip = services.get_node_ip_address()
+        self.local_ip = services.get_node_ip_address() if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
 
@@ -97,6 +97,15 @@ class LoadMetrics:
             [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
         """
         return self.static_resources_by_ip.values()
+
+    def get_static_resource_usage(self):
+        static_usage_by_ip = {}
+        for ip, static_resources in self.static_resources_by_ip.items():
+            static_usage_by_ip[ip] = {}
+            for resource in static_resources:
+                static_usage_by_ip[ip][resource] = self.resource_load_by_ip[
+                    ip].get(resource, 0)
+        return static_usage_by_ip
 
     def get_resource_usage(self):
         num_nodes = len(self.static_resources_by_ip)

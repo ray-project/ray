@@ -201,16 +201,30 @@ class StandardAutoscaler:
             resource_demand_vector = self.resource_demand_vector + \
                 self.load_metrics.get_resource_demand_vector()
             if resource_demand_vector:
+                # import pdb; pdb.set_trace()
                 to_launch = (
                     self.resource_demand_scheduler.get_nodes_to_launch(
                         self.provider.non_terminated_nodes(tag_filters={}),
                         self.pending_launches.breakdown(),
-                        resource_demand_vector))
+                        resource_demand_vector,
+                        self.load_metrics.get_static_resource_usage()))
+                print(f"resource demand vector: {resource_demand_vector}")
+                print(f"to launch: {to_launch}")
                 # TODO(ekl) also enforce max launch concurrency here?
                 for node_type, count in to_launch:
                     self.launch_new_node(count, node_type=node_type)
 
-        # Launch additional nodes of the default type, if still needed.
+        # TODO (Alex): There's a race condition here where `num_pending` is
+        # derived from `pending_launches` and `len(nodes)` comes from
+        # `self.workers` and we have no synchronization to update them at the
+        # same time. This line ensures that we underestimate the number of
+        # workers which may increase the latency of worker startup by an update
+        # which is better than a correctness issue around `max_workers`.
+        nodes = self.workers()
+        print(self.provider.mock_nodes)
+        print(nodes)
+
+        #Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
@@ -467,6 +481,7 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        print(f"Launching {count} nodes of type {node_type}")
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
@@ -483,7 +498,8 @@ class StandardAutoscaler:
         tmp += "\n"
         if self.resource_demand_scheduler:
             tmp += self.resource_demand_scheduler.debug_string(
-                nodes, self.pending_launches.breakdown())
+                nodes, self.pending_launches.breakdown(),
+                self.load_metrics.get_static_resource_usage())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.info(tmp)

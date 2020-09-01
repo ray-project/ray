@@ -15,6 +15,7 @@ from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_nodes_for
+import ray.services as services
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -264,6 +265,49 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
 
+    def testScaleUpIgnoreUsed(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config["target_utilization_fraction"] = 1.0
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: "head",
+                TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
+            },
+            1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+        lm = LoadMetrics(local_ip=head_ip)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        self.waitForNodes(1)
+
+        lm.update(
+            head_ip, {
+                "CPU": 4,
+                "GPU": 1
+            }, {}, {"GPU": 1},
+            waiting_bundles=[{
+                "GPU": 1
+            }])
+        print(f"lm.resource_load_by_ip {lm.resource_load_by_ip}")
+        autoscaler.update()
+        print(f"Head ip {head_ip}")
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
+
     def testRequestBundlesAccountsForHeadNode(self):
         config = MULTI_WORKER_CLUSTER.copy()
         config["head_node_type"] = "p2.8xlarge"
@@ -271,10 +315,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {
-            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
-            TAG_RAY_NODE_KIND: "head"
-        }, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
