@@ -121,24 +121,30 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
+        # Many of these functions are called by node_launcher or updater in
+        # different threads. This can be treated as a global lock for
+        # everything.
+        self.lock = threading.Lock()
 
     def non_terminated_nodes(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.node_id for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.node_id for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def non_terminated_node_ips(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.internal_ip for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.internal_ip for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
@@ -159,31 +165,34 @@ class MockProvider(NodeProvider):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
-        if self.cache_stopped:
-            for node in self.mock_nodes.values():
-                if node.state == "stopped" and count > 0:
-                    count -= 1
-                    node.state = "pending"
-                    node.tags.update(tags)
-        for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(
-                self.next_id, tags.copy(), node_config,
-                tags.get(TAG_RAY_USER_NODE_TYPE))
-            self.next_id += 1
+        with self.lock:
+            if self.cache_stopped:
+                for node in self.mock_nodes.values():
+                    if node.state == "stopped" and count > 0:
+                        count -= 1
+                        node.state = "pending"
+                        node.tags.update(tags)
+            for _ in range(count):
+                self.mock_nodes[self.next_id] = MockNode(
+                    self.next_id, tags.copy(), node_config,
+                    tags.get(TAG_RAY_USER_NODE_TYPE))
+                self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
-        if self.cache_stopped:
-            self.mock_nodes[node_id].state = "stopped"
-        else:
-            self.mock_nodes[node_id].state = "terminated"
+        with self.lock:
+            if self.cache_stopped:
+                self.mock_nodes[node_id].state = "stopped"
+            else:
+                self.mock_nodes[node_id].state = "terminated"
 
     def finish_starting_nodes(self):
-        for node in self.mock_nodes.values():
-            if node.state == "pending":
-                node.state = "running"
+        with self.lock:
+            for node in self.mock_nodes.values():
+                if node.state == "pending":
+                    node.state = "running"
 
 
 SMALL_CLUSTER = {
