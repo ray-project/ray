@@ -26,6 +26,8 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 
 Ray also has a number of other community contributed libraries:
 
+- :doc:`../dask-on-ray`
+- `Mars on Ray <https://github.com/mars-project/mars/pull/1508>`__
 - :doc:`../pandas_on_ray`
 - :doc:`../joblib`
 - :doc:`../multiprocessing`
