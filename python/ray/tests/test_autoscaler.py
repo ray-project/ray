@@ -166,6 +166,7 @@ class MockProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         with self.lock:
+            print(f"terminating {node_id}")
             if self.cache_stopped:
                 self.mock_nodes[node_id].state = "stopped"
             else:

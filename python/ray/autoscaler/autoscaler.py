@@ -271,10 +271,6 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(
-                new_config["worker_nodes"],
-                new_config["auth"],
-                available_node_types=new_config.get("available_node_types"))
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
@@ -286,7 +282,6 @@ class StandardAutoscaler:
                  generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
-            self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
 
@@ -341,9 +336,20 @@ class StandardAutoscaler:
                    max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
-        launch_conf = self.provider.node_tags(node_id).get(
+        node_tags = self.provider.node_tags(node_id)
+        tag_launch_conf = node_tags.get(
             TAG_RAY_LAUNCH_CONFIG)
-        if self.launch_hash != launch_conf:
+        node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+
+        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        if node_type:
+            launch_config.update(self.config["available_node_types"][node_type]["node_config"])
+        calculated_launch_hash = hash_launch_conf(
+            launch_config,
+            self.config["auth"]
+        )
+
+        if calculated_launch_hash != tag_launch_conf:
             return False
         return True
 

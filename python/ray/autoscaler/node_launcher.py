@@ -36,10 +36,14 @@ class NodeLauncher(threading.Thread):
             assert node_type, node_type
         worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
+
+        launch_config = copy.deepcopy(config["worker_nodes"])
+        if node_type:
+            launch_config.update(config["available_node_types"][node_type]["node_config"])
         launch_hash = hash_launch_conf(
-            config["worker_nodes"],
-            config["auth"],
-            available_node_types=config.get("available_node_types"))
+            launch_config,
+            config["auth"]
+        )
         self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config["worker_nodes"])
         node_tags = {
@@ -55,7 +59,7 @@ class NodeLauncher(threading.Thread):
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(
-                config["available_node_types"][node_type]["node_config"])
+                launch_config)
         self.provider.create_node(node_config, node_tags, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         if set(after).issubset(before):
