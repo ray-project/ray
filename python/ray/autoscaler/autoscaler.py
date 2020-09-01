@@ -220,7 +220,7 @@ class StandardAutoscaler:
         # `max_workers`.
         nodes = self.workers()
 
-        #Launch additional nodes of the default type, if still needed.
+        # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
