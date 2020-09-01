@@ -50,11 +50,6 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-  <groupId>com.alibaba</groupId>
-  <artifactId>fastjson</artifactId>
-  <version>1.2.50</version>
-</dependency>
-<dependency>
   <groupId>com.github.davidmoten</groupId>
   <artifactId>flatbuffers-java</artifactId>
   <version>1.9.0.1</version>
