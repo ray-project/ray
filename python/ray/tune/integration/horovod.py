@@ -108,16 +108,17 @@ def DistributedTrainableCreator(func,
                                 num_cpus_per_worker=1,
                                 timeout_s=30,
                                 replicate_pem=False):
-    """Horovod Tune Converter.
+    """Converts Horovod functions to be executable by Tune.
 
-    Leverages the Horovod + Ray "RayExecutor" underneath the hood.
     Requires horovod > 0.19 to work.
 
-    Each Horovod Trainable (trial) can itself be a distributed training job.
-    One basic assumption of this model is that all sub-workers
+    This function wraps and sets the resources for a given Horovod
+    function to be used with Tune. It generates a Horovod Trainable (trial)
+    which can itself be a distributed training job. One basic assumption of
+    this implementation is that all sub-workers
     of a trial will be placed evenly across different machines.
 
-    It is recommended that if num_nodes per trial > 1, you set
+    It is recommended that if `num_nodes` per trial > 1, you set
     num_workers_per_node == the size (or number of GPUs) of a single node.
     If num_nodes == 1, then you can set num_workers_per_node to be <=
     the size (number of GPUs) of a single node.
@@ -129,7 +130,7 @@ def DistributedTrainableCreator(func,
     communication primitive. You will need to install Horovod with
     `HOROVOD_WITH_GLOO` enabled.
 
-    Fault Tolerance: The trial workers themselves are not fault tolerant.
+    *Fault Tolerance:* The trial workers themselves are not fault tolerant.
     When a node of a trial fails, all workers of a trial are expected to
     die, and the trial is expected to restart. Checkpointing
     is TBD.
@@ -155,7 +156,7 @@ def DistributedTrainableCreator(func,
 
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         def train(config):
             horovod.init()

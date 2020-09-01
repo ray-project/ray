@@ -82,7 +82,6 @@ def train(config):
 
 
 if __name__ == "__main__":
-    import ray
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -95,6 +94,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers-per-host", type=int, default=1)
     args = parser.parse_args()
 
+    # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
 
     horovod_trainable = DistributedTrainableCreator(
