@@ -231,6 +231,7 @@ Papers
    :caption: Development and Ray Internals
 
    development.rst
+   whitepaper.rst
    debugging.rst
    profiling.rst
    fault-tolerance.rst
