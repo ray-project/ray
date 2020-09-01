@@ -236,6 +236,9 @@ def get_activation_fn(name, framework="tf"):
     if framework == "torch":
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            from ray.rllib.utils.torch_ops import Swish
+            return Swish
         _, nn = try_import_torch()
         if name == "relu":
             return nn.ReLU

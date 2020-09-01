@@ -137,9 +137,8 @@ class Curiosity(Exploration):
             [self.action_dim], self.inverse_net_activation)
 
         self._curiosity_forward_fcnet = self._create_fc_net(
-            [self.feature_dim + self.action_dim
-             ] + list(forward_net_hiddens) + [self.feature_dim],
-            self.forward_net_activation)
+            [self.feature_dim + self.action_dim] + list(forward_net_hiddens) +
+            [self.feature_dim], self.forward_net_activation)
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -207,9 +206,10 @@ class Curiosity(Exploration):
             torch.cat(
                 [
                     phi.detach(),
-                    one_hot(torch.from_numpy(
+                    one_hot(
+                        torch.from_numpy(
                             sample_batch[SampleBatch.ACTIONS]).long(),
-                            self.action_space).float()
+                        self.action_space).float()
                 ],
                 dim=-1))
 
@@ -251,9 +251,8 @@ class Curiosity(Exploration):
             torch.cat(
                 [
                     phi,
-                    one_hot(
-                        train_batch[SampleBatch.ACTIONS].long(),
-                        self.action_space).float(),
+                    one_hot(train_batch[SampleBatch.ACTIONS].long(),
+                            self.action_space).float(),
                 ],
                 dim=-1))
         forward_loss = torch.mean(0.5 * torch.sum(
@@ -283,5 +282,6 @@ class Curiosity(Exploration):
                 SlimFC(
                     in_size=layer_dims[i],
                     out_size=layer_dims[i + 1],
+                    initializer=torch.nn.init.xavier_uniform_,
                     activation_fn=act))
         return nn.Sequential(*layers)

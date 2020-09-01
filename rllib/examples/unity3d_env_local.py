@@ -37,8 +37,8 @@ parser.add_argument(
         "VisualHallway", "Walker"
     ],
     help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
-         "Pyramids|SoccerStrikersVsGoalie|Tennis|VisualHallway|Walker`"
-         "(feel free to add more and PR!)")
+    "Pyramids|SoccerStrikersVsGoalie|Tennis|VisualHallway|Walker`"
+    "(feel free to add more and PR!)")
 parser.add_argument(
     "--file-name",
     type=str,

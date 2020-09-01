@@ -979,8 +979,8 @@ def _process_observations_w_trajectory_view_api(
                 "in unexpectedly large batches." +
                 ("Also, you may be in evaluation waiting for your Env to "
                  "terminate (batch_mode=`complete_episodes`). Make sure it "
-                 "does at some point." if not multiple_episodes_in_batch
-                 else ""))
+                 "does at some point."
+                 if not multiple_episodes_in_batch else ""))
 
         # Check episode termination conditions.
         if dones[env_id]["__all__"] or episode.length >= horizon:

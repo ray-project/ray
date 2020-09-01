@@ -262,12 +262,12 @@ class JsonIOTest(unittest.TestCase):
             writer.write(SAMPLES)
         num_files = len(os.listdir(self.test_dir))
         # Magic numbers: 2: On travis, it seems to create only 2 files,
-        #                   but sometimes also 7.
+        #                   but sometimes also 6|7?.
         #                12 or 13: Mac locally.
         # Reasons: Different compressions, file-size interpretations,
         #  json writers?
-        assert num_files in [2, 7, 12, 13], \
-            "Expected 2|7|12|13 files, but found {} ({})". \
+        assert num_files in [2, 6, 7, 12, 13], \
+            "Expected 2|6|7|12|13 files, but found {} ({})". \
             format(num_files, os.listdir(self.test_dir))
 
     def test_read_write(self):
