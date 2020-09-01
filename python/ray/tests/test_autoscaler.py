@@ -106,7 +106,8 @@ class MockProvider(NodeProvider):
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
         # Many of these functions are called by node_launcher or updater in
-        # different threads. This can be treated as a global lock for everything.
+        # different threads. This can be treated as a global lock for
+        # everything.
         self.lock = threading.Lock()
 
     def non_terminated_nodes(self, tag_filters):
