@@ -502,7 +502,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   auto bundles_on_node1 =
       scheduler_->GetBundlesOnNode(ClientID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
-
   // One node is dead, reschedule the placement group.
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
   bundle_on_dead_node->clear_node_id();

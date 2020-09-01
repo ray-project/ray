@@ -21,8 +21,7 @@ package io.ray.streaming.state.config;
 import java.util.Map;
 
 /**
- * Config Helper figure out the config info.
- * Todo replace this to config module.
+ * Config Helper figure out the config info. Todo replace this to config module.
  */
 public class ConfigHelper {
 
