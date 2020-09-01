@@ -106,15 +106,20 @@ def generate_rsa_key_pair():
 
 def _create_crm(gcp_credentials=None):
     return discovery.build(
-        "cloudresourcemanager", "v1", credentials=gcp_credentials)
+        "cloudresourcemanager",
+        "v1",
+        credentials=gcp_credentials,
+        cache_discovery=False)
 
 
 def _create_iam(gcp_credentials=None):
-    return discovery.build("iam", "v1", credentials=gcp_credentials)
+    return discovery.build(
+        "iam", "v1", credentials=gcp_credentials, cache_discovery=False)
 
 
 def _create_compute(gcp_credentials=None):
-    return discovery.build("compute", "v1", credentials=gcp_credentials)
+    return discovery.build(
+        "compute", "v1", credentials=gcp_credentials, cache_discovery=False)
 
 
 def construct_clients_from_provider_config(provider_config):
@@ -290,6 +295,10 @@ def _configure_key_pair(config, compute):
                 # Found a key
                 key_found = True
                 break
+
+        # Writing the new ssh key to the filesystem fails if the ~/.ssh
+        # directory doesn't already exist.
+        os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
         # Create a key since it doesn't exist locally or in GCP
         if not key_found and not os.path.exists(private_key_path):

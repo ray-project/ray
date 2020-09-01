@@ -315,30 +315,6 @@ def test_numpy_serialization(ray_start_regular):
     assert len(buffers) == 1
 
 
-def test_numpy_subclass_serialization(ray_start_regular):
-    class MyNumpyConstant(np.ndarray):
-        def __init__(self, value):
-            super().__init__()
-            self.constant = value
-
-        def __str__(self):
-            print(self.constant)
-
-    constant = MyNumpyConstant(123)
-
-    def explode(x):
-        raise RuntimeError("Expected error.")
-
-    ray.register_custom_serializer(
-        type(constant), serializer=explode, deserializer=explode)
-
-    try:
-        ray.put(constant)
-        assert False, "Should never get here!"
-    except (RuntimeError, IndexError):
-        print("Correct behavior, proof that customer serializer was used.")
-
-
 def test_numpy_subclass_serialization_pickle(ray_start_regular):
     class MyNumpyConstant(np.ndarray):
         def __init__(self, value):
@@ -446,7 +422,7 @@ def test_register_class(ray_start_2_cpus):
     assert ray.get(h2.remote(10)).value == 10
 
     # Test registering multiple classes with the same name.
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def j():
         class Class0:
             def method0(self):

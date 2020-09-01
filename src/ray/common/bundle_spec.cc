@@ -43,18 +43,53 @@ std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
       PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()), index);
 }
 
-std::string BundleSpecification::BundleIdAsString() const {
-  int64_t index = message_->bundle_id().bundle_index();
-  return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id()).Hex() +
-         std::to_string(index);
-}
-
 PlacementGroupID BundleSpecification::PlacementGroupId() const {
   return PlacementGroupID::FromBinary(message_->bundle_id().placement_group_id());
 }
 
 int64_t BundleSpecification::Index() const {
   return message_->bundle_id().bundle_index();
+}
+
+std::string BundleSpecification::DebugString() const {
+  std::ostringstream stream;
+  auto bundle_id = BundleId();
+  stream << "placement group id={" << bundle_id.first << "}, bundle index={"
+         << bundle_id.second << "}";
+  return stream.str();
+}
+
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const PlacementGroupID &group_id,
+                                         int64_t bundle_index) {
+  std::string str;
+  if (bundle_index >= 0) {
+    str = original_resource_name + "_group_" + std::to_string(bundle_index) + "_" +
+          group_id.Hex();
+  } else {
+    RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
+    str = original_resource_name + "_group_" + group_id.Hex();
+  }
+  RAY_CHECK(GetOriginalResourceName(str) == original_resource_name) << str;
+  return str;
+}
+
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const BundleSpecification &bundle_spec) {
+  return FormatPlacementGroupResource(
+      original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
+}
+
+bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+                   const int bundle_index) {
+  return resource.find("_group_" + std::to_string(bundle_index) + "_" + group_id.Hex()) !=
+         std::string::npos;
+}
+
+std::string GetOriginalResourceName(const std::string &resource) {
+  auto idx = resource.find("_group_");
+  RAY_CHECK(idx >= 0) << "This isn't a placement group resource " << resource;
+  return resource.substr(0, idx);
 }
 
 }  // namespace ray

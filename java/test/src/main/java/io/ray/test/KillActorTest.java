@@ -4,14 +4,14 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayActorException;
+import io.ray.runtime.exception.RayActorException;
 import java.util.function.BiConsumer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class KillActorTest extends BaseTest {
 
   @BeforeClass
@@ -54,8 +54,6 @@ public class KillActorTest extends BaseTest {
   }
 
   private void testKillActor(BiConsumer<ActorHandle<?>, Boolean> kill, boolean noRestart) {
-    TestUtils.skipTestUnderSingleProcess();
-
     ActorHandle<HangActor> actor = Ray.actor(HangActor::new)
         .setMaxRestarts(1)
         .remote();

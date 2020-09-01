@@ -46,7 +46,7 @@ _ = Actor.remote()
         else:
             return False
 
-    assert wait_for_condition(actor_finish)
+    wait_for_condition(actor_finish)
 
 
 def test_job_gc_with_detached_actor(call_ray_start):
@@ -66,7 +66,7 @@ class Actor:
     def value(self):
         return 1
 
-_ = Actor.options(name="DetachedActor").remote()
+_ = Actor.options(lifetime="detached", name="DetachedActor").remote()
 """.format(address)
 
     p = run_string_as_driver_nonblocking(driver)

@@ -36,7 +36,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       lease_client_factory_(std::move(lease_client_factory)),
-      client_factory_(std::move(client_factory)) {
+      core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
 
@@ -110,7 +110,7 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const ClientID &node_id) {
       for (auto &entry : iter->second) {
         actor_ids.emplace_back(entry.second->GetAssignedActorID());
         // Remove core worker client.
-        RAY_CHECK(core_worker_clients_.erase(entry.first) != 0);
+        core_worker_clients_.Disconnect(entry.first);
       }
       node_to_workers_when_creating_.erase(iter);
     }
@@ -145,7 +145,7 @@ ActorID GcsActorScheduler::CancelOnWorker(const ClientID &node_id,
     if (actor_iter != iter->second.end()) {
       assigned_actor_id = actor_iter->second->GetAssignedActorID();
       // Remove core worker client.
-      RAY_CHECK(core_worker_clients_.erase(worker_id) != 0);
+      core_worker_clients_.Disconnect(worker_id);
       iter->second.erase(actor_iter);
       if (iter->second.empty()) {
         node_to_workers_when_creating_.erase(iter);
@@ -184,14 +184,7 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    const auto &status = lease_client->ReleaseUnusedWorkers(
-        workers_in_use, release_unused_workers_callback);
-    if (!status.ok()) {
-      RAY_LOG(WARNING) << "Failed to send ReleaseUnusedWorkers request to raylet because "
-                          "raylet may be dead, node id: "
-                       << node_id << ", status: " << status.ToString();
-      nodes_of_releasing_unused_workers_.erase(node_id);
-    }
+    lease_client->ReleaseUnusedWorkers(workers_in_use, release_unused_workers_callback);
   }
 }
 
@@ -215,7 +208,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
-  auto status = lease_client->RequestWorkerLease(
+  lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
                                    const rpc::RequestWorkerLeaseReply &reply) {
@@ -252,17 +245,13 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           }
         }
       });
-
-  if (!status.ok()) {
-    RetryLeasingWorkerFromNode(actor, node);
-  }
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
-  execute_after(io_context_,
-                [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
-                RayConfig::instance().gcs_lease_worker_retry_interval_ms());
+  RAY_UNUSED(execute_after(
+      io_context_, [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
+      RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
@@ -318,7 +307,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // Make sure to connect to the client before persisting actor info to GCS.
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
-    GetOrConnectCoreWorkerClient(leased_worker->GetAddress());
+    core_worker_clients_.GetOrConnect(leased_worker->GetAddress());
     RAY_CHECK_OK(gcs_actor_table_.Put(actor->GetActorID(), actor->GetActorTableData(),
                                       [this, actor, leased_worker](Status status) {
                                         RAY_CHECK_OK(status);
@@ -343,8 +332,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
   }
   request->mutable_resource_mapping()->CopyFrom(resources);
 
-  auto client = GetOrConnectCoreWorkerClient(worker->GetAddress());
-  auto status = client->PushNormalTask(
+  auto client = core_worker_clients_.GetOrConnect(worker->GetAddress());
+  client->PushNormalTask(
       std::move(request),
       [this, actor, worker](Status status, const rpc::PushTaskReply &reply) {
         RAY_UNUSED(reply);
@@ -361,7 +350,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
             // The worker is still in the creating map.
             if (status.ok()) {
               // Remove related core worker client.
-              RAY_CHECK(core_worker_clients_.erase(actor->GetWorkerID()) != 0);
+              core_worker_clients_.Disconnect(actor->GetWorkerID());
               // Remove related worker in phase of creating.
               iter->second.erase(worker_iter);
               if (iter->second.empty()) {
@@ -377,16 +366,13 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
           }
         }
       });
-  if (!status.ok()) {
-    RetryCreatingActorOnWorker(actor, worker);
-  }
 }
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
-  execute_after(io_context_,
-                [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
-                RayConfig::instance().gcs_create_actor_retry_interval_ms());
+  RAY_UNUSED(execute_after(
+      io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
+      RayConfig::instance().gcs_create_actor_retry_interval_ms()));
 }
 
 void GcsActorScheduler::DoRetryCreatingActorOnWorker(
@@ -429,16 +415,6 @@ std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient
   if (iter == remote_lease_clients_.end()) {
     auto lease_client = lease_client_factory_(raylet_address);
     iter = remote_lease_clients_.emplace(node_id, std::move(lease_client)).first;
-  }
-  return iter->second;
-}
-
-std::shared_ptr<rpc::CoreWorkerClientInterface>
-GcsActorScheduler::GetOrConnectCoreWorkerClient(const rpc::Address &worker_address) {
-  auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
-  auto iter = core_worker_clients_.find(worker_id);
-  if (iter == core_worker_clients_.end()) {
-    iter = core_worker_clients_.emplace(worker_id, client_factory_(worker_address)).first;
   }
   return iter->second;
 }

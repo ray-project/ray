@@ -1,7 +1,7 @@
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
-from ray.tune.suggest.suggestion import (SearchGenerator, Searcher,
-                                         ConcurrencyLimiter)
+from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
+from ray.tune.suggest.search_generator import SearchGenerator
 from ray.tune.suggest.variant_generator import grid_search
 from ray.tune.suggest.repeater import Repeater
 

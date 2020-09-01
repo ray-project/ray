@@ -1,7 +1,7 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_activation_fn, try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -19,17 +19,21 @@ def same_padding(in_size, filter_size, stride_size):
     """Note: Padding is added to match TF conv2d `same` padding. See
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
-    Params:
+    Args:
         in_size (tuple): Rows (Height), Column (Width) for input
-        stride_size (tuple): Rows (Height), Column (Width) for stride
-        filter_size (tuple): Rows (Height), Column (Width) for filter
+        stride_size (Union[int,Tuple[int, int]]): Rows (Height), column (Width)
+            for stride. If int, height == width.
+        filter_size (tuple): Rows (Height), column (Width) for filter
 
-    Output:
+    Returns:
         padding (tuple): For input into torch.nn.ZeroPad2d.
         output (tuple): Output shape after padding and convolution.
     """
     in_height, in_width = in_size
-    filter_height, filter_width = filter_size
+    if isinstance(filter_size, int):
+        filter_height, filter_width = filter_size, filter_size
+    else:
+        filter_height, filter_width = filter_size
     stride_height, stride_width = stride_size
 
     out_height = np.ceil(float(in_height) / float(stride_height))
@@ -64,20 +68,26 @@ class SlimConv2d(nn.Module):
             bias_init=0):
         super(SlimConv2d, self).__init__()
         layers = []
+        # Padding layer.
         if padding:
             layers.append(nn.ZeroPad2d(padding))
+        # Actual Conv2D layer (including correct initialization logic).
         conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
         if initializer:
             if initializer == "default":
                 initializer = nn.init.xavier_uniform_
             initializer(conv.weight)
         nn.init.constant_(conv.bias, bias_init)
-
         layers.append(conv)
-        if activation_fn:
+        # Activation function (if any; default=ReLu).
+        if isinstance(activation_fn, str):
             if activation_fn == "default":
                 activation_fn = nn.ReLU
+            else:
+                activation_fn = get_activation_fn(activation_fn, "torch")
+        if activation_fn is not None:
             layers.append(activation_fn())
+        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -96,14 +106,19 @@ class SlimFC(nn.Module):
                  bias_init=0.0):
         super(SlimFC, self).__init__()
         layers = []
+        # Actual Conv2D layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
         if use_bias is True:
             nn.init.constant_(linear.bias, bias_init)
         layers.append(linear)
-        if activation_fn:
+        # Activation function (if any; default=None (linear)).
+        if isinstance(activation_fn, str):
+            activation_fn = get_activation_fn(activation_fn, "torch")
+        if activation_fn is not None:
             layers.append(activation_fn())
+        # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
     def forward(self, x):

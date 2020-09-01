@@ -173,12 +173,12 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
   google::InitGoogleLogging(app_name_.c_str());
-  // Enable log file if log_dir_ is not empty.
-  std::string dir_ends_with_slash = log_dir_;
-  if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
-    dir_ends_with_slash += ray::GetDirSep();
-  }
   if (!log_dir_.empty()) {
+    // Enable log file if log_dir_ is not empty.
+    std::string dir_ends_with_slash = log_dir_;
+    if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
+      dir_ends_with_slash += ray::GetDirSep();
+    }
     std::string app_name_without_path = app_name;
     if (app_name.empty()) {
       app_name_without_path = "DefaultApp";
@@ -205,9 +205,9 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
                                       std::ios_base::app | std::ios_base::binary);
   }
   for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
-    google::SetStderrLogging(lvl);
     google::base::SetLogger(lvl, &stream_logger_singleton);
   }
+  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
 #endif
 }
 

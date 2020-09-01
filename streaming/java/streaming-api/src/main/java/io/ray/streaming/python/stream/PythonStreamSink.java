@@ -8,6 +8,7 @@ import io.ray.streaming.python.PythonOperator;
  * Represents a sink of the PythonStream.
  */
 public class PythonStreamSink extends StreamSink implements PythonStream {
+
   public PythonStreamSink(PythonDataStream input, PythonOperator sinkOperator) {
     super(input, sinkOperator);
     getStreamingContext().addSink(this);

@@ -7,7 +7,7 @@
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a simple and universal API for building distributed applications.**
 
 Ray accomplishes this mission by:
 
@@ -19,13 +19,15 @@ Ray accomplishes this mission by:
 
 On top of **Ray Core** are several libraries for solving problems in machine learning:
 
-- :ref:`tune-index`
+- :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
 - :ref:`rayserve`
 
 Ray also has a number of other community contributed libraries:
 
+- :doc:`../dask-on-ray`
+- `Mars on Ray <https://github.com/mars-project/mars/pull/1508>`__
 - :doc:`../pandas_on_ray`
 - :doc:`../joblib`
 - :doc:`../multiprocessing`

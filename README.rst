@@ -1,21 +1,19 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-.. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
-    :target: https://travis-ci.com/ray-project/ray
-
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://docs.ray.io/en/latest/?badge=latest
 
 |
 
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a simple and universal API for building distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
+- `Ray Serve`_: Scalable and Programmable Serving
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
@@ -68,7 +66,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------
@@ -182,20 +180,102 @@ RLlib Quick Start
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
 
 
+Ray Serve Quick Start
+---------------------
+
+.. image:: https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/logo.svg
+  :width: 400
+
+`Ray Serve`_ is a scalable model-serving library built on Ray. It is:
+
+- Framework Agnostic: Use the same toolkit to serve everything from deep 
+  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+  to Scikit-Learn models or arbitrary business logic.
+- Python First: Configure your model serving with pure Python code - no more 
+  YAMLs or JSON configs.
+- Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
+  increase the throughput of your model.
+- Composition Native: Allow you to create "model pipelines" by composing multiple
+  models together to drive a single prediction.
+- Horizontally Scalable: Serve can linearly scale as you add more machines. Enable
+  your ML-powered service to handle growing traffic.
+
+To run this example, you will need to install the following:
+
+.. code-block:: bash
+
+    $ pip install scikit-learn
+    $ pip install "ray[serve]"
+
+This example runs serves a scikit-learn gradient boosting classifier.
+
+.. code-block:: python
+
+    from ray import serve
+    import pickle
+    import requests
+    from sklearn.datasets import load_iris
+    from sklearn.ensemble import GradientBoostingClassifier
+
+    # Train model
+    iris_dataset = load_iris()
+    model = GradientBoostingClassifier()
+    model.fit(iris_dataset["data"], iris_dataset["target"])
+
+    # Define Ray Serve model,
+    class BoostingModel:
+        def __init__(self):
+            self.model = model
+            self.label_list = iris_dataset["target_names"].tolist()
+
+        def __call__(self, flask_request):
+            payload = flask_request.json["vector"]
+            print("Worker: received flask request with data", payload)
+
+            prediction = self.model.predict([payload])[0]
+            human_name = self.label_list[prediction]
+            return {"result": human_name}
+
+
+    # Deploy model
+    serve.init()
+    serve.create_backend("iris:v1", BoostingModel)
+    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+
+    # Query it!
+    sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
+    response = requests.get("http://localhost:8000/iris", json=sample_request_input)
+    print(response.text)
+    # Result:
+    # {
+    #  "result": "versicolor"
+    # }
+
+
+.. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
+
+
 More Information
 ----------------
 
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older documents:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `Blog (old)`_
+
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://ray-project.github.io/
+.. _`Blog (old)`: https://ray-project.github.io/
+.. _`Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

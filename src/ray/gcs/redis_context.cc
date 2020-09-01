@@ -14,8 +14,6 @@
 
 #include "ray/gcs/redis_context.h"
 
-#include <unistd.h>
-
 #include <sstream>
 
 #include "ray/stats/stats.h"
@@ -139,8 +137,6 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
         RAY_CHECK(REDIS_REPLY_STRING == entry->type)
             << "Unexcepted type: " << entry->type;
         string_array_reply_.push_back(std::string(entry->str, entry->len));
-        RAY_LOG(DEBUG) << "Element index is " << i << ", element length is "
-                       << entry->len;
       }
       return;
     }

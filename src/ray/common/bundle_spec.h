@@ -51,9 +51,6 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   // Return the bundle_id
   std::pair<PlacementGroupID, int64_t> BundleId() const;
 
-  // Return the bundle_id of string. eg: placement_group_id + index.
-  std::string BundleIdAsString() const;
-
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
 
@@ -81,6 +78,8 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Returns the spillback bundle callback, or nullptr.
   const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
+  std::string DebugString() const;
+
  private:
   void ComputeResources();
 
@@ -93,5 +92,21 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
   mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
+
+/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const PlacementGroupID &group_id,
+                                         int64_t bundle_index = -1);
+
+/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const BundleSpecification &bundle_spec);
+
+/// Return whether a formatted resource is a bundle of the given index.
+bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+                   const int bundle_index);
+
+/// Return the original resource name of the placement group resource.
+std::string GetOriginalResourceName(const std::string &resource);
 
 }  // namespace ray

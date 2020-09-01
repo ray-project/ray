@@ -5,6 +5,7 @@ import io.ray.streaming.message.Record;
 import io.ray.streaming.operator.OneInputOperator;
 
 class ForwardCollector implements Collector<Record> {
+
   private final OneInputOperator succeedingOperator;
 
   ForwardCollector(OneInputOperator succeedingOperator) {

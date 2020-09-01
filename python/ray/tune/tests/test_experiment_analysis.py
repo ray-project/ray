@@ -126,6 +126,13 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
+    def testGetBestCheckpoint(self):
+        best_trial = self.ea.get_best_trial(self.metric)
+        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
+        expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
+        best_checkpoint = self.ea.get_best_checkpoint(best_trial, self.metric)
+        assert expected_path == best_checkpoint
+
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
         self.assertTrue(len(dataframes) == self.num_samples)
