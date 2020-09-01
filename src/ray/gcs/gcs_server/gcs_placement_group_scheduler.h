@@ -168,22 +168,28 @@ class LeaseStatusTracker {
   /// \param leasing_state The state to update.
   /// \return True if succeeds to update. False otherwise.
   bool UpdateLeasingState(LeasingState leasing_state);
+
   /// Placement group of which this leasing context is associated with.
   std::shared_ptr<GcsPlacementGroup> placement_group_;
+
   /// Location of bundles that lease requests were sent.
   /// If schedule success, the decision will be set as schedule_map[bundles[pos]]
   /// else will be set ClientID::Nil().
   std::shared_ptr<BundleLocations> bundle_locations_;
+
   /// Number of lease requests that are returned.
   size_t returned_count_ = 0;
+
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::SCHEDULING;
+
   /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
   /// from that node. This is needed so that we can retry lease requests from the node
   /// until we receive a reply or the node is removed.
   /// TODO(sang): We don't currently handle retry.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
       node_to_bundles_when_leasing_;
+
   /// Unplaced bundle specification for this leasing context.
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles_;
 };
