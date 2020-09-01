@@ -3,6 +3,8 @@ from ray.tune.registry import register_env
 from ray.rllib.env.pettingzoo_env import PettingZooEnv
 from pettingzoo.sisl import waterworld_v0
 
+# Based on code from github.com/parametersharingmadrl/parametersharingmadrl
+
 if __name__ == "__main__":
     # RDQN - Rainbow DQN
     # ADQN - Apex DQN
