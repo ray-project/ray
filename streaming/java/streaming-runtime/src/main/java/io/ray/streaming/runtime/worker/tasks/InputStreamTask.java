@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
 import com.google.common.base.MoreObjects;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.serialization.CrossLangSerializer;
@@ -71,8 +70,7 @@ public abstract class InputStreamTask extends StreamTask {
           byte[] barrierData = new byte[queueBarrier.getData().remaining()];
           queueBarrier.getData().get(barrierData);
           RemoteCall.Barrier barrierPb = RemoteCall.Barrier.parseFrom(barrierData);
-          Barrier barrier = new Barrier(barrierPb.getId());
-          final long checkpointId = barrier.getId();
+          final long checkpointId = barrierPb.getId();
           LOG.info("Start to do checkpoint {}, worker name is {}.", checkpointId,
               jobWorker.getWorkerContext().getWorkerName());
 

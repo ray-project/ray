@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.worker;
 
 import io.ray.api.Ray;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
@@ -212,10 +211,10 @@ public class JobWorker implements Serializable {
   /**
    * Trigger source job worker checkpoint
    */
-  public Boolean triggerCheckpoint(Barrier barrier) {
-    LOG.info("Receive trigger, barrier is {}.", barrier);
+  public Boolean triggerCheckpoint(Long barrierId) {
+    LOG.info("Receive trigger, barrierId is {}.", barrierId);
     if (task != null) {
-      return task.triggerCheckpoint(barrier);
+      return task.triggerCheckpoint(barrierId);
     }
     return false;
   }

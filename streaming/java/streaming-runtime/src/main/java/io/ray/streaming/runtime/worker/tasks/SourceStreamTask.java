@@ -1,7 +1,6 @@
 package io.ray.streaming.runtime.worker.tasks;
 
 import io.ray.streaming.operator.SourceOperator;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.core.processor.SourceProcessor;
 import io.ray.streaming.runtime.transfer.exception.ChannelInterruptException;
@@ -16,7 +15,12 @@ public class SourceStreamTask extends StreamTask {
   private static final Logger LOG = LoggerFactory.getLogger(SourceStreamTask.class);
 
   private final SourceProcessor sourceProcessor;
-  private final AtomicReference<Barrier> pendingBarrier = new AtomicReference<>();
+
+
+  /**
+   * The pending barrier ID to be triggered.
+   */
+  private final AtomicReference<Long> pendingBarrier = new AtomicReference<>();
   private long lastCheckpointId = 0;
 
   /**
@@ -35,26 +39,26 @@ public class SourceStreamTask extends StreamTask {
   @Override
   public void run() {
     LOG.info("Source stream task thread start.");
-    Barrier barrier;
+    Long barrierId;
     try {
       while (running) {
         isInitialState = false;
 
         // check checkpoint
-        barrier = pendingBarrier.get();
-        if (barrier != null) {
+        barrierId = pendingBarrier.get();
+        if (barrierId != null) {
           // Important: because cp maybe timeout, master will use the old checkpoint id again
-          if (pendingBarrier.compareAndSet(barrier, null)) {
+          if (pendingBarrier.compareAndSet(barrierId, null)) {
             // source fetcher only have outputPoints
             LOG.info("Start to do checkpoint {}, worker name is {}.",
-                barrier.getId(), jobWorker.getWorkerContext().getWorkerName());
+                barrierId, jobWorker.getWorkerContext().getWorkerName());
 
-            doCheckpoint(barrier.getId(), null);
+            doCheckpoint(barrierId, null);
 
-            LOG.info("Finish to do checkpoint {}.", barrier.getId());
+            LOG.info("Finish to do checkpoint {}.", barrierId);
           } else {
             // pendingCheckpointId has modify, should not happen
-            LOG.warn("Pending checkpointId modify unexpected, expect={}, now={}.", barrier,
+            LOG.warn("Pending checkpointId modify unexpected, expect={}, now={}.", barrierId,
                 pendingBarrier.get());
           }
         }
@@ -76,7 +80,7 @@ public class SourceStreamTask extends StreamTask {
   }
 
   @Override
-  public boolean triggerCheckpoint(Barrier barrier) {
-    return pendingBarrier.compareAndSet(null, barrier);
+  public boolean triggerCheckpoint(Long barrierId) {
+    return pendingBarrier.compareAndSet(null, barrierId);
   }
 }

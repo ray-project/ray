@@ -5,7 +5,6 @@ import io.ray.api.Ray;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.partition.Partition;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
@@ -222,7 +221,7 @@ public abstract class StreamTask implements Runnable {
   // Checkpoint
   // ----------------------------------------------------------------------
 
-  public boolean triggerCheckpoint(Barrier barrier) {
+  public boolean triggerCheckpoint(Long barrierId) {
     LOG.error("Unsupported access.");
     return false;
   }

@@ -5,7 +5,6 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.id.ActorId;
 import io.ray.runtime.exception.RayException;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.coordinator.command.BaseWorkerCmd;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerCommitReport;
@@ -147,7 +146,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
     graphManager.getExecutionGraph().getSourceActors().forEach(actor -> {
       sourcesRet.add(RemoteCallWorker.triggerCheckpoint(
-          actor, new Barrier(runtimeContext.lastCheckpointId)));
+          actor, runtimeContext.lastCheckpointId));
     });
 
     for (ObjectRef rayObject : sourcesRet) {

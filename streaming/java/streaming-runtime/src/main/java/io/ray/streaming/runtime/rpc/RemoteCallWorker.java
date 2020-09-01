@@ -7,7 +7,6 @@ import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.RayFunc3;
-import io.ray.streaming.runtime.barrier.Barrier;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.worker.JobWorker;
@@ -94,15 +93,16 @@ public class RemoteCallWorker {
     return result;
   }
 
-  public static ObjectRef triggerCheckpoint(BaseActorHandle actor, Barrier barrier) {
+  public static ObjectRef triggerCheckpoint(BaseActorHandle actor, Long barrierId) {
     // python
     if (actor instanceof PyActorHandle) {
-      RemoteCall.Barrier barrierPb = RemoteCall.Barrier.newBuilder().setId(barrier.getId()).build();
+      RemoteCall.Barrier barrierPb = RemoteCall.Barrier.newBuilder().setId(barrierId).build();
       return ((PyActorHandle) actor).task(
           PyActorMethod.of("commit"), barrierPb.toByteArray()).remote();
     } else {
       // java
-      return ((ActorHandle<JobWorker>) actor).task(JobWorker::triggerCheckpoint, barrier).remote();
+      return ((ActorHandle<JobWorker>) actor).task(JobWorker::triggerCheckpoint, barrierId)
+          .remote();
     }
   }
 
