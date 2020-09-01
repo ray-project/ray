@@ -168,15 +168,16 @@ class RayTrialExecutor(TrialExecutor):
         if ray.is_initialized():
             self._update_avail_resources()
 
-    def _setup_remote_runner(self, trial):
+    def _setup_remote_runner(self, trial, reuse_allowed):
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if (self._reuse_actors and self._cached_actor is not None):
-            logger.info("Trial %s: Reusing cached runner %s", trial,
-                        self._cached_actor)
+        if (self._reuse_actors and reuse_allowed
+                and self._cached_actor is not None):
+            logger.debug("Trial %s: Reusing cached runner %s", trial,
+                         self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
             trial.set_runner(existing_runner)
@@ -268,7 +269,14 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            runner = self._setup_remote_runner(trial)
+            # TODO: Right now, we only support reuse if there has been
+            # previously instantiated state on the worker. However,
+            # we should consider the case where function evaluations
+            # can be very fast - thereby extending the need to support
+            # reuse to cases where there has not been previously
+            # instantiated state before.
+            reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+            runner = self._setup_remote_runner(trial, reuse_allowed)
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
