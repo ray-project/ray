@@ -9,6 +9,7 @@ from numpy import nan
 import ray
 from ray.tune import run, sample_from
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune.result import TRAINING_ITERATION
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
@@ -101,7 +102,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testGetTrialCheckpointsPathsByTrial(self):
         best_trial = self.ea.get_best_trial()
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
+        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(
+            best_trial, TRAINING_ITERATION)
         logdir = self.ea.get_best_logdir()
         expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
@@ -109,7 +111,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir()
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
+        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(
+            logdir, TRAINING_ITERATION)
         expected_path = os.path.join(logdir, "checkpoint_1/", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
