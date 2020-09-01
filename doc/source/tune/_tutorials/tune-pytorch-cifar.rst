@@ -245,7 +245,7 @@ The full main function looks like this:
 
 If you run the code, an example output could look like this:
 
-.. code-block::
+.. code-block:: bash
   :emphasize-lines: 7
 
     Number of trials: 10 (10 TERMINATED)

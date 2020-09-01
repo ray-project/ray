@@ -331,7 +331,7 @@ hyperparameter configurations from this search space.
 
 The output of our training run coud look like this:
 
-.. code-block::
+.. code-block:: bash
    :emphasize-lines: 10
 
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
@@ -447,7 +447,7 @@ available in ``env.evaluation_result_list`` below.
 
 The output of our run could look like this:
 
-.. code-block::
+.. code-block:: bash
    :emphasize-lines: 13
 
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+

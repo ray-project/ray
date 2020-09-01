@@ -17,7 +17,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class UnionStreamTest {
-  private static final Logger LOG = LoggerFactory.getLogger( UnionStreamTest.class );
+
+  private static final Logger LOG = LoggerFactory.getLogger(UnionStreamTest.class);
 
   @Test(timeOut = 60000)
   public void testUnionStream() throws Exception {
