@@ -85,6 +85,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
+    loadConfigFromGCS(rayConfig);
+  }
+
+  private static void loadConfigFromGCS(RayConfig rayConfig) {
     if (rayConfig.getRedisAddress() != null) {
       GcsClient tempGcsClient =
           new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
@@ -97,7 +101,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         // Keep this method logic in sync with `services.get_address_info_from_redis_helper`
         int numRetries = 5;
         int retryCount = 0;
-        boolean loadConfig = false;
+        boolean configLoaded = false;
         while (retryCount++ < numRetries) {
           for (NodeInfo nodeInfo : tempGcsClient.getAllNodeInfo()) {
             if (rayConfig.nodeIp.equals(nodeInfo.nodeAddress) ||
@@ -106,11 +110,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
               rayConfig.objectStoreSocketName = nodeInfo.objectStoreSocketName;
               rayConfig.rayletSocketName = nodeInfo.rayletSocketName;
               rayConfig.nodeManagerPort = nodeInfo.nodeManagerPort;
-              loadConfig = true;
+              configLoaded = true;
               break;
             }
           }
-          if (!loadConfig) {
+          if (!configLoaded) {
             LOGGER.warn("Some processes that the driver needs to connect to have " +
                 "not registered with Redis, so retrying. Have you run " +
                 "'ray start' on this node?");
@@ -123,7 +127,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             break;
           }
         }
-        if (!loadConfig) {
+        if (!configLoaded) {
           throw new RayException("Some processes that the driver needs to connect to have " +
               "not registered with Redis. Have you run 'ray start' on this node?");
         }
