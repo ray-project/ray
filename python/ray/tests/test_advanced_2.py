@@ -607,7 +607,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
-            raise RuntimeError("Resources were available even after {} retries.".format(MAX_RETRY_ATTEMPTS), resources)
+            raise RuntimeError(
+                "Resources were available even after {} retries.".format(
+                    MAX_RETRY_ATTEMPTS), resources)
 
         return resources
 
