@@ -193,7 +193,7 @@ Local mode
 
 .. caution:: This feature is maintained solely to help with debugging, so it's possible you may encounter some issues. If you do, please `file an issue <https://github.com/ray-project/ray/issues>`_.
 
-By default, Ray will parallelize its workload and run tasks on different nodes. However, if you need to debug your Ray program, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process by enabling local mode as the following:
+By default, Ray will parallelize its workload and run tasks on multiple processes and multiple nodes. However, if you need to debug your Ray program, it may be easier to do everything on a single process. You can force all Ray functions to occur on a single process by enabling local mode as the following:
 
 .. tabs::
 
