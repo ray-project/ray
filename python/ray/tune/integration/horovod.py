@@ -138,8 +138,8 @@ def DistributedTrainableCreator(func,
 
     *Fault Tolerance:* The trial workers themselves are not fault tolerant.
     When a node of a trial fails, all workers of a trial are expected to
-    die, and the trial is expected to restart. Checkpointing
-    is TBD.
+    die, and the trial is expected to restart. This currently does not
+    support function checkpointing.
 
     Args:
         func (Callable[[dict], None]): A training function that takes in
@@ -174,9 +174,7 @@ def DistributedTrainableCreator(func,
 
         tune.run(trainable_cls)
 
-
-    Notes:
-        This currently does not support function checkpointing.
+    .. versionadded:: 1.0.0
     """
     ssh_identity_file = None
     sshkeystr = None
