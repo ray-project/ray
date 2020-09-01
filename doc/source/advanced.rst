@@ -47,7 +47,7 @@ And vary the number of return values for tasks (and actor methods too):
     def f(n):
         return list(range(n))
 
-    id1, id2 = f.options(num_return_vals=2).remote(2)
+    id1, id2 = f.options(num_returns=2).remote(2)
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 

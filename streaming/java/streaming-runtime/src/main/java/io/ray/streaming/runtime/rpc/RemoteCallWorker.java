@@ -12,8 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Ray call worker.
- * It takes the communication job from {@link JobMaster} to {@link JobWorker}.
+ * Ray call worker. It takes the communication job from {@link JobMaster} to {@link JobWorker}.
  */
 public class RemoteCallWorker {
 

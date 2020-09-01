@@ -60,14 +60,22 @@ class NodeStats(threading.Thread):
     def _insert_log_counts(self):
         for ip, logs_by_pid in self._logs.items():
             hostname = self._ip_to_hostname[ip]
-            logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
-            self._node_stats[hostname]["log_count"] = logs_by_pid
+            if hostname in self._node_stats:
+                logs_by_pid = {
+                    pid: len(logs)
+                    for pid, logs in logs_by_pid.items()
+                }
+                self._node_stats[hostname]["log_count"] = logs_by_pid
 
     def _insert_error_counts(self):
         for ip, errs_by_pid in self._errors.items():
             hostname = self._ip_to_hostname[ip]
-            errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
-            self._node_stats[hostname]["error_count"] = errs_by_pid
+            if hostname in self._node_stats:
+                errs_by_pid = {
+                    pid: len(errs)
+                    for pid, errs in errs_by_pid.items()
+                }
+                self._node_stats[hostname]["error_count"] = errs_by_pid
 
     def _purge_outdated_stats(self):
         def current(then, now):

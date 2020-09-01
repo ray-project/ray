@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
  * Encapsulate the context information of a streaming Job.
  */
 public class StreamingContext implements Serializable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamingContext.class);
 
   private transient AtomicInteger idGenerator;

@@ -54,7 +54,7 @@ Any method of the actor can return multiple object refs with the ``ray.method`` 
     @ray.remote
     class Foo(object):
 
-        @ray.method(num_return_vals=2)
+        @ray.method(num_returns=2)
         def bar(self):
             return 1, 2
 
@@ -72,7 +72,7 @@ Resources with Actors
 You can specify that an actor requires CPUs or GPUs in the decorator. While Ray has built-in support for CPUs and GPUs, Ray can also handle custom resources.
 
 When using GPUs, Ray will automatically set the environment variable ``CUDA_VISIBLE_DEVICES`` for the actor after instantiated. The actor will have access to a list of the IDs of the GPUs
-that it is allowed to use via ``ray.get_gpu_ids(as_str=True)``. This is a list of strings,
+that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of strings,
 like ``[]``, or ``['1']``, or ``['2', '5', '6']``. Under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices (see the `CUDA programming guide <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars>`__).
 
 .. code-block:: python
@@ -149,10 +149,12 @@ approach should generally not be necessary as actors are automatically garbage
 collected. The ``ObjectRef`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
-tasks finish executing. If you want to terminate an actor immediately, you can
-call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
-and any pending tasks to fail. Any exit handlers installed in the actor using
-``atexit`` will be called.
+tasks finish executing and then exit the process gracefully with sys.exit. If you
+want to terminate an actor forcefully, you can call ``ray.kill(actor_handle)``.
+This will call the exit syscall from within the actor, causing it to exit
+immediately and any pending tasks to fail. This will not go through the normal
+Python sys.exit teardown logic, so any exit handlers installed in the actor using
+``atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
