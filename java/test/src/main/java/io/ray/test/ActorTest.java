@@ -5,9 +5,9 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.exception.UnreconstructableException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -63,7 +63,7 @@ public class ActorTest extends BaseTest {
 
   /**
    * Test getting an object twice from the local memory store.
-   * <p>
+   *
    * Objects are stored in core worker's local memory. And it will be removed after the first
    * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
    */
