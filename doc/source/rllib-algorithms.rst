@@ -666,7 +666,9 @@ Parameter Sharing `[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.
 
 Fully Independent Learning
 --------------------------
-Fully Independent Learning  `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__ is when you have a collection of agents learning independently of each other via single agent methods. This typically works, but is inferior to dedicated multi-agent RL methods.
+`[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__ Fully independent learning involves a collection of agents learning independently of each other via single agent methods. This typically works, but can be less effective than dedicated multi-agent RL methods, since they do not account for the non-stationarity of the multi-agent environment.
+
+Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
 
 Centralized Critic Methods
