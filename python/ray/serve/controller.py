@@ -323,9 +323,10 @@ class ServeController:
                 for router in self.routers.values()
             ])
             await self.broadcast_backend_config(backend)
-            if info.backend_config.autoscaling_config is not None:
+            metadata = info.backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[backend] = BasicAutoscalingPolicy(
-                    backend, info.backend_config.autoscaling_config)
+                    backend, metadata.autoscaling_config)
 
         # Push configuration state to the routers.
         await asyncio.gather(*[
@@ -766,10 +767,11 @@ class ServeController:
                 worker_class=backend_worker,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            if backend_config.autoscaling_config is not None:
+            metadata = backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
                     backend_tag] = BasicAutoscalingPolicy(
-                        backend_tag, backend_config.autoscaling_config)
+                        backend_tag, metadata.autoscaling_config)
 
             try:
                 self._scale_replicas(backend_tag, backend_config.num_replicas)

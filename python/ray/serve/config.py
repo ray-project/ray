@@ -22,6 +22,7 @@ def _callable_is_blocking(func_or_class):
 class BackendMetadata(BaseModel):
     accepts_batches: bool = False
     is_blocking: bool = True
+    autoscaling_config: Optional[Dict[str, Any]] = None
 
 
 class BackendConfig(BaseModel):
@@ -37,8 +38,6 @@ class BackendConfig(BaseModel):
     batch_wait_timeout: float = 0
     #: The maximum number of queries that will be sent to a replica of this backend without receiving a response.  # noqa: E501
     max_concurrent_queries: Optional[int] = None
-    #: Experimental
-    autoscaling_config: Optional[Dict[str, Any]] = None
 
     class Config:
         validate_assignment = True
