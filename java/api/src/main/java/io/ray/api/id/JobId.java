@@ -10,7 +10,7 @@ import java.util.Arrays;
  */
 public class JobId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 2;
+  public static final int LENGTH = 4;
 
   public static final JobId NIL = genNil();
 
