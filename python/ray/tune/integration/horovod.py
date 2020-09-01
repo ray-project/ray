@@ -56,11 +56,12 @@ class _HorovodTrainable(tune.Trainable):
             use_gpu=self._use_gpu,
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
+        # We can't put `self` in the lambda closure, so we
+        # resolve the variable ahead of time.
+        logdir_ = str(self.logdir)
         self._job.start(
             executable_cls=trainable,
-            executable_args=[
-                config, lambda cfg: logger_creator(cfg, self.logdir)
-            ])
+            executable_args=[config, lambda cfg: logger_creator(cfg, logdir_)])
 
     def step(self):
         if self._finished:
