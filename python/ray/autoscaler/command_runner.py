@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 import time
-import json
 
 from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
