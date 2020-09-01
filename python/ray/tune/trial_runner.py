@@ -8,6 +8,7 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
+from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
@@ -21,6 +22,7 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.web_server import TuneServer
 from ray.utils import binary_to_hex, hex_to_binary
+from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
 
@@ -485,12 +487,19 @@ class TrialRunner:
                 if profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
-                    logger.warning(
+
+                    msg = (
                         "Consider turning off forced head-worker trial "
                         "checkpoint syncs by setting sync_on_checkpoint=False"
                         ". Note that this may result in faulty trial "
                         "restoration if a failure occurs while the checkpoint "
                         "is being synced from the worker to the head node.")
+
+                    if trial.location.hostname and (trial.location.hostname !=
+                                                    get_node_ip_address()):
+                        if log_once("tune_head_worker_checkpoint"):
+                            logger.warning(msg)
+
             else:
                 with warn_if_slow("process_trial"):
                     self._process_trial(trial)

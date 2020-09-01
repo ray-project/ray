@@ -39,7 +39,8 @@ public class MapStateImplTest {
     keyStateBackend = new KeyStateBackend(1, new KeyGroup(1, 2),
         new MemoryStateBackend(new HashMap<>()));
     MapStateDescriptor<Integer, String> descriptor = MapStateDescriptor
-        .build("MapStateImplTest", Integer.class, String.class);
+        .build("MapStateImplTest", Integer.class,
+            String.class);
     descriptor.setTableName("table");
     mapState = (MapStateImpl<Integer, String>) keyStateBackend.getMapState(descriptor);
   }

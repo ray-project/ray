@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
  * Abstract base class for chained operators.
  */
 public abstract class ChainedOperator extends StreamOperator<Function> {
+
   protected final List<StreamOperator> operators;
   protected final Operator headOperator;
   protected final Operator tailOperator;
@@ -43,7 +44,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     // Dont' call super.open() as we `open` every operator separately.
     List<ForwardCollector> succeedingCollectors = operators.stream().skip(1)
-        .map(operator -> new ForwardCollector((OneInputOperator) operator))
+        .map(operator -> new ForwardCollector(
+            (OneInputOperator) operator))
         .collect(Collectors.toList());
     for (int i = 0; i < operators.size() - 1; i++) {
       StreamOperator operator = operators.get(i);
@@ -113,6 +115,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedSourceOperator<T> extends ChainedOperator
       implements SourceOperator<T> {
+
     private final SourceOperator<T> sourceOperator;
 
     @SuppressWarnings("unchecked")
@@ -135,6 +138,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedOneInputOperator<T> extends ChainedOperator
       implements OneInputOperator<T> {
+
     private final OneInputOperator<T> inputOperator;
 
     @SuppressWarnings("unchecked")
@@ -152,6 +156,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedTwoInputOperator<L, R> extends ChainedOperator
       implements TwoInputOperator<L, R> {
+
     private final TwoInputOperator<L, R> inputOperator;
 
     @SuppressWarnings("unchecked")

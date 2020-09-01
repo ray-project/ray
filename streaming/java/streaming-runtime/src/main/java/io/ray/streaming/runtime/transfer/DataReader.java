@@ -14,10 +14,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * DataReader is wrapper of streaming c++ DataReader, which read data
- * from channels of upstream workers
+ * DataReader is wrapper of streaming c++ DataReader, which read data from channels of upstream
+ * workers
  */
 public class DataReader {
+
   private static final Logger LOG = LoggerFactory.getLogger(DataReader.class);
 
   private long nativeReaderPtr;
@@ -25,12 +26,13 @@ public class DataReader {
 
   /**
    * @param inputChannels input channels ids
-   * @param fromActors    upstream input actors
-   * @param workerConfig  configuration
+   * @param fromActors upstream input actors
+   * @param workerConfig configuration
    */
-  public DataReader(List<String> inputChannels,
-                    List<BaseActorHandle> fromActors,
-                    StreamingWorkerConfig workerConfig) {
+  public DataReader(
+      List<String> inputChannels,
+      List<BaseActorHandle> fromActors,
+      StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =
@@ -169,10 +171,11 @@ public class DataReader {
       byte[] configBytes,
       boolean isMock);
 
-  private native void getBundleNative(long nativeReaderPtr,
-                                      long timeoutMillis,
-                                      long params,
-                                      long metaAddress);
+  private native void getBundleNative(
+      long nativeReaderPtr,
+      long timeoutMillis,
+      long params,
+      long metaAddress);
 
   private native void stopReaderNative(long nativeReaderPtr);
 
@@ -191,6 +194,7 @@ public class DataReader {
   }
 
   static class BundleMeta {
+
     // kMessageBundleHeaderSize + kUniqueIDSize:
     // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
     // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
