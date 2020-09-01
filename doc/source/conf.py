@@ -32,6 +32,7 @@ class ChildClassMock(mock.MagicMock):
 
 MOCK_MODULES = [
     "ax",
+    "ax.service.ax_client",
     "blist",
     "gym",
     "gym.spaces",
