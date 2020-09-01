@@ -256,6 +256,7 @@ inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
   std::string id_str(ID::Size(), 0);
   env->GetByteArrayRegion(bytes, 0, ID::Size(),
                           reinterpret_cast<jbyte *>(&id_str.front()));
+  RAY_CHECK(!env->ExceptionCheck());
   return ID::FromBinary(id_str);
 }
 
