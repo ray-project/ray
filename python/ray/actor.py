@@ -102,12 +102,14 @@ class ActorMethod:
 
     def options(self, **options):
         """Convenience method for executing an actor method call with options.
+
         Same arguments as func._remote(), but returns a wrapped function
         that a non-underscore .remote() can be called on.
+
         Examples:
             # The following two calls are equivalent.
-            >>> my_actor.my_method._remote(args=[x, y], name="foo")
-            >>> my_actor.my_method.options(name="foo").remote(x, y)
+            >>> actor.my_method._remote(args=[x, y], name="foo", num_returns=2)
+            >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
         """
 
         func_cls = self
