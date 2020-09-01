@@ -20,6 +20,7 @@
 
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
+#include "ray/common/id.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -32,6 +33,7 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
   struct Options {
+    ClientID node_id;
     std::vector<std::string> agent_commands;
   };
 
