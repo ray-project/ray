@@ -49,6 +49,7 @@ RUN_ENV_TYPES = ["auto", "host", "docker"]
 
 POLL_INTERVAL = 5
 
+
 def _redis():
     global redis_client
     if redis_client is None:
@@ -380,11 +381,11 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                     cf.bold(len(A)),
                     _tags=dict(interval="1s"))
 
-                time.sleep(POLL_INTERVAL)  # todo: interval should be a variable
+                time.sleep(
+                    POLL_INTERVAL)  # todo: interval should be a variable
                 A = remaining_nodes()
                 cli_logger.print("{} nodes remaining after {} second(s).",
-                                 cf.bold(len(A)),
-                                 POLL_INTERVAL)
+                                 cf.bold(len(A)), POLL_INTERVAL)
             cli_logger.success("No nodes remaining.")
     finally:
         provider.cleanup()
