@@ -3,6 +3,7 @@ package io.ray.streaming.runtime.failover;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.SourceFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -79,13 +80,13 @@ public class TestFailover {
     }
 
     @Override
-    public void loadCheckpoint(Object checkpointObject) {
+    public void loadCheckpoint(Serializable checkpointObject) {
       value = (Integer) checkpointObject;
-      LOG.info("load checkpoint, value={}, checkpointId={}", value, checkpointId);
+      LOG.info("load checkpoint, value={}", value);
     }
 
     @Override
-    public Object doCheckpoint() {
+    public Serializable doCheckpoint() {
       LOG.info("do checkpoint, value={}", value);
       return value;
     }
