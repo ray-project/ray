@@ -477,7 +477,6 @@ class StandardAutoscaler:
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        print(f"Launching {count} nodes of type {node_type}")
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
