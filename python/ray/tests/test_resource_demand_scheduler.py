@@ -302,9 +302,7 @@ class AutoscalingTest(unittest.TestCase):
             waiting_bundles=[{
                 "GPU": 1
             }])
-        print(f"lm.resource_load_by_ip {lm.resource_load_by_ip}")
         autoscaler.update()
-        print(f"Head ip {head_ip}")
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
 
@@ -315,7 +313,10 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 50
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_KIND: "head"
+        }, 1)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,

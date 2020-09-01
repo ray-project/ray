@@ -67,12 +67,6 @@ class ResourceDemandScheduler:
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes, usage_by_ip)
 
-        print(f"node resources: {node_resources}")
-        print(
-            f"nodes by ip: {[self.provider.internal_ip(node_id) for node_id in nodes]}"
-        )
-        print(f"usage by ip: {usage_by_ip}")
-
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Node counts: {}".format(node_type_counts))
 
@@ -80,11 +74,8 @@ class ResourceDemandScheduler:
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        # Separate bug
-        # nodes = get_nodes_for(self.node_types, node_type_counts,
-        #                       self.max_workers - len(nodes) - len(pending_nodes), unfulfilled)
         nodes = get_nodes_for(self.node_types, node_type_counts,
-                              self.max_workers - len(nodes), unfulfilled)
+                              self.max_workers - len(nodes) - len(pending_nodes), unfulfilled)
         logger.info("Node requests: {}".format(nodes))
         return nodes
 
