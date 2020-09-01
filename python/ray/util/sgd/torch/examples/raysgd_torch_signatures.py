@@ -17,14 +17,12 @@ class MyTrainingOperator(TrainingOperator):
         # data, models, optimizers, loss & schedulers.
 
         # Setup data loaders.
-        # Use RayFileLock util to serialize data creation across all workers.
-        with RayFileLock():
-            train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2,
-                                                                            5)
-            train_loader = DataLoader(train_dataset,
-                                      batch_size=config["batch_size"])
-            val_loader = DataLoader(val_dataset,
-                                    batch_size=config["batch_size"])
+        train_dataset, val_dataset = LinearDataset(2, 5), LinearDataset(2,
+                                                                        5)
+        train_loader = DataLoader(train_dataset,
+                                  batch_size=config["batch_size"])
+        val_loader = DataLoader(val_dataset,
+                                batch_size=config["batch_size"])
 
         # Setup model.
         model = nn.Linear(1, 1)
