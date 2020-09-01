@@ -121,7 +121,7 @@ class HyperOptSearch(Searcher):
             self._hpopt_trials = hpo.Trials()
             self._points_to_evaluate = 0
         else:
-            assert type(points_to_evaluate) == list
+            assert isinstance(points_to_evaluate, (list, tuple))
             self._hpopt_trials = generate_trials_to_calculate(
                 points_to_evaluate)
             self._hpopt_trials.refresh()
