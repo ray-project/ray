@@ -7,6 +7,8 @@ An actor is essentially a stateful worker (or a service). When a new actor is
 instantiated, a new worker is created, and methods of the actor are scheduled on
 that specific worker and can access and mutate the state of that worker.
 
+Java demo code in this documentation can be found `here <https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/UsingActorsDemo.java>`__.
+
 Creating an actor
 -----------------
 
@@ -29,6 +31,8 @@ Creating an actor
           def get_counter(self):
               return self.value
 
+      a = Counter.remote()
+
     Note that the above is equivalent to the following:
 
     .. code-block:: python
@@ -46,9 +50,11 @@ Creating an actor
 
       Counter = ray.remote(Counter)
 
+      a = Counter.remote()
+
   .. group-tab:: Java
 
-    Unlike Python, you don't need to modify your Java class to make it a Ray actor class. You can create an actor with a constructor of the Java class or a factory method.
+    You can convert a standard Java class into a Ray actor class as follows:
 
     .. code-block:: java
 
@@ -64,6 +70,10 @@ Creating an actor
 
         public int getCounter() {
           return this.value;
+        }
+
+        public void reset(int newValue) {
+          this.value = newValue;
         }
       }
 
@@ -88,6 +98,25 @@ When the above actor is instantiated, the following events happen.
 Actor Methods
 -------------
 
+Methods of the actor can be called remotely.
+
+.. tabs::
+  .. code-tab:: python
+
+    a = Counter.remote()
+
+    assert a.increment.remote() == 1
+
+  .. code-tab:: java
+
+    ActorHandle<Counter> a = Ray.actor(Counter::new).remote();
+    // Call an actor method with a return value
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an actor method without return value
+    a.task(Counter::reset, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 11);
+
+
 .. tabs::
   .. group-tab:: Python
 
@@ -110,20 +139,7 @@ Actor Methods
 
   .. group-tab:: Java
 
-    Any method of the actor can return one object ref.
-
-    TODO: Do we need to document no-return methods?
-
-    .. code-block:: java
-
-      public class Foo {
-        public int bar() {
-          return 1;
-        }
-      }
-
-      ActorHandle<Foo> foo = Ray.actor(Foo::new).remote();
-      Assert.assertEquals((int) foo.task(Foo::bar).remote().get(), 1);
+    An actor method can return zero (by declaring ``void`` as return type) or one object ref.
 
 .. _actor-resource-guide:
 

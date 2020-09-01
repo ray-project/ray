@@ -7,6 +7,11 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
+/**
+ * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/latest/actors.html).
+ *
+ * Please keep them in sync.
+ */
 public class UsingActorsDemo {
 
   // A regular Java class.
@@ -22,19 +27,16 @@ public class UsingActorsDemo {
     public int getCounter() {
       return this.value;
     }
+
+    public void reset(int newValue) {
+      this.value = newValue;
+    }
   }
 
   public static class CounterFactory {
 
     public static Counter createCounter() {
       return new Counter();
-    }
-  }
-
-  public static class Foo {
-
-    public int bar() {
-      return 1;
     }
   }
 
@@ -63,8 +65,12 @@ public class UsingActorsDemo {
     }
 
     {
-      ActorHandle<Foo> foo = Ray.actor(Foo::new).remote();
-      Assert.assertEquals((int) foo.task(Foo::bar).remote().get(), 1);
+      ActorHandle<Counter> a = Ray.actor(Counter::new).remote();
+      // Call an actor method with a return value
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+      // Call an actor method without return value
+      a.task(Counter::reset, 10).remote();
+      Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 11);
     }
 
     {
