@@ -149,12 +149,14 @@ class HyperOptSearch(Searcher):
         space = self.convert_search_space(config)
         self.domain = hpo.Domain(lambda spc: spc, space)
 
-        self._metric = metric
-        self._mode = mode
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
 
-        if mode == "max":
+        if self._mode == "max":
             self.metric_op = -1.
-        elif mode == "min":
+        elif self._mode == "min":
             self.metric_op = 1.
 
         return True

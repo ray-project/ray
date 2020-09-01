@@ -132,8 +132,10 @@ class OptunaSearch(Searcher):
             return False
         space = self.convert_search_space(config)
         self._space = space
-        self._metric = metric
-        self._mode = mode
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
         self.setup_study(mode)
         self._config = config
         return True

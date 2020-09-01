@@ -185,12 +185,14 @@ class BayesOptSearch(Searcher):
             return False
         space = self.convert_search_space(config)
         self._space = space
-        self._metric = metric
-        self._mode = mode
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
 
-        if mode == "max":
+        if self._mode == "max":
             self._metric_op = 1.
-        elif mode == "min":
+        elif self._mode == "min":
             self._metric_op = -1.
 
         self.setup_optimizer()

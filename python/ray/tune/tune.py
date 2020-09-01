@@ -67,8 +67,8 @@ def _report_progress(runner, reporter, done=False):
 
 def run(run_or_experiment,
         name=None,
-        metric="episode_reward_mean",
-        mode="max",
+        metric=None,
+        mode=None,
         stop=None,
         config=None,
         resources_per_trial=None,
@@ -415,7 +415,11 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
-    return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
+    return ExperimentAnalysis(
+        runner.checkpoint_file,
+        trials=trials,
+        default_metric=metric,
+        default_mode=mode)
 
 
 def run_experiments(experiments,
