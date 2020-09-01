@@ -7,12 +7,13 @@ import time
 import ray
 import numpy as np
 from ray import tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.schedulers import FIFOScheduler
 from ray.tune.suggest.sigopt import SigOptSearch
 
 np.random.seed(0)
 vector1 = np.random.normal(0, 0.1, 100)
 vector2 = np.random.normal(0, 0.1, 100)
+
 
 def evaluate(w1, w2):
     total = w1 * vector1 + w2 * vector2
@@ -25,7 +26,7 @@ def easy_objective(config):
     w2 = config["total_weight"] - w1
 
     average, std = evaluate(w1, w2)
-    tune.report(average=average, std=std)
+    tune.report(average=average, std=std, sharpe=average / std)
     time.sleep(0.1)
 
 
@@ -65,9 +66,11 @@ if __name__ == "__main__":
         name="SigOpt Example Multi Objective Experiment",
         observation_budget=10 if args.smoke_test else 1000,
         max_concurrent=1,
-        metric=["average", "std"],
-        mode=["max", "min"])
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+        metric=["average", "std", "sharpe"],
+        mode=["max", "min", "obs"])
+
+    scheduler = FIFOScheduler()
+
     tune.run(
         easy_objective,
         name="my_exp",

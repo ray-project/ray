@@ -26,9 +26,9 @@ class Searcher:
     Args:
         metric (str or list): The training result objective value attribute. If
             list then list of training result objective value attributes
-        mode (str or list): If string One of {min, max}. If list then list of max and min,
-            Determines whether objective is minimizing or maximizing the metric attribute.
-            match type of metric
+        mode (str or list): If string One of {min, max}. If list then
+            list of max and min, determines whether objective is minimizing
+            or maximizing the metric attribute. Must match type of metric.
 
     .. code-block:: python
 
@@ -70,11 +70,16 @@ class Searcher:
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
 
-        # Validate Mode
+        assert isinstance(
+            metric, type(mode)), "metric and mode must be of the same type"
         if isinstance(mode, str):
-            assert mode in ["min", "max"], "if `mode` is a str must be 'min' or 'max'!"
+            assert mode in ["min", "max"
+                            ], "if `mode` is a str must be 'min' or 'max'!"
         elif isinstance(mode, list):
-            assert all(mod in ["min", "max"] for mod in mode), "All of mode must be 'min' or 'max'!"
+            assert len(mode) == len(
+                metric), "Metric and mode must be the same length"
+            assert all(mod in ["min", "max", "obs"] for mod in
+                       mode), "All of mode must be 'min' or 'max' or 'obs'!"
         else:
             raise ValueError("Mode most either be a list or string")
 
