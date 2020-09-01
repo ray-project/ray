@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Union
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.models.torch.misc import SlimFC, normc_initializer
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -137,7 +137,8 @@ class Curiosity(Exploration):
             [self.action_dim], self.inverse_net_activation)
 
         self._curiosity_forward_fcnet = self._create_fc_net(
-            [self.feature_dim + self.action_dim] + list(forward_net_hiddens) +
+            [self.feature_dim + self.action_dim] +
+            list(self.forward_net_hiddens) +
             [self.feature_dim], self.forward_net_activation)
 
         # This is only used to select the correct action
@@ -271,9 +272,9 @@ class Curiosity(Exploration):
                 dimension.
             activation (str): An activation specifier string (e.g. "relu").
 
-
         Examples:
-            If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6.
+            If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6,
+            where the second layer does not have an activation anymore.
         """
         layers = []
         for i in range(len(layer_dims) - 1):

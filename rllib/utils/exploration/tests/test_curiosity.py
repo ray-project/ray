@@ -71,9 +71,9 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         #            print("Door OPEN!!")
 
         all_ = np.concatenate([objects, colors, states], -1)
-        ret = np.reshape(all_, (-1, ))
+        all_flat = np.reshape(all_, (-1, ))
         direction = one_hot(np.array(self.agent_dir), depth=4).astype(np.float32)
-        single_frame = np.concatenate([ret, direction])
+        single_frame = np.concatenate([all_flat, direction])
         self.frame_buffer.append(single_frame)
         return np.concatenate(self.frame_buffer)
 
@@ -95,7 +95,8 @@ CONV_FILTERS = [[16, [11, 11], 3], [32, [9, 9], 3], [64, [5, 5], 3]]
 class TestCuriosity(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        #TODO
+        ray.init(num_cpus=3, local_mode=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -179,22 +180,30 @@ class TestCuriosity(unittest.TestCase):
         }
         config["horizon"] = 40  # Make it impossible to reach goal by chance.
         config["num_envs_per_worker"] = 8
+        #config["model"]["fcnet_hiddens"] = [256, 256]
+        #config["model"]["fcnet_activation"] = "relu"
         config["model"]["use_lstm"] = True
         config["model"]["lstm_cell_size"] = 256
         config["model"]["lstm_use_prev_action_reward"] = True
         config["num_sgd_iter"] = 6
-        config["num_workers"] = 1
+        config["num_workers"] = 2
 
         config["exploration_config"] = {
             "type": "Curiosity",
             # For the feature NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
             "eta": 0.1,
-            "lr": 0.0005,  # 0.0003 or 0.0005 seem to work fine as well.
+            "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
+            "feature_dim": 256,
             "feature_net_config": {
-                "fcnet_hiddens": [256, 256],
+                "fcnet_hiddens": [256],
                 "fcnet_activation": "relu",
             },
+            ## Use swish activation function (just like Unity does it for
+            ## their Pyramids env).
+            "inverse_net_activation": "relu",
+            "forward_net_activation": "relu",
+
             "sub_exploration": {
                 "type": "StochasticSampling",
             }
