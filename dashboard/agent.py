@@ -55,6 +55,8 @@ class DashboardAgent(object):
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
+        self.node_id = os.environ["RAY_NODE_ID"]
+        assert self.node_id, "Empty node id (RAY_NODE_ID)."
         self.ip = ray.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")

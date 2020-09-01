@@ -60,9 +60,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         async for sender, msg in receiver.iter():
             try:
-                _, data = msg
+                key, data = msg
                 data = json.loads(ray.utils.decode(data))
-                DataSource.node_physical_stats[data["ip"]] = data
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent.")
