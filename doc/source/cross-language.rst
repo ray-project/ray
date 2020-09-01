@@ -1,7 +1,7 @@
 Cross-language programming
 ==============
 
-This page will cover some more cross language examples of using Ray's flexible programming model.
+This page will show you how to use Ray's cross-language programming feature.
 
 Python calling Java
 -------------------
