@@ -131,17 +131,68 @@ class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
 
+enum class LeasingState {
+  // TODO(sang): Use prepare and commit instead for 2PC.
+  /// The phase where lease requests haven't been returned.
+  SCHEDULING,
+  /// The phase where lease requests have returned
+  ALL_RETURNED,
+  /// Placement group has been removed, and this leasing is not valid.
+  CANCELLED
+};
+
 /// A data structure that encapsulates information regarding bundle resource leasing
 /// status.
-class LeasingContext {
-  // TODO(sang): Implement in the next PR.
+class LeaseStatusTracker {
+ public:
+  LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
+                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
+  ~LeaseStatusTracker() = default;
+
+  bool MarkLeaseStarted(const ClientID &node_id,
+                        std::shared_ptr<BundleSpecification> bundle);
+  void MarkLeaseReturned(const ClientID &node_id,
+                         std::shared_ptr<BundleSpecification> bundle,
+                         const Status &status);
+  bool IsAllLeaseRequestReturned() const;
+  bool IsLeasingSucceed() const;
+  const std::shared_ptr<GcsPlacementGroup> &GetPlacementGroup() const;
+  const std::vector<std::shared_ptr<BundleSpecification>> &GetUnplacedBundles() const;
+  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
+  const LeasingState GetLeasingState() const;
+  void MarkPlacementGroupScheduleCancelled();
+
+ private:
+  /// Method to update leasing states.
+  ///
+  /// \param leasing_state The state to update.
+  /// \return True if succeeds to update. False otherwise.
+  bool UpdateLeasingState(LeasingState leasing_state);
+  /// Placement group of which this leasing context is associated with.
+  std::shared_ptr<GcsPlacementGroup> placement_group_;
+  /// Location of bundles that lease requests were sent.
+  /// If schedule success, the decision will be set as schedule_map[bundles[pos]]
+  /// else will be set ClientID::Nil().
+  std::shared_ptr<BundleLocations> bundle_locations_;
+  /// Number of lease requests that are returned.
+  size_t returned_count_ = 0;
+  /// The leasing stage. This is used to know the state of current leasing context.
+  LeasingState leasing_state_ = LeasingState::SCHEDULING;
+  /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
+  /// from that node. This is needed so that we can retry lease requests from the node
+  /// until we receive a reply or the node is removed.
+  /// TODO(sang): We don't currently handle retry.
+  absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
+      node_to_bundles_when_leasing_;
+  /// Unplaced bundle specification for this leasing context.
+  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles_;
 };
 
 /// A data structure that helps fast bundle location lookup.
 class BundleLocationIndex {
  public:
   BundleLocationIndex() {}
-  ~BundleLocationIndex() {}
+  ~BundleLocationIndex() = default;
 
   /// Add bundle locations to index.
   ///
@@ -265,9 +316,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const rpc::Address &raylet_address);
 
   void OnAllBundleSchedulingRequestReturned(
-      const std::shared_ptr<GcsPlacementGroup> &placement_group,
-      const std::vector<std::shared_ptr<BundleSpecification>> &bundles,
-      const std::shared_ptr<BundleLocations> &bundle_locations,
+      const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_failure_handler,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
@@ -296,19 +345,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
 
-  /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
-  /// from that node. This is needed so that we can retry lease requests from the node
-  /// until we receive a reply or the node is removed.
-  /// TODO(sang): We don't currently handle retry.
-  absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
-      node_to_bundles_when_leasing_;
+  /// Index to lookup bundle locations of node or placement group.
+  BundleLocationIndex bundle_location_index_;
 
   /// Set of placement group that have lease requests in flight to nodes.
   /// It is required to know if placement group has been removed or not.
-  absl::flat_hash_set<PlacementGroupID> placement_group_leasing_in_progress_;
-
-  /// Index to lookup bundle locations of node or placement group.
-  BundleLocationIndex bundle_location_index_;
+  absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
+      placement_group_leasing_in_progress_;
 };
 
 }  // namespace gcs
