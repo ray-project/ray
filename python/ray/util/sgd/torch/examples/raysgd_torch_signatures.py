@@ -143,11 +143,17 @@ def scheduler_creator(optimizer, config):
 # __torch_scheduler_end__
 
 # __backwards_compat__start
+from ray.util.sgd import TorchTrainer
 
 MyTrainingOperator = TrainingOperator.from_creators(
     model_creator=model_creator, optimizer_creator=optimizer_creator,
     loss_creator=loss_creator, scheduler_creator=scheduler_creator,
     data_creator=data_creator)
+
+trainer = TorchTrainer(
+    training_operator_cls=MyTrainingOperator,
+    scheduler_step_freq="epoch",  # if scheduler_creator is passed in
+    config={"lr": 0.001, "batch_size": 64})
 
 # __backwards_compat_end
 
@@ -163,7 +169,7 @@ from ray.util.sgd import TorchTrainer
 
 trainer = TorchTrainer(
     training_operator_cls=MyTrainingOperator,
-    scheduler_step_freq="epoch",  # if scheduler_creator is set
+    scheduler_step_freq="epoch",  # if scheduler is used
     config={"lr": 0.001, "batch_size": 64})
 
 # __torch_trainer_end__
