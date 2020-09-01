@@ -743,11 +743,14 @@ def test_multi_input_model(ray_start_2_cpus):
         )
         return train_loader, None
 
+    Operator = TrainingOperator.from_creators(model_creator,
+                                              optimizer_creator,
+                                              data_creator,
+                                              loss_creator=lambda config:
+                                              nn.MSELoss())
+
     trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
+        training_operator_cls=Operator,
         num_workers=1)
 
     metrics = trainer.train(num_steps=1)
