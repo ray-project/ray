@@ -453,7 +453,24 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
                                    "init_cmd")
 
+    def testUpdateConfig(self):
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        config["available_node_types"]["m4.xlarge"]["resources"]["gpu"] = 1
+        config_path = self.write_config(config)
+        autoscaler.update()
+        self.waitForNodes(1)
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
