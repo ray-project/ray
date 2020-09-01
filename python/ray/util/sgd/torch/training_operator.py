@@ -1,18 +1,14 @@
 import inspect
-import itertools
 import logging
-import os
-import tempfile
 
 import torch
 import torch.nn as nn
-from filelock import FileLock
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES, RayFileLock)
 from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
                                           SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
-from torch.nn.parallel.distributed import DistributedDataParallel
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
 logger = logging.getLogger(__name__)
@@ -45,15 +41,54 @@ def _is_multiple(component):
 
 
 class TrainingOperator:
-    """Abstract class for custom training or validation loops.
+    """Abstract class to define training state as well as custom training or
+    validation loops.
 
-    The scheduler will only be called at a batch or epoch frequency, depending
-    on the user parameter. Be sure to set ``scheduler_step_freq`` in
-    ``TorchTrainer`` to either "batch" or "epoch" to increment the scheduler
+    You must subclass this class and override the ``setup`` method to define
+    your training components such as the model, optimizer, data, loss,
+    and scheduler. When you pass this class to ``TorchTrainer``, a copy of
+    this class will be made on each worker.
+
+    .. code-block:: python
+
+        class MyTrainingOperator(TrainingOperator):
+
+            def setup(config):
+                model = nn.Linear(1, 1)
+                optimizer = torch.optim.SGD(
+                    model.parameters(), lr=config.get("lr", 1e-4))
+                loss = torch.nn.MSELoss()
+
+                batch_size = config["batch_size"]
+                train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
+                train_loader = DataLoader(train_data, batch_size=batch_size)
+                val_loader = DataLoader(val_data, batch_size=batch_size)
+
+                self.model, self.optimizer = self.register(
+                                                    models=model,
+                                                    optimizers=optimizer,
+                                                    train_loader=train_loader,
+                                                    validation_loader=val_loader,
+                                                    criterion=loss)
+        trainer = TorchTrainer(
+            training_operator_cls=MyTrainingOperator,
+            config={"batch_size": 32},
+            use_gpu=True
+        )
+        for i in range(4):
+            trainer.train()
+
+    This class provides default implementations for training and validation.
+    Make sure you set ``self.model``, ``self.optimizer``, and ``self.criterion``
+    to leverage the default training and validation loops.
+    If ``self.scheduler`` is set, it will only be called at a batch or epoch
+    frequency, depending on the user parameter. Be sure to set ``scheduler_step_freq``
+    in ``TorchTrainer`` to either "batch" or "epoch" to increment the scheduler
     correctly during training. If using a learning rate scheduler
     that depends on validation loss, you can use ``trainer.update_scheduler``.
 
-    For both training and validation, there are two granularities that
+    If you want to provide custom training and validation loops, you can do
+    so using this class as well. There are two granularities that
     you can provide customization: per epoch or per batch.
     You do not need to override both.
 
@@ -61,10 +96,13 @@ class TrainingOperator:
         :scale: 80%
         :align: center
 
+    If you are using multiple models, optimizers, or schedulers, you must
+    implement custom training and validation.
+
     Raises:
-        ValueError if multiple models/optimizers/schedulers are provided.
-            You are expected to subclass this class if you wish
-            to train over multiple models/optimizers/schedulers.
+        ValueError if custom training or validation is not provided,
+        and ``self.model``, ``self.optimizer``, or ``self.criterion``
+        are not set.
     """
 
     def __init__(self,
@@ -105,7 +143,7 @@ class TrainingOperator:
 
     def setup(self, config):
         """Override this method to implement custom operator setup. You must
-        self.register here to register training components with Ray SGD.
+        call self.register here to register training components with Ray SGD.
 
         Args:
             config (dict): Custom configuration value to be passed to
@@ -117,6 +155,8 @@ class TrainingOperator:
                  validation_loader, criterion=None, schedulers=None):
         """Registers parameters with Ray SGD. Also sets up necessary
         training components (Cuda, DDP, Distributed Sampler, Fp16).
+        You do not need to handle GPU/devices in this function; ``Ray SGD``
+        will do that for you.
 
         If more than one model, optimizer, or scheduler is passed in,
         you should implement your own custom training loop.
@@ -143,8 +183,10 @@ class TrainingOperator:
 
         Args:
             models (torch.nn.Module or Iterable[nn.Module]): Pytorch model or
-                multiple Pytorch models to use for training. If `use_gpu` is
-                True, Cuda is available, and TorchTrainer(..., wrap_ddp=True)
+                multiple Pytorch models to use for training. If
+                `use_gpu=True` is passed into ``TorchTrainer``, and Cuda is
+                available, models will automatically be placed on GPU.
+                If ``wrap_ddp=True`` is passed into ``TorchTrainer``,
                 models will be wrapped in DDP. If wrap_ddp is False,
                 you should handle DDP for your models in setup.
             optimizers (torch.optim.Optimizer or Iterable[
@@ -572,8 +614,53 @@ class TrainingOperator:
 
     @staticmethod
     def from_creators(model_creator, optimizer_creator, data_creator=None,
-                      scheduler_creator=None, loss_creator=None,
+                      loss_creator=None, scheduler_creator=None,
                       serialize_data_creation=True):
+        """A utility method to create a custom TrainingOperator class from
+        creator functions. This is useful for backwards compatibility with
+        previous versions of Ray. To provide custom training and validation,
+        you should subclass the class that is returned by this method instead
+        of ``TrainingOperator``.
+
+        Args:
+            model_creator (dict -> Model(s)): Constructor function that takes in
+                config and returns the model(s) to be optimized. These must be
+                ``torch.nn.Module`` objects. If multiple models are returned,
+                a ``training_operator_cls`` must be specified. You do not need to
+                handle GPU/devices in this function; RaySGD will do that under
+                the hood.
+            data_creator (dict -> Iterable(s)): Constructor function
+                that takes in the passed config and returns one or
+                two Iterable objects. Note that even though two Iterable objects
+                can be returned, only one will be used for training, and the
+                other will be used for validation. If not provided, you must
+                pass in a Dataset to ``TorchTrainer.train``.
+            optimizer_creator ((models, dict) -> optimizers): Constructor
+                function that takes in the return values from
+                ``model_creator`` and the passed config and returns One or
+                more Torch optimizer objects. You do not need to handle
+                GPU/devices in this function; ``RaySGD`` will do that for you.
+            loss_creator (torch.nn.*Loss class | dict -> loss): A constructor
+                function for the training loss. This can be either a function that
+                takes in the provided config for customization or a subclass
+                of ``torch.nn.modules.loss._Loss``, which is most Pytorch
+                loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
+                If not provided, you must provide a custom TrainingOperator.
+            scheduler_creator ((optimizers, dict) -> scheduler):
+                A constructor function for the torch scheduler. This is
+                a function that takes in the generated optimizers (from
+                ``optimizer_creator``) provided config for customization.
+                Be sure to set ``scheduler_step_freq`` to increment the
+                scheduler correctly.
+            serialize_data_creation (bool): A filelock will be used
+                to ensure no race conditions in data downloading among
+                different workers on the same node (using the local file system).
+                Defaults to True.
+
+        Returns:
+            A TrainingOperator class with a ``setup`` method that utilizes
+            the passed in creator functions.
+        """
 
         if not (callable(model_creator) and callable(optimizer_creator)):
             raise ValueError(

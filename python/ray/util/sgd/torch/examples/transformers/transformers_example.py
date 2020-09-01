@@ -159,7 +159,8 @@ class TransformerOperator(TrainingOperator):
         # Register components.
         self.model, self.optimizer = self.register(models=model,
                                                    optimizers=optimizer,
-                                                   train_loader=train_loader, validation_loader=None)
+                                                   train_loader=train_loader,
+                                                   validation_loader=None)
 
         self.train_data_len = len(self.train_loader)
         self._warmup_scheduler = get_linear_schedule_with_warmup(

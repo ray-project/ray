@@ -35,15 +35,10 @@ def data_creator(config):
     validation_loader = DataLoader(val_dataset, batch_size=config[BATCH_SIZE])
     return train_loader, validation_loader
 
-
 # __torch_tune_example__
-def tune_example(num_workers=1, use_gpu=False):
-    CustomTrainingOperator = TrainingOperator.from_creators(
-        model_creator=model_creator, optimizer_creator=optimizer_creator,
-        data_creator=data_creator, loss_creator=nn.MSELoss)
-
+def tune_example(operator_cls, num_workers=1, use_gpu=False):
     TorchTrainable = TorchTrainer.as_trainable(
-        training_operator_cls=CustomTrainingOperator,
+        training_operator_cls=operator_cls,
         num_workers=num_workers,
         use_gpu=use_gpu,
         config={BATCH_SIZE: 128}
@@ -82,4 +77,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     ray.init(address=args.address)
-    tune_example(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    CustomTrainingOperator = TrainingOperator.from_creators(
+        model_creator=model_creator, optimizer_creator=optimizer_creator,
+        data_creator=data_creator, loss_creator=nn.MSELoss)
+    tune_example(CustomTrainingOperator, num_workers=args.num_workers,
+                 use_gpu=args.use_gpu)

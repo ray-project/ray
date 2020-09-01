@@ -53,5 +53,8 @@ Utils
 .. autoclass:: ray.util.sgd.utils.AverageMeterCollection
     :members:
 
+.. autoclass:: ray.util.sgd.utils.RayFileLock
+    :members:
+
 
 

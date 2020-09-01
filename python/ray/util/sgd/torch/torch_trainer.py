@@ -51,7 +51,6 @@ class TorchTrainer:
 
         class MyTrainingOperator(TrainingOperator):
 
-            @override
             def setup(config):
                 model = nn.Linear(1, 1)
                 optimizer = torch.optim.SGD(
@@ -81,8 +80,7 @@ class TorchTrainer:
         training_operator_cls (type): Custom training operator class
             that subclasses the TrainingOperator class. This class
             will be copied onto all remote workers and used to specify
-            custom training and validation operations. Defaults to
-            TrainingOperator.
+            training components and custom training and validation operations.
         config (dict): Custom configuration value to be passed to
             all creator and operator constructors.
         num_workers (int): the number of workers used in distributed
