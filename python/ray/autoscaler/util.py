@@ -130,7 +130,6 @@ def hash_launch_conf(node_conf, auth):
                 full_auth[key_type] = key.read()
     hasher.update(
         json.dumps([node_conf, full_auth], sort_keys=True).encode("utf-8"))
-
     return hasher.hexdigest()
 
 
