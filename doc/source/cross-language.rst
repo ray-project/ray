@@ -25,7 +25,8 @@ You can write a Java class as follows:
     }
   }
 
-Then you can create the Java actor from Python, or call Java remote function from Python:
+Then you can create the Java actor from Python, or call Java remote function
+from Python:
 
 .. code-block:: python
 
@@ -73,7 +74,8 @@ You can write a Python module as follows:
   def add(a, b):
       return a + b
 
-Then you can create Python actor from Java, or call Python remote function from Java:
+Then you can create Python actor from Java, or call Python remote function
+from Java:
 
 .. code-block:: java
 
@@ -103,7 +105,7 @@ Then you can create Python actor from Java, or call Python remote function from 
 
       // Define a Python remote function.
       PyFunction<Integer> addFunction = PyFunction.of(
-          "<your python module>", "add", Integer.class),
+          "<your python module>", "add", Integer.class);
 
       // Call the Python remote function.
       ObjectRef<Integer> objRef3 = Ray.task(add_function, 1, 2).remote();
@@ -116,7 +118,8 @@ Then you can create Python actor from Java, or call Python remote function from 
 Cross-language data serialization
 ---------------------------------
 
-The arguments and return values of ray call can be serialized & deserialized automatically if their types are the following:
+The arguments and return values of ray call can be serialized & deserialized
+automatically if their types are the following:
   
   - Primitive data types
       ===========   =======  =======
@@ -140,7 +143,13 @@ The arguments and return values of ray call can be serialized & deserialized aut
   - Ray builtin types
       - ActorHandle
 
-You can write a Python function which returns the input:
+.. note::
+
+  * Be aware of float / double precision between Python and Java. If Java use a
+    float type to receive the input argument, the double precision Python data
+    will be reduced to float precision in Java.
+
+You can write a Python function which returns the input data:
 
 .. code-block:: python
 
@@ -148,7 +157,8 @@ You can write a Python function which returns the input:
   def py_return_input(v):
       return v
 
-Then you can call transfer the object from Java to Python, then returns from Python to Java:
+Then you can transfer the object from Java to Python, then returns from Python
+to Java:
 
 .. code-block:: java
 
@@ -190,3 +200,47 @@ Then you can call transfer the object from Java to Python, then returns from Pyt
 
 Cross-language exception stacks
 -------------------------------
+
+Suppose we have a Java package as follows:
+
+.. code-block:: java
+
+  import io.ray.api.ObjectRef;
+  import io.ray.api.Ray;
+  import io.ray.api.function.PyFunction;
+
+  public class MyRayClass {
+
+    public static int raiseExceptionFromPython() {
+      PyFunction<Integer> raiseException = PyFunction.of(
+          "<your python module>", "raise_exception", Integer.class);
+      ObjectRef<Integer> refObj = Ray.task(raiseException).remote();
+      return refObj.get();
+    }
+  }
+
+and a Python module as follows:
+
+.. code-block:: python
+
+  import ray
+
+  @ray.remote
+  def raise_exception():
+      1 / 0
+
+  ray.init(_include_java=True, _load_code_from_local=True)
+
+  obj_ref = ray.java_function(
+        "<your java package>.MyRayClass",
+        "raiseExceptionFromPython").remote()
+  ray.get(obj_ref)  # <-- raise exception from here.
+
+  ray.shutdown()
+
+The exception will be:
+
+.. code-block:: text
+
+  xxx
+
