@@ -106,7 +106,7 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
                      backend_tag,
                      replica_tag,
                      init_args,
-                     backend_config: "BackendConfig",
+                     backend_config: BackendConfig,
                      instance_name=None):
             serve.init(name=instance_name)
 
@@ -121,7 +121,7 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
 
-        def update_config(self, new_config: "BackendConfig"):
+        def update_config(self, new_config: BackendConfig):
             return self.backend.update_config(new_config)
 
         def ready(self):
@@ -153,7 +153,7 @@ class RayServeWorker:
     """Handles requests with the provided callable."""
 
     def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
-                 backend_config: "BackendConfig", is_function: bool) -> None:
+                 backend_config: BackendConfig, is_function: bool) -> None:
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -340,7 +340,7 @@ class RayServeWorker:
                 # it will not be raised.
                 await asyncio.wait(all_evaluated_futures)
 
-    def update_config(self, new_config: "BackendConfig") -> None:
+    def update_config(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)

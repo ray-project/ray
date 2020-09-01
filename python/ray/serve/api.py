@@ -203,7 +203,7 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
 @_ensure_connected
 def update_backend_config(
         backend_tag: str,
-        config_options: "Union[BackendConfig, Dict[str, Any]]") -> None:
+        config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
 
     Keys not specified in the passed will be left unchanged.
@@ -235,7 +235,7 @@ def update_backend_config(
 
 
 @_ensure_connected
-def get_backend_config(backend_tag: str) -> "BackendConfig":
+def get_backend_config(backend_tag: str) -> BackendConfig:
     """Get the backend configuration for a backend tag.
 
     Args:
@@ -250,8 +250,7 @@ def create_backend(
         func_or_class: Union[Callable, Type[Callable]],
         *actor_init_args: Any,
         ray_actor_options: Optional[Dict] = None,
-        config: "Optional[Union[BackendConfig, Dict[str, Any]]]" = None
-) -> None:
+        config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
 
     The backend will serve requests with func_or_class.
