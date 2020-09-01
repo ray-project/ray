@@ -50,19 +50,23 @@ class Sampler:
 
 
 class BaseSampler(Sampler):
-    pass
+    def __str__(self):
+        return "Base"
 
 
 class Uniform(Sampler):
-    pass
+    def __str__(self):
+        return "Uniform"
 
 
 class LogUniform(Sampler):
-    pass
+    def __str__(self):
+        return "LogUniform"
 
 
 class Normal(Sampler):
-    pass
+    def __str__(self):
+        return "Normal"
 
 
 class Grid(Sampler):

@@ -136,6 +136,7 @@ class OptunaSearch(Searcher):
         self._mode = mode
         self.setup_study(mode)
         self._config = config
+        return True
 
     def suggest(self, trial_id):
         if not self._space:

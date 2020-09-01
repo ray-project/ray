@@ -4,6 +4,10 @@ import unittest
 from ray import tune
 
 
+def _mock_objective(config):
+    tune.report(**config)
+
+
 class SearchSpaceTest(unittest.TestCase):
     def setUp(self):
         pass
@@ -151,7 +155,15 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = AxSearch()
-        searcher.set_search_properties("none", "max", config)
+        analysis = tune.run(
+            _mock_objective,
+            metric="a",
+            mode="max",
+            config=config,
+            search_alg=searcher,
+            num_samples=1)
+        trial = analysis.trials[0]
+        assert trial.config["a"] in [2, 3, 4]
 
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
@@ -183,7 +195,15 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = BayesOptSearch()
-        searcher.set_search_properties("none", "max", config)
+        analysis = tune.run(
+            _mock_objective,
+            metric="a",
+            mode="max",
+            config=config,
+            search_alg=searcher,
+            num_samples=1)
+        trial = analysis.trials[0]
+        self.assertLess(trial.config["b"]["z"], 1e-2)
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -223,7 +243,15 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = HyperOptSearch()
-        searcher.set_search_properties("none", "max", config)
+        analysis = tune.run(
+            _mock_objective,
+            metric="a",
+            mode="max",
+            config=config,
+            search_alg=searcher,
+            num_samples=1)
+        trial = analysis.trials[0]
+        assert trial.config["a"] in [2, 3, 4]
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
@@ -263,7 +291,15 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = OptunaSearch()
-        searcher.set_search_properties("none", "max", config)
+        analysis = tune.run(
+            _mock_objective,
+            metric="a",
+            mode="max",
+            config=config,
+            search_alg=searcher,
+            num_samples=1)
+        trial = analysis.trials[0]
+        assert trial.config["a"] in [2, 3, 4]
 
 
 if __name__ == "__main__":

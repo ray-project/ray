@@ -161,6 +161,7 @@ class AxSearch(Searcher):
         self._metric = metric
         self._mode = mode
         self.setup_experiment()
+        return True
 
     def suggest(self, trial_id):
         if not self._ax:
