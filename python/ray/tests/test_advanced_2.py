@@ -599,11 +599,15 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
+            del resources["memory"]
+            del resources["object_store_memory"]
+            for key in list(resources.keys()):
+                if key.startswith("node:"):
+                    del resources[key]
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
-            raise RuntimeError(
-                "Resources were available even after five retries.", resources)
+            raise RuntimeError("Resources were available even after {} retries.".format(MAX_RETRY_ATTEMPTS), resources)
 
         return resources
 
