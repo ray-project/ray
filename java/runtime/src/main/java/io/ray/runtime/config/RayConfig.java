@@ -42,6 +42,9 @@ public class RayConfig {
 
   private Config config;
 
+  /**
+   * IP of this node. if not provided, IP will be automatically detected.
+   */
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
@@ -62,10 +65,13 @@ public class RayConfig {
   public final String headRedisPassword;
   public final String redisPassword;
 
+  // RPC socket name of object store.
   public String objectStoreSocketName;
   public final Long objectStoreSize;
 
+  // RPC socket name of Raylet.
   public String rayletSocketName;
+  // Listening port for node manager.
   public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
@@ -126,11 +132,11 @@ public class RayConfig {
     // Run mode.
     runMode = config.getEnum(RunMode.class, "ray.run-mode");
     // Node ip.
-    String nodeIp = config.getString("ray.node-ip");
-    if (nodeIp.isEmpty()) {
+    if (config.hasPath("ray.node-ip")) {
+      nodeIp = config.getString("ray.node-ip");
+    } else {
       nodeIp = NetworkUtil.getIpAddress(null);
     }
-    this.nodeIp = nodeIp;
     // Resources.
     resources = ResourceUtil.getResourcesMapFromString(
         config.getString("ray.resources"));
@@ -202,8 +208,9 @@ public class RayConfig {
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
     // Raylet node manager port.
-    nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
-    if (nodeManagerPort == 0) {
+    if (config.hasPath("ray.raylet.node-manager-port")) {
+      nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
+    } else {
       Preconditions.checkState(workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
       nodeManagerPort = NetworkUtil.getUnusedPort();
