@@ -90,7 +90,7 @@ class Float(Domain):
             return items if len(items) > 1 else items[0]
 
     class _LogUniform(LogUniform):
-        def __init__(self, base: int = 10):
+        def __init__(self, base: float = 10):
             self.base = base
             assert self.base > 0, "Base has to be strictly greater than 0"
 
@@ -119,18 +119,16 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            # Use a truncated normal to avoid oversampling border values
-            dist = stats.truncnorm(
-                (domain.min - self.mean) / self.sd,
-                (domain.max - self.mean) / self.sd,
-                loc=self.mean,
-                scale=self.sd)
-            items = dist.rvs(size)
+            assert not domain.min or domain.min == float("-inf"), \
+                "Normal sampling does not allow a lower value bound."
+            assert not domain.max or domain.max == float("inf"), \
+                "Normal sampling does not allow a upper value bound."
+            items = np.random.normal(self.mean, self.sd, size=size)
             return items if len(items) > 1 else items[0]
 
     default_sampler_cls = _Uniform
 
-    def __init__(self, min: float, max: float):
+    def __init__(self, min: Optional[float], max: Optional[float]):
         # Need to explicitly check for None
         self.min = min if min is not None else float("-inf")
         self.max = max if max is not None else float("inf")
@@ -148,7 +146,7 @@ class Float(Domain):
         new.set_sampler(self._Uniform())
         return new
 
-    def loguniform(self, base: int = 10):
+    def loguniform(self, base: float = 10):
         if not self.min > 0:
             raise ValueError(
                 "LogUniform requires a minimum bound greater than 0. "
@@ -332,7 +330,7 @@ def loguniform(min: float, max: float, base: float = 10):
     return Float(min, max).loguniform(base)
 
 
-def qloguniform(min, max, q, base=10):
+def qloguniform(min: float, max: float, q, base=10):
     """Sugar for sampling in different orders of magnitude.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
@@ -385,13 +383,8 @@ def qrandint(min: int, max: int, q: int = 1):
 
 
 def randn(mean: float = 0.,
-          sd: float = 1.,
-          min: float = float("-inf"),
-          max: float = float("inf")):
+          sd: float = 1.):
     """Sample a float value normally with ``mean`` and ``sd``.
-
-    Will truncate the normal distribution at ``min`` and ``max`` to avoid
-    oversampling the border regions.
 
     Args:
         mean (float): Mean of the normal distribution. Defaults to 0.
@@ -400,20 +393,15 @@ def randn(mean: float = 0.,
         max (float): Maximum bound. Defaults to inf.
 
     """
-    return Float(min, max).normal(mean, sd)
+    return Float(None, None).normal(mean, sd)
 
 
 def qrandn(q: float,
            mean: float = 0.,
-           sd: float = 1.,
-           min: float = float("-inf"),
-           max: float = float("inf")):
+           sd: float = 1.):
     """Sample a float value normally with ``mean`` and ``sd``.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
-
-    Will truncate the normal distribution at ``min`` and ``max`` to avoid
-    oversampling the border regions.
 
     Args:
         q (float): Quantization number. The result will be rounded to an
@@ -424,4 +412,4 @@ def qrandn(q: float,
         max (float): Maximum bound. Defaults to inf.
 
     """
-    return Float(min, max).normal(mean, sd).quantized(q)
+    return Float(None, None).normal(mean, sd).quantized(q)
