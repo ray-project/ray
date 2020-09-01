@@ -26,6 +26,9 @@ Creating an actor
               self.value += 1
               return self.value
 
+          def get_counter(self):
+              return self.value
+
     Note that the above is equivalent to the following:
 
     .. code-block:: python
@@ -36,6 +39,9 @@ Creating an actor
 
           def increment(self):
               self.value += 1
+              return self.value
+
+          def get_counter(self):
               return self.value
 
       Counter = ray.remote(Counter)
@@ -53,6 +59,10 @@ Creating an actor
 
         public int increment() {
           this.value += 1;
+          return this.value;
+        }
+
+        public int getCounter() {
           return this.value;
         }
       }
@@ -191,12 +201,7 @@ requirements, you can do so as follows.
 
     @ray.remote(num_cpus=4)
     class Counter(object):
-        def __init__(self):
-            self.value = 0
-
-        def increment(self):
-            self.value += 1
-            return self.value
+        ...
 
     a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
     a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
@@ -205,13 +210,7 @@ requirements, you can do so as follows.
   .. code-tab:: java
 
     public class Counter {
-
-      private int value = 0;
-
-      public int increment() {
-        this.value += 1;
-        return this.value;
-      }
+      ...
     }
 
     ActorHandle<Counter> a1 = Ray.actor(Counter::new).setResource("CPU", 1.0)
@@ -290,39 +289,7 @@ immediately and any pending tasks to fail.
 Passing Around Actor Handles
 ----------------------------
 
-Actor handles can be passed into other tasks. To illustrate this with a
-simple example, consider a simple actor definition.
-
-.. tabs::
-  .. code-tab:: python
-
-    @ray.remote
-    class Counter(object):
-        def __init__(self):
-            self.counter = 0
-
-        def inc(self):
-            self.counter += 1
-
-        def get_counter(self):
-            return self.counter
-
-  .. code-tab:: java
-
-    public static class Counter {
-
-      private int counter = 0;
-
-      public void inc() {
-        counter += 1;
-      }
-
-      public int getCounter() {
-        return counter;
-      }
-    }
-
-We can define remote functions (or actor methods) that use actor handles.
+Actor handles can be passed into other tasks. We can define remote functions (or actor methods) that use actor handles.
 
 .. tabs::
   .. code-tab:: python
@@ -333,7 +300,7 @@ We can define remote functions (or actor methods) that use actor handles.
     def f(counter):
         for _ in range(1000):
             time.sleep(0.1)
-            counter.inc.remote()
+            counter.increment.remote()
 
   .. code-tab:: java
 
@@ -342,7 +309,7 @@ We can define remote functions (or actor methods) that use actor handles.
       public static void foo(ActorHandle<Counter> counter) throws InterruptedException {
         for (int i = 0; i < 1000; i++) {
           TimeUnit.MILLISECONDS.sleep(100);
-          counter.task(Counter::inc).remote();
+          counter.task(Counter::increment).remote();
         }
       }
     }

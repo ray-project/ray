@@ -4,6 +4,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.docdemo.WalkthroughDemo.Counter;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 public class UsingActorsDemo {
@@ -15,6 +16,10 @@ public class UsingActorsDemo {
 
     public int increment() {
       this.value += 1;
+      return this.value;
+    }
+
+    public int getCounter() {
       return this.value;
     }
   }
@@ -37,7 +42,17 @@ public class UsingActorsDemo {
 
   }
 
-  public static void main(String[] args) {
+  public static class MyRayApp {
+
+    public static void foo(ActorHandle<Counter> counter) throws InterruptedException {
+      for (int i = 0; i < 1000; i++) {
+        TimeUnit.MILLISECONDS.sleep(100);
+        counter.task(Counter::increment).remote();
+      }
+    }
+  }
+
+  public static void main(String[] args) throws InterruptedException {
     Ray.init();
 
     {
@@ -82,6 +97,21 @@ public class UsingActorsDemo {
       // Retrieve the actor later
       Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
       Assert.assertTrue(counter.isPresent());
+    }
+
+    {
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
+
+      // Start some tasks that use the actor.
+      for (int i = 0; i < 3; i++) {
+        Ray.task(MyRayApp::foo, counter).remote();
+      }
+
+      // Print the counter value.
+      for (int i = 0; i < 10; i++) {
+        TimeUnit.SECONDS.sleep(1);
+        System.out.println(counter.task(Counter::getCounter).remote().get());
+      }
     }
   }
 }
