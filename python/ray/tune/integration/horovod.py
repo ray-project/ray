@@ -20,6 +20,7 @@ def get_rank():
 
 
 def logger_creator(log_config, logdir):
+    """Simple NOOP logger for worker trainables."""
     index = get_rank()
     worker_dir = os.path.join(logdir, "worker_{}".format(index))
     os.makedirs(worker_dir, exist_ok=True)
