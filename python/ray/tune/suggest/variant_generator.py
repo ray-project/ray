@@ -179,6 +179,8 @@ def _resolve_domain_vars(spec, domain_vars):
         num_passes += 1
         error = False
         for path, domain in domain_vars:
+            if path in resolved:
+                continue
             try:
                 value = domain.sample(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:

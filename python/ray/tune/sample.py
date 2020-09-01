@@ -15,6 +15,10 @@ class Domain:
     sampler = None
     default_sampler_cls = None
 
+    def cast(self, value):
+        """Cast value to domain type"""
+        return value
+
     def set_sampler(self, sampler, allow_override=False):
         if self.sampler and not allow_override:
             raise ValueError("You can only choose one sampler for parameter "
@@ -97,10 +101,10 @@ class Float(Domain):
                    size: int = 1):
             assert domain.min > float("-inf"), \
                 "Uniform needs a minimum bound"
-            assert 0 < domain.max < float("inf"), \
+            assert domain.max < float("inf"), \
                 "Uniform needs a maximum bound"
             items = np.random.uniform(domain.min, domain.max, size=size)
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     class _LogUniform(LogUniform):
         def sample(self,
@@ -115,7 +119,7 @@ class Float(Domain):
             logmax = np.log(domain.max) / np.log(self.base)
 
             items = self.base**(np.random.uniform(logmin, logmax, size=size))
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     class _Normal(Normal):
         def sample(self,
@@ -127,7 +131,7 @@ class Float(Domain):
             assert not domain.max or domain.max == float("inf"), \
                 "Normal sampling does not allow a upper value bound."
             items = np.random.normal(self.mean, self.sd, size=size)
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
 
@@ -135,6 +139,9 @@ class Float(Domain):
         # Need to explicitly check for None
         self.min = min if min is not None else float("-inf")
         self.max = max if max is not None else float("inf")
+
+    def cast(self, value):
+        return float(value)
 
     def uniform(self):
         if not self.min > float("-inf"):
@@ -180,13 +187,16 @@ class Integer(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
             items = np.random.randint(domain.min, domain.max, size=size)
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
 
     def __init__(self, min, max):
         self.min = min
         self.max = max
+
+    def cast(self, value):
+        return int(value)
 
     def quantized(self, q: Number):
         new = copy(self)
@@ -207,7 +217,7 @@ class Categorical(Domain):
                    size: int = 1):
 
             items = random.choices(domain.categories, k=size)
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
 
@@ -238,7 +248,7 @@ class Iterative(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
             items = [next(domain.iterator) for _ in range(size)]
-            return items if len(items) > 1 else items[0]
+            return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _NextSampler
 
@@ -285,8 +295,8 @@ class Quantized(Sampler):
                size: int = 1):
         values = self.sampler.sample(domain, spec, size)
         quantized = np.round(np.divide(values, self.q)) * self.q
-        if len(quantized) == 1:
-            return quantized[0]
+        if not isinstance(quantized, np.ndarray):
+            return domain.cast(quantized)
         return list(quantized)
 
 
@@ -316,6 +326,7 @@ def quniform(min: float, max: float, q: float):
     ``np.random.uniform(1, 10))``
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
+        Quantization makes the upper bound inclusive.
 
     """
     return Float(min, max).uniform().quantized(q)
@@ -337,6 +348,8 @@ def qloguniform(min: float, max: float, q, base=10):
     """Sugar for sampling in different orders of magnitude.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
+
+    Quantization makes the upper bound inclusive.
 
     Args:
         min (float): Lower boundary of the output interval (e.g. 1e-4)
@@ -374,9 +387,10 @@ def randint(min: int, max: int):
 def qrandint(min: int, max: int, q: int = 1):
     """Sample an integer value uniformly between ``min`` and ``max``.
 
-    ``min`` is inclusive, ``max`` is exclusive.
+    ``min`` is inclusive, ``max`` is also inclusive (!).
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
+    Quantization makes the upper bound inclusive.
 
     Sampling from ``tune.randint(10)`` is equivalent to sampling from
     ``np.random.randint(10)``
@@ -391,25 +405,21 @@ def randn(mean: float = 0., sd: float = 1.):
     Args:
         mean (float): Mean of the normal distribution. Defaults to 0.
         sd (float): SD of the normal distribution. Defaults to 1.
-        min (float): Minimum bound. Defaults to -inf.
-        max (float): Maximum bound. Defaults to inf.
 
     """
     return Float(None, None).normal(mean, sd)
 
 
-def qrandn(q: float, mean: float = 0., sd: float = 1.):
+def qrandn(mean: float, sd: float, q: float):
     """Sample a float value normally with ``mean`` and ``sd``.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
 
     Args:
+        mean (float): Mean of the normal distribution.
+        sd (float): SD of the normal distribution.
         q (float): Quantization number. The result will be rounded to an
             integer increment of this value.
-        mean (float): Mean of the normal distribution. Defaults to 0.
-        sd (float): SD of the normal distribution. Defaults to 1.
-        min (float): Minimum bound. Defaults to -inf.
-        max (float): Maximum bound. Defaults to inf.
 
     """
     return Float(None, None).normal(mean, sd).quantized(q)

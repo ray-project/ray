@@ -2,6 +2,7 @@ import numpy as np
 import unittest
 
 from ray import tune
+from ray.tune.suggest.variant_generator import generate_variants
 
 
 def _mock_objective(config):
@@ -14,6 +15,61 @@ class SearchSpaceTest(unittest.TestCase):
 
     def tearDown(self):
         pass
+
+    def testTuneSampleAPI(self):
+        config = {
+            "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
+            "uniform": tune.uniform(-5, -1),
+            "quniform": tune.quniform(3.2, 5.4, 0.2),
+            "loguniform": tune.loguniform(1e-4, 1e-2),
+            "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),
+            "choice": tune.choice([2, 3, 4]),
+            "randint": tune.randint(-9, 15),
+            "qrandint": tune.qrandint(-21, 12, 3),
+            "randn": tune.randn(10, 2),
+            "qrandn": tune.qrandn(10, 2, 0.2),
+        }
+        for _, (_, generated) in zip(
+                range(10), generate_variants({
+                    "config": config
+                })):
+            out = generated["config"]
+
+            self.assertAlmostEqual(out["func"], out["uniform"] * 0.01)
+
+            self.assertGreater(out["uniform"], -5)
+            self.assertLess(out["uniform"], -1)
+
+            self.assertGreater(out["quniform"], 3.2)
+            self.assertLessEqual(out["quniform"], 5.4)
+            self.assertAlmostEqual(out["quniform"] / 0.2,
+                                   round(out["quniform"] / 0.2))
+
+            self.assertGreater(out["loguniform"], 1e-4)
+            self.assertLess(out["loguniform"], 1e-2)
+
+            self.assertGreater(out["qloguniform"], 1e-4)
+            self.assertLessEqual(out["qloguniform"], 1e-1)
+            self.assertAlmostEqual(out["qloguniform"] / 5e-4,
+                                   round(out["qloguniform"] / 5e-4))
+
+            self.assertIn(out["choice"], [2, 3, 4])
+
+            self.assertGreater(out["randint"], -9)
+            self.assertLess(out["randint"], 15)
+
+            self.assertGreater(out["qrandint"], -21)
+            self.assertLessEqual(out["qrandint"], 12)
+            self.assertEqual(out["qrandint"] % 3, 0)
+
+            # Very improbable
+            self.assertGreater(out["randn"], 0)
+            self.assertLess(out["randn"], 20)
+
+            self.assertGreater(out["qrandn"], 0)
+            self.assertLess(out["qrandn"], 20)
+            self.assertAlmostEqual(out["qrandn"] / 0.2,
+                                   round(out["qrandn"] / 0.2))
 
     def testBoundedFloat(self):
         bounded = tune.sample.Float(-4.2, 8.3)
