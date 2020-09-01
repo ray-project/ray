@@ -25,8 +25,7 @@ Suppose we have a Java static method and a Java class as follows:
     }
   }
 
-Then you can create the Java actor from Python, or call Java remote function
-from Python:
+Then, in Python, we can call the above Java remote function, or create an actor from the above Java class.
 
 .. code-block:: python
 
