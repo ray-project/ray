@@ -10,6 +10,18 @@ Suppose we have a Java static method and a Java class as follows:
 
 .. code-block:: java
 
+  package io.ray.demo
+
+  public class Math {
+    public static int add(int a, int b) {
+      return a + b;
+    }
+  }
+
+.. code-block:: java
+
+  package io.ray.demo
+
   // A regular Java class.
   public class Counter {
 
@@ -19,13 +31,10 @@ Suppose we have a Java static method and a Java class as follows:
       this.value += 1;
       return this.value;
     }
-
-    public static int add(int a, int b) {
-      return a + b;
-    }
   }
 
-Then, in Python, we can call the above Java remote function, or create an actor from the above Java class.
+Then, in Python, we can call the above Java remote function, or create an actor
+from the above Java class.
 
 .. code-block:: python
 
@@ -35,7 +44,7 @@ Then, in Python, we can call the above Java remote function, or create an actor 
 
   # Define a Java class.
   counter_class = ray.java_actor_class(
-        "<your java package>.Counter")
+        "io.ray.demo.Counter")
 
   # Create a Java actor and call actor method.
   counter = counter_class.remote()
@@ -46,7 +55,7 @@ Then, in Python, we can call the above Java remote function, or create an actor 
 
   # Define a Java function.
   add_function = ray.java_function(
-        "<your java package>.Counter", "add")
+        "io.ray.demo.Math", "add")
   
   # Call the Java remote function.
   obj_ref3 = add_function.remote(1, 2)
@@ -57,9 +66,11 @@ Then, in Python, we can call the above Java remote function, or create an actor 
 Java calling Python
 -------------------
 
-You can write a Python module as follows:
+Suppose we have a Python module as follows:
 
 .. code-block:: python
+
+  # ray_demo.py
 
   class Counter(object):
     def __init__(self):
@@ -73,8 +84,8 @@ You can write a Python module as follows:
   def add(a, b):
       return a + b
 
-Then you can create Python actor from Java, or call Python remote function
-from Java:
+Then, in Java, we can call the above Python remote function, or create an actor
+from the above Python class.
 
 .. code-block:: java
 
@@ -91,7 +102,7 @@ from Java:
       
       // Define a Python class.
       PyActorClass actorClass = PyActorClass.of(
-          "<your python module>", "Counter");
+          "ray_demo", "Counter");
       
       // Create a Python actor and call actor method.
       PyActorHandle actor = Ray.actor(actorClass).remote();
@@ -104,7 +115,7 @@ from Java:
 
       // Define a Python remote function.
       PyFunction<Integer> addFunction = PyFunction.of(
-          "<your python module>", "add", Integer.class);
+          "ray_demo", "add", Integer.class);
 
       // Call the Python remote function.
       ObjectRef<Integer> objRef3 = Ray.task(add_function, 1, 2).remote();
@@ -147,10 +158,17 @@ automatically if their types are the following:
   * Be aware of float / double precision between Python and Java. If Java use a
     float type to receive the input argument, the double precision Python data
     will be reduced to float precision in Java.
+  * BigInteger can support max value of 2^64-1, please refer to:
+    https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family. 
+    If the value larger than 2^64-1, then transfer the BigInteger:
+      - From Java to Python: *raise an exception*
+      - From Java to Java: **OK**
 
 You can write a Python function which returns the input data:
 
 .. code-block:: python
+
+  # ray_demo.py
 
   @ray.remote
   def py_return_input(v):
@@ -160,6 +178,8 @@ Then you can transfer the object from Java to Python, then returns from Python
 to Java:
 
 .. code-block:: java
+
+  package io.ray.demo
 
   import io.ray.api.Ray;
   import io.ray.api.function.PyActorClass;
@@ -178,9 +198,6 @@ to Java:
           Short.MAX_VALUE,  // Short
           Integer.MAX_VALUE,  // Integer
           Long.MAX_VALUE,  // Long
-          // BigInteger can support max value of 2^64-1, please refer to:
-          // https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family
-          // If BigInteger larger than 2^64-1, the value can only be transferred among Java workers.
           BigInteger.valueOf(Long.MAX_VALUE),  // BigInteger
           "Hello World!",  // String
           1.234f,  // Float
@@ -188,7 +205,7 @@ to Java:
           "example binary".getBytes()};  // byte[]
       for (Object o : inputs) {
         ObjectRef res = Ray.task(
-            PyFunction.of(PYTHON_MODULE, "py_return_input", o.getClass()),
+            PyFunction.of("ray_demo", "py_return_input", o.getClass()),
             o).remote();
         Assert.assertEquals(res.get(), o);
       }
@@ -204,6 +221,8 @@ Suppose we have a Java package as follows:
 
 .. code-block:: java
 
+  package io.ray.demo
+
   import io.ray.api.ObjectRef;
   import io.ray.api.Ray;
   import io.ray.api.function.PyFunction;
@@ -212,7 +231,7 @@ Suppose we have a Java package as follows:
 
     public static int raiseExceptionFromPython() {
       PyFunction<Integer> raiseException = PyFunction.of(
-          "<your python module>", "raise_exception", Integer.class);
+          "ray_demo", "raise_exception", Integer.class);
       ObjectRef<Integer> refObj = Ray.task(raiseException).remote();
       return refObj.get();
     }
@@ -221,6 +240,8 @@ Suppose we have a Java package as follows:
 and a Python module as follows:
 
 .. code-block:: python
+
+  # ray_demo.py
 
   import ray
 
@@ -231,7 +252,7 @@ and a Python module as follows:
   ray.init(_include_java=True, _load_code_from_local=True)
 
   obj_ref = ray.java_function(
-        "<your java package>.MyRayClass",
+        "io.ray.demo.MyRayClass",
         "raiseExceptionFromPython").remote()
   ray.get(obj_ref)  # <-- raise exception from here.
 
