@@ -130,8 +130,8 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
   }
 
   virtual std::string CallString() const {
-    std::string class_name = typed_message_->class_name();
-    std::string function_name = typed_message_->function_name();
+    const std::string &class_name = typed_message_->class_name();
+    const std::string &function_name = typed_message_->function_name();
     return class_name.empty() ? function_name : class_name + "." + function_name;
   }
 
@@ -193,8 +193,8 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   }
 
   virtual std::string CallString() const {
-    std::string class_name = typed_message_->class_name();
-    std::string function_name = typed_message_->function_name();
+    const std::string &class_name = typed_message_->class_name();
+    const std::string &function_name = typed_message_->function_name();
     return class_name.empty() ? function_name : class_name + "." + function_name;
   }
 

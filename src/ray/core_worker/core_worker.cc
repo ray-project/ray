@@ -1314,8 +1314,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   auto new_resource = AddPlacementGroupConstraint(
       actor_creation_options.resources, actor_creation_options.placement_options.first,
       actor_creation_options.placement_options.second);
-  auto actor_name = actor_creation_options.name;
-  auto task_name =
+  const auto actor_name = actor_creation_options.name;
+  const auto task_name =
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();

@@ -192,7 +192,7 @@ bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
 
-std::string TaskSpecification::GetName() const { return message_->name(); }
+const std::string TaskSpecification::GetName() const { return message_->name(); }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
 

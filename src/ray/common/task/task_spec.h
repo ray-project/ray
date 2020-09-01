@@ -136,7 +136,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   Language GetLanguage() const;
 
   // Returns the task's name.
-  std::string GetName() const;
+  const std::string GetName() const;
 
   /// Whether this task is a normal task.
   bool IsNormalTask() const;
