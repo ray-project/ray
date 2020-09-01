@@ -311,9 +311,8 @@ def _configure_key_pair(config, compute):
 
             # Create the directory if it doesn't exists
             private_key_dir = os.path.dirname(private_key_path)
-            if not os.path.exists(private_key_dir):
-                os.makedirs(private_key_dir)
-                
+            os.makedirs(private_key_dir, exist_ok=True)
+
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
             # os.open behavior to include the mode we want.
