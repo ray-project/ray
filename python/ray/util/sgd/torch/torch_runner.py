@@ -195,26 +195,56 @@ class TorchRunner:
 
     @property
     def models(self):
+        if not hasattr(self.training_operator, "_original_models"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered models. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._original_models
 
     @property
     def optimizers(self):
+        if not hasattr(self.training_operator, "_optimizers"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered optimizers. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._optimizers
 
     @property
     def schedulers(self):
+        if not hasattr(self.training_operator, "_schedulers"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered schedulers. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._schedulers
 
     @property
     def train_loader(self):
+        if not hasattr(self.training_operator, "_train_loader"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered train loader. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._train_loader
 
     @property
     def validation_loader(self):
+        if not hasattr(self.training_operator, "_validation_loader"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered validation loader. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._validation_loader
 
     @property
     def criterion(self):
+        if not hasattr(self.training_operator, "_criterion"):
+            raise RuntimeError("Training Operator does not have any "
+                               "registered criterion. Are you calling "
+                               "self.register(...) inside the setup method "
+                               "of your Training Operator?")
         return self.training_operator._criterion
 
     @property

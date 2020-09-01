@@ -25,6 +25,8 @@ Setting up training
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
+.. warning:: You must call ``self.register(...)`` inside the ``setup`` method of your custom ``TrainingOperator`` to register the necessary training components with Ray SGD.
+
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
     :language: python
     :start-after: __torch_operator_start__
