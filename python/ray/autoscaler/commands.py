@@ -368,7 +368,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                     run_env="host")
             except Exception:
                 cli_logger.warning(f"Docker stop failed on {node}")
-                cli_logger.old_warning(f"Docker stopped on {node}")
+                cli_logger.old_warning(logger, f"Docker stop failed on {node}")
 
         # Loop here to check that both the head and worker nodes are actually
         #   really gone
