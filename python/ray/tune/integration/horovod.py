@@ -32,11 +32,16 @@ class _HorovodTrainable(tune.Trainable):
     _function = None
     # Number of nodes (hosts) to allocate per trial
     _num_nodes: int = 1
+    # Number of workers (slots) to place on each node.
     _num_workers_per_node: int = 1
+    # Number of CPU resources to reserve for each worker.
     _num_cpus_per_worker: int = 1
+    # Whether to reserve and pass GPU resources through.
     _use_gpu: bool = False
     # bool: Whether a the function has completed training
     _finished: bool = False
+
+    # Horovod settings
     _ssh_str: str = None
     _ssh_identity_file: str = None
     _timeout_s: int = 30
