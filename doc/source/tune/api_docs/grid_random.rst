@@ -189,6 +189,16 @@ tune.quniform
 
 .. autofunction:: ray.tune.quniform
 
+tune.randint
+~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.randint
+
+tune.qrandint
+~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qrandint
+
 tune.choice
 ~~~~~~~~~~~
 

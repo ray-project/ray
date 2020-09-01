@@ -332,6 +332,9 @@ def run(run_or_experiment,
     if not search_alg:
         search_alg = BasicVariantGenerator()
 
+    if mode:
+        assert mode in ["min", "max"], "`mode` must be one of [min, max]"
+
     if config and not search_alg.set_search_properties(metric, mode, config):
         logger.warning(
             "You passed a `config` parameter to `tune.run()`, but the "

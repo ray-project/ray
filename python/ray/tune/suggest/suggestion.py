@@ -83,7 +83,7 @@ class Searcher:
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
         """
-        return True
+        return False
 
     def on_trial_result(self, trial_id, result):
         """Optional notification for result during training.
