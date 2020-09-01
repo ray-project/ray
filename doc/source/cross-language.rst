@@ -1,4 +1,4 @@
-Cross Language
+Cross-language programming
 ==============
 
 This page will cover some more cross language examples of using Ray's flexible programming model.
@@ -243,4 +243,3 @@ The exception will be:
 .. code-block:: text
 
   xxx
-
