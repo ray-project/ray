@@ -344,9 +344,41 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
             return head + workers
 
+        def run_docker_stop(node, container_name):
+            try:
+                updater = NodeUpdaterThread(
+                    node_id=node,
+                    provider_config=config["provider"],
+                    provider=provider,
+                    auth_config=config["auth"],
+                    cluster_name=config["cluster_name"],
+                    file_mounts=config["file_mounts"],
+                    initialization_commands=[],
+                    setup_commands=[],
+                    ray_start_commands=[],
+                    runtime_hash="",
+                    file_mounts_contents_hash="",
+                    is_head_node=False,
+                    docker_config=config.get("docker"))
+                _exec(
+                    updater,
+                    f"docker stop {container_name}",
+                    False,
+                    False,
+                    run_env="host")
+            except Exception:
+                cli_logger.warning(f"Docker stop failed on {node}")
+                cli_logger.old_warning(logger, f"Docker stop failed on {node}")
+
         # Loop here to check that both the head and worker nodes are actually
         #   really gone
         A = remaining_nodes()
+
+        container_name = config.get("docker", {}).get("container_name")
+        if container_name:
+            for node in A:
+                run_docker_stop(node, container_name)
+
         with LogTimer("teardown_cluster: done."):
             while A:
                 cli_logger.old_info(

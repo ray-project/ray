@@ -256,6 +256,10 @@ class ConcurrencyLimiter(Searcher):
     Args:
         searcher (Searcher): Searcher object that the
             ConcurrencyLimiter will manage.
+        max_concurrent (int): Maximum concurrent samples from the underlying
+            searcher.
+        batch (bool): Whether to wait for all concurrent samples
+            to finish before updating the underlying searcher.
 
     Example:
 
@@ -267,11 +271,13 @@ class ConcurrencyLimiter(Searcher):
         tune.run(trainable, search_alg=search_alg)
     """
 
-    def __init__(self, searcher, max_concurrent):
+    def __init__(self, searcher, max_concurrent, batch=False):
         assert type(max_concurrent) is int and max_concurrent > 0
         self.searcher = searcher
         self.max_concurrent = max_concurrent
+        self.batch = batch
         self.live_trials = set()
+        self.cached_results = {}
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
@@ -284,6 +290,7 @@ class ConcurrencyLimiter(Searcher):
                 "concurrency limit: %s/%s.", len(self.live_trials),
                 self.max_concurrent)
             return
+
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
             self.live_trials.add(trial_id)
@@ -292,6 +299,18 @@ class ConcurrencyLimiter(Searcher):
     def on_trial_complete(self, trial_id, result=None, error=False):
         if trial_id not in self.live_trials:
             return
+        elif self.batch:
+            self.cached_results[trial_id] = (result, error)
+            if len(self.cached_results) == self.max_concurrent:
+                # Update the underlying searcher once the
+                # full batch is completed.
+                for trial_id, (result, error) in self.cached_results.items():
+                    self.searcher.on_trial_complete(
+                        trial_id, result=result, error=error)
+                    self.live_trials.remove(trial_id)
+                self.cached_results = {}
+            else:
+                return
         else:
             self.searcher.on_trial_complete(
                 trial_id, result=result, error=error)
