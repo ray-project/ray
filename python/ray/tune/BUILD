@@ -373,6 +373,14 @@ py_test(
 )
 
 py_test(
+    name = "horovod_simple",
+    size = "medium",
+    srcs = ["examples/horovod_simple.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "hyperband_example",
     size = "medium",
     srcs = ["examples/hyperband_example.py"],

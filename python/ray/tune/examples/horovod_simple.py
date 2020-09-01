@@ -95,7 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--workers-per-host", type=int, default=1)
     args = parser.parse_args()
 
-    ray.init(address="auto")  # assumes ray is started with ray up
+    # ray.init(address="auto")  # assumes ray is started with ray up
 
     horovod_trainable = DistributedTrainableCreator(
         train,

@@ -28,10 +28,14 @@ def logger_creator(log_config, logdir):
 
 class _HorovodTrainable(tune.Trainable):
     """Abstract Trainable class for Horovod."""
+    # Callable function for training.
+    _function = None
+    # Number of nodes (hosts) to allocate per trial
     _num_nodes: int = 1
     _num_workers_per_node: int = 1
     _num_cpus_per_worker: int = 1
     _use_gpu: bool = False
+    # bool: Whether a the function has completed training
     _finished: bool = False
     _ssh_str: str = None
     _ssh_identity_file: str = None
@@ -43,6 +47,8 @@ class _HorovodTrainable(tune.Trainable):
 
     def setup(self, config):
         trainable = wrap_function(self.__class__._function)
+        # We use a filelock here to ensure that the file-writing
+        # process is safe across different trainables.
         if self._ssh_identity_file:
             with FileLock(self._ssh_identity_file + ".lock"):
                 settings = RayExecutor.create_settings(
@@ -50,30 +56,37 @@ class _HorovodTrainable(tune.Trainable):
         else:
             settings = RayExecutor.create_settings(
                 self._timeout_s, self._ssh_identity_file, self._ssh_str)
-        self._job = RayExecutor(
+
+        self.executor = RayExecutor(
             settings,
             cpus_per_slot=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
             num_hosts=self._num_nodes,
             num_slots=self._num_workers_per_node)
+
         # We can't put `self` in the lambda closure, so we
         # resolve the variable ahead of time.
         logdir_ = str(self.logdir)
-        self._job.start(
+
+        # Starts the workers as specified by the resources above.
+        self.executor.start(
             executable_cls=trainable,
-            executable_args=[config, lambda cfg: logger_creator(cfg, logdir_)])
+            executable_kwargs={
+                "config": config,
+                "logger_creator": lambda cfg: logger_creator(cfg, logdir_)
+            })
 
     def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
-        result = self._job.execute(lambda w: w.step())[0]
+        result = self.executor.execute(lambda w: w.step())[0]
         if RESULT_DUPLICATE in result:
             self._finished = True
         return result
 
     def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
-        save_obj = self._job.execute_single(lambda w: w.save_to_object())
+        save_obj = self.executor.execute_single(lambda w: w.save_to_object())
         checkpoint_path = TrainableUtil.create_from_pickle(
             save_obj, checkpoint_dir)
         return checkpoint_path
@@ -81,11 +94,11 @@ class _HorovodTrainable(tune.Trainable):
     def load_checkpoint(self, checkpoint_dir):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
         x_id = ray.put(checkpoint_obj)
-        return self._job.execute(lambda w: w.restore_from_object(x_id))
+        return self.executor.execute(lambda w: w.restore_from_object(x_id))
 
     def stop(self):
-        self._job.execute(lambda w: w.stop())
-        self._job.shutdown()
+        self.executor.execute(lambda w: w.stop())
+        self.executor.shutdown()
 
 
 def DistributedTrainableCreator(func,
@@ -97,11 +110,34 @@ def DistributedTrainableCreator(func,
                                 replicate_pem=False):
     """Horovod Tune Converter.
 
-    Uses gloo as the underlying communication primitive.
-    Fault tolerance is handled at the Tune level and is disregarded
-    at the underlying trial level.
+    Leverages the Horovod + Ray "RayExecutor" underneath the hood.
+    Requires horovod > 0.19 to work.
+
+    Each Horovod Trainable (trial) can itself be a distributed training job.
+    One basic assumption of this model is that all sub-workers
+    of a trial will be placed evenly across different machines.
+
+    It is recommended that if num_nodes per trial > 1, you set
+    num_workers_per_node == the size (or number of GPUs) of a single node.
+    If num_nodes == 1, then you can set num_workers_per_node to be <=
+    the size (number of GPUs) of a single node.
+
+    This above assumption can be relaxed - please file a feature request
+    on Github to inform the maintainers.
+
+    Another assumption is that this API requires gloo as the underlying
+    communication primitive. You will need to install Horovod with
+    `HOROVOD_WITH_GLOO` enabled.
+
+    Fault Tolerance: The trial workers themselves are not fault tolerant.
+    When a node of a trial fails, all workers of a trial are expected to
+    die, and the trial is expected to restart. Checkpointing
+    is TBD.
 
     Args:
+        func (Callable[[dict], None]): A training function that takes in
+            a config dict for hyperparameters and should initialize
+            horovod via horovod.init.
         use_gpu (bool); Whether to allocate a GPU per worker.
         num_cpus_per_worker (int): Number of CPUs to request
             from Ray per worker.
@@ -109,8 +145,9 @@ def DistributedTrainableCreator(func,
             to use.
         num_workers_per_node (int): Number of workers to start on each node.
         timeout_s (int): Seconds for Horovod rendezvous to timeout.
-        replicate_pem (bool): Whether to replicate the underlying Ray
-            cluster ssh key across all nodes. This may be insecure.
+        replicate_pem (bool): THIS MAY BE INSECURE. If true, this will
+            replicate the underlying Ray cluster ssh key across all nodes.
+            This may be useful if using the Ray Autoscaler.
 
 
     Returns:
