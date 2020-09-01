@@ -194,6 +194,8 @@ OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 OBJECT_METADATA_TYPE_RAW = b"RAW"
 
 # A constant used as object metadata to indicate the object is an actor handle.
+# This value should be synchronized with the Java definition in
+# ObjectSerializer.java
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
