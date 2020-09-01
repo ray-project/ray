@@ -150,7 +150,7 @@ There are two steps needed to use Ray in a distributed setting:
 
           You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
 
-          You need to add the ``ray.job.resource-path`` parameter as well. Your jar files must be distributed manually to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
+          You need to add the ``ray.job.resource-path`` parameter as well. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
 
           To connect your program to the Ray cluster, run it like this:
 
