@@ -1,11 +1,11 @@
-import inspect
 import logging
 
 import torch
 import torch.nn as nn
+from ray.util.sgd.torch.creator_operator import CreatorOperator
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES, RayFileLock)
+                                NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH,
     NUM_STEPS,
@@ -678,89 +678,9 @@ class TrainingOperator:
             raise ValueError(
                 "Must provide a callable model_creator and optimizer_creator.")
 
-        class CreatorOperator(TrainingOperator):
-            def _validate_loaders(self, loaders):
-                assert loaders, "Loaders need to be returned in data_creator."
-                if isinstance(loaders, (tuple, list)):
-                    if len(loaders) == 1:
-                        return loaders, None
-                    elif len(loaders) == 2:
-                        return loaders
-                    else:
-                        raise ValueError(
-                            f"Number of loaders must be <= 2. Got {loaders}")
-                # No great way of checking type otherwise
-                return loaders, None
-
-            def _initialize_dataloaders(self, config):
-                logger.debug("Instantiating dataloaders.")
-                loaders = None
-                if serialize_data_creation:
-                    logger.debug("Serializing the dataloading process.")
-                    with RayFileLock():
-                        loaders = data_creator(config)
-                else:
-                    loaders = data_creator(config)
-                train_loader, val_loader = self._validate_loaders(loaders)
-
-                return train_loader, val_loader
-
-            def setup(self, config):
-                kwargs = {}
-                logger.debug("Loading data.")
-                train_loader = None
-                validation_loader = None
-                if data_creator and callable(data_creator):
-                    train_loader, validation_loader = \
-                        self._initialize_dataloaders(config)
-
-                kwargs["train_loader"] = train_loader
-                kwargs["validation_loader"] = validation_loader
-
-                logger.debug("Creating model")
-                models = model_creator(config)
-
-                kwargs["models"] = models
-
-                logger.debug("Creating optimizer.")
-                optimizers = optimizer_creator(models, config)
-
-                kwargs["optimizers"] = optimizers
-
-                if scheduler_creator:
-                    logger.debug("Creating scheduler.")
-                    schedulers = scheduler_creator(optimizers, config)
-                    kwargs["schedulers"] = schedulers
-
-                if loss_creator:
-                    logger.debug("Creating loss.")
-                    if inspect.isclass(loss_creator) and issubclass(
-                            loss_creator, torch.nn.modules.loss._Loss):
-                        criterion = loss_creator()
-                    else:
-                        criterion = loss_creator(config)
-                    kwargs["criterion"] = criterion
-
-                state = self.register(**kwargs)
-                self.models, self.optimizers = state[:2]
-                if isinstance(self.models, tuple):
-                    self.model = self.models[0]
-                else:
-                    self.model = self.models
-
-                if isinstance(self.optimizers, tuple):
-                    self.optimizer = self.optimizers[0]
-                else:
-                    self.optimizer = self.optimizers
-
-                if len(state) >= 3:
-                    self.criterion = state[2]
-                if len(state) == 4:
-                    self.schedulers = state[3]
-                    if isinstance(self.schedulers, tuple):
-                        self.scheduler = self.schedulers[0]
-                    else:
-                        self.scheduler = self.schedulers
+        CreatorOperator.set_creators(model_creator, optimizer_creator,
+                                     data_creator, loss_creator,
+                                     scheduler_creator, serialize_data_creation)
 
         return CreatorOperator
 

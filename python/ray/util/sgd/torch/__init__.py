@@ -12,8 +12,9 @@ try:
                                                   BaseTorchTrainable)
 
     from ray.util.sgd.torch.training_operator import TrainingOperator
+    from ray.util.sgd.torch.creator_operator import CreatorOperator
 
-    __all__ = ["TorchTrainer", "BaseTorchTrainable", "TrainingOperator"]
+    __all__ = ["TorchTrainer", "BaseTorchTrainable", "TrainingOperator", "CreatorOperator"]
 except ImportError as e:
     logger.warning(e)
     logger.warning("PyTorch not found. TorchTrainer will not be available")
