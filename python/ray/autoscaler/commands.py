@@ -105,7 +105,8 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str],
                              no_config_cache: bool = False,
                              redirect_command_output: bool = False,
-                             use_login_shells: bool = True) -> None:
+                             use_login_shells: bool = True,
+                             node_provider_cache: Optional[Any]) -> None:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -194,18 +195,27 @@ def create_or_update_cluster(config_file: str,
     if config["provider"]["type"] != "aws":
         cli_logger.old_style = True
     cli_logger.newline()
-    config = _bootstrap_config(config, no_config_cache=no_config_cache)
+    config = _bootstrap_config(
+        config,
+        no_config_cache=no_config_cache,
+        node_provider_cache=node_provider_cache)
 
     try_logging_config(config)
-    get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
-                            override_cluster_name)
+
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"]
+        node_provider_cache)
+    get_or_create_head_node(provider, config, config_file, no_restart,
+                            restart_only, yes, override_cluster_name)
 
 
 CONFIG_CACHE_VERSION = 1
 
 
 def _bootstrap_config(config: Dict[str, Any],
-                      no_config_cache: bool = False) -> Dict[str, Any]:
+                      no_config_cache: bool = False,
+                      node_provider_cache: Optional[Any]) -> Dict[str, Any]:
     config = prepare_config(config)
 
     hasher = hashlib.sha1()
@@ -252,7 +262,7 @@ def _bootstrap_config(config: Dict[str, Any],
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    provider_cls = importer(config["provider"])
+    provider_cls = importer(config["provider"], node_provider_cache)
 
     with cli_logger.timed(  # todo: better message
             "Bootstrapping {} config",
@@ -272,7 +282,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
 def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                      override_cluster_name: Optional[str],
-                     keep_min_workers: bool):
+                     keep_min_workers: bool,
+                     node_provider_cache: Optional[Any]):
     """Destroys all nodes of a Ray cluster described by a config json."""
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
@@ -309,7 +320,10 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             cli_logger.old_exception(
                 logger, "Ignoring error attempting a clean shutdown.")
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"],
+        node_provider_cache)
     try:
 
         def remaining_nodes():
@@ -369,7 +383,11 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
         provider.cleanup()
 
 
-def kill_node(config_file, yes, hard, override_cluster_name):
+def kill_node(config_file: str,
+              yes: bool,
+              hard: bool,
+              override_cluster_name: Optional[str],
+              node_provider_cache: Optional[Any]):
     """Kills a random Raylet worker."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -380,7 +398,10 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     cli_logger.confirm(yes, "A random node will be killed.")
     cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"]
+        node_provider_cache)
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -460,18 +481,15 @@ def warn_about_bad_start_command(start_commands):
             "to ray start in the head_start_ray_commands section.")
 
 
-def get_or_create_head_node(config,
+def get_or_create_head_node(provider,
+                            config,
                             config_file,
                             no_restart,
                             restart_only,
                             yes,
                             override_cluster_name,
-                            _provider=None,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = (_provider or get_node_provider(config["provider"],
-                                               config["cluster_name"]))
-
     config = copy.deepcopy(config)
     raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
@@ -777,7 +795,8 @@ def exec_cluster(config_file: str,
                  override_cluster_name: Optional[str] = None,
                  no_config_cache: bool = False,
                  port_forward: Any = None,
-                 with_output: bool = False):
+                 with_output: bool = False,
+                 node_provider_cache: Optional[Any]):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -805,10 +824,28 @@ def exec_cluster(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_head_node(
-        config, config_file, override_cluster_name, create_if_needed=start)
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"],
+        node_provider_cache)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    head_node = _get_head_node(provider)
+    if head_node is None and start:
+        get_or_create_head_node(
+            provider,
+            config,
+            config_file,
+            restart_only=False,
+            no_restart=False,
+            yes=True
+            override_cluster_name=override_cluster_name)
+        head_node = _get_head_node(
+            config, config_file, override_cluster_name, create_if_needed=False)
+    
+    if head_node is None:
+        raise RuntimeError("Head node of cluster ({}) not found!".format(
+            config["cluster_name"]))
+
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -902,7 +939,8 @@ def rsync(config_file: str,
           override_cluster_name: Optional[str],
           down: bool,
           no_config_cache: bool = False,
-          all_nodes: bool = False):
+          all_nodes: bool = False,
+          node_provider_cache: Optional[Any]):
     """Rsyncs files.
 
     Arguments:
@@ -925,17 +963,16 @@ def rsync(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"],
+        node_provider_cache: Optional[Any]])
     try:
         nodes = []
         if all_nodes:
-            # technically we re-open the provider for no reason
-            # in get_worker_nodes but it's cleaner this way
-            # and _get_head_node does this too
-            nodes = _get_worker_nodes(config, override_cluster_name)
+            nodes = _get_worker_nodes(provider)
 
-        head_node = _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
+        head_node = _get_head_node(provider)
 
         nodes += [head_node]
 
@@ -973,16 +1010,20 @@ def rsync(config_file: str,
 
 
 def get_head_node_ip(config_file: str,
-                     override_cluster_name: Optional[str]) -> str:
+                     override_cluster_name: Optional[str],
+                     node_provider_cache: Optional[Any]) -> str:
     """Returns head node IP for given configuration file if exists."""
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"],
+        node_provider_cache)
     try:
-        head_node = _get_head_node(config, config_file, override_cluster_name)
+        head_node = _get_head_node(provider)
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             head_node_ip = provider.internal_ip(head_node)
         else:
@@ -994,14 +1035,18 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> str:
+                        override_cluster_name: Optional[str],
+                        node_provider_cache: Optional[Any]) -> str:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = get_node_provider(
+        config["provider"],
+        config["cluster_name"],
+        node_provider_cache)
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -1015,50 +1060,24 @@ def get_worker_node_ips(config_file: str,
         provider.cleanup()
 
 
-def _get_worker_nodes(config, override_cluster_name):
+def _get_worker_nodes(provider: Any) -> List[str]:
     """Returns worker node ids for given configuration."""
-    # todo: technically could be reused in get_worker_node_ips
-    if override_cluster_name is not None:
-        config["cluster_name"] = override_cluster_name
-
-    provider = get_node_provider(config["provider"], config["cluster_name"])
-    try:
-        return provider.non_terminated_nodes({
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-        })
-    finally:
-        provider.cleanup()
+    return provider.non_terminated_nodes({
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+    })
 
 
-def _get_head_node(config: Dict[str, Any],
-                   config_file: str,
-                   override_cluster_name: Optional[str],
-                   create_if_needed: bool = False) -> str:
-    provider = get_node_provider(config["provider"], config["cluster_name"])
-    try:
-        head_node_tags = {
-            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-        }
-        nodes = provider.non_terminated_nodes(head_node_tags)
-    finally:
-        provider.cleanup()
+def _get_head_node(provider: Any) -> str:
+    head_node_tags = {
+        TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+    }
+    nodes = provider.non_terminated_nodes(head_node_tags)
 
     if len(nodes) > 0:
         head_node = nodes[0]
         return head_node
-    elif create_if_needed:
-        get_or_create_head_node(
-            config,
-            config_file,
-            restart_only=False,
-            no_restart=False,
-            yes=True,
-            override_cluster_name=override_cluster_name)
-        return _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
     else:
-        raise RuntimeError("Head node of cluster ({}) not found!".format(
-            config["cluster_name"]))
+        return None
 
 
 def confirm(msg, yes):

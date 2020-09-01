@@ -140,12 +140,13 @@ def load_class(path):
 
 
 def get_node_provider(provider_config: Dict[str, Any],
-                      cluster_name: str) -> Any:
+                      cluster_name: str,
+                      node_provider_cache: Optional[Any]) -> Any:
     importer = NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
-    provider_cls = importer(provider_config)
+    provider_cls = importer(provider_config, node_provider_cache=node_provider_cache)
     return provider_cls(provider_config, cluster_name)
 
 
