@@ -460,6 +460,21 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
                    << ", total data size: " << data_size;
 
     UniqueID push_id = UniqueID::FromRandom();
+    SendChunkBatch(push_id, object_id, owner_address, client_id, data_size, metadata_size,
+                   0 /* from_chunk_index */, num_chunks, rpc_client);
+    }
+  } else {
+    // Push is best effort, so do nothing here.
+    RAY_LOG(ERROR)
+        << "Failed to establish connection for Push with remote object manager.";
+  }
+}
+
+ray::Status ObjectManager::SendChunkBatch(
+    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
+    const ClientID &client_id, uint64_t data_size, uint64_t metadata_size,
+    uint64_t from_chunk_index, uint64_t num_chunks, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+
     for (uint64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
       rpc_service_.post([this, push_id, object_id, owner_address, client_id, data_size,
                          metadata_size, chunk_index, rpc_client]() {
@@ -470,18 +485,13 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
                            << st.message() << ", chunk index " << chunk_index;
         }
       });
-    }
-  } else {
-    // Push is best effort, so do nothing here.
-    RAY_LOG(ERROR)
-        << "Failed to establish connection for Push with remote object manager.";
-  }
 }
 
 ray::Status ObjectManager::SendObjectChunk(
     const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
     const ClientID &client_id, uint64_t data_size, uint64_t metadata_size,
-    uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+    uint64_t chunk_index, uint64_t continuation_num_chunks,
+    std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header

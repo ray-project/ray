@@ -134,6 +134,25 @@ class ObjectManager : public ObjectManagerInterface,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Enqueue a limited number of object chunks to send to remote object manager
+  ///
+  /// Object will be transfered as a sequence of chunks, small object(defined in config)
+  /// contains only one chunk
+  /// \param push_id Unique push id to indicate this push request
+  /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param from_chunk_index Starting chunk index of the batch
+  /// \param num_chunks Total number of chunks in the object
+  /// \param rpc_client Rpc client used to send message to remote object manager
+  ray::Status SendChunkBatch(const UniqueID &push_id, const ObjectID &object_id,
+                             const rpc::Address &owner_address,
+                             const ClientID &client_id, uint64_t data_size,
+                             uint64_t metadata_size, uint64_t from_chunk_index,
+                             uint64_t num_chunks,
+                             std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+
   /// Send object to remote object manager
   ///
   /// Object will be transfered as a sequence of chunks, small object(defined in config)
@@ -144,11 +163,15 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
+  /// \param continuation_num_chunks If non-zero, this request will
+  /// trigger the next batch of chunks on completion, and the value is the total
+  /// number of chunks in the object.
   /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
                               const rpc::Address &owner_address,
                               const ClientID &client_id, uint64_t data_size,
                               uint64_t metadata_size, uint64_t chunk_index,
+                              uint64_t continuation_num_chunks,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
   /// Receive object chunk from remote object manager, small object may contain one chunk
