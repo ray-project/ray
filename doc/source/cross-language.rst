@@ -6,7 +6,7 @@ This page will show you how to use Ray's cross-language programming feature.
 Python calling Java
 -------------------
 
-You can write a Java class as follows:
+Suppose we have a Java static method and a Java class as follows:
 
 .. code-block:: java
 
