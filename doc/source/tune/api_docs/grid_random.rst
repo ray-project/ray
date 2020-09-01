@@ -164,15 +164,30 @@ tune.randn
 
 .. autofunction:: ray.tune.randn
 
+tune.qrandn
+~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qrandn
+
 tune.loguniform
 ~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.loguniform
 
+tune.qloguniform
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qloguniform
+
 tune.uniform
 ~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.uniform
+
+tune.quniform
+~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.quniform
 
 tune.choice
 ~~~~~~~~~~~

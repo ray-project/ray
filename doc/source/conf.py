@@ -23,6 +23,7 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
+    "ax",
     "blist",
     "gym",
     "gym.spaces",

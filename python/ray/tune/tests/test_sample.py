@@ -118,23 +118,6 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any([-2 <= s <= 2 for s in samples]))
         self.assertTrue(all([c in samples for c in categories]))
 
-    def testIterative(self):
-        categories = [-2, -1, 0, 1, 2]
-
-        def test_iter():
-            for i in categories:
-                yield i
-
-        itr = tune.sample.Iterative(test_iter())
-        samples = itr.sample(size=5)
-        self.assertTrue(any([-2 <= s <= 2 for s in samples]))
-        self.assertTrue(all([c in samples for c in categories]))
-
-        itr = tune.sample.Iterative(iter(categories))
-        samples = itr.sample(size=5)
-        self.assertTrue(any([-2 <= s <= 2 for s in samples]))
-        self.assertTrue(all([c in samples for c in categories]))
-
     def testFunction(self):
         def sample(spec):
             return np.random.uniform(-4, 4)

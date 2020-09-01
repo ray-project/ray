@@ -2,9 +2,7 @@ import logging
 import random
 from copy import copy
 from numbers import Number
-from typing import Any, Callable, Dict, Iterator, List, Optional, \
-    Sequence, \
-    Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
@@ -241,21 +239,6 @@ class Categorical(Domain):
         return self.categories[item]
 
 
-class Iterative(Domain):
-    class _NextSampler(BaseSampler):
-        def sample(self,
-                   domain: "Iterative",
-                   spec: Optional[Union[List[Dict], Dict]] = None,
-                   size: int = 1):
-            items = [next(domain.iterator) for _ in range(size)]
-            return items if len(items) > 1 else domain.cast(items[0])
-
-    default_sampler_cls = _NextSampler
-
-    def __init__(self, iterator: Iterator):
-        self.iterator = iterator
-
-
 class Function(Domain):
     class _CallSampler(BaseSampler):
         def sample(self,
@@ -326,7 +309,7 @@ def quniform(min: float, max: float, q: float):
     ``np.random.uniform(1, 10))``
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
-        Quantization makes the upper bound inclusive.
+    Quantization makes the upper bound inclusive.
 
     """
     return Float(min, max).uniform().quantized(q)
@@ -344,7 +327,7 @@ def loguniform(min: float, max: float, base: float = 10):
     return Float(min, max).loguniform(base)
 
 
-def qloguniform(min: float, max: float, q, base=10):
+def qloguniform(min: float, max: float, q: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
