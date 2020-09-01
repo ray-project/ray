@@ -382,8 +382,9 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
                 time.sleep(POLL_INTERVAL)  # todo: interval should be a variable
                 A = remaining_nodes()
-                cli_logger.print("{} nodes remaining after 1 second.",
-                                 cf.bold(len(A)))
+                cli_logger.print("{} nodes remaining after {} second(s).",
+                                 cf.bold(len(A)),
+                                 POLL_INTERVAL)
             cli_logger.success("No nodes remaining.")
     finally:
         provider.cleanup()
