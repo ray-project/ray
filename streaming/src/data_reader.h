@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "channel.h"
+#include "channel/channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
 #include "reliability_helper.h"

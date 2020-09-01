@@ -6,7 +6,7 @@
 #include <thread>
 #include <vector>
 
-#include "channel.h"
+#include "channel/channel.h"
 #include "config/streaming_config.h"
 #include "event_service.h"
 #include "flow_control.h"

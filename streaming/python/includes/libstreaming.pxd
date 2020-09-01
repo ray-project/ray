@@ -35,7 +35,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
 )
 
-cdef extern from "status.h" namespace "ray::streaming" nogil:
+cdef extern from "common/status.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingStatus "ray::streaming::StreamingStatus":
         pass
     cdef CStreamingStatus StatusOK "ray::streaming::StreamingStatus::OK"
@@ -112,7 +112,7 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
          void GetMessageListFromRawData(const uint8_t *data, uint32_t size, uint32_t msg_nums,
                                         c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
-cdef extern from "channel.h" namespace "ray::streaming" nogil:
+cdef extern from "channel/channel.h" namespace "ray::streaming" nogil:
     cdef struct CChannelCreationParameter "ray::streaming::ChannelCreationParameter":
         CChannelCreationParameter()
         CActorID actor_id;

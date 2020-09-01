@@ -2,8 +2,8 @@
 
 #include <algorithm>
 
-#include "streaming_logging.h"
-#include "streaming_util.h"
+#include "util/streaming_logging.h"
+#include "util/streaming_util.h"
 
 namespace ray {
 namespace streaming {
