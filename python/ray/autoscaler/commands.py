@@ -47,6 +47,7 @@ redis_client = None
 
 RUN_ENV_TYPES = ["auto", "host", "docker"]
 
+POLL_INTERVAL = 5
 
 def _redis():
     global redis_client
@@ -379,7 +380,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                     cf.bold(len(A)),
                     _tags=dict(interval="1s"))
 
-                time.sleep(1)  # todo: interval should be a variable
+                time.sleep(POLL_INTERVAL)  # todo: interval should be a variable
                 A = remaining_nodes()
                 cli_logger.print("{} nodes remaining after 1 second.",
                                  cf.bold(len(A)))
@@ -427,7 +428,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
             _exec(updater, "ray stop", False, False)
 
-        time.sleep(5)
+        time.sleep(POLL_INTERVAL)
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             node_ip = provider.internal_ip(node)
@@ -594,7 +595,7 @@ def get_or_create_head_node(config,
                         if len(nodes) == 1:
                             head_node = nodes[0]
                             break
-                        time.sleep(1)
+                        time.sleep(POLL_INTERVAL)
                 cli_logger.newline()
 
         with cli_logger.group(
