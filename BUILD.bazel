@@ -1783,11 +1783,6 @@ filegroup(
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
-        "python/ray/projects/*.py",
-        "python/ray/projects/schema.json",
-        "python/ray/projects/templates/cluster_template.yaml",
-        "python/ray/projects/templates/project_template.yaml",
-        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )

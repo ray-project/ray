@@ -355,7 +355,7 @@ def test_remove_placement_group(ray_start_cluster):
     # That means this request should fail.
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
         ray.get(a.f.remote(), timeout=3.0)
-    with pytest.raises(ray.exceptions.RayWorkerError):
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(task_ref)
 
 
@@ -472,15 +472,15 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_2 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=1,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_3 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=2,
-        detached=True).remote()
+        lifetime="detached").remote()
     ray.get(actor_1.value.remote())
     ray.get(actor_2.value.remote())
     ray.get(actor_3.value.remote())
@@ -491,15 +491,15 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     actor_4 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_5 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=1,
-        detached=True).remote()
+        lifetime="detached").remote()
     actor_6 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=2,
-        detached=True).remote()
+        lifetime="detached").remote()
     ray.get(actor_4.value.remote())
     ray.get(actor_5.value.remote())
     ray.get(actor_6.value.remote())
@@ -576,7 +576,7 @@ def test_pending_placement_group_wait(ray_start_cluster):
     assert len(ready) == 0
     table = ray.experimental.placement_group_table(placement_group)
     assert table["state"] == "PENDING"
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(placement_group.ready(), timeout=0.1)
 
 

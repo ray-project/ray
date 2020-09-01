@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+import json
 
 from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
@@ -18,8 +19,8 @@ from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import (run_cmd_redirected,
-                                                   ProcessRunnerError)
+from ray.autoscaler.subprocess_output_util import (
+    run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -83,18 +84,9 @@ def _with_environment_variables(cmd: str,
             automatically be converted to a one line yaml string.
     """
 
-    def dict_as_one_line_yaml(d):
-        items = []
-        for key, val in d.items():
-            item_str = "{}: {}".format(quote(str(key)), quote(str(val)))
-            items.append(item_str)
-
-        return "{" + ",".join(items) + "}"
-
     as_strings = []
     for key, val in environment_variables.items():
-        if isinstance(val, dict):
-            val = dict_as_one_line_yaml(val)
+        val = json.dumps(val, separators=(",", ":"))
         s = "export {}={};".format(key, quote(val))
         as_strings.append(s)
     all_vars = "".join(as_strings)
@@ -104,7 +96,6 @@ def _with_environment_variables(cmd: str,
 def _with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
@@ -442,6 +433,11 @@ class SSHCommandRunner(CommandRunnerInterface):
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
+
+        Raises:
+            ProcessRunnerError if using new log style and disabled
+                login shells.
+            click.ClickException if using login shells.
         """
         try:
             # For now, if the output is needed we just skip the new logic.
@@ -467,12 +463,12 @@ class SSHCommandRunner(CommandRunnerInterface):
 
             if exit_on_fail:
                 raise click.ClickException(
-                    "Command failed: \n\n  {}\n".format(quoted_cmd)) \
-                    from None
+                    "Command failed:\n\n  {}\n".format(quoted_cmd)) from None
             else:
-                raise click.ClickException(
-                    "SSH command Failed. See above for the output from the"
-                    " failure.") from None
+                fail_msg = "SSH command failed."
+                if is_output_redirected():
+                    fail_msg += " See above for the output from the failure."
+                raise click.ClickException(fail_msg) from None
 
     def run(
             self,

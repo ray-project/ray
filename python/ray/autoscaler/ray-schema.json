@@ -303,8 +303,7 @@
                        "worker_setup_commands": {
                            "$ref": "#/definitions/commands",
                            "description": "List of common shell commands to run to setup nodes."
-                       },
-                       "additionalProperties": false
+                       }
                     },
                     "additionalProperties": false
                 }

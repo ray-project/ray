@@ -6,12 +6,12 @@ package io.ray.streaming.runtime.core.resource;
 public enum ResourceType {
 
   /**
-   *Cpu resource key.
+   * Cpu resource key.
    */
   CPU("CPU"),
 
   /**
-   *Gpu resource key.
+   * Gpu resource key.
    */
   GPU("GPU"),
 

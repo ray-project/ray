@@ -1,12 +1,12 @@
 package io.ray.streaming.runtime.streamingqueue;
 
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
-import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
+import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 public class Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
@@ -50,6 +51,7 @@ public class Worker {
 }
 
 class ReaderWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
@@ -170,6 +172,7 @@ class ReaderWorker extends Worker {
 }
 
 class WriterWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
