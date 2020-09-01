@@ -4,10 +4,8 @@ Mars on Ray
 .. _`issue on GitHub`: https://github.com/mars-project/mars/issues
 
 
-`Mars`_ is dedicated to leverage parallel and distributed technology to accelerate
-numpy, pandas, scikit-learn and Python functions. Mars on Ray makes it easy to scala
-your programs to a Ray cluster.
-
+`Mars`_ Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
+Mars on Ray makes it easy to scale your programs with a Ray cluster.
 
 .. note::
 
@@ -29,11 +27,11 @@ You can simply install Mars via pip:
 Getting started
 ----------------
 
-It's easy to run Mars job on Ray cluster. Use ``from mars.session import new_session``
-and run ``new_session(backend='ray').as_default()``, this will create
-a Mars session for Ray as default session, and then all Mars tasks will be
-submitted to Ray cluster. Arguments will be passed to ``Ray.init()`` when
-create Mars session by calling like
+It's easy to run Mars jobs on a Ray cluster. Use ``from mars.session import new_session``
+and run ``new_session(backend='ray').as_default()``; this will create
+a Mars session for Ray as the default session, and then all Mars tasks will be
+submitted to Ray. Arguments will be passed to ``ray.init()`` when
+creating a Mars session like this:
 ``new_session(backend='ray', address=<address>, num_cpus=<num_cpus>)``.
 
 
