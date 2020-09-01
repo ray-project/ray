@@ -74,8 +74,9 @@ class ResourceDemandScheduler:
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        nodes = get_nodes_for(self.node_types, node_type_counts,
-                              self.max_workers - len(nodes) - len(pending_nodes), unfulfilled)
+        nodes = get_nodes_for(
+            self.node_types, node_type_counts,
+            self.max_workers - len(nodes) - len(pending_nodes), unfulfilled)
         logger.info("Node requests: {}".format(nodes))
         return nodes
 

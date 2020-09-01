@@ -272,13 +272,10 @@ class AutoscalingTest(unittest.TestCase):
         config["target_utilization_fraction"] = 1.0
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: "head",
-                TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
-            },
-            1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         self.provider.finish_starting_nodes()
         runner = MockProcessRunner()
