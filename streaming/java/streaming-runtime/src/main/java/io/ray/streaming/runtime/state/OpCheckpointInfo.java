@@ -10,7 +10,7 @@ public class OpCheckpointInfo implements Serializable {
 
   public Map<String, OffsetInfo> inputPoints;
   public Map<String, OffsetInfo> outputPoints;
-  public Object processorCheckpoint;
+  public Serializable processorCheckpoint;
   public long checkpointId;
 
   public OpCheckpointInfo() {

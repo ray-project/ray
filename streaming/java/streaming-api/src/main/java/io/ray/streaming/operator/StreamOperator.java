@@ -8,6 +8,7 @@ import io.ray.streaming.api.function.RichFunction;
 import io.ray.streaming.api.function.internal.Functions;
 import io.ray.streaming.message.KeyRecord;
 import io.ray.streaming.message.Record;
+import java.io.Serializable;
 import java.util.List;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
@@ -73,12 +74,12 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public Object doCheckpoint() {
+  public Serializable doCheckpoint() {
     return function.doCheckpoint();
   }
 
   @Override
-  public void loadCheckpoint(Object checkpointObject) {
+  public void loadCheckpoint(Serializable checkpointObject) {
     function.loadCheckpoint(checkpointObject);
   }
 

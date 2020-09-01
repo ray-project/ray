@@ -81,7 +81,8 @@ public class JobMaster {
   private void loadMasterCheckpoint() {
     LOG.info("Start to load JobMaster's checkpoint.");
     // recover runtime context
-    byte[] bytes = CheckpointStateUtil.get(contextBackend, getJobMasterRuntimeContextKey(getConf()));
+    byte[] bytes =
+        CheckpointStateUtil.get(contextBackend, getJobMasterRuntimeContextKey(getConf()));
     if (bytes == null) {
       LOG.warn("JobMaster got empty checkpoint from state backend. Skip loading checkpoint.");
       // cp 0 was automatically saved when job started, see StreamTask.
@@ -168,7 +169,8 @@ public class JobMaster {
       }
 
       byte[] contextBytes = Serializer.encode(runtimeContext);
-      CheckpointStateUtil.put(contextBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
+      CheckpointStateUtil
+          .put(contextBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
     }
   }
 

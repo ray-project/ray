@@ -13,6 +13,7 @@ import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.operator.TwoInputOperator;
+import java.io.Serializable;
 import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.List;
@@ -86,7 +87,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   @Override
-  public Object doCheckpoint() {
+  public Serializable doCheckpoint() {
     Object[] checkpoints = new Object[operators.size()];
     for (int i = 0; i < operators.size(); ++i) {
       checkpoints[i] = operators.get(i).doCheckpoint();
@@ -95,8 +96,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   @Override
-  public void loadCheckpoint(Object checkpointObject) {
-    Object[] checkpoints = (Object[]) checkpointObject;
+  public void loadCheckpoint(Serializable checkpointObject) {
+    Serializable[] checkpoints = (Serializable[]) checkpointObject;
     for (int i = 0; i < operators.size(); ++i) {
       operators.get(i).loadCheckpoint(checkpoints[i]);
     }
