@@ -31,7 +31,7 @@ Creating an actor
           def get_counter(self):
               return self.value
 
-      a = Counter.remote()
+      counter_actor = Counter.remote()
 
     Note that the above is equivalent to the following:
 
@@ -50,7 +50,7 @@ Creating an actor
 
       Counter = ray.remote(Counter)
 
-      a = Counter.remote()
+      counter_actor = Counter.remote()
 
   .. group-tab:: Java
 
@@ -103,43 +103,32 @@ Methods of the actor can be called remotely.
 .. tabs::
   .. code-tab:: python
 
-    a = Counter.remote()
+    counter_actor = Counter.remote()
 
-    assert a.increment.remote() == 1
+    assert counter_actor.increment.remote() == 1
+
+    @ray.remote
+    class Foo(object):
+
+        # Any method of the actor can return multiple object refs.
+        @ray.method(num_returns=2)
+        def bar(self):
+            return 1, 2
+
+    f = Foo.remote()
+
+    obj_ref1, obj_ref2 = f.bar.remote()
+    assert ray.get(obj_ref1) == 1
+    assert ray.get(obj_ref2) == 2
 
   .. code-tab:: java
 
-    ActorHandle<Counter> a = Ray.actor(Counter::new).remote();
+    ActorHandle<Counter> counterActor = Ray.actor(Counter::new).remote();
     // Call an actor method with a return value
-    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
-    // Call an actor method without return value
-    a.task(Counter::reset, 10).remote();
-    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 11);
-
-
-.. tabs::
-  .. group-tab:: Python
-
-    Any method of the actor can return multiple object refs with the ``ray.method`` decorator:
-
-    .. code-block:: python
-
-      @ray.remote
-      class Foo(object):
-
-          @ray.method(num_returns=2)
-          def bar(self):
-              return 1, 2
-
-      f = Foo.remote()
-
-      obj_ref1, obj_ref2 = f.bar.remote()
-      assert ray.get(obj_ref1) == 1
-      assert ray.get(obj_ref2) == 2
-
-  .. group-tab:: Java
-
-    An actor method can return zero (by declaring ``void`` as return type) or one object ref.
+    Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 1);
+    // Call an actor method without return value. In this case, the return type of `remote()` is void.
+    counterActor.task(Counter::reset, 10).remote();
+    Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 11);
 
 .. _actor-resource-guide:
 
@@ -244,6 +233,9 @@ sufficient CPU resources and the relevant custom resources.
 Terminating Actors
 ------------------
 
+Automatic termination
+^^^^^^^^^^^^^^^^^^^^^
+
 .. tabs::
   .. group-tab:: Python
 
@@ -257,6 +249,9 @@ Terminating Actors
   .. group-tab:: Java
 
     Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
+
+Self-termination
+^^^^^^^^^^^^^^^^
 
 .. tabs::
   .. group-tab:: Python
@@ -273,6 +268,9 @@ Terminating Actors
   .. group-tab:: Java
 
     Terminating an actor from within one of the actor methods hasn't been implemented in Java yet.
+
+Forceful termination
+^^^^^^^^^^^^^^^^^^^^
 
 You can terminate an actor forcefully.
 
@@ -381,16 +379,31 @@ access an actor launched by another driver.
     # Retrieve the actor later somewhere
     counter = ray.get_actor("some_name")
 
-  .. code-tab:: java
+  .. group-tab:: Java
 
-    // Create an actor with a name
-    ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
+    .. code-block:: java
 
-    ...
+      // Create an actor with a globally unique name
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
 
-    // Retrieve the actor later somewhere
-    Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
-    Assert.assertTrue(counter.isPresent());
+      ...
+
+      // Retrieve the actor later somewhere
+      Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
+      Assert.assertTrue(counter.isPresent());
+
+    We also support non-global named actors in Java, which means that the actor name is only valid within the job and the actor cannot be accessed from another job.
+
+    .. code-block:: java
+
+      // Create an actor with a job-scope-unique name
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name_in_job").remote();
+
+      ...
+
+      // Retrieve the actor later somewhere in the same job
+      Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
+      Assert.assertTrue(counter.isPresent());
 
 
 Actor Lifetimes
