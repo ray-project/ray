@@ -115,8 +115,8 @@ class SearchSpaceTest(unittest.TestCase):
         cat = tune.sample.Categorical(categories)
 
         samples = cat.uniform().sample(size=1000)
-        self.assertTrue(any([-2 <= s <= 2 for s in samples]))
-        self.assertTrue(all([c in samples for c in categories]))
+        self.assertTrue(any(-2 <= s <= 2 for s in samples))
+        self.assertTrue(all(c in samples for c in categories))
 
     def testFunction(self):
         def sample(spec):
@@ -125,7 +125,7 @@ class SearchSpaceTest(unittest.TestCase):
         fnc = tune.sample.Function(sample)
 
         samples = fnc.sample(size=1000)
-        self.assertTrue(any([-4 < s < 4 for s in samples]))
+        self.assertTrue(any(-4 < s < 4 for s in samples))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
     def testQuantized(self):
