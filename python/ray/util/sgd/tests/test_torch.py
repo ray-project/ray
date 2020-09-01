@@ -12,8 +12,7 @@ import ray
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.training_operator import (
-    get_test_operator, get_test_metrics_operator,
-    TrainingOperator)
+    get_test_operator, get_test_metrics_operator, TrainingOperator)
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
 from ray.util.sgd.utils import (check_for_failure, NUM_SAMPLES, BATCH_COUNT,
                                 BATCH_SIZE)
@@ -45,16 +44,12 @@ def ray_start_4_cpus():
         dist.destroy_process_group()
 
 
-Operator = TrainingOperator.from_creators(model_creator,
-                                          optimizer_creator,
-                                          data_creator,
-                                          loss_creator=nn.MSELoss)
+Operator = TrainingOperator.from_creators(
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
 
 
 def test_single_step(ray_start_2_cpus):  # noqa: F811
-    trainer = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=1)
+    trainer = TorchTrainer(training_operator_cls=Operator, num_workers=1)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
@@ -62,11 +57,10 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
     assert val_metrics[BATCH_COUNT] == 1
     trainer.shutdown()
 
+
 def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
     TestOperator = get_test_operator(Operator)
-    trainer = TorchTrainer(
-        training_operator_cls=TestOperator,
-        num_workers=2)
+    trainer = TorchTrainer(training_operator_cls=TestOperator, num_workers=2)
     trainer.train(num_steps=1)
     trainer.shutdown()
     with pytest.raises(RuntimeError):
@@ -76,8 +70,7 @@ def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
     trainer = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers)
+        training_operator_cls=Operator, num_workers=num_workers)
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["val_loss"]
@@ -119,7 +112,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         result = {}
         data = list(iterator)
         for i, (model, optimizer) in enumerate(
-            zip(self.models, self.optimizers)):
+                zip(self.models, self.optimizers)):
             result[f"model_{i}"] = train(
                 model=model,
                 criterion=self.criterion,
@@ -130,14 +123,18 @@ def test_multi_model(ray_start_2_cpus, num_workers):
     class MultiModelOperator(TrainingOperator):
         def setup(self, config):
             models = nn.Linear(1, 1), nn.Linear(1, 1)
-            opts = [torch.optim.SGD(model.parameters(), lr=0.0001) for model \
-                    in models]
+            opts = [
+                torch.optim.SGD(model.parameters(), lr=0.0001)
+                for model in models
+            ]
             loss = nn.MSELoss()
             train_dataloader, val_dataloader = data_creator(config)
             self.models, self.optimizers, self.criterion = self.register(
-                models=models, optimizers=opts,
+                models=models,
+                optimizers=opts,
                 train_loader=train_dataloader,
-                validation_loader=val_dataloader, criterion=loss)
+                validation_loader=val_dataloader,
+                criterion=loss)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -264,9 +261,9 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
 
             self.model, self.optimizer, self.criterion, self.scheduler = \
                 self.register(
-                models=model, optimizers=optimizer,
-                criterion=loss, train_loader=train_loader,
-                validation_loader=val_loader, schedulers=scheduler)
+                    models=model, optimizers=optimizer,
+                    criterion=loss, train_loader=train_loader,
+                    validation_loader=val_loader, schedulers=scheduler)
 
     if scheduler_freq is None:
         with pytest.raises(ValueError):
@@ -283,6 +280,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
         for i in range(3):
             trainer.train()
         trainer.shutdown()
+
 
 def test_profiling(ray_start_2_cpus):  # noqa: F811
     trainer = TorchTrainer(training_operator_cls=Operator)
@@ -313,8 +311,11 @@ def test_dataset(ray_start_4_cpus):
             loss = nn.MSELoss()
 
             self.model, self.optimizer, self.criterion = self.register(
-                models=model, optimizers=optimizer, criterion=loss,
-                train_loader=None, validation_loader=None)
+                models=model,
+                optimizers=optimizer,
+                criterion=loss,
+                train_loader=None,
+                validation_loader=None)
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,
@@ -345,11 +346,11 @@ def test_split_batch(ray_start_2_cpus):
 
     data_size = 600
     batch_size = 21
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  data_creator,
-                                                  loss_creator=lambda config:
-                                                  nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        data_creator,
+        loss_creator=lambda config: nn.MSELoss())
     trainer = TorchTrainer(
         training_operator_cls=TestOperator,
         num_workers=2,
@@ -374,15 +375,15 @@ def test_reduce_result(ray_start_2_cpus):
         test_dataset = LinearDataset(2, 5, size=config["data_size"])
         return DataLoader(
             train_dataset, batch_size=1), DataLoader(
-            test_dataset, batch_size=1)
+                test_dataset, batch_size=1)
 
     data_size = 600
 
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  data_creator,
-                                                  loss_creator=lambda
-                                                      config: nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        data_creator,
+        loss_creator=lambda config: nn.MSELoss())
     trainer = TorchTrainer(
         training_operator_cls=TestOperator,
         num_workers=2,
@@ -483,24 +484,22 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
 def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  data_creator, scheduler_creator=lambda
-                                                      optimizer,
-                                                      cfg:
-                                                  ReduceLROnPlateau(
-                                                      optimizer), loss_creator=lambda
-                                                      config: nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        data_creator,
+        scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
+        loss_creator=lambda config: nn.MSELoss())
     TestOperator = get_test_operator(TestOperator)
     trainer = TorchTrainer(
-        scheduler_step_freq="manual",
-        training_operator_cls=TestOperator)
+        scheduler_step_freq="manual", training_operator_cls=TestOperator)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
     assert all(
         trainer.apply_all_operators(
             lambda op: op._schedulers[0].last_epoch == 2))
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
@@ -537,8 +536,7 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 def test_save_and_restore(ray_start_2_cpus, num_workers,
                           tmp_path):  # noqa: F811
     trainer1 = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers)
+        training_operator_cls=Operator, num_workers=num_workers)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
     trainer1.save(checkpoint_path)
@@ -548,8 +546,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers,
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=num_workers)
+        training_operator_cls=Operator, num_workers=num_workers)
     trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
@@ -568,9 +565,7 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     if not dist.is_available():
         return
     trainer1 = TorchTrainer(
-        training_operator_cls=Operator,
-        wrap_ddp=False,
-        num_workers=2)
+        training_operator_cls=Operator, wrap_ddp=False, num_workers=2)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
     trainer1.save(checkpoint_path)
@@ -581,9 +576,7 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        training_operator_cls=Operator,
-        wrap_ddp=False,
-        num_workers=2)
+        training_operator_cls=Operator, wrap_ddp=False, num_workers=2)
     trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
@@ -637,11 +630,11 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
     step_with_fail = gen_step_with_fail(3)
 
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  single_loader,
-                                                  loss_creator=lambda
-                                                      config: nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        single_loader,
+        loss_creator=lambda config: nn.MSELoss())
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
@@ -653,6 +646,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
         trainer1.shutdown(force=True)
 
+
 def test_resize(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
@@ -663,11 +657,11 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
     step_with_fail = gen_step_with_fail(1)
 
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  single_loader,
-                                                  loss_creator=lambda
-                                                      config: nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        single_loader,
+        loss_creator=lambda config: nn.MSELoss())
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
@@ -685,6 +679,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
         trainer1.shutdown()
 
+
 def test_fail_twice(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
@@ -695,11 +690,11 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
 
     step_with_fail = gen_step_with_fail(2)
 
-    TestOperator = TrainingOperator.from_creators(model_creator,
-                                                  optimizer_creator,
-                                                  single_loader,
-                                                  loss_creator=lambda
-                                                      config: nn.MSELoss())
+    TestOperator = TrainingOperator.from_creators(
+        model_creator,
+        optimizer_creator,
+        single_loader,
+        loss_creator=lambda config: nn.MSELoss())
 
     with patch.object(TorchTrainer, "_train_epoch", step_with_fail):
         trainer1 = TorchTrainer(
@@ -710,6 +705,7 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
         trainer1.shutdown()
+
 
 def test_multi_input_model(ray_start_2_cpus):
     def model_creator(config):

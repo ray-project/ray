@@ -25,6 +25,7 @@ def initialization_hook():
     # print("NCCL DEBUG SET")
     # os.environ["NCCL_DEBUG"] = "INFO"
 
+
 class CifarTrainingOperator(TrainingOperator):
     @override(TrainingOperator)
     def setup(self, config):
@@ -53,21 +54,26 @@ class CifarTrainingOperator(TrainingOperator):
                                      (0.2023, 0.1994, 0.2010)),
             ])
             train_dataset = CIFAR10(
-                root="~/data", train=True, download=True,
+                root="~/data",
+                train=True,
+                download=True,
                 transform=transform_train)
             validation_dataset = CIFAR10(
-                root="~/data", train=False, download=False,
+                root="~/data",
+                train=False,
+                download=False,
                 transform=transform_test)
 
             if config.get("test_mode"):
                 train_dataset = Subset(train_dataset, list(range(64)))
-                validation_dataset = Subset(validation_dataset,
-                                            list(range(64)))
+                validation_dataset = Subset(validation_dataset, list(
+                    range(64)))
 
             train_loader = DataLoader(
                 train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
             validation_loader = DataLoader(
-                validation_dataset, batch_size=config[BATCH_SIZE],
+                validation_dataset,
+                batch_size=config[BATCH_SIZE],
                 num_workers=2)
 
         # Create loss.
@@ -78,6 +84,7 @@ class CifarTrainingOperator(TrainingOperator):
                           train_loader=train_loader,
                           validation_loader=validation_loader,
                           criterion=criterion,)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

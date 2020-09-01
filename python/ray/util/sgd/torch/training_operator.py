@@ -6,8 +6,11 @@ import torch.nn as nn
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES, RayFileLock)
-from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
-                                          SCHEDULER_STEP_BATCH, SCHEDULER_STEP)
+from ray.util.sgd.torch.constants import (
+    SCHEDULER_STEP_EPOCH,
+    NUM_STEPS,
+    SCHEDULER_STEP_BATCH,
+)
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
@@ -79,13 +82,14 @@ class TrainingOperator:
             trainer.train()
 
     This class provides default implementations for training and validation.
-    Make sure you set ``self.model``, ``self.optimizer``, and ``self.criterion``
-    to leverage the default training and validation loops.
+    Make sure you set ``self.model``, ``self.optimizer``, and
+    ``self.criterion`` to leverage the default training and validation loops.
     If ``self.scheduler`` is set, it will only be called at a batch or epoch
-    frequency, depending on the user parameter. Be sure to set ``scheduler_step_freq``
-    in ``TorchTrainer`` to either "batch" or "epoch" to increment the scheduler
-    correctly during training. If using a learning rate scheduler
-    that depends on validation loss, you can use ``trainer.update_scheduler``.
+    frequency, depending on the user parameter. Be sure to set
+    ``scheduler_step_freq`` in ``TorchTrainer`` to either "batch" or "epoch"
+    to increment the scheduler correctly during training. If using a
+    learning rate scheduler that depends on validation loss, you can use
+    ``trainer.update_scheduler``.
 
     If you want to provide custom training and validation loops, you can do
     so using this class as well. There are two granularities that
@@ -151,8 +155,14 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self, *, models, optimizers, train_loader,
-                 validation_loader, criterion=None, schedulers=None):
+    def register(self,
+                 *,
+                 models,
+                 optimizers,
+                 train_loader,
+                 validation_loader,
+                 criterion=None,
+                 schedulers=None):
         """Registers parameters with Ray SGD. Also sets up necessary
         training components (Cuda, DDP, Distributed Sampler, Fp16).
         You do not need to handle GPU/devices in this function; ``Ray SGD``
@@ -219,18 +229,18 @@ class TrainingOperator:
         self._original_models = models
         if not isinstance(self._original_models, Iterable):
             self._original_models = [self._original_models]
-        assert all(isinstance(model, nn.Module) for model in
-                   self._original_models), (
-            f"All models must be PyTorch models: {self._original_models}.")
+        assert all(
+            isinstance(model, nn.Module) for model in self._original_models), (
+                f"All models must be PyTorch models: {self._original_models}.")
         if self.use_gpu and torch.cuda.is_available():
-            self._original_models = [model.cuda() for model in
-                                     self._original_models]
+            self._original_models = [
+                model.cuda() for model in self._original_models
+            ]
 
         logger.debug("Registering optimizers.")
         self._optimizers = optimizers
         if not isinstance(self._optimizers, Iterable):
             self._optimizers = [self._optimizers]
-
 
         logger.debug("Registering data loaders..")
         self._train_loader = train_loader
@@ -238,6 +248,7 @@ class TrainingOperator:
 
         if self._wrap_distributed_sampler:
             logging.debug("Wrapping data loaders with DistributedSampler.")
+
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
                 data_loader_args = {
@@ -263,11 +274,10 @@ class TrainingOperator:
                     self._train_loader = with_sampler(self._train_loader)
 
             if self._validation_loader is not None and should_wrap_dataloader(
-                self._validation_loader):
+                    self._validation_loader):
                 if self._add_dist_sampler:
                     self._validation_loader = with_sampler(
                         self._validation_loader)
-
 
         if schedulers:
             logger.debug("Registering scheduler.")
@@ -292,11 +302,12 @@ class TrainingOperator:
                 self._models, self._optimizers, **self._apex_args)
             self._amp = amp
 
-
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
-            self._models = [DistributedDataParallel(model,
-                                                    device_ids=self.device_ids) for model in self._original_models]
+            self._models = [
+                DistributedDataParallel(model, device_ids=self.device_ids)
+                for model in self._original_models
+            ]
         else:
             self._models = self._original_models
 
@@ -314,7 +325,7 @@ class TrainingOperator:
             return_vals.append(self._criterion)
 
         if self._schedulers is not None:
-            if self._scheduler_step_freq is None:
+            if self.scheduler_step_freq is None:
                 raise ValueError("scheduler_step_freq passed into "
                                  "TorchTrainer cannot be None if you "
                                  "are registering schedulers. Set this to "
@@ -390,10 +401,7 @@ class TrainingOperator:
                     total = len(iterator)
 
             _progress_bar = tqdm(
-                total=total,
-                desc=desc,
-                unit="batch",
-                leave=False)
+                total=total, desc=desc, unit="batch", leave=False)
 
         metric_meters = AverageMeterCollection()
 
@@ -413,13 +421,13 @@ class TrainingOperator:
                     postfix.update(loss=metrics["train_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            if scheduler and self._scheduler_step_freq == SCHEDULER_STEP_BATCH:
+            if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_BATCH:
                 scheduler.step()
 
             metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
             self.global_step += 1
 
-        if scheduler and self._scheduler_step_freq == SCHEDULER_STEP_EPOCH:
+        if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_EPOCH:
             scheduler.step()
 
         return metric_meters.summary()
@@ -613,8 +621,11 @@ class TrainingOperator:
         pass
 
     @staticmethod
-    def from_creators(model_creator, optimizer_creator, data_creator=None,
-                      loss_creator=None, scheduler_creator=None,
+    def from_creators(model_creator,
+                      optimizer_creator,
+                      data_creator=None,
+                      loss_creator=None,
+                      scheduler_creator=None,
                       serialize_data_creation=True):
         """A utility method to create a custom TrainingOperator class from
         creator functions. This is useful for backwards compatibility with
@@ -623,29 +634,30 @@ class TrainingOperator:
         of ``TrainingOperator``.
 
         Args:
-            model_creator (dict -> Model(s)): Constructor function that takes in
-                config and returns the model(s) to be optimized. These must be
-                ``torch.nn.Module`` objects. If multiple models are returned,
-                a ``training_operator_cls`` must be specified. You do not need to
-                handle GPU/devices in this function; RaySGD will do that under
-                the hood.
+            model_creator (dict -> Model(s)): Constructor function that takes
+                in config and returns the model(s) to be optimized. These
+                must be ``torch.nn.Module`` objects. If multiple models are
+                returned, a ``training_operator_cls`` must be specified.
+                You do not need to handle GPU/devices in this function;
+                RaySGD will do that under the hood.
             data_creator (dict -> Iterable(s)): Constructor function
                 that takes in the passed config and returns one or
-                two Iterable objects. Note that even though two Iterable objects
-                can be returned, only one will be used for training, and the
-                other will be used for validation. If not provided, you must
-                pass in a Dataset to ``TorchTrainer.train``.
+                two Iterable objects. Note that even though two Iterable
+                objects can be returned, only one will be used for training,
+                and the other will be used for validation. If not provided,
+                you must pass in a Dataset to ``TorchTrainer.train``.
             optimizer_creator ((models, dict) -> optimizers): Constructor
                 function that takes in the return values from
                 ``model_creator`` and the passed config and returns One or
                 more Torch optimizer objects. You do not need to handle
                 GPU/devices in this function; ``RaySGD`` will do that for you.
             loss_creator (torch.nn.*Loss class | dict -> loss): A constructor
-                function for the training loss. This can be either a function that
-                takes in the provided config for customization or a subclass
-                of ``torch.nn.modules.loss._Loss``, which is most Pytorch
-                loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-                If not provided, you must provide a custom TrainingOperator.
+                function for the training loss. This can be either a function
+                that takes in the provided config for customization or a
+                subclass of ``torch.nn.modules.loss._Loss``, which is most
+                Pytorch loss classes. For example,
+                ``loss_creator=torch.nn.BCELoss``. If not provided, you must
+                provide a custom TrainingOperator.
             scheduler_creator ((optimizers, dict) -> scheduler):
                 A constructor function for the torch scheduler. This is
                 a function that takes in the generated optimizers (from
@@ -654,8 +666,8 @@ class TrainingOperator:
                 scheduler correctly.
             serialize_data_creation (bool): A filelock will be used
                 to ensure no race conditions in data downloading among
-                different workers on the same node (using the local file system).
-                Defaults to True.
+                different workers on the same node (using the local file
+                system). Defaults to True.
 
         Returns:
             A TrainingOperator class with a ``setup`` method that utilizes
@@ -723,7 +735,7 @@ class TrainingOperator:
                 if loss_creator:
                     logger.debug("Creating loss.")
                     if inspect.isclass(loss_creator) and issubclass(
-                        loss_creator, torch.nn.modules.loss._Loss):
+                            loss_creator, torch.nn.modules.loss._Loss):
                         criterion = loss_creator()
                     else:
                         criterion = loss_creator(config)
@@ -790,6 +802,15 @@ class TrainingOperator:
         """
         return self._device_ids
 
+    @property
+    def scheduler_step_freq(self):
+        """Optional[str]: The ``scheduler_step_freq`` passed into
+        ``TorchTrainer``
+
+        This is useful to determine when to call scheduler.step.
+        """
+        return self._scheduler_step_freq
+
 
 def get_test_operator(operator_cls):
     class _TestingOperator(operator_cls):
@@ -798,7 +819,9 @@ def get_test_operator(operator_cls):
             if callable(func):
                 return func(self, iterator, info)
             return {"done": 1}
+
     return _TestingOperator
+
 
 def get_test_metrics_operator(operator_cls):
     class _TestMetricsOperator(operator_cls):

@@ -77,8 +77,7 @@ class DistributedTorchRunner(TorchRunner):
             wrap_ddp=self.wrap_ddp,
             wrap_distributed_sampler=True,
             add_dist_sampler=self.add_dist_sampler,
-            scheduler_step_freq=self.scheduler_step_freq
-        )
+            scheduler_step_freq=self.scheduler_step_freq)
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""

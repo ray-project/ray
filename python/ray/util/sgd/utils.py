@@ -250,6 +250,7 @@ def check_for_failure(remote_values):
         logger.exception(str(exc))
     return False
 
+
 class RayFileLock(FileLock):
     """Utility for serializing data loading. Extends FileLock using a
     temporary file as the lock file.
@@ -263,6 +264,7 @@ class RayFileLock(FileLock):
                     # All code here will be serialized across all workers.
                     train_data = ...
     """
+
     def __init__(self, *args, **kwargs):
         file = os.path.join(tempfile.gettempdir(), ".raydata.lock")
         super(RayFileLock, self).__init__(file, *args, **kwargs)

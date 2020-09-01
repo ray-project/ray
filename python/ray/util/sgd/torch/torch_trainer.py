@@ -155,16 +155,16 @@ class TorchTrainer:
             batch_size=None,
             data_loader_args=None,
     ):
-        if model_creator or data_creator or optimizer_creator or \
-            scheduler_creator or loss_creator:
+        if (model_creator or data_creator or optimizer_creator
+                or scheduler_creator or loss_creator):
             raise DeprecationWarning(
                 "Creator functions are deprecated. You should create a "
                 "custom TrainingOperator, override setup, and register all "
                 "training state there. See TrainingOperator for more info. "
                 "If you would still like to use creator functions, you can "
                 "do CustomOperator = TrainingOperator.from_creators("
-                "model_creator, ...) and pass in CustomOperator into TorchTrainer."
-            )
+                "model_creator, ...) and pass in CustomOperator into "
+                "TorchTrainer.")
 
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
@@ -189,8 +189,7 @@ class TorchTrainer:
                 "serialize_data_creation is deprecated and will be ignored. "
                 "If you require serialized data loading you should use "
                 "implement this in TrainingOperator.setup. You may find "
-                "sgd.utils.RayFileLock useful here."
-            )
+                "sgd.utils.RayFileLock useful here.")
 
         if data_loader_args:
             raise DeprecationWarning(

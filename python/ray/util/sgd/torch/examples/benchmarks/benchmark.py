@@ -73,14 +73,16 @@ def init_hook():
 class Training(TrainingOperator):
     def setup(self, config):
         model = getattr(models, config.get("model"))()
-        optimizer = optim.SGD(model.parameters(), lr=0.01 * config[
-            "lr_scaler"])
-        train_data = LinearDataset(4, 2) # Have to use dummy data for training.
+        optimizer = optim.SGD(
+            model.parameters(), lr=0.01 * config["lr_scaler"])
+        train_data = LinearDataset(4,
+                                   2)  # Have to use dummy data for training.
 
-        self.model, self.optimizer = self.register(models=model,
-                                                   optimizers=optimizer,
-                                                   train_loader=train_data,
-                                                   validation_loader=None)
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+            train_loader=train_data,
+            validation_loader=None)
         data = torch.randn(args.batch_size, 3, 224, 224)
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:

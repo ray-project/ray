@@ -1,25 +1,14 @@
-from filelock import FileLock
 import logging
-import inspect
 import io
 import itertools
-import os
-import tempfile
 import torch
-import torch.nn as nn
 
 import ray
-from ray.util.sgd.torch.constants import USE_FP16, SCHEDULER_STEP, NUM_STEPS
-from ray.util.sgd.torch.training_operator import TrainingOperator
+from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
 amp = None
-
-try:
-    from collections.abc import Iterable
-except ImportError:
-    from collections import Iterable
 
 try:
     from apex import amp
@@ -57,16 +46,16 @@ class TorchRunner:
                 "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
-
     def setup_operator(self):
         """Create the training operator."""
-        self.training_operator = self.training_operator_cls(self.config,
-                                                            world_rank=0,
-                                                            use_gpu=self.use_gpu,
-                                                            use_fp16=self.use_fp16,
-                                                            use_tqdm=self.use_tqdm,
-                                                            apex_args=self.apex_args,
-                                                            scheduler_step_freq=self.scheduler_step_freq)
+        self.training_operator = self.training_operator_cls(
+            self.config,
+            world_rank=0,
+            use_gpu=self.use_gpu,
+            use_fp16=self.use_fp16,
+            use_tqdm=self.use_tqdm,
+            apex_args=self.apex_args,
+            scheduler_step_freq=self.scheduler_step_freq)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -171,8 +160,7 @@ class TorchRunner:
             optimizer.load_state_dict(state_dict)
         schedulers = self.schedulers
         if schedulers:
-            for scheduler, state_dict in zip(schedulers,
-                                             state["schedulers"]):
+            for scheduler, state_dict in zip(schedulers, state["schedulers"]):
                 scheduler.load_state_dict(state_dict)
 
         if self.use_fp16 and "amp" in state and self.training_operator._amp:

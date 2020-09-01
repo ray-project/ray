@@ -92,6 +92,7 @@ def announce_training(args, dataset_len, t_total):
                 args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
+
 class TransformerOperator(TrainingOperator):
     def setup(self, config):
         self.args = args = config["args"]
@@ -120,7 +121,8 @@ class TransformerOperator(TrainingOperator):
             label_list = processor.get_labels()
             num_labels = len(label_list)
             model_config = AutoConfig.from_pretrained(
-                args.config_name if args.config_name else args.model_name_or_path,
+                args.config_name
+                if args.config_name else args.model_name_or_path,
                 num_labels=num_labels,
                 finetuning_task=args.task_name,
                 cache_dir=args.cache_dir if args.cache_dir else None,
@@ -157,10 +159,11 @@ class TransformerOperator(TrainingOperator):
             eps=args.adam_epsilon)
 
         # Register components.
-        self.model, self.optimizer = self.register(models=model,
-                                                   optimizers=optimizer,
-                                                   train_loader=train_loader,
-                                                   validation_loader=None)
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+            train_loader=train_loader,
+            validation_loader=None)
 
         self.train_data_len = len(self.train_loader)
         self._warmup_scheduler = get_linear_schedule_with_warmup(

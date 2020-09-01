@@ -24,7 +24,6 @@ from ray.util.sgd.torch import TrainingOperator
 MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
 
 
-
 class Generator(nn.Module):
     def __init__(self, latent_vector_size, features=32, num_channels=1):
         super(Generator, self).__init__()
@@ -85,6 +84,7 @@ class LeNet(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
+
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
@@ -93,22 +93,25 @@ def weights_init(m):
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
+
 class GANOperator(TrainingOperator):
     def setup(self, config):
         discriminator = Discriminator()
         discriminator.apply(weights_init)
 
         generator = Generator(
-            latent_vector_size=config.get("latent_vector_size", 100)
-        )
+            latent_vector_size=config.get("latent_vector_size", 100))
         generator.apply(weights_init)
         models = (discriminator, generator)
 
-        discriminator_opt = optim.Adam(discriminator.parameters(),
-                                       lr=config.get("lr", 0.01), betas=(
-                0.5, 0.999))
-        generator_opt = optim.Adam(generator.parameters(), lr=config.get(
-            "lr", 0.01), betas=(0.5, 0.999))
+        discriminator_opt = optim.Adam(
+            discriminator.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(0.5, 0.999))
+        generator_opt = optim.Adam(
+            generator.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(0.5, 0.999))
         optimizers = (discriminator_opt, generator_opt)
 
         with RayFileLock():
@@ -118,7 +121,7 @@ class GANOperator(TrainingOperator):
                 transform=transforms.Compose([
                     transforms.Resize(32),
                     transforms.ToTensor(),
-                    transforms.Normalize((0.5,), (0.5,)),
+                    transforms.Normalize((0.5, ), (0.5, )),
                 ]))
             if config.get("test_mode"):
                 dataset = torch.utils.data.Subset(dataset, list(range(64)))
@@ -127,9 +130,10 @@ class GANOperator(TrainingOperator):
 
         self.models, self.optimizers, self.criterion = self.register(
             models=models,
-                                           optimizers=optimizers,
-                      train_loader=train_dataloader,
-                      validation_loader=None, criterion=nn.BCELoss())
+            optimizers=optimizers,
+            train_loader=train_dataloader,
+            validation_loader=None,
+            criterion=nn.BCELoss())
 
         self.model = self.models[0]
         self.optimizer = self.optimizers[0]

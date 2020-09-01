@@ -50,6 +50,7 @@ def get_dataset(name,
         ds = ds_fn(p, download=True, image_set=image_set, transforms=transform)
     return ds, num_classes
 
+
 def get_transform(train):
     base_size = 520
     crop_size = 480
@@ -136,10 +137,11 @@ class SegOperator(TrainingOperator):
             weight_decay=args.weight_decay)
 
         # Register components.
-        self.model, self.optimizer = self.register(models=model,
-                                                   optimizers=optimizer,
-                                                   train_loader=data_loader,
-                                                   validation_loader=data_loader_test)
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+            train_loader=data_loader,
+            validation_loader=data_loader_test)
 
     def train_batch(self, batch, batch_info):
         image, target = batch
@@ -169,7 +171,6 @@ class SegOperator(TrainingOperator):
 
             confmat.reduce_from_all_processes()
         return confmat
-
 
 
 def main(args):

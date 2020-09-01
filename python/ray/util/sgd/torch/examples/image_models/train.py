@@ -132,8 +132,10 @@ def main():
     ray.init(address=args.ray_address)
 
     CustomTrainingOperator = TrainingOperator.from_creators(
-        model_creator=model_creator, optimizer_creator=optimizer_creator,
-        data_creator=data_creator, loss_creator=loss_creator)
+        model_creator=model_creator,
+        optimizer_creator=optimizer_creator,
+        data_creator=data_creator,
+        loss_creator=loss_creator)
     trainer = TorchTrainer(
         training_operator_cls=CustomTrainingOperator,
         use_tqdm=True,
