@@ -40,7 +40,7 @@ struct Mocker {
     auto resource = std::unordered_map<std::string, double>();
     builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, resource,
-                              resource);
+                              resource, PlacementGroupID::Nil());
     builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
@@ -89,14 +89,16 @@ struct Mocker {
   }
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
-      const std::string name = "") {
+      const std::string name = "",
+      rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,
+      int bundles_count = 2, double cpu_num = 1.0) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
-    rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD;
     std::unordered_map<std::string, double> bundle;
-    bundle["CPU"] = 1.0;
-    bundles.push_back(bundle);
-    bundles.push_back(bundle);
+    bundle["CPU"] = cpu_num;
+    for (int index = 0; index < bundles_count; ++index) {
+      bundles.push_back(bundle);
+    }
     auto placement_group_creation_spec =
         GenPlacementGroupCreation(name, bundles, strategy);
     request.mutable_placement_group_spec()->CopyFrom(

@@ -76,12 +76,12 @@ class StatsConfig final {
   /// If true, don't collect metrics in this process.
   bool is_stats_disabled_ = true;
   // Regular reporting interval for all reporters.
-  absl::Duration report_interval_ = absl::Seconds(10);
+  absl::Duration report_interval_ = absl::Milliseconds(10000);
   // Time interval for periodic aggregation.
   // Exporter may capture empty collection if harvest interval is longer than
   // report interval. So harvest interval is suggusted to be half of report
   // interval.
-  absl::Duration harvest_interval_ = absl::Seconds(5);
+  absl::Duration harvest_interval_ = absl::Milliseconds(5000);
   // Whether or not if the stats has been initialized.
   bool is_initialized_ = false;
 };
@@ -185,7 +185,9 @@ struct MetricPoint {
   int64_t timestamp;
   double value;
   std::unordered_map<std::string, std::string> tags;
+  const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
+
 }  // namespace stats
 
 }  // namespace ray

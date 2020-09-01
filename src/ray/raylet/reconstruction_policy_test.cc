@@ -12,21 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/reconstruction_policy.h"
+
+#include <boost/asio.hpp>
 #include <list>
 
 #include "absl/time/clock.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
-#include <boost/asio.hpp>
-
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_accessor.h"
-
-#include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/reconstruction_policy.h"
-
 #include "ray/object_manager/object_directory.h"
+#include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
 
@@ -48,6 +45,7 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MockObjectDirectory() {}
 
   ray::Status LookupLocations(const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const OnLocationsFound &callback) override {
     callbacks_.push_back({object_id, callback});
     return ray::Status::OK();
@@ -82,9 +80,9 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD0(GetLocalClientID, ray::ClientID());
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
-  MOCK_METHOD3(SubscribeObjectLocations,
+  MOCK_METHOD4(SubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &,
-                           const OnLocationsFound &));
+                           const rpc::Address &owner_address, const OnLocationsFound &));
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
@@ -281,10 +279,10 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
 
   // Listen for an object.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered for the task that created the
@@ -299,11 +297,11 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
   mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
 
   // Listen for both objects.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was not triggered, since the objects still
@@ -322,12 +320,12 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
   ClientID client_id = ClientID::FromRandom();
   mock_object_directory_->SetObjectLocations(object_id, {client_id});
 
   // Listen for both objects.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was not triggered, since the objects still
@@ -346,12 +344,12 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
 TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
   // Create two object IDs produced by the same task.
   TaskID task_id = ForNormalTask();
-  ObjectID object_id1 = ObjectID::ForTaskReturn(task_id, /*index=*/1);
-  ObjectID object_id2 = ObjectID::ForTaskReturn(task_id, /*index=*/2);
+  ObjectID object_id1 = ObjectID::FromIndex(task_id, /*index=*/1);
+  ObjectID object_id2 = ObjectID::FromIndex(task_id, /*index=*/2);
 
   // Listen for both objects.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id1);
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id2);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id1, rpc::Address());
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id2, rpc::Address());
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction is only triggered once for the task that created
@@ -366,7 +364,7 @@ TEST_F(ReconstructionPolicyTest, TestDuplicateReconstruction) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
   // Run the test for much longer than the reconstruction timeout.
   int64_t test_period = 2 * reconstruction_timeout_ms_;
 
@@ -379,7 +377,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   RAY_CHECK_OK(mock_gcs_->Tasks().AsyncAddTaskLease(task_lease_data, nullptr));
 
   // Listen for an object.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test.
   Run(test_period);
   // Check that reconstruction is suppressed by the active task lease.
@@ -393,10 +391,10 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
 
   // Listen for an object.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseData>();
@@ -421,10 +419,10 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
 
 TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
 
   // Listen for an object.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Halfway through the reconstruction timeout, cancel the object
   // reconstruction.
   auto timer_period = boost::posix_time::milliseconds(reconstruction_timeout_ms_);
@@ -438,7 +436,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
   ASSERT_TRUE(reconstructed_tasks_.empty());
 
   // Listen for the object again.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that this time, reconstruction is triggered.
@@ -447,7 +445,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionCanceled) {
 
 TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   TaskID task_id = ForNormalTask();
-  ObjectID object_id = ObjectID::ForTaskReturn(task_id, /*index=*/1);
+  ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
 
   // Log a reconstruction attempt to simulate a different node attempting the
   // reconstruction first. This should suppress this node's first attempt at
@@ -462,7 +460,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
       [](Status status) { ASSERT_TRUE(status.ok()); }));
 
   // Listen for an object.
-  reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
+  reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
   // Run the test for longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction is suppressed by the reconstruction attempt

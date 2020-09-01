@@ -13,11 +13,7 @@ import logging
 import logging.handlers
 import os
 import traceback
-import uuid
 
-import aioredis
-
-import ray
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.head as dashboard_head
 import ray.new_dashboard.utils as dashboard_utils
@@ -32,7 +28,7 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-def setup_static_dir(app):
+def setup_static_dir():
     build_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "client/build")
     module_name = os.path.basename(os.path.dirname(__file__))
@@ -41,13 +37,13 @@ def setup_static_dir(app):
             errno.ENOENT, "Dashboard build directory not found. If installing "
             "from source, please follow the additional steps "
             "required to build the dashboard"
-            "(cd python/ray/{}/client "
+            f"(cd python/ray/{module_name}/client "
             "&& npm install "
             "&& npm ci "
-            "&& npm run build)".format(module_name), build_dir)
+            "&& npm run build)", build_dir)
 
     static_dir = os.path.join(build_dir, "static")
-    app.router.add_static("/static", static_dir, follow_symlinks=True)
+    routes.static("/static", static_dir, follow_symlinks=True)
     return build_dir
 
 
@@ -62,29 +58,25 @@ class Dashboard:
         host(str): Host address of dashboard aiohttp server.
         port(int): Port number of dashboard aiohttp server.
         redis_address(str): GCS address of a Ray cluster
-        temp_dir (str): The temporary directory used for log files and
-            information for this Ray session.
         redis_password(str): Redis password to access GCS
+        log_dir(str): Log directory of dashboard.
     """
 
     def __init__(self,
                  host,
                  port,
                  redis_address,
-                 temp_dir,
-                 redis_password=None):
-        self.host = host
-        self.port = port
-        self.temp_dir = temp_dir
-        self.dashboard_id = str(uuid.uuid4())
+                 redis_password=None,
+                 log_dir=None):
         self.dashboard_head = dashboard_head.DashboardHead(
-            redis_address=redis_address, redis_password=redis_password)
-
-        self.app = aiohttp.web.Application()
-        self.app.add_routes(routes=routes.routes())
+            http_host=host,
+            http_port=port,
+            redis_address=redis_address,
+            redis_password=redis_password,
+            log_dir=log_dir)
 
         # Setup Dashboard Routes
-        build_dir = setup_static_dir(self.app)
+        build_dir = setup_static_dir()
         logger.info("Setup static dir for dashboard: %s", build_dir)
         dashboard_utils.ClassMethodRouteTable.bind(self)
 
@@ -103,17 +95,7 @@ class Dashboard:
                 "client/build/favicon.ico"))
 
     async def run(self):
-        coroutines = [
-            self.dashboard_head.run(),
-            aiohttp.web._run_app(self.app, host=self.host, port=self.port)
-        ]
-        ip = ray.services.get_node_ip_address()
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self.dashboard_head.redis_address,
-            password=self.dashboard_head.redis_password)
-        await aioredis_client.set(dashboard_consts.REDIS_KEY_DASHBOARD,
-                                  ip + ":" + str(self.port))
-        await asyncio.gather(*coroutines)
+        await self.dashboard_head.run()
 
 
 if __name__ == "__main__":
@@ -158,9 +140,10 @@ if __name__ == "__main__":
         "--logging-filename",
         required=False,
         type=str,
-        default="",
+        default=dashboard_consts.DASHBOARD_LOG_FILENAME,
         help="Specify the name of log file, "
-        "log to stdout if set empty, default is \"\"")
+        "log to stdout if set empty, default is \"{}\"".format(
+            dashboard_consts.DASHBOARD_LOG_FILENAME))
     parser.add_argument(
         "--logging-rotate-bytes",
         required=False,
@@ -221,8 +204,8 @@ if __name__ == "__main__":
             args.host,
             args.port,
             args.redis_address,
-            temp_dir,
-            redis_password=args.redis_password)
+            redis_password=args.redis_password,
+            log_dir=log_dir)
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:

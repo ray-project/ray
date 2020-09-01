@@ -3,10 +3,12 @@ Ray Dashboard
 Ray's built-in dashboard provides metrics, charts, and other features that help
 Ray users to understand Ray clusters and libraries.
 
-Through the dashboard, you can
-
+The dashboard lets you:
 - View cluster metrics.
-- Visualize the actor relationships and statistics.
+- See errors and exceptions at a glance.
+- View logs across many machines in a single pane.
+- Understand Ray memory utilization and debug memory errors.
+- See per-actor resource usage, executed tasks, logs, and more.
 - Kill actors and profile your Ray jobs.
 - See Tune jobs and trial information.
 - Detect cluster anomalies and debug them.
@@ -52,7 +54,8 @@ Logical View
 The logical view shows you:
 
 - Created and killed actors.
-- Actor statistics such as actor status, number of executed tasks, pending tasks, and memory usage.
+- State of actors (e.g. Alive, Dead, Pending Creation). Learn more about actor states at 
+- Actor statistics such as number of executed tasks, pending tasks, and memory usage.
 - Actor hierarchy.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/Logical-view-basic.png
@@ -63,7 +66,7 @@ Memory View
 The memory view shows you:
 
 - The state of Ray objects, including their size, reference type, and call site.
-- A summary of reference types and object sizes in use.
+- The aggregate amount of memory being used by various groups, such as line of code, or the node.
 
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/dashboard/Memory-view-basic.png
     :align: center
@@ -140,6 +143,9 @@ is bigger than the total gpus available in this cluster (2 GPUs).
 Debugging ObjectStoreFullError and Memory Leak
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can view information for Ray objects in the memory tab. It is useful to debug memory leaks, especially `ObjectStoreFullError`.
+
+One common cause of these memory errors is that there are objects which never go out of scope. In order to find these, you can go to the Memory View, then select to "Group By Stack Trace." This groups memory entries by their stack traces up to three frames deep. If you see a group which is growing without bound, you might want to examine that line of code to see if you intend to keep that reference around.
+
 Note that this is the same information as displayed in the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_. For details about the information contained in the table, please see the `ray memory` documentation.
 
 Inspect Memory Usage
@@ -246,31 +252,33 @@ Logical View (Experimental)
 
 **State**: State of an actor.
 
-- 0: Alive
-- 1: Restarting
-- 2: Dead
+- Alive
+- Restarting
+- Dead
+- Infeasible (cannot be created due to not enough available resources (e.g. CPUs, GPUs, memory) in the cluster, even at full capacity)
+- Pending Creation
+- Dependencies Unready (waiting for one or more of its arguments to be ready)
 
-**Pending**: A number of pending tasks for this actor.
+**Number of Pending Tasks**: The number of method calls for this actor that are still awaiting execution.
 
-**Excuted**: A number of executed tasks for this actor.
+**Number of Excuted Tasks**: A number of completed method calls for this actor.
 
-**NumObjectRefsInScope**: Number of object refs in scope for this actor. object refs
+**Number of ObjectRefs In Scope**: The number of object refs in scope for this actor, which correspond to objects in the Ray object store. object refs
 in scope will not be evicted unless object stores are full.
 
-**NumLocalObjects**: Number of object refs that are in this actor's local memory.
-Only big objects (>100KB) are residing in plasma object stores, and other small
+**Number of Local Objects**: Number of object refs that are in this actor's local memory.
+Only big objects (>100KB) reside in plasma object stores, and other small
 objects are staying in local memory.
 
-**UsedLocalObjectMemory**: Used memory used by local objects.
+**Used Local Object Memory**: Used memory used by local objects.
 
-**kill actor**: A button to kill an actor in a cluster. It is corresponding to ``ray.kill``.
+**kill actor**: A button to kill an actor in a cluster. It has the same effect as calling ``ray.kill`` on an actor handle.
 
-**profile for**: A button to run profiling. We currently support profiling for 10s,
-30s and 60s. It requires passwordless ``sudo``.
+**profile**: A button to run profiling. We currently support profiling for 10s,
+30s and 60s. It requires passwordless ``sudo``. The result of profiling is a py-spy html output displaying how much CPU time the actor spent in various methods. 
 
 **Infeasible Actor Creation**: Actor creation is infeasible when an actor
-requires more resources than a Ray cluster can provide. This is depicted
-as a red colored actor.
+requires more resources than a Ray cluster can provide, for example an actor that requires a GPU on a cluster that has none. The actor's state is marked "Infeasible" and highlighted in red.
 
 **Pending Actor Creation**: Actor creation is pending when there are no
 available resources for this actor because they are already taken by other
@@ -315,7 +323,7 @@ Memory
 
 **IP Address**: Node IP Address where a Ray object is pinned.
 
-**Pid**: ID of a process where a Ray object is being used.
+**PID**: ID of a process where a Ray object is being used.
 
 **Type**: Type of a process. It is either a driver or worker.
 
@@ -325,7 +333,7 @@ Memory
 
 **Reference Type**: Reference types of Ray objects. Checkout the `ray memory command <https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory>`_ to learn each reference type.
 
-**Call Site**: Call site where this Ray object is referenced.
+**Call Site**: Call site where this Ray object is referenced, up to three stack frames deep.
 
 Ray Config
 ~~~~~~~~~~~~

@@ -21,6 +21,32 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
+SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+  SchedulingClass sched_cls_id;
+  absl::MutexLock lock(&mutex_);
+  auto it = sched_cls_to_id_.find(sched_cls);
+  if (it == sched_cls_to_id_.end()) {
+    sched_cls_id = ++next_sched_id_;
+    // TODO(ekl) we might want to try cleaning up task types in these cases
+    if (sched_cls_id > 100) {
+      RAY_LOG(WARNING) << "More than " << sched_cls_id
+                       << " types of tasks seen, this may reduce performance.";
+    } else if (sched_cls_id > 1000) {
+      RAY_LOG(ERROR) << "More than " << sched_cls_id
+                     << " types of tasks seen, this may reduce performance.";
+    }
+    sched_cls_to_id_[sched_cls] = sched_cls_id;
+    sched_id_to_cls_[sched_cls_id] = sched_cls;
+  } else {
+    sched_cls_id = it->second;
+  }
+  return sched_cls_id;
+}
+
+const PlacementGroupID TaskSpecification::PlacementGroupId() const {
+  return PlacementGroupID::FromBinary(message_->placement_group_id());
+}
+
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_->required_resources());
   auto required_placement_resources =
@@ -48,23 +74,7 @@ void TaskSpecification::ComputeResources() {
 
     // Map the scheduling class descriptor to an integer for performance.
     auto sched_cls = GetRequiredResources();
-    absl::MutexLock lock(&mutex_);
-    auto it = sched_cls_to_id_.find(sched_cls);
-    if (it == sched_cls_to_id_.end()) {
-      sched_cls_id_ = ++next_sched_id_;
-      // TODO(ekl) we might want to try cleaning up task types in these cases
-      if (sched_cls_id_ > 100) {
-        RAY_LOG(WARNING) << "More than " << sched_cls_id_
-                         << " types of tasks seen, this may reduce performance.";
-      } else if (sched_cls_id_ > 1000) {
-        RAY_LOG(ERROR) << "More than " << sched_cls_id_
-                       << " types of tasks seen, this may reduce performance.";
-      }
-      sched_cls_to_id_[sched_cls] = sched_cls_id_;
-      sched_id_to_cls_[sched_cls_id_] = sched_cls;
-    } else {
-      sched_cls_id_ = it->second;
-    }
+    sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
 
@@ -106,7 +116,7 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
+  return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {

@@ -19,6 +19,14 @@ namespace ray.object_manager.protocol;
 table ObjectInfo {
   // Object ID of this object.
   object_id: string;
+  // Owner raylet ID of this object.
+  owner_raylet_id: string;
+  // Owner IP address of this object.
+  owner_ip_address: string;
+  // Owner port address of this object.
+  owner_port: int;
+  // Unique id for the owner worker.
+  owner_worker_id: string;
   // Number of bytes the content of this object occupies in memory.
   data_size: long;
   // Number of bytes the metadata of this object occupies in memory.

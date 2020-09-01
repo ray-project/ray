@@ -1,6 +1,8 @@
 import copy
 import logging
+from pickle import PicklingError
 import os
+from typing import Sequence
 
 from ray.tune.error import TuneError
 from ray.tune.function_runner import detect_checkpoint_function
@@ -45,6 +47,31 @@ def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
                 "`upload_dir` must be provided.")
 
 
+def _validate_log_to_file(log_to_file):
+    """Validate ``tune.run``'s ``log_to_file`` parameter. Return
+    validated relative stdout and stderr filenames."""
+    if not log_to_file:
+        stdout_file = stderr_file = None
+    elif isinstance(log_to_file, bool) and log_to_file:
+        stdout_file = "stdout"
+        stderr_file = "stderr"
+    elif isinstance(log_to_file, str):
+        stdout_file = stderr_file = log_to_file
+    elif isinstance(log_to_file, Sequence):
+        if len(log_to_file) != 2:
+            raise ValueError(
+                "If you pass a Sequence to `log_to_file` it has to have "
+                "a length of 2 (for stdout and stderr, respectively). The "
+                "Sequence you passed has length {}.".format(len(log_to_file)))
+        stdout_file, stderr_file = log_to_file
+    else:
+        raise ValueError(
+            "You can pass a boolean, a string, or a Sequence of length 2 to "
+            "`log_to_file`, but you passed something else ({}).".format(
+                type(log_to_file)))
+    return stdout_file, stderr_file
+
+
 class Experiment:
     """Tracks experiment specifications.
 
@@ -81,7 +108,9 @@ class Experiment:
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
+                 trial_dirname_creator=None,
                  loggers=None,
+                 log_to_file=False,
                  sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
@@ -93,13 +122,12 @@ class Experiment:
                  restore=None):
 
         config = config or {}
-
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
-                raise ValueError(
-                    "'checkpoint_at_end' cannot be used with a "
-                    "checkpointable function. You can specify and register "
-                    "checkpoints within your trainable function.")
+                raise ValueError("'checkpoint_at_end' cannot be used with a "
+                                 "checkpointable function. You can specify "
+                                 "and register checkpoints within "
+                                 "your trainable function.")
             if checkpoint_freq:
                 raise ValueError(
                     "'checkpoint_freq' cannot be used with a "
@@ -133,6 +161,8 @@ class Experiment:
 
         _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
+        stdout_file, stderr_file = _validate_log_to_file(log_to_file)
+
         spec = {
             "run": self._run_identifier,
             "stop": stopping_criteria,
@@ -144,7 +174,9 @@ class Experiment:
             "upload_dir": upload_dir,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
+            "trial_dirname_creator": trial_dirname_creator,
             "loggers": loggers,
+            "log_to_file": (stdout_file, stderr_file),
             "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
@@ -213,7 +245,24 @@ class Experiment:
             else:
                 logger.warning(
                     "No name detected on trainable. Using {}.".format(name))
-            register_trainable(name, run_object)
+            try:
+                register_trainable(name, run_object)
+            except (TypeError, PicklingError) as e:
+                msg = (
+                    f"{str(e)}. The trainable ({str(run_object)}) could not "
+                    "be serialized, which is needed for parallel execution. "
+                    "To diagnose the issue, try the following:\n\n"
+                    "\t- Run `tune.utils.diagnose_serialization(trainable)` "
+                    "to check if non-serializable variables are captured "
+                    "in scope.\n"
+                    "\t- Try reproducing the issue by calling "
+                    "`pickle.dumps(trainable)`.\n"
+                    "\t- If the error is typing-related, try removing "
+                    "the type annotations and try again.\n\n"
+                    "If you have any suggestions on how to improve "
+                    "this error message, please reach out to the "
+                    "Ray developers on github.com/ray-project/ray/issues/")
+                raise type(e)(msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")

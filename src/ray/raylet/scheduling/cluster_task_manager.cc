@@ -31,6 +31,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t _unused;
+    // TODO (Alex): We should distinguish between infeasible tasks and a fully
+    // utilized cluster.
     std::string node_id_string =
         cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
@@ -39,7 +41,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        did_schedule = did_schedule || WaitForTaskArgsRequests(work);
+        // Warning: WaitForTaskArgsRequests must execute (do not let it short
+        // circuit if did_schedule is true).
+        bool task_scheduled = WaitForTaskArgsRequests(work);
+        did_schedule = task_scheduled || did_schedule;
       } else {
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
@@ -125,15 +130,17 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    worker->AssignJobId(spec.JobId());
+    if (!RayConfig::instance().enable_multi_tenancy()) {
+      worker->AssignJobId(spec.JobId());
+    }
     worker->SetAssignedTask(task);
     Dispatch(worker, leased_workers, spec, reply, callback);
   }
 }
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
-  Work work = std::make_tuple(task, reply, send_reply_callback);
+                                   std::function<void(void)> callback) {
+  Work work = std::make_tuple(task, reply, callback);
   tasks_to_schedule_.push_back(work);
 }
 
@@ -147,17 +154,63 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
+void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
+  cluster_resource_scheduler_->SubtractCPUResourceInstances(
+      worker->GetBorrowedCPUInstances());
+  cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+  worker->ClearAllocatedInstances();
+}
+
+bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+  for (auto iter = tasks_to_schedule_.begin(); iter != tasks_to_schedule_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_schedule_.erase(iter);
+      return true;
+    }
+  }
+  for (auto iter = tasks_to_dispatch_.begin(); iter != tasks_to_dispatch_.end(); iter++) {
+    if (std::get<0>(*iter).GetTaskSpecification().TaskId() == task_id) {
+      tasks_to_dispatch_.erase(iter);
+      return true;
+    }
+  }
+
+  auto iter = waiting_tasks_.find(task_id);
+  if (iter != waiting_tasks_.end()) {
+    waiting_tasks_.erase(iter);
+    return true;
+  }
+
+  return false;
+}
+
+std::string ClusterTaskManager::DebugString() {
+  std::stringstream buffer;
+  buffer << "========== Node: " << self_node_id_ << " =================\n";
+  buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
+  buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
+  buffer << "cluster_resource_scheduler state: "
+         << cluster_resource_scheduler_->DebugString() << "\n";
+  buffer << "==================================================";
+  return buffer.str();
+}
+
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
-    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
+    std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    std::function<void(void)> send_reply_callback) {
+  // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-  RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
-  leased_workers_[worker->WorkerId()] = worker;
+
+  RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
+  leased_workers[worker->WorkerId()] = worker;
+
+  // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
   if (task_spec.IsActorCreationTask()) {
     allocated_resources = worker->GetLifetimeAllocatedInstances();
@@ -202,16 +255,18 @@ void ClusterTaskManager::Dispatch(
       }
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  // Send the result back.
+  send_reply_callback();
 }
 
 void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
+                                   std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
   reply->mutable_retry_at_raylet_address()->set_port(port);
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback();
 }
 
 }  // namespace raylet

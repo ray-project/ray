@@ -3,7 +3,7 @@ import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.types import TensorType, List, Union, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, List, Union, ModelConfigDict
 
 
 @DeveloperAPI
@@ -17,9 +17,9 @@ class ActionDistribution:
 
     @DeveloperAPI
     def __init__(self, inputs: List[TensorType], model: ModelV2):
-        """Initialize the action dist.
+        """Initializes an ActionDist object.
 
-        Arguments:
+        Args:
             inputs (Tensors): input vector to compute samples from.
             model (ModelV2): reference to model producing the inputs. This
                 is mainly useful if you want to use model variables to compute

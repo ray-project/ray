@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/service_based_accessor.h"
+
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
@@ -708,15 +709,26 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
+  absl::MutexLock lock(&mutex_);
+  cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+      cached_heartbeat_,
+      [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
         }
       });
   return Status::OK();
+}
+
+void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
+  absl::MutexLock lock(&mutex_);
+  if (cached_heartbeat_.has_heartbeat()) {
+    RAY_LOG(INFO) << "Rereport heartbeat.";
+    client_impl_->GetGcsRpcClient().ReportHeartbeat(
+        cached_heartbeat_,
+        [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
@@ -835,15 +847,19 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        if (status.ok() && reply.has_config()) {
-          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
-          callback(status,
-                   std::unordered_map<std::string, std::string>(
-                       reply.config().config().begin(), reply.config().config().end()));
+        boost::optional<std::unordered_map<std::string, std::string>> config;
+        if (status.ok()) {
+          if (reply.has_config()) {
+            RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
+            config = std::unordered_map<std::string, std::string>(
+                reply.config().config().begin(), reply.config().config().end());
+          } else {
+            RAY_LOG(DEBUG) << "No internal config was stored.";
+          }
         } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-          callback(status, boost::none);
         }
+        callback(status, config);
       });
   return Status::OK();
 }
@@ -1323,21 +1339,12 @@ ServiceBasedErrorInfoAccessor::ServiceBasedErrorInfoAccessor(
 Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
     const StatusCallback &callback) {
-  JobID job_id = JobID::FromBinary(data_ptr->job_id());
-  std::string type = data_ptr->type();
-  RAY_LOG(DEBUG) << "Reporting job error, job id = " << job_id << ", type = " << type;
-  rpc::ReportJobErrorRequest request;
-  request.mutable_error_data()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportJobError(
-      request, [job_id, type, callback](const Status &status,
-                                        const rpc::ReportJobErrorReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
-                       << ", job id = " << job_id << ", type = " << type;
-      });
-  return Status::OK();
+  auto job_id = JobID::FromBinary(data_ptr->job_id());
+  RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
+  Status status = client_impl_->GetGcsPubSub().Publish(
+      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
+  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+  return status;
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
@@ -1450,7 +1457,46 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                          << placement_group_spec.PlacementGroupId();
+        } else {
+          RAY_LOG(ERROR) << "Placement group id = "
+                         << placement_group_spec.PlacementGroupId()
+                         << " failed to be registered. " << status;
         }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  rpc::RemovePlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().RemovePlacementGroup(
+      request,
+      [callback](const Status &status, const rpc::RemovePlacementGroupReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
+    const PlacementGroupID &placement_group_id,
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+  RAY_LOG(DEBUG) << "Getting placement group info, placement group id = "
+                 << placement_group_id;
+  rpc::GetPlacementGroupRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().GetPlacementGroup(
+      request, [placement_group_id, callback](const Status &status,
+                                              const rpc::GetPlacementGroupReply &reply) {
+        if (reply.has_placement_group_table_data()) {
+          callback(status, reply.placement_group_table_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
+                       << placement_group_id;
       });
   return Status::OK();
 }

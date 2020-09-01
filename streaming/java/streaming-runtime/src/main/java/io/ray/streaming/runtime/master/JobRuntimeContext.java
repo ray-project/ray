@@ -8,7 +8,6 @@ import java.io.Serializable;
 
 /**
  * Runtime context for job master.
- *
  * <p>Including: graph, resource, checkpoint info, etc.
  */
 public class JobRuntimeContext implements Serializable {

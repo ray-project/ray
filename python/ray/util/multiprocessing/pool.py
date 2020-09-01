@@ -168,7 +168,7 @@ class AsyncResult:
         """
 
         if not self.ready():
-            raise ValueError("{0!r} not ready".format(self))
+            raise ValueError(f"{self!r} not ready")
         return not self._result_thread.got_error()
 
 
@@ -355,8 +355,8 @@ class Pool:
                     os.environ[RAY_ADDRESS_ENV]))
                 ray.init()
             elif ray_address is not None:
-                logger.info("Connecting to ray cluster at address='{}'".format(
-                    ray_address))
+                logger.info(
+                    f"Connecting to ray cluster at address='{ray_address}'")
                 ray.init(address=ray_address)
             # Local mode.
             else:

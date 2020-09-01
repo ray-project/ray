@@ -92,6 +92,19 @@ class StoreClient {
   virtual Status AsyncDelete(const std::string &table_name, const std::string &key,
                              const StatusCallback &callback) = 0;
 
+  /// Delete data from the given table asynchronously, this can delete
+  /// key--value and index--key.
+  ///
+  /// \param table_name The name of the table from which data is to be deleted.
+  /// \param key The key that will be deleted from the table.
+  /// \param index_key The index key of the given key.
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  virtual Status AsyncDeleteWithIndex(const std::string &table_name,
+                                      const std::string &key,
+                                      const std::string &index_key,
+                                      const StatusCallback &callback) = 0;
+
   /// Batch delete data from the given table asynchronously.
   ///
   /// \param table_name The name of the table from which data is to be deleted.
@@ -101,6 +114,20 @@ class StoreClient {
   virtual Status AsyncBatchDelete(const std::string &table_name,
                                   const std::vector<std::string> &keys,
                                   const StatusCallback &callback) = 0;
+
+  /// Batch delete data from the given table asynchronously, this can delete all
+  /// key--value data and index--key data.
+  ///
+  /// \param table_name The name of the table from which data is to be deleted.
+  /// \param keys The keys that will be deleted from the table.
+  /// \param index_keys The index keys of the given keys, they are in one-to-one
+  ///                   correspondence
+  /// \param callback Callback that will be called after delete finishes.
+  /// \return Status
+  virtual Status AsyncBatchDeleteWithIndex(const std::string &table_name,
+                                           const std::vector<std::string> &keys,
+                                           const std::vector<std::string> &index_keys,
+                                           const StatusCallback &callback) = 0;
 
   /// Delete by index from the given table asynchronously.
   ///
