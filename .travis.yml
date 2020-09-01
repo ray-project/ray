@@ -461,6 +461,15 @@ deploy:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
+  - provider: script
+    edge: true # This supposedly opts in to deploy v2.
+    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build_docker_images.sh
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $LINUX_WHEELS = 1
+
   # Upload jars so that we can debug locally for every commit
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -494,11 +503,3 @@ deploy:
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build_docker_images.sh
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1
