@@ -454,7 +454,7 @@ class AutoscalingTest(unittest.TestCase):
                                    "init_cmd")
 
     def testUpdateConfig(self):
-        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config = MULTI_WORKER_CLUSTER.copy()
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -467,10 +467,11 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-        config["available_node_types"]["m4.xlarge"]["resources"]["gpu"] = 1
+        config["available_node_types"]["m4.large"]["resources"]["gpu"] = 1
         config_path = self.write_config(config)
         autoscaler.update()
         self.waitForNodes(1)
 
 if __name__ == "__main__":
     import sys
+    sys.exit(pytest.main(["-v", __file__]))
