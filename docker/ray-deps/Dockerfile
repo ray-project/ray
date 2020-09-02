@@ -1,6 +1,7 @@
 ARG GPU=""
-ARG AUTOSCALER="autoscaler"
 FROM rayproject/base-deps:latest"$GPU"
+# If this arg is not "autoscaler" then no autoscaler requirements will be included
+ARG AUTOSCALER="autoscaler"
 ARG WHEEL_PATH
 # For Click
 ENV LC_ALL=C.UTF-8

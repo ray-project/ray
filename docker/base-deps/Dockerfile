@@ -3,6 +3,8 @@
 # The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
+# If this arg is not "autoscaler" then no autoscaler requirements will be included
+ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
@@ -41,11 +43,12 @@ RUN apt-get update -y && apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && apt-get autoremove -y cmake \
     # Either install kubectl or remove wget 
-    $(if [ "$AUTOSCALER" == "autoscaler" ]; \
-    then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
+    && (if [ "$AUTOSCALER" == "autoscaler" ]; \
+        then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
         && touch /etc/apt/sources.list.d/kubernetes.list \
-        && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \ 
-        && apt-get update && apt-get install kubectl; \
+        && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
+        && apt-get update \
+        && apt-get install kubectl; \
     else apt-get autoremove -y wget; \
     fi;) \
     && rm -rf /var/lib/apt/lists/* \
