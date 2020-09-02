@@ -30,6 +30,12 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
+# Tuple of modified fields for the given node_id returned by should_update
+# that will be passed into a NodeUpdaterThread.
+UpdateInstructions = namedtuple(
+    "UpdateInstructions",
+    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -415,7 +421,7 @@ class StandardAutoscaler:
                 fields = node_specific_config[fields_key]
         return fields
 
-    def get_node_specific_docker_config(self, node_id):
+    def _get_node_specific_docker_config(self, node_id):
         docker_config = copy.deepcopy(self.config.get("docker", {}))
         node_specific_docker = self._get_node_type_specific_fields(
             node_id, "docker")
@@ -423,15 +429,12 @@ class StandardAutoscaler:
         return docker_config
 
     def should_update(self, node_id):
-        ShouldUpdateTuple = namedtuple("ShouldUpdateTuple", [
-            "node_id", "init_commands", "start_ray_commands", "docker_config"
-        ])
         if not self.can_update(node_id):
-            return ShouldUpdateTuple(None, None, None, None)  # no update
+            return UpdateInstructions(None, None, None, None)  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return ShouldUpdateTuple(None, None, None, None)  # no update
+            return UpdateInstructions(None, None, None, None)  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
@@ -446,8 +449,8 @@ class StandardAutoscaler:
                 node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
-        docker_config = self.get_node_specific_docker_config(node_id)
-        return ShouldUpdateTuple(
+        docker_config = self._get_node_specific_docker_config(node_id)
+        return UpdateInstructions(
             node_id=node_id,
             init_commands=init_commands,
             start_ray_commands=ray_commands,
