@@ -69,6 +69,8 @@ This name will appear as the task name in the machine view of the dashboard, wil
 as the worker process name when this task is executing (if a Python task), and will
 appear as the task name in the logs.
 
+.. image:: images/task_name_dashboard.png
+
 
 Dynamic Custom Resources
 ------------------------
