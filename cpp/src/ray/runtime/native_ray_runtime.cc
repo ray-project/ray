@@ -13,8 +13,6 @@ namespace api {
 
 NativeRayRuntime::NativeRayRuntime(std::shared_ptr<RayConfig> config) {
   config_ = config;
-  worker_ = std::unique_ptr<WorkerContext>(
-      new WorkerContext(WorkerType::DRIVER, WorkerID::Nil(), JobID::Nil()));
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter(*this));
   task_executor_ = std::unique_ptr<TaskExecutor>(new TaskExecutor(*this));

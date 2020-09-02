@@ -58,20 +58,8 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
-        self.reload_config(errors_fatal=True)
+        self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config["provider"],
-                                          self.config["cluster_name"])
-
-        # Check whether we can enable the resource demand scheduler.
-        if "available_node_types" in self.config:
-            self.available_node_types = self.config["available_node_types"]
-            self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.available_node_types,
-                self.config["max_workers"])
-        else:
-            self.available_node_types = None
-            self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -117,13 +105,13 @@ class StandardAutoscaler:
         # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = None
+        self.resource_demand_vector = []
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
         try:
-            self.reload_config(errors_fatal=False)
+            self.reset(errors_fatal=False)
             self._update()
         except Exception as e:
             logger.exception("StandardAutoscaler: "
@@ -197,14 +185,18 @@ class StandardAutoscaler:
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler and self.resource_demand_vector:
-            to_launch = (self.resource_demand_scheduler.get_nodes_to_launch(
-                self.provider.non_terminated_nodes(tag_filters={}),
-                self.pending_launches.breakdown(),
-                self.resource_demand_vector))
-            # TODO(ekl) also enforce max launch concurrency here?
-            for node_type, count in to_launch:
-                self.launch_new_node(count, node_type=node_type)
+        if self.resource_demand_scheduler:
+            resource_demand_vector = self.resource_demand_vector + \
+                self.load_metrics.get_resource_demand_vector()
+            if resource_demand_vector:
+                to_launch = (
+                    self.resource_demand_scheduler.get_nodes_to_launch(
+                        self.provider.non_terminated_nodes(tag_filters={}),
+                        self.pending_launches.breakdown(),
+                        resource_demand_vector))
+                # TODO(ekl) also enforce max launch concurrency here?
+                for node_type, count in to_launch:
+                    self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -270,7 +262,7 @@ class StandardAutoscaler:
         else:
             return {}
 
-    def reload_config(self, errors_fatal=False):
+    def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
             sync_continuously = self.config.get(
@@ -279,8 +271,6 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"])
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
@@ -292,9 +282,21 @@ class StandardAutoscaler:
                  generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
-            self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
+
+            self.provider = get_node_provider(self.config["provider"],
+                                              self.config["cluster_name"])
+            # Check whether we can enable the resource demand scheduler.
+            if "available_node_types" in self.config:
+                self.available_node_types = self.config["available_node_types"]
+                self.resource_demand_scheduler = ResourceDemandScheduler(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"])
+            else:
+                self.available_node_types = None
+                self.resource_demand_scheduler = None
+
         except Exception as e:
             if errors_fatal:
                 raise e
@@ -334,9 +336,18 @@ class StandardAutoscaler:
                    max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
-        launch_conf = self.provider.node_tags(node_id).get(
-            TAG_RAY_LAUNCH_CONFIG)
-        if self.launch_hash != launch_conf:
+        node_tags = self.provider.node_tags(node_id)
+        tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
+        node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
+
+        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        if node_type:
+            launch_config.update(
+                self.config["available_node_types"][node_type]["node_config"])
+        calculated_launch_hash = hash_launch_conf(launch_config,
+                                                  self.config["auth"])
+
+        if calculated_launch_hash != tag_launch_conf:
             return False
         return True
 

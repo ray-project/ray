@@ -113,6 +113,28 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+Ports configurations
+--------------------
+Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
+
+All Nodes
+~~~~~~~~~
+- ``--node-manager-port``: Raylet port for node manager. Default: Random value.
+- ``--object-manager-port``: Raylet port for object manager. Default: Random value.
+
+The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
+
+- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
+- ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+
+Head Node
+~~~~~~~~~~~
+In addition to ports specified above, the head node needs to open several more ports.
+
+- ``--port``: Port of GCS. Default: 6379.
+- ``--dashboard-port``: Port for accessing the dashboard. Default: 8265
+- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
+
 Redis Port Authentication
 -------------------------
 
@@ -137,7 +159,7 @@ To add authentication via the Python API, start Ray using:
 
 .. code-block:: python
 
-  ray.init(redis_password="password")
+  ray.init(_redis_password="password")
 
 To add authentication via the CLI or to connect to an existing Ray instance with
 password-protected Redis ports:
@@ -160,48 +182,4 @@ to localhost when the ray is started using ``ray.init``.
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
 
-
-Using the Object Store with Huge Pages
---------------------------------------
-
-Plasma is a high-performance shared memory object store originally developed in
-Ray and now being developed in `Apache Arrow`_. See the `relevant
-documentation`_.
-
-On Linux, it is possible to increase the write throughput of the Plasma object
-store by using huge pages. You first need to create a file system and activate
-huge pages as follows.
-
-.. code-block:: shell
-
-  sudo mkdir -p /mnt/hugepages
-  gid=`id -g`
-  uid=`id -u`
-  sudo mount -t hugetlbfs -o uid=$uid -o gid=$gid none /mnt/hugepages
-  sudo bash -c "echo $gid > /proc/sys/vm/hugetlb_shm_group"
-  # This typically corresponds to 20000 2MB pages (about 40GB), but this
-  # depends on the platform.
-  sudo bash -c "echo 20000 > /proc/sys/vm/nr_hugepages"
-
-**Note:** Once you create the huge pages, they will take up memory which will
-never be freed unless you remove the huge pages. If you run into memory issues,
-that may be the issue.
-
-You need root access to create the file system, but not for running the object
-store.
-
-You can then start Ray with huge pages on a single machine as follows.
-
-.. code-block:: python
-
-  ray.init(huge_pages=True, plasma_directory="/mnt/hugepages")
-
-In the cluster case, you can do it by passing ``--huge-pages`` and
-``--plasma-directory=/mnt/hugepages`` into ``ray start`` on any machines where
-huge pages should be enabled.
-
-See the relevant `Arrow documentation for huge pages`_.
-
 .. _`Apache Arrow`: https://arrow.apache.org/
-.. _`relevant documentation`: https://arrow.apache.org/docs/python/plasma.html#the-plasma-in-memory-object-store
-.. _`Arrow documentation for huge pages`: https://arrow.apache.org/docs/python/plasma.html#using-plasma-with-huge-pages

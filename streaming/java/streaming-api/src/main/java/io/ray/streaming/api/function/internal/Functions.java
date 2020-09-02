@@ -10,6 +10,7 @@ import io.ray.streaming.api.function.RichFunction;
 public class Functions {
 
   private static class DefaultRichFunction implements RichFunction {
+
     private final Function function;
 
     private DefaultRichFunction(Function function) {

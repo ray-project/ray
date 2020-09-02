@@ -9,6 +9,7 @@ public interface JobScheduler {
 
   /**
    * Schedule streaming job using the physical plan.
+   *
    * @param executionGraph physical plan
    * @return scheduling result
    */

@@ -62,6 +62,8 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+        echo "Docker affected:$RAY_CI_DOCKER_AFFECTED"
+        echo "Python dependencies affected:$RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"
     else
         if [[ "$RAY_CI_DOCKER_AFFECTED" == "0" ]]; then
             echo "Skipping docker build in PR build because dockerfile didn't change."

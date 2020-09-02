@@ -15,6 +15,7 @@ from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
     get_bin_pack_residual, get_nodes_for
+from ray.test_utils import same_elements
 
 from time import sleep
 
@@ -162,6 +163,24 @@ def test_get_nodes_respects_max_limit():
     }] * 10) == [("m4.large", 2)]
 
 
+class LoadMetricsTest(unittest.TestCase):
+    def testResourceDemandVector(self):
+        lm = LoadMetrics()
+        lm.update(
+            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }],
+            infeasible_bundles=[{
+                "CPU": 16
+            }])
+        assert same_elements(lm.get_resource_demand_vector(), [{
+            "CPU": 16
+        }, {
+            "GPU": 1
+        }])
+
+
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         NODE_PROVIDERS["mock"] = \
@@ -200,10 +219,6 @@ class AutoscalingTest(unittest.TestCase):
         return path
 
     def testGetOrCreateMultiNodeType(self):
-        config = MULTI_WORKER_CLUSTER.copy()
-        # Commenting out this line causes the test case to fail?!?!
-        config["min_workers"] = 0
-        config_path = self.write_config(config)
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -347,10 +362,44 @@ class AutoscalingTest(unittest.TestCase):
         # These checks are done separately because we have no guarantees on the
         # order the dict is serialized in.
         runner.assert_has_call("172.0.0.0", "RAY_OVERRIDE_RESOURCES=")
-        runner.assert_has_call("172.0.0.0", "CPU: 2")
+        runner.assert_has_call("172.0.0.0", "\"CPU\":2")
         runner.assert_has_call("172.0.0.1", "RAY_OVERRIDE_RESOURCES=")
-        runner.assert_has_call("172.0.0.1", "CPU: 32")
-        runner.assert_has_call("172.0.0.1", "GPU: 8")
+        runner.assert_has_call("172.0.0.1", "\"CPU\":32")
+        runner.assert_has_call("172.0.0.1", "\"GPU\":8")
+
+    def testScaleUpLoadMetrics(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 50
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.update()
+        lm.update(
+            "1.2.3.4", {}, {}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }],
+            infeasible_bundles=[{
+                "CPU": 16
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        nodes = {
+            self.provider.mock_nodes[0].node_type,
+            self.provider.mock_nodes[1].node_type
+        }
+        assert nodes == {"p2.xlarge", "m4.4xlarge"}
 
     def testCommandPassing(self):
         t = "custom"
@@ -384,7 +433,6 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
         autoscaler.request_resources([{"GPU": 1}] * 9)
-        # autoscaler.request_resources([{t: 1}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
@@ -400,6 +448,27 @@ class AutoscalingTest(unittest.TestCase):
                                "new_worker_initialization_cmd")
         runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
                                    "init_cmd")
+
+    def testUpdateConfig(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        config["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["node_config"][
+            "field_changed"] = 1
+        config_path = self.write_config(config)
+        autoscaler.update()
+        self.waitForNodes(0)
 
 
 if __name__ == "__main__":

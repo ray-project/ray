@@ -38,7 +38,8 @@ serve.init()
 @serve.accept_batch
 def echo(_):
     time.sleep(0.01)  # Sleep for 10ms
-    ray.show_in_webui(str(serve.context.batch_size), key="Current batch size")
+    ray.show_in_dashboard(
+        str(serve.context.batch_size), key="Current batch size")
     return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
