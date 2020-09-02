@@ -664,13 +664,13 @@ def get_or_create_head_node(config,
             cli_logger.print("Prepared bootstrap config")
 
             if restart_only:
-                init_commands = []
+                setup_commands = []
                 ray_start_commands = config["head_start_ray_commands"]
             elif no_restart:
-                init_commands = config["head_setup_commands"]
+                setup_commands = config["head_setup_commands"]
                 ray_start_commands = []
             else:
-                init_commands = config["head_setup_commands"]
+                setup_commands = config["head_setup_commands"]
                 ray_start_commands = config["head_start_ray_commands"]
 
             if not no_restart:
@@ -684,7 +684,7 @@ def get_or_create_head_node(config,
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 initialization_commands=config["initialization_commands"],
-                setup_commands=init_commands,
+                setup_commands=setup_commands,
                 ray_start_commands=ray_start_commands,
                 process_runner=_runner,
                 runtime_hash=runtime_hash,
