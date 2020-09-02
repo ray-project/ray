@@ -272,6 +272,7 @@ def test_updating_config(serve_instance):
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
 
+
 def test_updating_config_legacy(serve_instance):
     class BatchSimple:
         def __init__(self):
@@ -307,6 +308,7 @@ def test_updating_config_legacy(serve_instance):
     # and should be subset of all_tag_list
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
+
 
 def test_delete_backend(serve_instance):
     def function():

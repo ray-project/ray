@@ -295,7 +295,7 @@ def create_backend(
         })
     elif isinstance(config, BackendConfig):
         backend_config = config.copy(update={"internal_metadata": metadata})
-    else
+    else:
         raise TypeError("config must be a BackendConfig or a dictionary.")
     backend_config._validate_complete()
     ray.get(

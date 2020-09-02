@@ -5,6 +5,7 @@ from ray.serve.constants import ASYNC_CONCURRENCY
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
+
 def _callable_accepts_batch(func_or_class):
     if inspect.isfunction(func_or_class):
         return hasattr(func_or_class, "_serve_accept_batch")
@@ -17,6 +18,7 @@ def _callable_is_blocking(func_or_class):
         return not inspect.iscoroutinefunction(func_or_class)
     elif inspect.isclass(func_or_class):
         return not inspect.iscoroutinefunction(func_or_class.__call__)
+
 
 @dataclass
 class BackendMetadata:
@@ -31,7 +33,7 @@ class BackendConfig(BaseModel):
     :param num_replicas: The number of worker processes to start up that will
         handle requests to this backend. Defaults to 0.
     :type num_replicas: int, optional
-    :param max_batch_size: The maximum number of requests that will be 
+    :param max_batch_size: The maximum number of requests that will be
         processed in one batch by this backend. Defaults to None (no
         maximium).
     :type max_batch_size: int, optional
@@ -40,7 +42,7 @@ class BackendConfig(BaseModel):
         Defaults to 0.
     :type batch_wait_timeout: float, optional
     :param max_concurrent_queries: The maximum number of queries that will be
-        sent to a replica of this backend without receiving a response. 
+        sent to a replica of this backend without receiving a response.
         Defaults to None (no maximum).
     :type max_concurrent_queries: int, optional
     """
