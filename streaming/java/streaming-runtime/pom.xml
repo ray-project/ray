@@ -110,11 +110,6 @@
   <version>0.8.20</version>
 </dependency>
 <dependency>
-  <groupId>org.objenesis</groupId>
-  <artifactId>objenesis</artifactId>
-  <version>2.5.1</version>
-</dependency>
-<dependency>
   <groupId>org.powermock</groupId>
   <artifactId>powermock-api-mockito</artifactId>
   <version>1.6.6</version>

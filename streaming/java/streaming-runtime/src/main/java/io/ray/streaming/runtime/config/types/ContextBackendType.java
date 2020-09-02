@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.config.types;
 
-public enum StateBackendType {
+public enum ContextBackendType {
 
   /**
    * Memory type
@@ -15,7 +15,7 @@ public enum StateBackendType {
   private String name;
   private int index;
 
-  StateBackendType(String name, int index) {
+  ContextBackendType(String name, int index) {
     this.name = name;
     this.index = index;
   }
