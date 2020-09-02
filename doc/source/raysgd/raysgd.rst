@@ -50,11 +50,12 @@ You can start a ``TorchTrainer`` with the following:
             loss = torch.nn.MSELoss()
 
             # Register all components.
-            self.model, self.optimizer, self.criterion = self.register(models=model,
-                                                   optimizers=optimizer,
-                                                   train_loader=train_loader,
-                                                   validation_loader=val_loader,
-                                                   criterion=loss)
+            self.model, self.optimizer, self.criterion = self.register(
+                models=model,
+                optimizers=optimizer,
+                train_loader=train_loader,
+                validation_loader=val_loader,
+                criterion=loss)
 
     ray.init()
 
