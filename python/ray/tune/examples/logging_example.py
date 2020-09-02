@@ -63,8 +63,8 @@ if __name__ == "__main__":
         trial_name_creator=trial_str_creator,
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
+        search_alg=searcher,
         config={
-            "width": tune.sample_from(
-                lambda spec: 10 + int(90 * random.random())),
-            "height": tune.sample_from(lambda spec: int(100 * random.random()))
+            "width": tune.qrandint(0, 100),
+            "height": tune.loguniform(0.1, 100)
         })

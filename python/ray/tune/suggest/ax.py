@@ -214,7 +214,7 @@ class AxSearch(Searcher):
         def resolve_value(par, domain):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
-                logger.warning("Ax search does not support quantization. "
+                logger.warning("AxSearch does not support quantization. "
                                "Dropped quantization.")
                 sampler = sampler.sampler
 
@@ -260,7 +260,7 @@ class AxSearch(Searcher):
                         "values": domain.categories
                     }
 
-            raise ValueError("Ax search does not support parameters of type "
+            raise ValueError("AxSearch does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
                                  type(domain).__name__,
                                  type(domain.sampler).__name__))
