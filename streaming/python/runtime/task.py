@@ -129,9 +129,9 @@ class StreamTask(ABC):
         # get operator checkpoint
         if is_recreate:
             cp_key = self.__gen_op_checkpoint_key(self.last_checkpoint_id)
-            logger.info("Getting task checkpoints from state, "\
-                    "cpKey={}, checkpointId={}."
-                        .format(cp_key, self.last_checkpoint_id))
+            logger.info("Getting task checkpoints from state, "
+                        "cpKey={}, checkpointId={}.".format(
+                            cp_key, self.last_checkpoint_id))
             cp_bytes = self.worker.context_backend.get(cp_key)
             if cp_bytes is None:
                 msg = "Task recover failed, checkpoint is null!"\
@@ -141,9 +141,9 @@ class StreamTask(ABC):
         if cp_bytes is not None:
             op_checkpoint_info = pickle.loads(cp_bytes)
             self.processor.load_checkpoint(op_checkpoint_info.operator_point)
-            logger.info("Stream task recover from checkpoint state,"\
-                     "checkpoint bytes len={}, checkpointInfo={}.".format(
-                cp_bytes.__len__(), op_checkpoint_info))
+            logger.info("Stream task recover from checkpoint state,"
+                        "checkpoint bytes len={}, checkpointInfo={}.".format(
+                            cp_bytes.__len__(), op_checkpoint_info))
 
         # writers
         collectors = []
@@ -159,10 +159,10 @@ class StreamTask(ABC):
         if len(output_actors_map) > 0:
             channel_str_ids = list(output_actors_map.keys())
             target_actors = list(output_actors_map.values())
-            logger.info("Create DataWriter channel_ids {},"\
-                    "target_actors {}, output_points={}.".format(
-                channel_str_ids, target_actors,
-                op_checkpoint_info.output_points))
+            logger.info("Create DataWriter channel_ids {},"
+                        "target_actors {}, output_points={}.".format(
+                            channel_str_ids, target_actors,
+                            op_checkpoint_info.output_points))
             self.writer = DataWriter(channel_str_ids, target_actors,
                                      channel_conf)
             logger.info("Create DataWriter succeed channel_ids {}, "
@@ -186,9 +186,10 @@ class StreamTask(ABC):
         if len(input_actor_map) > 0:
             channel_str_ids = list(input_actor_map.keys())
             from_actors = list(input_actor_map.values())
-            logger.info("Create DataReader, channels {},"\
-                    "input_actors {}, input_points={}.".format(
-                channel_str_ids, from_actors, op_checkpoint_info.input_points))
+            logger.info("Create DataReader, channels {},"
+                        "input_actors {}, input_points={}.".format(
+                            channel_str_ids, from_actors,
+                            op_checkpoint_info.input_points))
             self.reader = DataReader(channel_str_ids, from_actors,
                                      channel_conf)
 

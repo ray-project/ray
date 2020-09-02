@@ -13,7 +13,8 @@ def test_word_count():
         ctx = StreamingContext.Builder() \
             .option("streaming.context-backend.type", "local_file") \
             .option(
-                "streaming.context-backend.file-state.root", "/tmp/ray/cp_files/"
+                "streaming.context-backend.file-state.root",
+                "/tmp/ray/cp_files/"
             ) \
             .option("streaming.checkpoint.timeout.secs", "3") \
             .build()
@@ -48,9 +49,9 @@ def test_word_count():
         retry_count = 300000 / 5  # wait for 5min
         while True:
             cur_cp_num = checkpoint_success_num()
-            print("-----------checking checkpoint" \
-                    ", cur_cp_num={}, old_cp_num={}-------------".format(
-                cur_cp_num, cp_ok_num))
+            print("-----------checking checkpoint"
+                  ", cur_cp_num={}, old_cp_num={}-------------".format(
+                      cur_cp_num, cp_ok_num))
             if cur_cp_num > cp_ok_num:
                 print("--------------TEST OK!------------------")
                 break
@@ -94,8 +95,8 @@ def checkpoint_success_num() -> int:
 
 def kill_all_worker():
     cmd = [
-        "bash", "-c", "grep -r \'Initializing job worker, exe_vert\' " \
-        " /tmp/ray/session_latest/logs | awk -F\'pid\' \'{print $2}\'" \
+        "bash", "-c", "grep -r \'Initializing job worker, exe_vert\' "
+        " /tmp/ray/session_latest/logs | awk -F\'pid\' \'{print $2}\'"
         "| awk -F\'=\' \'{print $2}\'" + "| xargs kill -9"
     ]
     print(cmd)

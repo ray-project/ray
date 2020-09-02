@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "config/streaming_config.h"
 #include "common/status.h"
+#include "config/streaming_config.h"
 
 namespace ray {
 namespace streaming {

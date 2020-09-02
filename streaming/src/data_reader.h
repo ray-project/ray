@@ -100,7 +100,6 @@ class DataReader {
             const std::vector<uint64_t> &msg_ids,
             std::vector<TransferCreationStatus> &creation_status, int64_t timer_interval);
 
-
   /// Create reader use msg_id=0, this method is public only for test, and users
   /// usuallly don't need it.
   ///  \param input_ids

@@ -1,10 +1,10 @@
 #ifndef RAY_STREAMING_RELIABILITY_HELPER_H
 #define RAY_STREAMING_RELIABILITY_HELPER_H
-#include "reliability/barrier_helper.h"
 #include "channel/channel.h"
-#include "util/config.h"
 #include "data_reader.h"
 #include "data_writer.h"
+#include "reliability/barrier_helper.h"
+#include "util/config.h"
 
 namespace ray {
 namespace streaming {
