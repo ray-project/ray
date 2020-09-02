@@ -6,7 +6,8 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC, normc_initializer
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchMultiCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -194,14 +195,13 @@ class Curiosity(Exploration):
         Stores calculated phi, phi' and predicted phi' as well as the intrinsic
         rewards in the batch for loss processing by the policy.
         """
-        batch_size = sample_batch[SampleBatch.OBS].shape[0]
         phis, _ = self.model._curiosity_feature_net({
             SampleBatch.OBS: torch.cat([
                 torch.from_numpy(sample_batch[SampleBatch.OBS]),
                 torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS])
             ])
         })
-        phi, next_phi = phis[:batch_size], phis[batch_size:]
+        phi, next_phi = torch.chunk(phis, 2)
 
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat(
@@ -228,21 +228,21 @@ class Curiosity(Exploration):
     def get_exploration_loss(self, policy_loss, train_batch: SampleBatchType):
         """Adds the loss for the inverse and forward models to policy_loss.
         """
-        batch_size = train_batch[SampleBatch.OBS].shape[0]
         phis, _ = self.model._curiosity_feature_net({
-            SampleBatch.OBS: torch.cat(
-                [
-                    train_batch[SampleBatch.OBS],
-                    train_batch[SampleBatch.NEXT_OBS]
-                ],
-                dim=0)
+            SampleBatch.OBS: torch.cat([
+                train_batch[SampleBatch.OBS],
+                train_batch[SampleBatch.NEXT_OBS]
+            ])
         })
-        phi, next_phi = phis[:batch_size], phis[batch_size:]
+        phi, next_phi = torch.chunk(phis, 2)
         # Inverse loss term (prediced action that led from phi to phi' vs
         # actual action taken).
         phi_next_phi = torch.cat([phi, next_phi], dim=-1)
         dist_inputs = self.model._curiosity_inverse_fcnet(phi_next_phi)
-        action_dist = TorchCategorical(dist_inputs, self.model)
+        action_dist = TorchCategorical(dist_inputs, self.model) if \
+            isinstance(self.action_space, Discrete) else \
+            TorchMultiCategorical(
+                dist_inputs, self.model, self.action_space.nvec)
         # Neg log(p); p=probability of observed action given the inverse-NN
         # predicted action distribution.
         inverse_loss = -action_dist.logp(train_batch[SampleBatch.ACTIONS])

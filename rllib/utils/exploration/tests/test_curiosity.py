@@ -43,8 +43,9 @@ class OneHotWrapper(gym.core.ObservationWrapper):
             if self.vector_index == 1:
                 if self.x_positions:
                     max_diff = max(
-                       np.sqrt((np.array(self.x_positions) - self.init_x) ** 2 + (
-                                np.array(self.y_positions) - self.init_y) ** 2))
+                        np.sqrt(
+                            (np.array(self.x_positions) - self.init_x) ** 2 +
+                            (np.array(self.y_positions) - self.init_y) ** 2))
                     self.x_y_delta_buffer.append(max_diff)
                     print("100-average dist travelled={}".format(
                         np.mean(self.x_y_delta_buffer)))
@@ -175,16 +176,16 @@ class TestCuriosity(unittest.TestCase):
         config = ppo.DEFAULT_CONFIG.copy()
         config["env"] = "mini-grid"
         config["env_config"] = {
-            "name": "MiniGrid-Empty-16x16-v0",
+            "name": "MiniGrid-MultiRoom-N4-S5-v0",  # "MiniGrid-Empty-16x16-v0"
             "framestack": 1,  # seems to work even w/o framestacking
         }
         config["horizon"] = 40  # Make it impossible to reach goal by chance.
         config["num_envs_per_worker"] = 8
-        #config["model"]["fcnet_hiddens"] = [256, 256]
-        #config["model"]["fcnet_activation"] = "relu"
-        config["model"]["use_lstm"] = True
-        config["model"]["lstm_cell_size"] = 256
-        config["model"]["lstm_use_prev_action_reward"] = True
+        # config["model"]["fcnet_hiddens"] = [256, 256]
+        config["model"]["fcnet_activation"] = "relu"
+        # config["model"]["use_lstm"] = True
+        # config["model"]["lstm_cell_size"] = 256
+        # config["model"]["lstm_use_prev_action_reward"] = True
         config["num_sgd_iter"] = 6
         config["num_workers"] = 2
 
@@ -193,7 +194,7 @@ class TestCuriosity(unittest.TestCase):
             # For the feature NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
             "eta": 0.1,
-            "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
+            "lr": 0.001,  # 0.0003 or 0.0005 seem to work fine as well.
             "feature_dim": 256,
             "feature_net_config": {
                 "fcnet_hiddens": [256],
