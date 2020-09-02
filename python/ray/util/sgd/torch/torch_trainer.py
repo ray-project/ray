@@ -51,7 +51,7 @@ class TorchTrainer:
 
         class MyTrainingOperator(TrainingOperator):
 
-            def setup(config):
+            def setup(self, config):
                 model = nn.Linear(1, 1)
                 optimizer = torch.optim.SGD(
                     model.parameters(), lr=config.get("lr", 1e-4))
