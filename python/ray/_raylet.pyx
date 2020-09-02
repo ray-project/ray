@@ -297,7 +297,8 @@ cdef prepare_args(
             if language != Language.PYTHON:
                 if metadata not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
-                        ray_constants.OBJECT_METADATA_TYPE_RAW]:
+                        ray_constants.OBJECT_METADATA_TYPE_RAW,
+                        ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
                         metadata, language))
             size = serialized_arg.total_bytes
@@ -696,6 +697,14 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker = ray.worker.global_worker.core_worker
         core_worker.destroy_event_loop_if_exists()
 
+
+# An empty profile event context to be used when the timeline is disabled.
+cdef class EmptyProfileEvent:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
 
 cdef class CoreWorker:
 
@@ -1172,9 +1181,12 @@ cdef class CoreWorker:
         return resources_dict
 
     def profile_event(self, c_string event_type, object extra_data=None):
-        return ProfileEvent.make(
-            CCoreWorkerProcess.GetCoreWorker().CreateProfileEvent(event_type),
-            extra_data)
+        if RayConfig.instance().enable_timeline():
+            return ProfileEvent.make(
+                CCoreWorkerProcess.GetCoreWorker().CreateProfileEvent(
+                    event_type), extra_data)
+        else:
+            return EmptyProfileEvent()
 
     def remove_actor_handle_reference(self, ActorID actor_id):
         cdef:

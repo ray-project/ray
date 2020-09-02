@@ -9,6 +9,7 @@ import io.ray.streaming.runtime.transfer.Message;
 import io.ray.streaming.runtime.worker.JobWorker;
 
 public abstract class InputStreamTask extends StreamTask {
+
   private volatile boolean running = true;
   private volatile boolean stopped = false;
   private long readTimeoutMillis;
@@ -56,8 +57,8 @@ public abstract class InputStreamTask extends StreamTask {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("taskId", taskId)
-      .add("processor", processor)
-      .toString();
+        .add("taskId", taskId)
+        .add("processor", processor)
+        .toString();
   }
 }

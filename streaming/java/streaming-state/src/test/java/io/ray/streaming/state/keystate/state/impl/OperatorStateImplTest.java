@@ -42,7 +42,8 @@ public class OperatorStateImplTest {
     operatorStateBackend = new OperatorStateBackend(new MemoryStateBackend(config));
 
     descriptor = ListStateDescriptor
-        .build("OperatorStateImplTest" + System.currentTimeMillis(), Integer.class, true);
+        .build("OperatorStateImplTest" + System.currentTimeMillis(), Integer.class,
+            true);
     descriptor.setPartitionNumber(1);
     descriptor.setIndex(0);
     descriptor.setTableName(table_name);
