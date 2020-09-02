@@ -285,8 +285,7 @@ class TestPPO(unittest.TestCase):
                 check(policy._mean_kl, kl)
                 check(policy._mean_entropy, entropy)
                 check(policy._mean_policy_loss, np.mean(-pg_loss))
-                check(
-                    policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
+                check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
                 check(policy._total_loss, overall_loss, decimals=4)
             trainer.stop()
 
