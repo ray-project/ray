@@ -284,9 +284,6 @@ def create_backend(
 
     if config is None:
         config = {}
-    if not isinstance(config, (BackendConfig, dict)):
-        raise TypeError("config must be a BackendConfig or a dictionary.")
-
     replica_config = ReplicaConfig(
         func_or_class, *actor_init_args, ray_actor_options=ray_actor_options)
     metadata = BackendMetadata(
@@ -298,6 +295,8 @@ def create_backend(
         })
     elif isinstance(config, BackendConfig):
         backend_config = config.copy(update={"internal_metadata": metadata})
+    else
+        raise TypeError("config must be a BackendConfig or a dictionary.")
     backend_config._validate_complete()
     ray.get(
         controller.create_backend.remote(backend_tag, backend_config,
