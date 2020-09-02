@@ -21,6 +21,6 @@ public interface BaseActorHandle {
    * @param noRestart If set to true, the killed actor will not be restarted anymore.
    */
   default void kill(boolean noRestart) {
-    Ray.internal().killActor(this, noRestart);
+    Ray.getRuntime().killActor(this, noRestart);
   }
 }

@@ -14,6 +14,6 @@ public class DefaultWorker {
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.worker.mode", "WORKER");
     Ray.init();
-    ((RayRuntimeInternal) Ray.internal()).run();
+    ((RayRuntimeInternal) Ray.getRuntime()).run();
   }
 }

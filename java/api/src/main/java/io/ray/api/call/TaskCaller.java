@@ -26,6 +26,6 @@ public class TaskCaller<R> extends BaseTaskCaller<TaskCaller<R>> {
    */
   @SuppressWarnings("unchecked")
   public ObjectRef<R> remote() {
-    return Ray.internal().call(func, args, buildOptions());
+    return Ray.getRuntime().call(func, args, buildOptions());
   }
 }

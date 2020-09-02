@@ -19,7 +19,7 @@ public class VoidTaskCaller extends BaseTaskCaller<VoidTaskCaller> {
    * Execute a function remotely.
    */
   public void remote() {
-    Ray.internal().call(func, args, buildOptions());
+    Ray.getRuntime().call(func, args, buildOptions());
   }
 
 }

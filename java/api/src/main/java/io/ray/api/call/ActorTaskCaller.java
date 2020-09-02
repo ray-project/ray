@@ -29,7 +29,7 @@ public class ActorTaskCaller<R> {
    */
   @SuppressWarnings("unchecked")
   public ObjectRef<R> remote() {
-    return Ray.internal().callActor(actor, func, args);
+    return Ray.getRuntime().callActor(actor, func, args);
   }
 
 }
