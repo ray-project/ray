@@ -32,8 +32,7 @@ class DefaultCallbacks:
 
     def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode,
-                         env_index: int, **kwargs):
+                         episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Callback run on the rollout worker before each episode starts.
 
         Args:
@@ -59,8 +58,7 @@ class DefaultCallbacks:
             })
 
     def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                        episode: MultiAgentEpisode,
-                        env_index: int, **kwargs):
+                        episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Runs on each episode step.
 
         Args:
@@ -84,8 +82,7 @@ class DefaultCallbacks:
 
     def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode,
-                       env_index: int, **kwargs):
+                       episode: MultiAgentEpisode, env_index: int, **kwargs):
         """Runs when an episode is done.
 
         Args:

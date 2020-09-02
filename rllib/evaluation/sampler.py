@@ -842,7 +842,9 @@ def _process_observations(
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
-            worker=worker, base_env=base_env, episode=episode,
+            worker=worker,
+            base_env=base_env,
+            episode=episode,
             env_index=env_id)
 
         # Cut the batch if ...

@@ -20,16 +20,14 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker: RolloutWorker, base_env: BaseEnv,
                          policies: Dict[str, Policy],
-                         episode: MultiAgentEpisode,
-                         env_index: int, **kwargs):
+                         episode: MultiAgentEpisode, env_index: int, **kwargs):
         print("episode {} (env-idx={}) started.".format(
             episode.episode_id, env_index))
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
-                        episode: MultiAgentEpisode,
-                        env_index: int, **kwargs):
+                        episode: MultiAgentEpisode, env_index: int, **kwargs):
         pole_angle = abs(episode.last_observation_for()[2])
         raw_angle = abs(episode.last_raw_obs_for()[2])
         assert pole_angle == raw_angle
@@ -40,8 +38,8 @@ class MyCallbacks(DefaultCallbacks):
                        env_index: int, **kwargs):
         pole_angle = np.mean(episode.user_data["pole_angles"])
         print("episode {} (env-idx={}) ended with length {} and pole "
-              "angles {}".format(episode.episode_id, env_index,
-                                 episode.length, pole_angle))
+              "angles {}".format(episode.episode_id, env_index, episode.length,
+                                 pole_angle))
         episode.custom_metrics["pole_angle"] = pole_angle
         episode.hist_data["pole_angles"] = episode.user_data["pole_angles"]
 
