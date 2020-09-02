@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from typing import Any, Optional
 import copy
 import logging
@@ -423,12 +423,15 @@ class StandardAutoscaler:
         return docker_config
 
     def should_update(self, node_id):
+        ShouldUpdateTuple = namedtuple("ShouldUpdateTuple", [
+            "node_id", "init_commands", "start_ray_commands", "docker_config"
+        ])
         if not self.can_update(node_id):
-            return None, None, None, None  # no update
+            return ShouldUpdateTuple(None, None, None, None)  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return None, None, None, None  # no update
+            return ShouldUpdateTuple(None, None, None, None)  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
@@ -444,7 +447,11 @@ class StandardAutoscaler:
             ray_commands = self.config["worker_start_ray_commands"]
 
         docker_config = self.get_node_specific_docker_config(node_id)
-        return (node_id, init_commands, ray_commands, docker_config)
+        return ShouldUpdateTuple(
+            node_id=node_id,
+            init_commands=init_commands,
+            start_ray_commands=ray_commands,
+            docker_config=docker_config)
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
                       node_resources, docker_config):
