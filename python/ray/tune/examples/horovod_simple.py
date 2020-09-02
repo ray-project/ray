@@ -57,7 +57,7 @@ def train(config):
     print(hvd.size())
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
-    # To ensure consistent initialization across workers,
+    # To ensure consistent initialization across slots,
     hvd.broadcast_parameters(net.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
@@ -90,10 +90,12 @@ if __name__ == "__main__":
         "--learning_rate", type=float, default=0.1, dest="learning_rate")
     parser.add_argument("--x_max", type=float, default=1., dest="x_max")
     parser.add_argument("--gpu", action="store_true")
-    parser.add_argument("--smoke-test", action="store_true", help=(
-        "Finish quickly for testing."))
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help=("Finish quickly for testing."))
     parser.add_argument("--hosts-per-trial", type=int, default=1)
-    parser.add_argument("--workers-per-host", type=int, default=2)
+    parser.add_argument("--slots-per-host", type=int, default=2)
     args = parser.parse_args()
 
     # import ray
@@ -102,8 +104,8 @@ if __name__ == "__main__":
     horovod_trainable = DistributedTrainableCreator(
         train,
         use_gpu=args.gpu,
-        num_nodes=args.hosts_per_trial,
-        num_workers_per_node=args.workers_per_host,
+        num_hosts=args.hosts_per_trial,
+        num_slots=args.slots_per_host,
         replicate_pem=False)
     analysis = tune.run(
         horovod_trainable,
