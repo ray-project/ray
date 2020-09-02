@@ -52,6 +52,7 @@ build_or_pull_base_images() {
         done
 
     else
+        docker pull rayproject/ray-deps:latest
         echo "Just pulling images"
     fi
 

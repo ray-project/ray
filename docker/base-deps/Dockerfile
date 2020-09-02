@@ -9,12 +9,19 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
+RUN echo "$AUTOSCALER" && echo $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
+        tmux \
+        screen \
+        rsync \
+        openssh-client \
+        gnupg; fi)
+RUN vim 
 RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
         wget \
         cmake \
-        $(if [ "$AUTOSCALER" == "autoscaler" ]; then echo \
+        $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
         screen \
         rsync \
@@ -43,7 +50,7 @@ RUN apt-get update -y && apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && apt-get autoremove -y cmake \
     # Either install kubectl or remove wget 
-    && (if [ "$AUTOSCALER" == "autoscaler" ]; \
+    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
         && touch /etc/apt/sources.list.d/kubernetes.list \
         && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \
