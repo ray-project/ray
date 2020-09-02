@@ -43,11 +43,11 @@ message PrepareBundleResourcesRequest {
 }
 
 message PrepareBundleResourcesReply {
-  // The status if resource reserve success.
+  // The status if prepare request was successful.
   bool success = 1;
 }
 
-message CommitBundleResourcesRequest {  
+message CommitBundleResourcesRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
