@@ -193,14 +193,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        searcher = AxSearch()
+        searcher = AxSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective,
-            metric="a",
-            mode="max",
-            config=config,
-            search_alg=searcher,
-            num_samples=1)
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
@@ -241,14 +236,9 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
 
-        searcher = BayesOptSearch()
+        searcher = BayesOptSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective,
-            metric="a",
-            mode="max",
-            config=config,
-            search_alg=searcher,
-            num_samples=1)
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         self.assertLess(trial.config["b"]["z"], 1e-2)
 
@@ -289,14 +279,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        searcher = HyperOptSearch()
+        searcher = HyperOptSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective,
-            metric="a",
-            mode="max",
-            config=config,
-            search_alg=searcher,
-            num_samples=1)
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
@@ -337,14 +322,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 
-        searcher = OptunaSearch()
+        searcher = OptunaSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective,
-            metric="a",
-            mode="max",
-            config=config,
-            search_alg=searcher,
-            num_samples=1)
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
