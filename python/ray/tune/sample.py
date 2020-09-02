@@ -168,12 +168,16 @@ class Float(Domain):
     def loguniform(self, base: float = 10):
         if not self.lower > 0:
             raise ValueError(
-                "LogUniform requires a lower bound greater than 0. "
-                f"Got: {self.lower}.")
+                "LogUniform requires a lower bound greater than 0."
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
         if not 0 < self.upper < float("inf"):
             raise ValueError(
                 "LogUniform requires a upper bound greater than 0. "
-                f"Got: {self.upper}.")
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
         new = copy(self)
         new.set_sampler(self._LogUniform(base))
         return new
@@ -270,6 +274,11 @@ class Function(Domain):
     default_sampler_cls = _CallSampler
 
     def __init__(self, func: Callable):
+        if len(signature(func).parameters) > 1:
+            raise ValueError(
+                "The function passed to a `Function` parameter must accept "
+                "either 0 or 1 parameters.")
+
         self.func = func
 
     def is_function(self):
