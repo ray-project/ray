@@ -91,15 +91,21 @@ class DataReader {
   /// During initialization, only the channel parameters and necessary member properties
   /// are assigned. All channels will be connected in the first reading operation.
   ///  \param input_ids
-  ///  \param actor_ids
-  ///  \param channel_seq_ids
+  ///  \param init_params
   ///  \param msg_ids
+  ///  \param[out] creation_status
   ///  \param timer_interval
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
             const std::vector<uint64_t> &msg_ids,
             std::vector<TransferCreationStatus> &creation_status, int64_t timer_interval);
 
+
+  /// Create reader use msg_id=0, this method is public only for test, and users
+  /// usuallly don't need it.
+  ///  \param input_ids
+  ///  \param init_params
+  ///  \param timer_interval
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ChannelCreationParameter> &init_params,
             int64_t timer_interval);
