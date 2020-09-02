@@ -17,7 +17,7 @@ if __name__ == "__main__":
     obs_space = env.observation_space
     act_space = env.action_space
 
-    policies = {"shared_policy":  (None, obs_space, act_space, {})}
+    policies = {"shared_policy": (None, obs_space, act_space, {})}
 
     # for all methods
     policy_ids = list(policies.keys())
@@ -41,7 +41,6 @@ if __name__ == "__main__":
             "sample_batch_size": 20,
             "train_batch_size": 512,
             "gamma": .99,
-
             "n_step": 3,
             "lr": .0001,
             "prioritized_replay_alpha": 0.5,
@@ -50,7 +49,6 @@ if __name__ == "__main__":
             "timesteps_per_iteration": 25000,
 
             # Method specific
-
             "multiagent": {
                 "policies": policies,
                 "policy_mapping_fn": (lambda agent_id: "shared_policy"),
