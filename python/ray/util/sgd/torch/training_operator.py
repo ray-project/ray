@@ -82,10 +82,10 @@ class TrainingOperator:
             trainer.train()
 
     This class provides default implementations for training and validation.
-    Make sure you set ``self.model``, ``self.optimizer``, and
+    Set ``self.model``, ``self.optimizer``, and
     ``self.criterion`` to leverage the default training and validation loops.
     If ``self.scheduler`` is set, it will only be called at a batch or epoch
-    frequency, depending on the user parameter. Be sure to set
+    frequency, depending on the user parameter. Set
     ``scheduler_step_freq`` in ``TorchTrainer`` to either "batch" or "epoch"
     to increment the scheduler correctly during training. If using a
     learning rate scheduler that depends on validation loss, you can use
