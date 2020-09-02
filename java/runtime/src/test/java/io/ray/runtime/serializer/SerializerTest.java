@@ -1,7 +1,11 @@
 package io.ray.runtime.serializer;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
+import org.msgpack.value.Value;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -44,6 +48,31 @@ public class SerializerTest {
       ArrayList<String> bar = Serializer.decode(serialized.getLeft(), String[].class);
       Assert.assertFalse(serialized.getRight());
       Assert.assertEquals(foo.get(0), bar.get(0));
+    }
+    // Test BigInteger.
+    {
+      BigInteger bi = BigInteger.valueOf(Long.MAX_VALUE);
+      Pair<byte[], Boolean> serialized = Serializer.encode(bi);
+      BigInteger newBi = Serializer.decode(serialized.getLeft(), BigInteger.class);
+      Assert.assertTrue(serialized.getRight());
+      Assert.assertEquals(bi, newBi);
+      bi = bi.pow(2);
+      serialized = Serializer.encode(bi);
+      newBi = Serializer.decode(serialized.getLeft(), BigInteger.class);
+      Assert.assertFalse(serialized.getRight());
+      Assert.assertEquals(bi, newBi);
+    }
+    {
+      Map m = new HashMap<>();
+      m.put("123", 123);
+      Pair<byte[], Boolean> serialized = Serializer.encode(m);
+      Map<Value, Value> newM = Serializer.decode(serialized.getLeft(), m.getClass());
+      Assert.assertTrue(serialized.getRight());
+      Assert.assertEquals(newM.size(), m.size());
+      for (Map.Entry<Value, Value> entry : newM.entrySet()) {
+        Assert.assertEquals(entry.getKey().asStringValue().asString(), "123");
+        Assert.assertEquals(entry.getValue().asIntegerValue().asInt(), 123);
+      }
     }
   }
 }
