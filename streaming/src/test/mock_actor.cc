@@ -97,7 +97,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
 
-    // create writer
+    // Create writer.
     std::shared_ptr<DataWriter> streaming_writer_client(new DataWriter(runtime_context));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
@@ -107,11 +107,10 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
     streaming_writer_client->Run();
 
-    // writer some data
+    // Writer some data.
     std::thread test_loop_thread(
         &StreamingQueueWriterTestSuite::TestWriteMessageToBufferRing, this,
         streaming_writer_client, std::ref(queue_ids_));
-    // test_loop_thread.detach();
     if (test_loop_thread.joinable()) {
       test_loop_thread.join();
     }
@@ -119,8 +118,6 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
   void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
                                     std::vector<ray::ObjectID> &q_list) {
-    // const uint8_t temp_data[] = {1, 2, 4, 5};
-
     uint32_t i = 1;
     while (i <= MESSAGE_BOUND_SIZE) {
       for (auto &q_id : q_list) {
@@ -136,7 +133,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
       ++i;
     }
     STREAMING_LOG(INFO) << "Write data done.";
-    // Wait a while
+    // Wait a while.
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
   }
 };
@@ -273,7 +270,7 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
   }
 
   void GetQueueTest() {
-    // Sleep 2s, queue shoulde not exist when reader pull
+    // Sleep 2s, queue shoulde not exist when reader pull.
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
@@ -300,7 +297,7 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
   }
 
   void PullPeerAsyncTest() {
-    // Sleep 2s, queue should not exist when reader pull
+    // Sleep 2s, queue should not exist when reader pull.
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
