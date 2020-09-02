@@ -50,5 +50,7 @@ creating a Mars session like this:
 
 .. warning::
 
-  Mars remote API is not available for now.
+  `Mars remote API`_ is not available for now.
 
+
+.. _`Mars remote API`: https://docs.pymars.org/en/latest/getting_started/remote.html

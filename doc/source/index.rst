@@ -211,7 +211,7 @@ Papers
    iter.rst
    pandas_on_ray.rst
    dask-on-ray.rst
-   mars_on_ray.rst
+   mars-on-ray.rst
 
 .. toctree::
    :hidden:
