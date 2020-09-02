@@ -99,16 +99,10 @@ class LoadMetrics:
         """
         return self.static_resources_by_ip.values()
 
-    def get_static_resource_usage(self):
-        static_usage_by_ip = {}
-        for ip, static_resources in self.static_resources_by_ip.items():
-            static_usage_by_ip[ip] = {}
-            for resource in static_resources:
-                static_usage_by_ip[ip][resource] = self.resource_load_by_ip[
-                    ip].get(resource, 0)
-        return static_usage_by_ip
+    def get_resource_utilization(self):
+        return self.dynamic_resources_by_ip
 
-    def get_resource_usage(self):
+    def _get_resource_usage(self):
         num_nodes = len(self.static_resources_by_ip)
         nodes_used = 0.0
         num_nonidle = 0
@@ -155,7 +149,7 @@ class LoadMetrics:
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self.get_resource_usage()
+        nodes_used, resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]

@@ -311,7 +311,7 @@ class AutoscalingTest(unittest.TestCase):
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            }, {}, {"GPU": 1},
+            }, {"GPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }])

@@ -206,7 +206,7 @@ class StandardAutoscaler:
                         self.provider.non_terminated_nodes(tag_filters={}),
                         self.pending_launches.breakdown(),
                         resource_demand_vector,
-                        self.load_metrics.get_static_resource_usage()))
+                        self.load_metrics.get_resource_utilization()))
                 # TODO(ekl) also enforce max launch concurrency here?
                 for node_type, count in to_launch:
                     self.launch_new_node(count, node_type=node_type)
@@ -492,9 +492,10 @@ class StandardAutoscaler:
         tmp += self.load_metrics.info_string()
         tmp += "\n"
         if self.resource_demand_scheduler:
+            print(f"{self.load_metrics.get_resource_utilization()}")
             tmp += self.resource_demand_scheduler.debug_string(
                 nodes, self.pending_launches.breakdown(),
-                self.load_metrics.get_static_resource_usage())
+                self.load_metrics.get_resource_utilization())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.info(tmp)
