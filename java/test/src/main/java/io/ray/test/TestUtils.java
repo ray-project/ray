@@ -79,12 +79,12 @@ public class TestUtils {
   }
 
   public static RayRuntimeInternal getRuntime() {
-    return (RayRuntimeInternal) Ray.getRuntime();
+    return (RayRuntimeInternal) Ray.internal();
   }
 
   public static RayRuntimeInternal getUnderlyingRuntime() {
     RayRuntimeProxy proxy = (RayRuntimeProxy) (java.lang.reflect.Proxy
-        .getInvocationHandler(Ray.getRuntime()));
+        .getInvocationHandler(Ray.internal()));
     return proxy.getRuntimeObject();
   }
 }

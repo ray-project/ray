@@ -20,7 +20,7 @@ public class PlasmaFreeTest extends BaseTest {
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
-    Ray.getRuntime().free(ImmutableList.of(helloId), true, false);
+    Ray.internal().free(ImmutableList.of(helloId), true, false);
 
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
@@ -37,7 +37,7 @@ public class PlasmaFreeTest extends BaseTest {
   public void testDeleteCreatingTasks() {
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     Assert.assertEquals("hello", helloId.get());
-    Ray.getRuntime().free(ImmutableList.of(helloId), true, true);
+    Ray.internal().free(ImmutableList.of(helloId), true, true);
 
     TaskId taskId = TaskId.fromBytes(
         Arrays.copyOf(((ObjectRefImpl<String>) helloId).getId().getBytes(), TaskId.LENGTH));

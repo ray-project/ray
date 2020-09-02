@@ -56,7 +56,7 @@ public class ArgumentsBuilder {
           }
         }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((RayRuntimeInternal) Ray.getRuntime()).getObjectStore()
+          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
               .putRaw(value);
           value = null;
         }

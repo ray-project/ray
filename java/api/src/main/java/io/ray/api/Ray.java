@@ -49,7 +49,7 @@ public final class Ray extends RayCall {
    */
   public static synchronized void shutdown() {
     if (runtime != null) {
-      getRuntime().shutdown();
+      internal().shutdown();
       runtime = null;
     }
   }
@@ -61,7 +61,7 @@ public final class Ray extends RayCall {
    * @return A ObjectRef instance that represents the in-store object.
    */
   public static <T> ObjectRef<T> put(T obj) {
-    return getRuntime().put(obj);
+    return internal().put(obj);
   }
 
   /**
@@ -71,7 +71,7 @@ public final class Ray extends RayCall {
    * @return The Java object.
    */
   public static <T> T get(ObjectRef<T> objectRef) {
-    return getRuntime().get(objectRef);
+    return internal().get(objectRef);
   }
 
   /**
@@ -81,7 +81,7 @@ public final class Ray extends RayCall {
    * @return A list of Java objects.
    */
   public static <T> List<T> get(List<ObjectRef<T>> objectList) {
-    return getRuntime().get(objectList);
+    return internal().get(objectList);
   }
 
   /**
@@ -95,7 +95,7 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
                                        int timeoutMs) {
-    return getRuntime().wait(waitList, numReturns, timeoutMs);
+    return internal().wait(waitList, numReturns, timeoutMs);
   }
 
   /**
@@ -107,7 +107,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns) {
-    return getRuntime().wait(waitList, numReturns, Integer.MAX_VALUE);
+    return internal().wait(waitList, numReturns, Integer.MAX_VALUE);
   }
 
   /**
@@ -118,7 +118,7 @@ public final class Ray extends RayCall {
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {
-    return getRuntime().wait(waitList, waitList.size(), Integer.MAX_VALUE);
+    return internal().wait(waitList, waitList.size(), Integer.MAX_VALUE);
   }
 
   /**
@@ -132,7 +132,7 @@ public final class Ray extends RayCall {
    *     Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return getRuntime().getActor(name, false);
+    return internal().getActor(name, false);
   }
 
   /**
@@ -146,7 +146,7 @@ public final class Ray extends RayCall {
    *     Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
-    return getRuntime().getActor(name, true);
+    return internal().getActor(name, true);
   }
 
   /**
@@ -156,7 +156,7 @@ public final class Ray extends RayCall {
    * @return The async context.
    */
   public static Object getAsyncContext() {
-    return getRuntime().getAsyncContext();
+    return internal().getAsyncContext();
   }
 
   /**
@@ -165,7 +165,7 @@ public final class Ray extends RayCall {
    * @param asyncContext The async context to set.
    */
   public static void setAsyncContext(Object asyncContext) {
-    getRuntime().setAsyncContext(asyncContext);
+    internal().setAsyncContext(asyncContext);
   }
 
   // TODO (kfstorm): add the `rollbackAsyncContext` API to allow rollbacking the async context of
@@ -181,7 +181,7 @@ public final class Ray extends RayCall {
    * @return The wrapped runnable.
    */
   public static Runnable wrapRunnable(Runnable runnable) {
-    return getRuntime().wrapRunnable(runnable);
+    return internal().wrapRunnable(runnable);
   }
 
   /**
@@ -192,17 +192,17 @@ public final class Ray extends RayCall {
    * @return The wrapped callable.
    */
   public static <T> Callable<T> wrapCallable(Callable<T> callable) {
-    return getRuntime().wrapCallable(callable);
+    return internal().wrapCallable(callable);
+  }
+
+  public static boolean isInitialized() {
+    return runtime != null;
   }
 
   /**
    * Get the underlying runtime instance.
    */
   public static RayRuntime internal() {
-    return runtime;
-  }
-
-  public static RayRuntime getRuntime() {
     if (runtime == null) {
       throw new IllegalStateException(
           "Ray has not been started yet. You can start Ray with 'Ray.init()'");
@@ -215,21 +215,21 @@ public final class Ray extends RayCall {
    * Set the resource for the specific node.
    */
   public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
-    getRuntime().setResource(resourceName, capacity, nodeId);
+    internal().setResource(resourceName, capacity, nodeId);
   }
 
   /**
    * Set the resource for local node.
    */
   public static void setResource(String resourceName, double capacity) {
-    getRuntime().setResource(resourceName, capacity, UniqueId.NIL);
+    internal().setResource(resourceName, capacity, UniqueId.NIL);
   }
 
   /**
    * Get the runtime context.
    */
   public static RuntimeContext getRuntimeContext() {
-    return getRuntime().getRuntimeContext();
+    return internal().getRuntimeContext();
   }
 
   /**
@@ -247,6 +247,6 @@ public final class Ray extends RayCall {
    */
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return getRuntime().createPlacementGroup(bundles, strategy);
+    return internal().createPlacementGroup(bundles, strategy);
   }
 }

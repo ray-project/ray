@@ -29,7 +29,7 @@ public class PyActorTaskCaller<R> {
    */
   @SuppressWarnings("unchecked")
   public ObjectRef<R> remote() {
-    return Ray.getRuntime().callActor(actor, method, args);
+    return Ray.internal().callActor(actor, method, args);
   }
 
 }
