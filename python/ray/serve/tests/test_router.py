@@ -4,8 +4,7 @@ import pytest
 import ray
 
 from ray.serve.controller import TrafficPolicy
-from ray.serve.router import Router, Query
-from ray.serve.request_params import RequestMetadata
+from ray.serve.router import Router, Query, RequestMetadata
 from ray.serve.utils import get_random_letters
 from ray.test_utils import SignalActor
 from ray.serve.config import BackendConfig

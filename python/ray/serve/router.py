@@ -13,10 +13,20 @@ from ray import serve
 from ray.experimental import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import RandomEndpointPolicy
-from ray.serve.request_params import RequestMetadata
 from ray.serve.utils import logger, chain_future
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
+
+
+@dataclass
+class RequestMetadata:
+    endpoint: str
+    request_context: TaskContext
+
+    call_method: str = "__call__"
+    shard_key: Optional[str] = None
+    http_method: str = "GET"
+    is_shadow_query: bool = False
 
 
 @dataclass
