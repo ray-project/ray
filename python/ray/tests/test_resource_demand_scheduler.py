@@ -14,7 +14,7 @@ from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
-    get_bin_pack_residual, get_nodes_for
+    get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -161,6 +161,23 @@ def test_get_nodes_respects_max_limit():
     assert get_nodes_for(types, {"m4.large": 7}, 2, [{
         "CPU": 1
     }] * 10) == [("m4.large", 2)]
+
+
+def test_get_nodes_to_launch_limits():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, 3)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
+        "GPU": 8
+    }] * 2, utilizations)
+    assert to_launch == []
 
 
 class LoadMetricsTest(unittest.TestCase):

@@ -39,8 +39,6 @@ class ResourceDemandScheduler:
         self.node_types = node_types
         self.max_workers = max_workers
 
-    # TODO(ekl) take into account existing utilization of node resources. We
-    # should subtract these from node resources prior to running bin packing.
     def get_nodes_to_launch(self, nodes: List[NodeID],
                             pending_nodes: Dict[NodeType, int],
                             resource_demands: List[ResourceDict],
@@ -76,7 +74,8 @@ class ResourceDemandScheduler:
 
         nodes = get_nodes_for(
             self.node_types, node_type_counts,
-            self.max_workers - len(nodes) - len(pending_nodes), unfulfilled)
+            self.max_workers - len(nodes) - sum(pending_nodes.values()),
+            unfulfilled)
         logger.info("Node requests: {}".format(nodes))
         return nodes
 
