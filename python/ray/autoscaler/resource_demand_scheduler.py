@@ -88,7 +88,10 @@ class ResourceDemandScheduler:
         def add_node(node_type):
             if node_type not in self.node_types:
                 logger.warn(
-                    f"Missing entry for node_type {node_type} in available_node_types config: {self.node_types}. This node's resources will be ignored. If you are using an unmanaged node, set the user_node_type tag."
+                    f"Missing entry for node_type {node_type} in "
+                    f"available_node_types config: {self.node_types}. This "
+                    f"node's resources will be ignored. If you are using an "
+                    f"unmanaged node, set the user_node_type tag."
                 )
                 return
             # Careful not to include the same dict object multiple times.
