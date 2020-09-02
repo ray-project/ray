@@ -88,15 +88,15 @@ class ResourceDemandScheduler:
         node_resources = []
         node_type_counts = collections.defaultdict(int)
 
-        def add_node(node_type, resources=None):
+        def add_node(node_type, existing_resource_usages=None):
             if node_type not in self.node_types:
                 raise RuntimeError("Missing entry for node_type {} in "
                                    "available_node_types config: {}".format(
                                        node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
-            if resources:
-                for resource, used in available.items():
+            if existing_resource_usages:
+                for resource, used in existing_resource_usages.items():
                     available[resource] -= used
 
             node_resources.append(available)
