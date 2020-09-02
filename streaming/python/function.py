@@ -22,10 +22,10 @@ class Function(ABC):
     def close(self):
         pass
 
-    def save_checkpoint(self, checkpoint_id):
+    def save_checkpoint(self):
         pass
 
-    def load_checkpoint(self, checkpoint_id, checkpoint_obj):
+    def load_checkpoint(self, checkpoint_obj):
         pass
 
 
@@ -64,7 +64,7 @@ class SourceFunction(Function):
         pass
 
     @abstractmethod
-    def fetch(self, ctx: SourceContext, checkpoint_id: int):
+    def fetch(self, ctx: SourceContext):
         """Starts the source. Implementations can use the
          :class:`SourceContext` to emit elements.
         """
@@ -185,7 +185,7 @@ class CollectionSourceFunction(SourceFunction):
     def init(self, parallel, index):
         pass
 
-    def fetch(self, ctx: SourceContext, checkpoint_id: int):
+    def fetch(self, ctx: SourceContext):
         for v in self.values:
             ctx.collect(v)
         self.values = []
@@ -199,7 +199,7 @@ class LocalFileSourceFunction(SourceFunction):
     def init(self, parallel, index):
         pass
 
-    def fetch(self, ctx: SourceContext, checkpoint_id: int):
+    def fetch(self, ctx: SourceContext):
         if self.done:
             return
         with open(self.filename, "r") as f:

@@ -73,9 +73,9 @@ class JobWorker(object):
                         "Python worker recover from checkpoint.")
                 else:
                     logger.error(
-                        "Error! Worker get checkpoint state by key {} returns None, \
-                            please check your state backend\
-                            , only reliable state backend supports fail-over."
+                        "Error! Worker get checkpoint state by key {} returns None,"\
+                            "please check your state backend"\
+                            ", only reliable state backend supports fail-over."
                         .format(job_worker_context_key))
         except Exception:
             logger.exception("Error in __init__ of JobWorker")
@@ -108,8 +108,8 @@ class JobWorker(object):
             # build and get processor from operator
             operator = self.execution_vertex_context.stream_operator
             self.stream_processor = processor.build_processor(operator)
-            logger.info("Initializing job worker, exe_vertex_name={},\
-                    task_id: {}, operator: {}, pid={}".format(
+            logger.info("Initializing job worker, exe_vertex_name={},"\
+                    "task_id: {}, operator: {}, pid={}".format(
                 self.execution_vertex_context.exe_vertex_name, self.task_id,
                 self.stream_processor, os.getpid()))
 
@@ -247,8 +247,8 @@ class JobWorker(object):
             state_checkpoint_id_bytes)
         queue_checkpoint_id = self.__parse_to_checkpoint_id(
             queue_checkpoint_id_bytes)
-        logger.info("Start to clear expired checkpoint, checkpoint_id={},\
-                queue_checkpoint_id={}, exe_vertex_name={}.".format(
+        logger.info("Start to clear expired checkpoint, checkpoint_id={},"\
+                "queue_checkpoint_id={}, exe_vertex_name={}.".format(
             state_checkpoint_id, queue_checkpoint_id,
             self.execution_vertex_context.exe_vertex_name))
 
@@ -257,16 +257,16 @@ class JobWorker(object):
             if state_checkpoint_id > 0 else True
         ret.boolRes &= self.__clear_expired_queue_msg(queue_checkpoint_id)
         logger.info(
-            "Clear expired checkpoint done, result={}, checkpoint_id={},\
-                queue_checkpoint_id={}, exe_vertex_name={}.".format(
+            "Clear expired checkpoint done, result={}, checkpoint_id={},"\
+                "queue_checkpoint_id={}, exe_vertex_name={}.".format(
                 ret.boolRes, state_checkpoint_id, queue_checkpoint_id,
                 self.execution_vertex_context.exe_vertex_name))
         return ret.SerializeToString()
 
     def __clear_expired_cp_state(self, checkpoint_id):
         if self.__need_rollback:
-            logger.warning("Need rollback, skip clear_expired_cp_state\
-                    , checkpoint id: {}".format(checkpoint_id))
+            logger.warning("Need rollback, skip clear_expired_cp_state"\
+                    ", checkpoint id: {}".format(checkpoint_id))
             return False
 
         logger.info("Clear expired checkpoint state, cp id is {}.".format(
@@ -278,8 +278,8 @@ class JobWorker(object):
 
     def __clear_expired_queue_msg(self, checkpoint_id):
         if self.__need_rollback:
-            logger.warning("Need rollback, skip clear_expired_queue_msg\
-                    , checkpoint id: {}".format(checkpoint_id))
+            logger.warning("Need rollback, skip clear_expired_queue_msg"\
+                    ", checkpoint id: {}".format(checkpoint_id))
             return False
 
         logger.info("Clear expired queue msg, checkpoint_id is {}.".format(
@@ -320,14 +320,14 @@ class JobWorker(object):
             logger.info("request rollback {} time, ret={}".format(
                 i, request_ret))
             if not request_ret:
-                logger.warning("Request rollback return false\
-                        , maybe it's invalid request, try to sleep 1s.")
+                logger.warning("Request rollback return false" \
+                        ", maybe it's invalid request, try to sleep 1s.")
                 time.sleep(1)
             else:
                 break
         if not request_ret:
-            logger.warning("Request failed after retry {} times, \
-                now worker shutdown without reconstruction."
+            logger.warning("Request failed after retry {} times," \
+                "now worker shutdown without reconstruction."
                            .format(Config.REQUEST_ROLLBACK_RETRY_TIMES))
             self.shutdown_without_reconstruction()
 

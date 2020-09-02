@@ -48,8 +48,8 @@ def test_word_count():
         retry_count = 300000 / 5  # wait for 5min
         while True:
             cur_cp_num = checkpoint_success_num()
-            print("-----------checking checkpoint\
-                    , cur_cp_num={}, old_cp_num={}-------------".format(
+            print("-----------checking checkpoint" \
+                    ", cur_cp_num={}, old_cp_num={}-------------".format(
                 cur_cp_num, cp_ok_num))
             if cur_cp_num > cp_ok_num:
                 print("--------------TEST OK!------------------")
@@ -93,11 +93,13 @@ def checkpoint_success_num() -> int:
 
 
 def kill_all_worker():
-    return subprocess.run([
-        "bash", "-c", "grep -r \'Initializing job worker, exe_vert\'" +
-        "/tmp/ray/session_latest/logs" + "| awk -F\'pid\' \'{print $2}\'" +
+    cmd = [
+        "bash", "-c", "grep -r \'Initializing job worker, exe_vert\' " \
+        " /tmp/ray/session_latest/logs | awk -F\'pid\' \'{print $2}\'" \
         "| awk -F\'=\' \'{print $2}\'" + "| xargs kill -9"
-    ])
+    ]
+    print(cmd)
+    return subprocess.run(cmd)
 
 
 if __name__ == "__main__":
