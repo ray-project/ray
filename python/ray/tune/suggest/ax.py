@@ -80,7 +80,7 @@ class AxSearch(Searcher):
 
     def __init__(self,
                  space=None,
-                 metric="episode_reward_mean",
+                 metric=None,
                  mode="max",
                  parameter_constraints=None,
                  outcome_constraints=None,
@@ -107,7 +107,7 @@ class AxSearch(Searcher):
         self._parameters = []
         self._live_trial_mapping = {}
 
-        if self._space:
+        if self._ax or self._space:
             self.setup_experiment()
 
     def setup_experiment(self):

@@ -207,7 +207,7 @@ tune.choice
 tune.sample_from
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.tune.sample_from
+.. autofunction:: ray.tune.sample_from
 
 Grid Search API
 ---------------
