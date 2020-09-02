@@ -1,6 +1,7 @@
 # coding: utf-8
 import os
 import sys
+import time
 
 import grpc
 import pytest
@@ -11,6 +12,19 @@ from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
 
 
+def get_num_workers():
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    raylet["NodeManagerPort"])
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    return len([
+        worker for worker in stub.GetNodeStats(
+            node_manager_pb2.GetNodeStatsRequest()).workers_stats
+        if not worker.is_driver
+    ])
+
+
 # Test that when `redis_address` and `job_config` is not set in
 # `ray.init(...)`, Raylet will start `num_cpus` Python workers for the driver.
 def test_initial_workers(shutdown_only):
@@ -19,17 +33,7 @@ def test_initial_workers(shutdown_only):
         num_cpus=1,
         include_dashboard=True,
         _system_config={"enable_multi_tenancy": True})
-    raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                    raylet["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    wait_for_condition(lambda: len([
-        worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).workers_stats
-        if not worker.is_driver
-    ]) == 1,
-                              timeout=10)
+    wait_for_condition(lambda: get_num_workers() == 1)
 
 
 # This test case starts some driver processes. Each driver process submits
@@ -121,6 +125,51 @@ def test_worker_env(shutdown_only):
 
     assert ray.get(get_env.remote("foo1")) == "bar1"
     assert ray.get(get_env.remote("foo2")) == "bar2"
+
+
+def test_kill_idle_workers(shutdown_only):
+    # Avoid starting initial workers by setting num_cpus to 0.
+    ray.init(num_cpus=0, _system_config={"enable_multi_tenancy": True})
+    assert get_num_workers() == 0
+
+    @ray.remote(num_cpus=0)
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+    # Worker 1 holds an actor, and it won't be killed.
+    wait_for_condition(lambda: get_num_workers() == 1)
+
+    @ray.remote(num_cpus=0)
+    def foo():
+        # Wait for a while
+        time.sleep(10)
+
+    obj1 = foo.remote()
+    # Worker 2 runs a normal task
+    wait_for_condition(lambda: get_num_workers() == 2)
+    time.sleep(8)
+    # Worker 2 is still running the task
+    assert get_num_workers() == 2
+    obj2 = foo.remote()
+    # Worker 3 runs a normal task
+    wait_for_condition(lambda: get_num_workers() == 3)
+
+    ray.get(obj1)
+    # Worker 2 now becomes idle
+    assert get_num_workers() == 3
+    ray.get(obj2)
+    # Worker 3 now becomes idle
+    # Now we should have 2 workers becuase worker 2 had been idle for a long
+    # time and has been killed.
+    assert get_num_workers() == 2
+
+    time.sleep(10)
+    # Worker 3 is killed but worker 1 is still alive.
+    assert get_num_workers() == 1
+
+    # This holds a reference of the created actor and avoids killing it.
+    del actor
 
 
 if __name__ == "__main__":

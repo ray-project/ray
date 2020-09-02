@@ -48,6 +48,17 @@ bool RemoveWorker(
   return worker_pool.erase(worker) > 0;
 }
 
+bool RemoveWorker(std::list<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
+                  const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
+  for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
+    if (*it == worker) {
+      worker_pool.erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 namespace ray {
@@ -69,8 +80,8 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
-      num_initial_python_workers_for_first_job_(
-          num_initial_python_workers_for_first_job) {
+      num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
+      kill_idle_workers_timer_(io_service) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
@@ -125,6 +136,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
   }
   if (!RayConfig::instance().enable_multi_tenancy()) {
     Start(num_workers);
+  } else {
+    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
+        RayConfig::instance().kill_idle_workers_interval_ms()));
+    kill_idle_workers_timer_.async_wait(
+        boost::bind(&WorkerPool::KillIdleWorkers, this, _1));
   }
 }
 
@@ -584,11 +600,79 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     // The worker is not used for the actor creation task without dynamic options.
     // Put the worker to the corresponding idle pool.
     if (worker->GetActorId().IsNil()) {
-      state.idle.insert(worker);
+      worker->SetLastIdleTimeMs(current_time_ms());
+      state.idle.push_back(worker);
     } else {
       state.idle_actor[worker->GetActorId()] = worker;
     }
   }
+}
+
+void WorkerPool::KillIdleWorkers(const boost::system::error_code &error) {
+  if (error == boost::asio::error::operation_aborted) {
+    return;
+  }
+
+  int64_t current_time = current_time_ms();
+  for (auto &entry : states_by_lang_) {
+    std::unordered_map<Process,
+                       std::unordered_map<std::shared_ptr<WorkerInterface>, uint64_t>>
+        procs_to_kill;
+    auto &state = entry.second;
+
+    // Get the potential processes to kill.
+    for (auto it = state.idle.rbegin(); it != state.idle.rend(); it++) {
+      auto worker = *it;
+      int64_t last_idle_time = (*it)->GetLastIdleTimeMs();
+      if (last_idle_time > 0) {
+        uint64_t idle_time = static_cast<uint64_t>(current_time - last_idle_time);
+        if (idle_time >= RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+          procs_to_kill[worker->GetProcess()].emplace(worker, idle_time);
+        }
+      }
+    }
+
+    // Filter processes.
+    for (const auto &worker : state.registered_workers) {
+      auto proc_it = procs_to_kill.find(worker->GetProcess());
+      bool can_kill_process = true;
+      if (proc_it != procs_to_kill.end()) {
+        if (proc_it->second.find(worker) == proc_it->second.end()) {
+          // At least one worker in the worker process is not idle or hasn't been idle for
+          // a long time, So this process should be preserved.
+          can_kill_process = false;
+        }
+      }
+      if (!can_kill_process) {
+        RAY_LOG(DEBUG)
+            << "Some workers in worker process " << worker->GetProcess().GetId()
+            << " are not idle or haven't been idle for a long time. Skip killing it.";
+        procs_to_kill.erase(worker->GetProcess());
+      }
+    }
+
+    // Kill processes.
+    for (auto it = procs_to_kill.begin(); it != procs_to_kill.end(); it++) {
+      for (auto worker_it = it->second.begin(); worker_it != it->second.end();
+           worker_it++) {
+        const auto &worker = worker_it->first;
+        RAY_LOG(INFO) << "Worker " << worker->WorkerId() << " with pid "
+                      << it->first.GetId() << " has been idle for " << worker_it->second
+                      << " ms. Kill it.";
+        // Remove the worker from the idle pool so it can't be popped anymore. However, we
+        // don't remove it from the registered pool because the cleanup should be handled
+        // by `WorkerPool::DisconnectWorker` when Node Manager receives the disconnect
+        // client mesasge.
+        RemoveWorker(state.idle, worker);
+      }
+      Process(it->first).Kill();
+    }
+  }
+
+  kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
+      RayConfig::instance().kill_idle_workers_interval_ms()));
+  kill_idle_workers_timer_.async_wait(
+      boost::bind(&WorkerPool::KillIdleWorkers, this, _1));
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
@@ -623,8 +707,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Code path of normal task or actor creation task without dynamic worker options.
     if (!RayConfig::instance().enable_multi_tenancy()) {
       if (!state.idle.empty()) {
-        worker = std::move(*state.idle.begin());
-        state.idle.erase(state.idle.begin());
+        // Pop the most recently pushed worker.
+        worker = std::move(state.idle.back());
+        state.idle.pop_back();
       } else {
         // There are no more non-actor workers available to execute this task.
         // Start a new worker process.
@@ -633,12 +718,16 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       }
     } else {
       // Find an available worker which is already assigned to this job.
-      for (auto it = state.idle.begin(); it != state.idle.end(); it++) {
+      // Try to pop the most recently pushed worker.
+      for (auto it = state.idle.rbegin(); it != state.idle.rend(); it++) {
         if ((*it)->GetAssignedJobId() != task_spec.JobId()) {
           continue;
         }
-        worker = std::move(*it);
-        state.idle.erase(it);
+        // We can't erase a reverse_iterator.
+        auto lit = it.base();
+        lit--;
+        worker = std::move(*lit);
+        state.idle.erase(lit);
         break;
       }
       if (worker == nullptr) {

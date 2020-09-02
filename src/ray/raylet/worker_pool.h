@@ -180,6 +180,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
+  /// Make sure idle workers are within a reasonable size.
+  void KillIdleWorkers(const boost::system::error_code &error);
+
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
   ///
@@ -275,7 +278,7 @@ class WorkerPool : public WorkerPoolInterface {
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
+    std::list<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
     /// The pool of idle I/O workers.
@@ -385,6 +388,9 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+
+  /// The timer to trigger idle worker killing.
+  boost::asio::deadline_timer kill_idle_workers_timer_;
 };
 
 }  // namespace raylet

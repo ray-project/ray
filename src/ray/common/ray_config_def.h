@@ -298,3 +298,9 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
+
+/// The interval of periodic idle worker killing.
+RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 1000)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(uint64_t, idle_worker_killing_time_threshold_ms, 5000)

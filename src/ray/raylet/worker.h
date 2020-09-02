@@ -112,6 +112,10 @@ class WorkerInterface {
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClient *rpc_client() = 0;
+
+  virtual int64_t GetLastIdleTimeMs() = 0;
+
+  virtual void SetLastIdleTimeMs(int64_t last_idle_time_ms) = 0;
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -216,6 +220,12 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
+  int64_t GetLastIdleTimeMs() { return last_idle_time_ms_; }
+
+  void SetLastIdleTimeMs(int64_t last_idle_time_ms) {
+    last_idle_time_ms_ = last_idle_time_ms;
+  }
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -284,6 +294,8 @@ class Worker : public WorkerInterface {
   std::vector<double> borrowed_cpu_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
+  /// The recent moment of this worker becoming idle.
+  int64_t last_idle_time_ms_;
 };
 
 }  // namespace raylet
