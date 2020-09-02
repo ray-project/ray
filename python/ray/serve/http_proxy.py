@@ -110,6 +110,7 @@ class HTTPProxy:
         request_metadata = RequestMetadata(
             endpoint_name,
             TaskContext.Web,
+            http_method=scope["method"].upper(),
             call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
         )

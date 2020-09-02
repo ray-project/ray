@@ -51,7 +51,8 @@ public class RayUtils {
         nodeIdBytes[byteIndex] = String.valueOf(i).getBytes()[0];
       }
       NodeInfo nodeInfo = new NodeInfo(new UniqueId(nodeIdBytes),
-          "localhost" + i, "localhost" + i,
+          "localhost" + i, "localhost" + i, -1,
+          "", "",
           true, resources);
       nodeInfos.add(nodeInfo);
     }

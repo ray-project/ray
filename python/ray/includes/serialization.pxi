@@ -1,5 +1,6 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
+from libcpp cimport nullptr
 import cython
 
 DEF MEMCOPY_THREADS = 6
@@ -115,9 +116,6 @@ cdef class SubBuffer:
             <const char*> self.buf, self.len)
 
     def __getbuffer__(self, Py_buffer* buffer, int flags):
-        if flags & cpython.PyBUF_WRITABLE:
-            # Ray ensures all buffers are immutable.
-            raise BufferError
         buffer.readonly = self.readonly
         buffer.buf = self.buf
         buffer.format = <char *>self._format.c_str()
@@ -438,15 +436,14 @@ cdef class MessagePackSerializedObject(SerializedObject):
         const uint8_t *msgpack_header_ptr
         const uint8_t *msgpack_data_ptr
 
-    def __init__(self, metadata, msgpack_data,
+    def __init__(self, metadata, msgpack_data, contained_object_refs,
                  SerializedObject nest_serialized_object=None):
         if nest_serialized_object:
-            contained_object_refs = (
+            contained_object_refs.extend(
                 nest_serialized_object.contained_object_refs
             )
             total_bytes = nest_serialized_object.total_bytes
         else:
-            contained_object_refs = []
             total_bytes = 0
         super(MessagePackSerializedObject, self).__init__(
             metadata,
