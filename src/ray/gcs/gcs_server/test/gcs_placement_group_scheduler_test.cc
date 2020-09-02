@@ -394,11 +394,11 @@ TEST_F(GcsPlacementGroupSchedulerTest, DestroyPlacementGroup) {
   ASSERT_TRUE(raylet_client_->GrantPrepareBundleResources());
   WaitPendingDone(failure_placement_groups_, 0);
   WaitPendingDone(success_placement_groups_, 1);
+  RAY_LOG(ERROR) << "sanngbin1";
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_client_->GrantCancelResourceReserve());
-
   // Subsequent destroy request should not do anything.
   scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
   ASSERT_FALSE(raylet_client_->GrantCancelResourceReserve());

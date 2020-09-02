@@ -230,9 +230,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
                      [this, bundle, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
-                       lease_status_tracker->MarkPreparePhaseDone(node_id, bundle,
-                                                                  status);
-                       if (lease_status_tracker->IsAllPrepareRequestReturned()) {
+                       lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
+                                                                        status);
+                       if (lease_status_tracker->AllPrepareRequestsReturned()) {
                          OnAllBundlePrepareRequestReturned(
                              lease_status_tracker, failure_callback, success_callback);
                        }
@@ -242,15 +242,31 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     const PlacementGroupID &placement_group_id) {
+  bool is_committed = false;
+  bool is_prepared = false;
+  std::shared_ptr<BundleLocations> bundle_locations = std::make_shared<BundleLocations>();
+
+  // Check if we can find committed bundle locations.
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
   // If bundle location has been already removed, it means bundles
   // are already destroyed. Do nothing.
-  if (!maybe_bundle_locations.has_value()) {
-    return;
+  if (maybe_bundle_locations.has_value()) {
+    is_committed = true;
+    bundle_locations = maybe_bundle_locations.value();
   }
 
-  const auto &bundle_locations = maybe_bundle_locations.value();
+  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+  if (it != placement_group_leasing_in_progress_.end()) {
+    const auto &leasing_context = it->second;
+    is_prepared = true;
+    bundle_locations = leasing_context->GetPreparedBundleLocations();
+  }
+
+  RAY_CHECK(!(is_committed && is_prepared))
+      << "Anomaly detected. It shouldn't be possible that placement group is both "
+         "committing and preparing.";
+
   // Cancel all resource reservation.
   for (const auto &iter : *(bundle_locations)) {
     auto &bundle_spec = iter.second.second;
@@ -292,8 +308,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
 void GcsPlacementGroupScheduler::CommitResources(
     const std::shared_ptr<BundleSpecification> &bundle,
-    const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
-    const StatusCallback callback = nullptr) {
+    const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback callback) {
   RAY_CHECK(node != nullptr);
   const auto lease_client = GetLeaseClientFromNode(node);
   const auto &node_id = node->node_id();
@@ -309,9 +324,8 @@ void GcsPlacementGroupScheduler::CommitResources(
           RAY_LOG(WARNING) << "Failed to commit resource to " << node_id
                            << " for bundle: " << bundle->DebugString();
         }
-        if (callback) {
-          callback(status);
-        }
+        RAY_CHECK(callback);
+        callback(status);
       });
 }
 
@@ -359,7 +373,11 @@ GcsPlacementGroupScheduler::GetLeaseClientFromNode(
 }
 
 void GcsPlacementGroupScheduler::CommitAllBundles(
-    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker) {
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_failure_handler,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_success_handler) {
   const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   lease_status_tracker->MarkCommitPhaseStarted();
@@ -367,10 +385,18 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const auto &node_id = bundle_to_commit.second.first;
     const auto &node = gcs_node_manager_.GetNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
-    // TODO(sang): Add retry logic. Once commit is confirmed, we can retry unlimitedly
-    // until the node is dead. We can use lease_status_tracker for exponential backoff or
-    // some other strategies.
-    CommitResources(bundle, node);
+
+    // TODO(sang) Handle the case nodes are dead.
+    CommitResources(
+        bundle, node,
+        [this, lease_status_tracker, bundle, node_id, schedule_failure_handler,
+         schedule_success_handler](const Status &status) {
+          lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+          if (lease_status_tracker->AllCommitRequestReturned()) {
+            OnAllBundleCommitRequestReturned(
+                lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+          }
+        });
   }
 }
 
@@ -380,24 +406,21 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
         &schedule_failure_handler,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_success_handler) {
-  RAY_CHECK(lease_status_tracker->IsAllPrepareRequestReturned())
+  RAY_CHECK(lease_status_tracker->AllPrepareRequestsReturned())
       << "This method can be called only after all bundle scheduling requests are "
-         "returend.";
+         "returned.";
   const auto &placement_group = lease_status_tracker->GetPlacementGroup();
   const auto &bundles = lease_status_tracker->GetBundlesToSchedule();
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
-  // Add a prepared bundle locations to committed bundle locations.
-  committed_bundle_location_index_.AddBundleLocations(placement_group_id,
-                                                      prepared_bundle_locations);
-  // Erase the status tracker from a in-memory map if exists.
-  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
-  RAY_CHECK(it != placement_group_leasing_in_progress_.end());
-  placement_group_leasing_in_progress_.erase(it);
 
-  if (!lease_status_tracker->IsPreparePhaseSucceed()) {
+  if (!lease_status_tracker->AllPrepareRequestsSuccessful()) {
+    // Erase the status tracker from a in-memory map if exists.
     DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+    auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+    RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+    placement_group_leasing_in_progress_.erase(it);
     schedule_failure_handler(placement_group);
     return;
   }
@@ -419,11 +442,50 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
   }
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
       placement_group_id, data,
-      [this, schedule_success_handler, placement_group,
+      [this, schedule_success_handler, schedule_failure_handler,
        lease_status_tracker](Status status) {
-        CommitAllBundles(lease_status_tracker);
-        schedule_success_handler(placement_group);
+        CommitAllBundles(lease_status_tracker, schedule_failure_handler,
+                         schedule_success_handler);
       }));
+}
+
+void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
+    const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_failure_handler,
+    const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
+        &schedule_success_handler) {
+  const auto &placement_group = lease_status_tracker->GetPlacementGroup();
+  const auto &prepared_bundle_locations =
+      lease_status_tracker->GetPreparedBundleLocations();
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+
+  // Clean up the leasing progress map.
+  auto it = placement_group_leasing_in_progress_.find(placement_group_id);
+  RAY_CHECK(it != placement_group_leasing_in_progress_.end());
+  placement_group_leasing_in_progress_.erase(it);
+
+  // Add a prepared bundle locations to committed bundle locations.
+  committed_bundle_location_index_.AddBundleLocations(placement_group_id,
+                                                      prepared_bundle_locations);
+
+  if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
+    if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
+      DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+    } else {
+      // Update the state to be reschedule so that the failure handle will reschedule the
+      // failed bundles.
+      const auto &uncommitted_bundle_locations =
+          lease_status_tracker->GetUnCommittedBundleLocations();
+      for (const auto &bundle : *uncommitted_bundle_locations) {
+        placement_group->GetMutableBundle(bundle.first.second)->clear_node_id();
+      }
+      placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+    }
+    schedule_failure_handler(placement_group);
+    return;
+  }
+  schedule_success_handler(placement_group);
 }
 
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
@@ -558,6 +620,7 @@ LeaseStatusTracker::LeaseStatusTracker(
     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles)
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
+  uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
 }
 
 bool LeaseStatusTracker::MarkPreparePhaseStarted(
@@ -566,7 +629,7 @@ bool LeaseStatusTracker::MarkPreparePhaseStarted(
   return node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second;
 }
 
-void LeaseStatusTracker::MarkPreparePhaseDone(
+void LeaseStatusTracker::MarkPrepareRequestReturned(
     const ClientID &node_id, const std::shared_ptr<BundleSpecification> bundle,
     const Status &status) {
   RAY_CHECK(prepare_request_returned_count_ <= bundles_to_schedule_.size());
@@ -588,20 +651,38 @@ void LeaseStatusTracker::MarkPreparePhaseDone(
     preparing_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
   prepare_request_returned_count_ += 1;
-
-  if (IsPreparePhaseSucceed()) {
-    UpdateLeasingState(LeasingState::COMMITING);
-  }
 }
 
-bool LeaseStatusTracker::IsAllPrepareRequestReturned() const {
+bool LeaseStatusTracker::AllPrepareRequestsReturned() const {
   return prepare_request_returned_count_ == bundles_to_schedule_.size();
 }
 
-bool LeaseStatusTracker::IsPreparePhaseSucceed() const {
-  return IsAllPrepareRequestReturned() &&
+bool LeaseStatusTracker::AllPrepareRequestsSuccessful() const {
+  return AllPrepareRequestsReturned() &&
          (preparing_bundle_locations_->size() == bundles_to_schedule_.size()) &&
          (leasing_state_ != LeasingState::CANCELLED);
+}
+
+void LeaseStatusTracker::MarkCommitRequestReturned(
+    const ClientID &node_id, const std::shared_ptr<BundleSpecification> bundle,
+    const Status &status) {
+  commit_request_returned_count_ += 1;
+  // If the request succeeds, record it.
+  const auto &bundle_id = bundle->BundleId();
+  if (!status.ok()) {
+    uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+  }
+}
+
+bool LeaseStatusTracker::AllCommitRequestReturned() const {
+  return commit_request_returned_count_ == bundles_to_schedule_.size();
+}
+
+bool LeaseStatusTracker::AllCommitRequestsSuccessful() const {
+  // We don't check cancel state here because we shouldn't destroy bundles when
+  // commit requests failed. Cancel state should be treated separately.
+  return AllCommitRequestReturned() &&
+         preparing_bundle_locations_->size() == bundles_to_schedule_.size();
 }
 
 const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup() const {
@@ -611,6 +692,11 @@ const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup(
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLocations()
     const {
   return preparing_bundle_locations_;
+}
+
+const std::shared_ptr<BundleLocations>
+    &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
+  return uncommitted_bundle_locations_;
 }
 
 const std::vector<std::shared_ptr<BundleSpecification>>
@@ -634,7 +720,7 @@ bool LeaseStatusTracker::UpdateLeasingState(LeasingState leasing_state) {
 }
 
 void LeaseStatusTracker::MarkCommitPhaseStarted() {
-  UpdateLeasingState(LeasingState::COMMITING);
+  UpdateLeasingState(LeasingState::COMMITTING);
 }
 
 }  // namespace gcs

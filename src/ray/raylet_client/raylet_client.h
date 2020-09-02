@@ -93,8 +93,10 @@ class ResourceReserveInterface {
  public:
   /// Request a raylet to prepare resources of a given bundle for atomic placement group
   /// creation. This is used for the first phase of atomic placement group creation. The
-  /// callback will be sent via gRPC. \param resource_spec Resources that should be
-  /// allocated for the worker. \return ray::Status
+  /// callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be
+  /// allocated for the worker.
+  /// \return ray::Status
   virtual void PrepareBundleResources(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply>
@@ -102,8 +104,10 @@ class ResourceReserveInterface {
 
   /// Request a raylet to commit resources of a given bundle for atomic placement group
   /// creation. This is used for the first phase of atomic placement group creation. The
-  /// callback will be sent via gRPC. \param resource_spec Resources that should be
-  /// allocated for the worker. \return ray::Status
+  /// callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be
+  /// allocated for the worker.
+  /// \return ray::Status
   virtual void CommitBundleResources(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
@@ -360,7 +364,7 @@ class RayletClient : public PinObjectsInterface,
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
-  /// Implements ResourceReserveInterface.
+  /// Implements PrepareBundleResourcesInterface.
   void PrepareBundleResources(
       const BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
@@ -372,7 +376,7 @@ class RayletClient : public PinObjectsInterface,
       const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
       override;
 
-  /// Implements ResourceReserveInterface.
+  /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)

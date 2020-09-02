@@ -1819,6 +1819,7 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
   // TODO(sang): Implement this in the next PR.
 }
 
