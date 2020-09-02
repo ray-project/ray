@@ -74,11 +74,23 @@ class BasicVariantGenerator(SearchAlgorithm):
                     experiment.spec.get("num_samples", 1), experiment.spec,
                     experiment.name))
 
+    def next_trial(self):
+        """Provides one Trial object to be queued into the TrialRunner.
+
+        Returns:
+            Trial: Returns a single trial.
+        """
+        try:
+            return next(self._trial_generator)
+        except StopIteration:
+            self.set_finished()
+            return None
+
     def next_trials(self):
         """Provides Trial objects to be queued into the TrialRunner.
 
         Returns:
-            trials (list): Returns a list of trials.
+            List[Trial]: A list of trials for the Runner to consume.
         """
         trials = list(self._trial_generator)
         if self._shuffle:

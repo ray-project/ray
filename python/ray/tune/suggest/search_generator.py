@@ -88,6 +88,17 @@ class SearchGenerator(SearchAlgorithm):
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
+    def next_trial(self):
+        """Provides one Trial object to be queued into the TrialRunner.
+
+        Returns:
+            Trial: Returns a single trial.
+        """
+        if not self.is_finished():
+            return self.create_trial_if_possible(self._experiment.spec,
+                                                 self._experiment.name)
+        return None
+
     def next_trials(self):
         """Provides a batch of Trial objects to be queued into the TrialRunner.
 
