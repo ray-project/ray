@@ -27,9 +27,9 @@ ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 def parse_request_item(request_item):
-    if request_item.request_context == TaskContext.Web:
+    if request_item.metadata.request_context == TaskContext.Web:
         is_web_context = True
-        asgi_scope, body_bytes = request_item.request_args
+        asgi_scope, body_bytes = request_item.args
 
         flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
         args = (flask_request, )
@@ -37,7 +37,7 @@ def parse_request_item(request_item):
     else:
         is_web_context = False
         args = (FakeFlaskRequest(), )
-        kwargs = request_item.request_kwargs
+        kwargs = request_item.kwargs
 
     return args, kwargs, is_web_context
 
