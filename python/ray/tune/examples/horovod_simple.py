@@ -104,7 +104,7 @@ if __name__ == "__main__":
         use_gpu=args.gpu,
         num_nodes=args.hosts_per_trial,
         num_workers_per_node=args.workers_per_host,
-        replicate_pem=True)
+        replicate_pem=False)
     analysis = tune.run(
         horovod_trainable,
         config={"lr": tune.uniform(0.1, 1)},
