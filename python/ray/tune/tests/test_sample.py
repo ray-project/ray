@@ -215,7 +215,6 @@ class SearchSpaceTest(unittest.TestCase):
 
         config = {"b": {"z": tune.sample.Float(1e-4, 1e-2).loguniform()}}
         bayesopt_config = {"b/z": (1e-4, 1e-2)}
-
         converted_config = BayesOptSearch.convert_search_space(config)
 
         searcher1 = BayesOptSearch(space=converted_config, metric="none")
