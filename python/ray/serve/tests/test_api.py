@@ -272,6 +272,41 @@ def test_updating_config(serve_instance):
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
 
+def test_updating_config_legacy(serve_instance):
+    class BatchSimple:
+        def __init__(self):
+            self.count = 0
+
+        @serve.accept_batch
+        def __call__(self, flask_request, temp=None):
+            batch_size = serve.context.batch_size
+            return [1] * batch_size
+
+    serve.create_backend(
+        "bsimple:v1",
+        BatchSimple,
+        config={
+            "max_batch_size": 2,
+            "num_replicas": 3
+        })
+    serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
+
+    controller = serve.api._get_controller()
+    old_replica_tag_list = ray.get(
+        controller._list_replicas.remote("bsimple:v1"))
+
+    serve.update_backend_config("bsimple:v1", {"max_batch_size": 5})
+    new_replica_tag_list = ray.get(
+        controller._list_replicas.remote("bsimple:v1"))
+    new_all_tag_list = []
+    for worker_dict in ray.get(
+            controller.get_all_worker_handles.remote()).values():
+        new_all_tag_list.extend(list(worker_dict.keys()))
+
+    # the old and new replica tag list should be identical
+    # and should be subset of all_tag_list
+    assert set(old_replica_tag_list) <= set(new_all_tag_list)
+    assert set(old_replica_tag_list) == set(new_replica_tag_list)
 
 def test_delete_backend(serve_instance):
     def function():
