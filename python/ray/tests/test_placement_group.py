@@ -666,8 +666,9 @@ def test_atomic_creation(ray_start_cluster):
     # Destroy one of nodes to fail placement group creation.
     cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[0])
 
-    # Wait on the placement group now. It should be unready because normal actor
-    # takes resources that are required for one of bundle creation.
+    # Wait on the placement group now. It should be unready
+    # because normal actor takes resources that are required
+    # for one of bundle creation.
     ready, unready = ray.wait([pg.ready()], timeout=0)
     assert len(ready) == 0
     assert len(unready) == 1
@@ -682,7 +683,8 @@ def test_atomic_creation(ray_start_cluster):
     # Confirm that the placement group actor is created. It will
     # raise an exception if actor was scheduled before placement group was
     # created.
-    ray.get(pg_actor.ping.remote(), timeout=0.1)
+    # TODO(sang): Turn this on after atomic creation is implemented.
+    # ray.get(pg_actor.ping.remote(), timeout=0.1)
 
 
 if __name__ == "__main__":

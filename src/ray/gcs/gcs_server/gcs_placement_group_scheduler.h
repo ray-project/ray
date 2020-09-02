@@ -66,7 +66,12 @@ class GcsPlacementGroupSchedulerInterface {
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) = 0;
 
-  /// Mark the placement group schedule as cancelled. Cancelled bundles will be destroyed.
+  /// Mark the placement group scheduling is cancelled.
+  /// This method will incur check failure if scheduling
+  /// is not actually going on to guarantee strong consistency.
+  ///
+  /// \param placement_group_id The placement group id scheduling is in progress.
+  /// \return void
   virtual void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
@@ -132,11 +137,11 @@ class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
 };
 
 enum class LeasingState {
-  // TODO(sang): Use prepare and commit instead for 2PC.
-  /// The phase where lease requests haven't been returned.
-  SCHEDULING,
-  /// The phase where lease requests have returned
-  ALL_RETURNED,
+  /// The first phase of 2PC. It means requests to nodes are sent to prepare resources.
+  PREPARING,
+  /// The second phase of 2PC. It means that all prepare requests succeed, and GCS is
+  /// commiting resources to each node.
+  COMMITING,
   /// Placement group has been removed, and this leasing is not valid.
   CANCELLED
 };
@@ -149,18 +154,63 @@ class LeaseStatusTracker {
                      std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
   ~LeaseStatusTracker() = default;
 
-  bool MarkLeaseStarted(const ClientID &node_id,
-                        std::shared_ptr<BundleSpecification> bundle);
-  void MarkLeaseReturned(const ClientID &node_id,
-                         std::shared_ptr<BundleSpecification> bundle,
-                         const Status &status);
-  bool IsAllLeaseRequestReturned() const;
-  bool IsLeasingSucceed() const;
+  /// Indicate the tracker that prepare requests are sent to a specific node.
+  ///
+  /// \param node_id Id of a node where prepare request is sent.
+  /// \param bundle Bundle specification the node is supposed to prepare.
+  /// \return False if the prepare phase was already started. True otherwise.
+  bool MarkPreparePhaseStarted(const ClientID &node_id,
+                               std::shared_ptr<BundleSpecification> bundle);
+
+  /// Indicate the tracker that all prepare requests are returned.
+  /// This will update the state to commiting if all prepare requests succeed.
+  /// \param node_id Id of a node where prepare request is returned.
+  /// \param bundle Bundle specification the node was supposed to schedule.
+  /// \param status Status of the prepare response.
+  /// \param void
+  void MarkPreparePhaseDone(const ClientID &node_id,
+                            std::shared_ptr<BundleSpecification> bundle,
+                            const Status &status);
+
+  /// Used to know if all prepare requests are returend.
+  ///
+  /// \return True if all prepare requests are returned
+  bool IsAllPrepareRequestReturned() const;
+
+  /// Used to know if the prepare phase succeed.
+  ///
+  /// \return True if all prepare requests succeed.
+  bool IsPreparePhaseSucceed() const;
+
+  /// Return a placement group this status tracker is associated with.
+  ///
+  /// \return The placement group of this lease status tracker is tracking.
   const std::shared_ptr<GcsPlacementGroup> &GetPlacementGroup() const;
-  const std::vector<std::shared_ptr<BundleSpecification>> &GetUnplacedBundles() const;
-  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
+
+  /// Return bundles that should be scheduled.
+  ///
+  /// \return List of bundle specification that are supposed to be scheduled.
+  const std::vector<std::shared_ptr<BundleSpecification>> &GetBundlesToSchedule() const;
+
+  /// This method returns bundle locations that succeed to prepare resources.
+  ///
+  /// \return Location of bundles that succeed to prepare resources on a node.
+  const std::shared_ptr<BundleLocations> &GetPreparedBundleLocations() const;
+
+  /// Return the leasing state.
+  ///
+  /// \return Leasing state.
   const LeasingState GetLeasingState() const;
+
+  /// Mark that this leasing is cancelled.
+  ///
+  /// \return void.
   void MarkPlacementGroupScheduleCancelled();
+
+  /// Mark that the commit phase is started.
+  /// There's no need to mark commit phase is done because in that case, we won't need the
+  /// status tracker anymore.
+  void MarkCommitPhaseStarted();
 
  private:
   /// Method to update leasing states.
@@ -172,26 +222,26 @@ class LeaseStatusTracker {
   /// Placement group of which this leasing context is associated with.
   std::shared_ptr<GcsPlacementGroup> placement_group_;
 
-  /// Location of bundles that lease requests were sent.
-  /// If schedule success, the decision will be set as schedule_map[bundles[pos]]
+  /// Location of bundles that prepare requests were sent.
+  /// If prepare succeeds, the decision will be set as schedule_map[bundles[pos]]
   /// else will be set ClientID::Nil().
-  std::shared_ptr<BundleLocations> bundle_locations_;
+  std::shared_ptr<BundleLocations> preparing_bundle_locations_;
 
   /// Number of lease requests that are returned.
-  size_t returned_count_ = 0;
+  size_t prepare_request_returned_count_ = 0;
 
   /// The leasing stage. This is used to know the state of current leasing context.
-  LeasingState leasing_state_ = LeasingState::SCHEDULING;
+  LeasingState leasing_state_ = LeasingState::PREPARING;
 
   /// Map from node ID to the set of bundles for whom we are trying to acquire a lease
   /// from that node. This is needed so that we can retry lease requests from the node
   /// until we receive a reply or the node is removed.
   /// TODO(sang): We don't currently handle retry.
   absl::flat_hash_map<ClientID, absl::flat_hash_set<BundleID>>
-      node_to_bundles_when_leasing_;
+      node_to_bundles_when_preparing_;
 
-  /// Unplaced bundle specification for this leasing context.
-  std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles_;
+  /// Bundles to schedule.
+  std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -272,8 +322,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Schedule unplaced bundles of the specified placement group.
   /// If there is no available nodes then the `schedule_failed_handler` will be
-  /// triggered, otherwise the bundle in placement_group will be add into a queue and
-  /// schedule all bundle by calling ReserveResourceFromNode().
+  /// triggered, otherwise the bundle in placement_group will be added into a queue and
+  /// scheduled to all nodes.
   ///
   /// \param placement_group to be scheduled.
   /// \param failure_callback This function is called if the schedule is failed.
@@ -283,18 +333,22 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> failure_handler,
       std::function<void(std::shared_ptr<GcsPlacementGroup>)> success_handler) override;
 
-  /// Destroy bundle resources from all nodes in the placement group.
-  /// This doesn't do anything if bundles are already destroyed.
+  /// Destroy the actual bundle resources or locked resources (for 2PC)
+  /// on all nodes associated with this placement group.
+  /// The method is idempotent, meaning if all bundles are already cancelled,
+  /// this method won't do anything.
   ///
   /// \param placement_group_id The id of a placement group to destroy all bundle
-  /// resources.
+  /// or locked resources.
   void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) override;
 
-  /// Mark the placement group schedule as cancelled.
-  /// Cancelled bundles will be destroyed.
-  /// \param placement_group_id The id of a placement group to mark that scheduling is
-  /// cancelled.
+  /// Mark the placement group scheduling is cancelled.
+  /// This method will incur check failure if scheduling
+  /// is not actually going on to guarantee strong consistency.
+  ///
+  /// \param placement_group_id The placement group id scheduling is in progress.
+  /// \return void
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
   /// Get bundles belong to the specified node.
@@ -305,15 +359,35 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const ClientID &node_id) override;
 
  protected:
-  /// Lease resource from the specified node for the specified bundle.
-  void ReserveResourceFromNode(const std::shared_ptr<BundleSpecification> &bundle,
-                               const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
-                               const StatusCallback &callback);
+  /// Send a bundle PREPARE request to a node. PREPARE requests will lock resources
+  /// on a node until COMMIT or CANCEL requests are sent to a node.
+  ///
+  /// \param bundle A bundle to schedule on a node.
+  /// \param node A node to prepare resources for a given bundle.
+  /// \param callback
+  /// \return void
+  void PrepareResources(const std::shared_ptr<BundleSpecification> &bundle,
+                        const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
+                        const StatusCallback &callback);
 
-  /// return resource for the specified node for the specified bundle.
+  /// Send a bundle COMMIT request to a node. This means the placement group creation
+  /// is ready and GCS will commit resources on a given node.
+  ///
+  /// \param bundle A bundle to schedule on a node.
+  /// \param node A node to commit resources for a given bundle.
+  /// \param callback
+  /// \return void
+  void CommitResources(const std::shared_ptr<BundleSpecification> &bundle,
+                       const std::shared_ptr<ray::rpc::GcsNodeInfo> &node,
+                       const StatusCallback callback);
+
+  /// Cacnel prepared or committed resources from a node.
+  /// Nodes will be in charge of tracking state of a bundle.
+  /// This method is supposed to be idempotent.
   ///
   /// \param bundle A description of the bundle to return.
   /// \param node The node that the worker will be returned for.
+  /// \return void
   void CancelResourceReserve(const std::shared_ptr<BundleSpecification> &bundle_spec,
                              const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
 
@@ -321,12 +395,18 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::shared_ptr<ResourceReserveInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
-  void OnAllBundleSchedulingRequestReturned(
+  /// Get an existing lease client for a given node.
+  std::shared_ptr<ResourceReserveInterface> GetLeaseClientFromNode(
+      const std::shared_ptr<ray::rpc::GcsNodeInfo> &node);
+
+  void OnAllBundlePrepareRequestReturned(
       const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_failure_handler,
       const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
           &schedule_success_handler);
+
+  void CommitAllBundles(const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker);
 
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
@@ -351,8 +431,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
 
-  /// Index to lookup bundle locations of node or placement group.
-  BundleLocationIndex bundle_location_index_;
+  /// Index to lookup committed bundle locations of node or placement group.
+  BundleLocationIndex committed_bundle_location_index_;
 
   /// Set of placement group that have lease requests in flight to nodes.
   /// It is required to know if placement group has been removed or not.
