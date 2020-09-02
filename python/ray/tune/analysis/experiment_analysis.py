@@ -20,6 +20,15 @@ class Analysis:
     """Analyze all results from a directory of experiments.
 
     To use this class, the experiment must be executed with the JsonLogger.
+
+    Args:
+        experiment_dir (str): Directory of the experiment to load.
+        default_metric (str): Default metric for comparing results. Can be
+            overwritten with the ``metric`` parameter in the respective
+            functions.
+        default_mode (str): Default mode for comparing results. Has to be one
+            of [min, max]. Can be overwritten with the ``mode`` parameter
+            in the respective functions.
     """
 
     def __init__(self, experiment_dir, default_metric=None, default_mode=None):
@@ -32,6 +41,9 @@ class Analysis:
         self._trial_dataframes = {}
 
         self.default_metric = default_metric
+        if default_mode and default_mode not in ["min", "max"]:
+            raise ValueError(
+                "`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
 
         if not pd:
@@ -40,6 +52,22 @@ class Analysis:
                 "Analysis utilities.")
         else:
             self.fetch_trial_dataframes()
+
+    def _validate_metric(self, metric):
+        if not metric and not self.default_metric:
+            raise ValueError(
+                "No `metric` has been passed and  `default_metric` has "
+                "not been set. Please specify the `metric` parameter.")
+        return metric or self.default_metric
+
+    def _validate_mode(self, mode):
+        if not mode and not self.default_mode:
+            raise ValueError(
+                "No `mode` has been passed and  `default_mode` has "
+                "not been set. Please specify the `mode` parameter.")
+        if mode and mode not in ["min", "max"]:
+            raise ValueError("If set, `mode` has to be one of [min, max]")
+        return mode or self.default_mode
 
     def dataframe(self, metric=None, mode=None):
         """Returns a pandas.DataFrame object constructed from the trials.
@@ -69,8 +97,8 @@ class Analysis:
             mode (str): One of [min, max]. Defaults to
                 ``self.default_mode``.
         """
-        metric = metric or self.default_metric
-        mode = mode or self.default_mode
+        metric = self._validate_metric(metric)
+        mode = self._validate_mode(mode)
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         if not rows:
@@ -93,8 +121,8 @@ class Analysis:
                 ``self.default_metric``.
             mode (str): One of [min, max]. Defaults to ``self.default_mode``.
         """
-        metric = metric or self.default_metric
-        mode = mode or self.default_mode
+        metric = self._validate_metric(metric)
+        mode = self._validate_mode(mode)
 
         assert mode in ["max", "min"]
         df = self.dataframe(metric=metric, mode=mode)
@@ -182,7 +210,7 @@ class Analysis:
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
-    def get_best_checkpoint(self, trial, metric=None, mode="max"):
+    def get_best_checkpoint(self, trial, metric=None, mode=None):
         """Gets best persistent checkpoint path of provided trial.
 
         Args:
@@ -196,9 +224,8 @@ class Analysis:
             Path for best checkpoint of trial determined by metric
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
-        mode = mode or self.default_mode
+        mode = self._validate_mode(mode)
 
-        assert mode in ["max", "min"]
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
         if mode == "max":
             return max(checkpoint_paths, key=lambda x: x[1])[0]
@@ -253,10 +280,12 @@ class ExperimentAnalysis(Analysis):
             Experiment.local_dir/Experiment.name/experiment_state.json
         trials (list|None): List of trials that can be accessed via
             `analysis.trials`.
-        default_metric (str): Default metric for `get_best_trial()` and its
-            derivatives.
-        default_mode (str): Default mode for `get_best_trial()` and its
-            derivatives.
+        default_metric (str): Default metric for comparing results. Can be
+            overwritten with the ``metric`` parameter in the respective
+            functions.
+        default_mode (str): Default mode for comparing results. Has to be one
+            of [min, max]. Can be overwritten with the ``mode`` parameter
+            in the respective functions.
 
     Example:
         >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
@@ -311,16 +340,9 @@ class ExperimentAnalysis(Analysis):
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
-        metric = metric or self.default_metric
-        mode = mode or self.default_mode
+        metric = self._validate_metric(metric)
+        mode = self._validate_mode(mode)
 
-        if mode not in ["max", "min"]:
-            raise ValueError(
-                "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for mode {} not in [\"max\", \"min\"]. "
-                "If you didn't pass a `mode` parameter to `tune.run()`, "
-                "you have to pass one when fetching the best trial.".format(
-                    metric, mode))
         if scope not in ["all", "last", "avg", "last-5-avg", "last-10-avg"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "

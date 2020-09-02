@@ -1,6 +1,7 @@
 import logging
 import random
 from copy import copy
+from inspect import signature
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
@@ -10,6 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 class Domain:
+    """Base class to specify a type and valid range to sample parameters from.
+
+    This base class is implemented by parameter spaces, like float ranges
+    (``Float``), integer ranges (``Integer``), or categorical variables
+    (``Categorical``). The ``Domain`` object contains information about
+    valid values (e.g. minimum and maximum values), and exposes methods that
+    allow specification of specific samplers (e.g. ``uniform()`` or
+    ``loguniform()``).
+
+    """
     sampler = None
     default_sampler_cls = None
 
@@ -245,13 +256,16 @@ class Function(Domain):
                    domain: "Function",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            items = []
-            for i in range(size):
-                this_spec = spec[i] if isinstance(spec, list) else spec
-                items.append(domain.func(this_spec))
-            if len(items) == 1:
-                return items[0]
-            return items
+            pass_spec = len(signature(domain.func).parameters) > 0
+            if pass_spec:
+                items = [
+                    domain.func(spec[i] if isinstance(spec, list) else spec)
+                    for i in range(size)
+                ]
+            else:
+                items = [domain.func() for i in range(size)]
+
+            return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _CallSampler
 
@@ -281,6 +295,14 @@ class Quantized(Sampler):
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
         return list(quantized)
+
+
+# TODO (krfricke): Remove tune.function
+def function(func):
+    logger.warning(
+        "DeprecationWarning: wrapping {} with tune.function() is no "
+        "longer needed".format(func))
+    return func
 
 
 def sample_from(func: Callable[[Dict], Any]):

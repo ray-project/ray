@@ -121,6 +121,7 @@ extras["rllib"] = extras["tune"] + [
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
+    "scipy",
 ]
 
 extras["streaming"] = []
