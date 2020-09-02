@@ -49,7 +49,7 @@ def train(config):
     net = Net(args.mode).to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
-        lr=args.learning_rate,
+        lr=config["lr"],
     )
     optimizer = hvd.DistributedOptimizer(optimizer)
 
