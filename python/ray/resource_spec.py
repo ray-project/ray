@@ -1,7 +1,6 @@
 import math
 from collections import namedtuple
 import logging
-import multiprocessing
 import os
 import re
 import subprocess
@@ -151,7 +150,7 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = multiprocessing.cpu_count()
+            num_cpus = ray.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
         gpu_ids = ray.utils.get_cuda_visible_devices()

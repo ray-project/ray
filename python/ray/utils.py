@@ -3,6 +3,7 @@ import errno
 import hashlib
 import inspect
 import logging
+import multiprocessing
 import numpy as np
 import os
 import signal
@@ -487,6 +488,15 @@ def get_system_memory():
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
+
+
+def get_num_cpus():
+    try:
+        return int(subprocess.check_output("nproc"))
+    except Exception:
+        # Nproc is a linux only utility, fallback to multiprocessing
+        # This is fine because nproc is primarily for Docker (linux only)
+        return multiprocessing.cpu_count()
 
 
 def get_used_memory():
