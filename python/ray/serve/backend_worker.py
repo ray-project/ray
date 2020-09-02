@@ -4,7 +4,6 @@ import inspect
 from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
-from operator import attrgetter
 from typing import Union, List, Any, Callable, Type
 import time
 
@@ -185,7 +184,7 @@ class RayServeWorker:
         asyncio.get_event_loop().create_task(self.main_loop())
 
     def get_runner_method(self, request_item: Query) -> Callable:
-        method_name = request_item.call_method
+        method_name = request_item.metadata.call_method
         if not hasattr(self.callable, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
@@ -325,7 +324,9 @@ class RayServeWorker:
                 all_evaluated_futures = [evaluated]
                 chain_future(evaluated, query.async_future)
             else:
-                get_call_method = attrgetter("call_method")
+                get_call_method = (
+                    lambda query: query.metadata.call_method  # noqa: E731
+                )
                 sorted_batch = sorted(batch, key=get_call_method)
                 for _, group in groupby(sorted_batch, key=get_call_method):
                     group = list(group)

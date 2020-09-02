@@ -152,7 +152,7 @@ class TestDistributions(unittest.TestCase):
 
     def test_squashed_gaussian(self):
         """Tests the SquashedGaussian ActionDistribution for all frameworks."""
-        input_space = Box(-2.0, 2.0, shape=(200, 10))
+        input_space = Box(-2.0, 2.0, shape=(2000, 10))
         low, high = -2.0, 1.0
 
         for fw, sess in framework_iterator(
@@ -245,7 +245,7 @@ class TestDistributions(unittest.TestCase):
 
     def test_diag_gaussian(self):
         """Tests the DiagGaussian ActionDistribution for all frameworks."""
-        input_space = Box(-2.0, 2.0, shape=(200, 10))
+        input_space = Box(-2.0, 2.0, shape=(2000, 10))
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf", "tfe"), session=True):
@@ -310,9 +310,9 @@ class TestDistributions(unittest.TestCase):
             check(outs, log_prob, decimals=4)
 
     def test_beta(self):
-        input_space = Box(-2.0, 1.0, shape=(200, 10))
+        input_space = Box(-2.0, 1.0, shape=(2000, 10))
         low, high = -1.0, 2.0
-        plain_beta_value_space = Box(0.0, 1.0, shape=(200, 5))
+        plain_beta_value_space = Box(0.0, 1.0, shape=(2000, 5))
 
         for fw, sess in framework_iterator(session=True):
             cls = TorchBeta if fw == "torch" else Beta
@@ -361,7 +361,7 @@ class TestDistributions(unittest.TestCase):
             check(
                 out,
                 np.sum(np.log(beta.pdf(values, alpha, beta_)), -1),
-                rtol=0.001)
+                rtol=0.01)
 
             # TODO(sven): Test entropy outputs (against scipy).
 

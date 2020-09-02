@@ -65,6 +65,7 @@ MOCK_MODULES = [
     "torch.utils.data",
     "torch.utils.data.distributed",
     "wandb",
+    "xgboost",
     "zoopt",
 ]
 import scipy.stats

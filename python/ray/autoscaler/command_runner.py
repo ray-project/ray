@@ -1,19 +1,20 @@
 from getpass import getuser
 from shlex import quote
-from typing import List, Tuple, Dict
+from typing import Any, List, Tuple, Dict, Optional
 import click
 import hashlib
+import json
 import logging
 import os
 import subprocess
 import sys
 import time
-import json
 
-from ray.autoscaler.docker import check_docker_running_cmd, \
+from ray.autoscaler.docker import check_bind_mounts_cmd, \
+                                  check_docker_running_cmd, \
                                   check_docker_image, \
-                                  docker_autoscaler_setup, \
                                   docker_start_cmds, \
+                                  DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
 from ray.autoscaler.log_timer import LogTimer
 
@@ -134,7 +135,10 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_up(self, source: str, target: str) -> None:
+    def run_rsync_up(self,
+                     source: str,
+                     target: str,
+                     options: Optional[Dict[str, Any]] = None) -> None:
         """Rsync files up to the cluster node.
 
         Args:
@@ -143,7 +147,10 @@ class CommandRunnerInterface:
         """
         raise NotImplementedError
 
-    def run_rsync_down(self, source: str, target: str) -> None:
+    def run_rsync_down(self,
+                       source: str,
+                       target: str,
+                       options: Optional[Dict[str, Any]] = None) -> None:
         """Rsync files down from the cluster node.
 
         Args:
@@ -231,7 +238,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 else:
                     raise
 
-    def run_rsync_up(self, source, target):
+    def run_rsync_up(self, source, target, options=None):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
@@ -257,7 +264,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                                             target)
         ])
 
-    def run_rsync_down(self, source, target):
+    def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
             target = "/root" + target[1:]
 
@@ -531,7 +538,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self._run_helper(final_cmd, with_output, exit_on_fail)
 
-    def run_rsync_up(self, source, target):
+    def run_rsync_up(self, source, target, options=None):
         self._set_ssh_ip_if_required()
         command = [
             "rsync", "--rsh",
@@ -543,7 +550,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
-    def run_rsync_down(self, source, target):
+    def run_rsync_down(self, source, target, options=None):
         self._set_ssh_ip_if_required()
 
         command = [
@@ -609,37 +616,41 @@ class DockerCommandRunner(CommandRunnerInterface):
             with_output=with_output,
             ssh_options_override_ssh_key=ssh_options_override_ssh_key)
 
-    def run_rsync_up(self, source, target):
-        # TODO(ilr) Expose this to before NodeUpdater::sync_file_mounts
-        protected_path = target
-        if target.find("/root") == 0:
-            target = target.replace("/root", "/tmp/root")
+    def run_rsync_up(self, source, target, options=None):
+        options = options or {}
+        host_destination = os.path.join(DOCKER_MOUNT_PREFIX,
+                                        target.lstrip("/"))
+
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(target.rstrip('/'))}")
-        self.ssh_command_runner.run_rsync_up(source, target)
-        if self._check_container_status():
+            f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
+
+        self.ssh_command_runner.run_rsync_up(
+            source, host_destination, options=None)
+        if self._check_container_status() and not options.get(
+                "file_mount", False):
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
-                target += "/."
+                host_destination += "/."
             self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                target, self.container_name,
-                self._docker_expand_user(protected_path)))
+                host_destination, self.container_name,
+                self._docker_expand_user(target)))
 
-    def run_rsync_down(self, source, target):
-        protected_path = source
-        if source.find("/root") == 0:
-            source = source.replace("/root", "/tmp/root")
+    def run_rsync_down(self, source, target, options=None):
+        options = options or {}
+        host_source = os.path.join(DOCKER_MOUNT_PREFIX, source.lstrip("/"))
         self.ssh_command_runner.run(
-            f"mkdir -p {os.path.dirname(source.rstrip('/'))}")
-        if protected_path[-1] == "/":
-            protected_path += "."
+            f"mkdir -p {os.path.dirname(host_source.rstrip('/'))}")
+        if source[-1] == "/":
+            source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
-        self.ssh_command_runner.run("docker cp {}:{} {}".format(
-            self.container_name, self._docker_expand_user(protected_path),
-            source))
-        self.ssh_command_runner.run_rsync_down(source, target)
+        if not options.get("file_mount", False):
+            self.ssh_command_runner.run("docker cp {}:{} {}".format(
+                self.container_name, self._docker_expand_user(source),
+                host_source))
+        self.ssh_command_runner.run_rsync_down(
+            host_source, target, options=None)
 
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
@@ -722,9 +733,23 @@ class DockerCommandRunner(CommandRunnerInterface):
                 logger.error(f"A container with name {self.container_name} " +
                              f"is running image {running_image} instead " +
                              f"of {image} (which was provided in the YAML")
-
-        # Copy bootstrap config & key over
-        if as_head:
-            for copy_cmd in docker_autoscaler_setup(self.container_name):
-                self.run(copy_cmd, run_env="host")
+            mounts = self.run(
+                check_bind_mounts_cmd(self.container_name),
+                with_output=True,
+                run_env="host").decode("utf-8").strip()
+            try:
+                active_mounts = json.loads(mounts)
+                active_remote_mounts = [
+                    mnt["Destination"] for mnt in active_mounts
+                ]
+                for remote, local in file_mounts.items():
+                    remote = self._docker_expand_user(remote)
+                    if remote not in active_remote_mounts:
+                        cli_logger.error(
+                            "Please ray stop & restart cluster to "
+                            f"allow mount {remote}:{local} to take hold")
+            except json.JSONDecodeError:
+                cli_logger.verbose(
+                    "Unable to check if file_mounts specified in the YAML "
+                    "differ from those on the running container.")
         self.initialized = True

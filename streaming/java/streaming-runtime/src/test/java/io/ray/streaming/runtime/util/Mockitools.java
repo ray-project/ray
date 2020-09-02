@@ -68,6 +68,10 @@ public class Mockitools {
         createNodeId(i),
         "localhost" + i,
         "localhost" + i,
+        -1,
+        "",
+        "",
+
         true,
         resources);
   }
