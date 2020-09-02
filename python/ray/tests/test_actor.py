@@ -696,7 +696,7 @@ def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method(self, name):
-            assert setproctitle.getproctitle() == "ray::{}".format(name)
+            assert setproctitle.getproctitle() == f"ray::{name}"
 
     f = Foo.remote()
 
