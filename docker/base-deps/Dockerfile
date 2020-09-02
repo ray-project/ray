@@ -9,13 +9,6 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-RUN echo "$AUTOSCALER" && echo $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
-        tmux \
-        screen \
-        rsync \
-        openssh-client \
-        gnupg; fi)
-RUN vim 
 RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
