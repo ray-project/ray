@@ -9,6 +9,16 @@ External library integrations (tune.integration)
 
 .. _tune-integration-kubernetes:
 
+.. _tune-integration-keras:
+
+Keras (tune.integration.keras)
+------------------------------------------------------
+
+.. autoclass:: ray.tune.integration.keras.TuneReportCallback
+
+.. autoclass:: ray.tune.integration.keras.TuneReportCheckpointCallback
+
+
 Kubernetes (tune.integration.kubernetes)
 ----------------------------------------
 
