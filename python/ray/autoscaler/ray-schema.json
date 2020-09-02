@@ -302,7 +302,7 @@
                        },
                        "worker_setup_commands": {
                            "$ref": "#/definitions/commands",
-                           "description": "List of common shell commands to run to setup nodes. This overrides the global setup_commands and worker_setup_commands."
+                           "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
                        },
                        "docker": {
                         "description": "Configuration of Worker nodes.",
