@@ -213,19 +213,19 @@ BundleCheckStatus DataReader::CheckBundle(const std::shared_ptr<DataBundle> &mes
                               : end_msg_id - message->meta->GetMessageListSize() + 1;
   uint64_t last_msg_id = last_message_id_[message->from];
 
-  // writer will keep sending bundles when downstream reader failover. After reader
+  // Writer will keep sending bundles when downstream reader failover. After reader
   // recovered, it will receive these bundles whoes msg_id is larger than expected.
   if (start_msg_id > last_msg_id + 1) {
     return BundleCheckStatus::BundleToBeThrown;
   }
   if (end_msg_id < last_msg_id + 1) {
-    // empty message and barrier's msg_id equals to last message, so we shouldn't throw
+    // Empty message and barrier's msg_id equals to last message, so we shouldn't throw
     // them.
     return end_msg_id == last_msg_id && !message->meta->IsBundle()
                ? BundleCheckStatus::OkBundle
                : BundleCheckStatus::BundleToBeThrown;
   }
-  // normal bundles
+  // Normal bundles.
   if (start_msg_id == last_msg_id + 1) {
     return BundleCheckStatus::OkBundle;
   }
@@ -263,12 +263,12 @@ StreamingStatus DataReader::StashNextMessageAndPop(std::shared_ptr<DataBundle> &
                                                    uint32_t timeout_ms) {
   STREAMING_LOG(DEBUG) << "StashNextMessageAndPop, timeout_ms=" << timeout_ms;
 
-  // get the first message
+  // Get the first message.
   message = reader_merger_->top();
   STREAMING_LOG(DEBUG) << "Messages to be poped=" << *message
                        << ", merger size=" << reader_merger_->size();
 
-  // then stash next message from its from queue.
+  // Then stash next message from its from queue.
   std::shared_ptr<DataBundle> new_msg = std::make_shared<DataBundle>();
   auto &channel_info = channel_info_map_[message->from];
   RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg, timeout_ms, timeout_ms))
@@ -277,11 +277,11 @@ StreamingStatus DataReader::StashNextMessageAndPop(std::shared_ptr<DataBundle> &
   STREAMING_LOG(DEBUG) << "New message pushed=" << *new_msg
                        << ", merger size=" << reader_merger_->size();
 
-  // pop message
+  // Pop message.
   reader_merger_->pop();
   STREAMING_LOG(DEBUG) << "Message poped, msg=" << *message;
 
-  // record some metrics
+  // Record some metrics.
   channel_info.last_queue_item_delay =
       new_msg->meta->GetMessageBundleTs() - message->meta->GetMessageBundleTs();
   channel_info.last_queue_item_latency = current_time_ms() - current_time_ms();
@@ -306,7 +306,7 @@ StreamingStatus DataReader::GetMergedMessageBundle(std::shared_ptr<DataBundle> &
     is_valid_break = true;
   } else if (timer_interval_ != -1 && cur_time - last_message_ts_ >= timer_interval_ &&
              message->meta->IsEmptyMsg()) {
-    // sent empty message when reaching timer_interval
+    // Sent empty message when reaching timer_interval
     last_message_ts_ = cur_time;
     is_valid_break = true;
   }
@@ -328,21 +328,20 @@ bool DataReader::BarrierAlign(std::shared_ptr<DataBundle> &message) {
   uint64_t barrier_id = barrier_header.barrier_id;
   auto *barrier_align_cnt = &global_barrier_cnt_;
   auto &channel_info = channel_info_map_[message->from];
-  // Target count is input vector size (global barrier)
-  // or barrier collection length (partial barrier).
+  // Target count is input vector size (global barrier).
   uint32_t target_count = 0;
 
   channel_info.barrier_id = barrier_header.barrier_id;
   target_count = input_queue_ids_.size();
   (*barrier_align_cnt)[barrier_id]++;
-  // the next message checkpoint is changed if this's barrier message.
+  // The next message checkpoint is changed if this's barrier message.
   STREAMING_LOG(INFO) << "[Reader] [Barrier] get barrier, barrier_id=" << barrier_id
                       << ", barrier_cnt=" << (*barrier_align_cnt)[barrier_id]
                       << ", global barrier id=" << barrier_header.barrier_id
                       << ", from q_id=" << message->from << ", barrier type="
                       << static_cast<uint32_t>(barrier_header.barrier_type)
                       << ", target count=" << target_count;
-  // notify invoker the last barrier, so that checkpoint or something related can be
+  // Notify invoker the last barrier, so that checkpoint or something related can be
   // taken right now.
   if ((*barrier_align_cnt)[barrier_id] == target_count) {
     // map can't be used in multithread (crash in report timer)
@@ -472,7 +471,7 @@ bool StreamingReaderMsgPtrComparator::operator()(const std::shared_ptr<DataBundl
       return a->last_barrier_id > b->last_barrier_id;
   }
   STREAMING_CHECK(a->meta);
-  // we proposed push id for stability of message in sorting
+  // We proposed fixed id sequnce for stability of message in sorting.
   if (a->meta->GetMessageBundleTs() == b->meta->GetMessageBundleTs()) {
     return a->from.Hash() > b->from.Hash();
   }
