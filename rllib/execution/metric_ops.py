@@ -25,7 +25,7 @@ def StandardMetricsReporting(
             to collect metrics from.
 
     Returns:
-        A local iterator over training results.
+        LocalIterator[dict]: A local iterator over training results.
 
     Examples:
         >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
