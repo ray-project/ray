@@ -61,8 +61,8 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
     # Make sure it's the right request
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 1
-    assert got_work.request_kwargs == {}
+    assert got_work.args[0] == 1
+    assert got_work.kwargs == {}
 
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
@@ -74,14 +74,14 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
                                   task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 1
+    assert got_work.args[0] == 1
 
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-alter-2": 1}))
     await q.add_new_worker.remote("backend-alter-2", "replica-1",
                                   task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 2)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 2
+    assert got_work.args[0] == 2
 
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
@@ -106,7 +106,7 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
         await runner.get_recent_call.remote()
         for runner in (runner_1, runner_2)
     ]
-    assert [g.request_args[0] for g in got_work] == [1, 1]
+    assert [g.args[0] for g in got_work] == [1, 1]
 
 
 async def test_queue_remove_replicas(serve_instance):
@@ -146,7 +146,7 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
     for i, runner in enumerate(runners):
         calls = await runner.get_all_calls.remote()
         for call in calls:
-            runner_shard_keys[i].add(call.request_args[0])
+            runner_shard_keys[i].add(call.args[0])
         await runner.clear_calls.remote()
 
     # Send queries with the same shard keys a second time.
@@ -158,7 +158,7 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
     for i, runner in enumerate(runners):
         calls = await runner.get_all_calls.remote()
         for call in calls:
-            assert call.request_args[0] in runner_shard_keys[i]
+            assert call.args[0] in runner_shard_keys[i]
 
 
 async def test_router_use_max_concurrency(serve_instance):
