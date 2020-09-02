@@ -80,7 +80,7 @@ class AxSearch(Searcher):
 
     def __init__(self,
                  space=None,
-                 metric=None,
+                 metric="episode_reward_mean",
                  mode="max",
                  parameter_constraints=None,
                  outcome_constraints=None,
@@ -135,14 +135,13 @@ class AxSearch(Searcher):
                 minimize=self._mode != "max")
         else:
             if any([
-                    self._space, self._metric, self._parameter_constraints,
+                    self._space, self._parameter_constraints,
                     self._outcome_constraints
             ]):
                 raise ValueError(
                     "If you create the Ax experiment yourself, do not pass "
                     "values for these parameters to `AxSearch`: {}.".format([
-                        "space", "metric", "parameter_constraints",
-                        "outcome_constraints"
+                        "space", "parameter_constraints", "outcome_constraints"
                     ]))
 
         exp = self._ax.experiment
