@@ -27,16 +27,28 @@ class BackendMetadata(BaseModel):
 
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
+
+    :param num_replicas: The number of worker processes to start up that will
+        handle requests to this backend. Defaults to 0.
+    :type num_replicas: int, optional
+    :param max_batch_size: The maximum number of requests that will be 
+        processed in one batch by this backend. Defaults to None (no
+        maximium).
+    :type max_batch_size: int, optional
+    :param batch_wait_timeout: The time in seconds that backend replicas will
+        wait for a full batch of requests before processing a partial batch.
+        Defaults to 0.
+    :type batch_wait_timeout: float, optional
+    :param max_concurrent_queries: The maximum number of queries that will be
+        sent to a replica of this backend without receiving a response. 
+        Defaults to None (no maximum).
+    :type max_concurrent_queries: int, optional
     """
 
     internal_metadata: BackendMetadata = BackendMetadata()
-    #: The number of worker processes to start up that will handle requests to this backend.  # noqa: E501
     num_replicas: PositiveInt = 1
-    #: The maximum number of requests that will be processed in one batch by this backend.  # noqa: E501
     max_batch_size: Optional[PositiveInt] = None
-    #: The time in seconds that backend replicas will wait for a full batch of requests before processing a partial batch.  # noqa: E501
     batch_wait_timeout: float = 0
-    #: The maximum number of queries that will be sent to a replica of this backend without receiving a response.  # noqa: E501
     max_concurrent_queries: Optional[int] = None
 
     class Config:
