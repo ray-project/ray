@@ -355,7 +355,7 @@ class BayesOptSearch(Searcher):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler))
-                    return (domain.min, domain.max)
+                    return (domain.lower, domain.upper)
 
             raise ValueError("BayesOpt does not support parameters of type "
                              "`{}`".format(type(domain).__name__))

@@ -108,11 +108,11 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            assert domain.min > float("-inf"), \
-                "Uniform needs a minimum bound"
-            assert domain.max < float("inf"), \
-                "Uniform needs a maximum bound"
-            items = np.random.uniform(domain.min, domain.max, size=size)
+            assert domain.lower > float("-inf"), \
+                "Uniform needs a lower bound"
+            assert domain.upper < float("inf"), \
+                "Uniform needs a upper bound"
+            items = np.random.uniform(domain.lower, domain.upper, size=size)
             return items if len(items) > 1 else domain.cast(items[0])
 
     class _LogUniform(LogUniform):
@@ -120,12 +120,12 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            assert domain.min > 0, \
-                "LogUniform needs a minimum bound greater than 0"
-            assert 0 < domain.max < float("inf"), \
-                "LogUniform needs a maximum bound greater than 0"
-            logmin = np.log(domain.min) / np.log(self.base)
-            logmax = np.log(domain.max) / np.log(self.base)
+            assert domain.lower > 0, \
+                "LogUniform needs a lower bound greater than 0"
+            assert 0 < domain.upper < float("inf"), \
+                "LogUniform needs a upper bound greater than 0"
+            logmin = np.log(domain.lower) / np.log(self.base)
+            logmax = np.log(domain.upper) / np.log(self.base)
 
             items = self.base**(np.random.uniform(logmin, logmax, size=size))
             return items if len(items) > 1 else domain.cast(items[0])
@@ -135,45 +135,45 @@ class Float(Domain):
                    domain: "Float",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            assert not domain.min or domain.min == float("-inf"), \
+            assert not domain.lower or domain.lower == float("-inf"), \
                 "Normal sampling does not allow a lower value bound."
-            assert not domain.max or domain.max == float("inf"), \
+            assert not domain.upper or domain.upper == float("inf"), \
                 "Normal sampling does not allow a upper value bound."
             items = np.random.normal(self.mean, self.sd, size=size)
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
 
-    def __init__(self, min: Optional[float], max: Optional[float]):
+    def __init__(self, lower: Optional[float], upper: Optional[float]):
         # Need to explicitly check for None
-        self.min = min if min is not None else float("-inf")
-        self.max = max if max is not None else float("inf")
+        self.lower = lower if lower is not None else float("-inf")
+        self.upper = upper if upper is not None else float("inf")
 
     def cast(self, value):
         return float(value)
 
     def uniform(self):
-        if not self.min > float("-inf"):
+        if not self.lower > float("-inf"):
             raise ValueError(
-                "Uniform requires a minimum bound. Make sure to set the "
-                "`min` parameter of `Float()`.")
-        if not self.max < float("inf"):
+                "Uniform requires a lower bound. Make sure to set the "
+                "`lower` parameter of `Float()`.")
+        if not self.upper < float("inf"):
             raise ValueError(
-                "Uniform requires a maximum bound. Make sure to set the "
-                "`max` parameter of `Float()`.")
+                "Uniform requires a upper bound. Make sure to set the "
+                "`upper` parameter of `Float()`.")
         new = copy(self)
         new.set_sampler(self._Uniform())
         return new
 
     def loguniform(self, base: float = 10):
-        if not self.min > 0:
+        if not self.lower > 0:
             raise ValueError(
-                "LogUniform requires a minimum bound greater than 0. "
-                "Make sure to set the `min` parameter of `Float()` correctly.")
-        if not 0 < self.max < float("inf"):
+                "LogUniform requires a lower bound greater than 0. "
+                f"Got: {self.lower}.")
+        if not 0 < self.upper < float("inf"):
             raise ValueError(
-                "LogUniform requires a minimum bound greater than 0. "
-                "Make sure to set the `max` parameter of `Float()` correctly.")
+                "LogUniform requires a upper bound greater than 0. "
+                f"Got: {self.upper}.")
         new = copy(self)
         new.set_sampler(self._LogUniform(base))
         return new
@@ -195,14 +195,14 @@ class Integer(Domain):
                    domain: "Integer",
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
-            items = np.random.randint(domain.min, domain.max, size=size)
+            items = np.random.randint(domain.lower, domain.upper, size=size)
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
 
-    def __init__(self, min, max):
-        self.min = min
-        self.max = max
+    def __init__(self, lower, upper):
+        self.lower = lower
+        self.upper = upper
 
     def cast(self, value):
         return int(value)
@@ -314,18 +314,18 @@ def sample_from(func: Callable[[Dict], Any]):
     return Function(func)
 
 
-def uniform(min: float, max: float):
-    """Sample a float value uniformly between ``min`` and ``max``.
+def uniform(lower: float, upper: float):
+    """Sample a float value uniformly between ``lower`` and ``upper``.
 
     Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
     ``np.random.uniform(1, 10))``
 
     """
-    return Float(min, max).uniform()
+    return Float(lower, upper).uniform()
 
 
-def quniform(min: float, max: float, q: float):
-    """Sample a quantized float value uniformly between ``min`` and ``max``.
+def quniform(lower: float, upper: float, q: float):
+    """Sample a quantized float value uniformly between ``lower`` and ``upper``.
 
     Sampling from ``tune.uniform(1, 10)`` is equivalent to sampling from
     ``np.random.uniform(1, 10))``
@@ -334,22 +334,22 @@ def quniform(min: float, max: float, q: float):
     Quantization makes the upper bound inclusive.
 
     """
-    return Float(min, max).uniform().quantized(q)
+    return Float(lower, upper).uniform().quantized(q)
 
 
-def loguniform(min: float, max: float, base: float = 10):
+def loguniform(lower: float, upper: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
-        min (float): Lower boundary of the output interval (e.g. 1e-4)
-        max (float): Upper boundary of the output interval (e.g. 1e-2)
+        lower (float): Lower boundary of the output interval (e.g. 1e-4)
+        upper (float): Upper boundary of the output interval (e.g. 1e-2)
         base (int): Base of the log. Defaults to 10.
 
     """
-    return Float(min, max).loguniform(base)
+    return Float(lower, upper).loguniform(base)
 
 
-def qloguniform(min: float, max: float, q: float, base: float = 10):
+def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
@@ -357,14 +357,14 @@ def qloguniform(min: float, max: float, q: float, base: float = 10):
     Quantization makes the upper bound inclusive.
 
     Args:
-        min (float): Lower boundary of the output interval (e.g. 1e-4)
-        max (float): Upper boundary of the output interval (e.g. 1e-2)
+        lower (float): Lower boundary of the output interval (e.g. 1e-4)
+        upper (float): Upper boundary of the output interval (e.g. 1e-2)
         q (float): Quantization number. The result will be rounded to an
             integer increment of this value.
         base (int): Base of the log. Defaults to 10.
 
     """
-    return Float(min, max).loguniform(base).quantized(q)
+    return Float(lower, upper).loguniform(base).quantized(q)
 
 
 def choice(categories: List):
@@ -377,22 +377,22 @@ def choice(categories: List):
     return Categorical(categories).uniform()
 
 
-def randint(min: int, max: int):
-    """Sample an integer value uniformly between ``min`` and ``max``.
+def randint(lower: int, upper: int):
+    """Sample an integer value uniformly between ``lower`` and ``upper``.
 
-    ``min`` is inclusive, ``max`` is exclusive.
+    ``lower`` is inclusive, ``upper`` is exclusive.
 
     Sampling from ``tune.randint(10)`` is equivalent to sampling from
     ``np.random.randint(10)``
 
     """
-    return Integer(min, max).uniform()
+    return Integer(lower, upper).uniform()
 
 
-def qrandint(min: int, max: int, q: int = 1):
-    """Sample an integer value uniformly between ``min`` and ``max``.
+def qrandint(lower: int, upper: int, q: int = 1):
+    """Sample an integer value uniformly between ``lower`` and ``upper``.
 
-    ``min`` is inclusive, ``max`` is also inclusive (!).
+    ``lower`` is inclusive, ``upper`` is also inclusive (!).
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
@@ -401,7 +401,7 @@ def qrandint(min: int, max: int, q: int = 1):
     ``np.random.randint(10)``
 
     """
-    return Integer(min, max).uniform().quantized(q)
+    return Integer(lower, upper).uniform().quantized(q)
 
 
 def randn(mean: float = 0., sd: float = 1.):

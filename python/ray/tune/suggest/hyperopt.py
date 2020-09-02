@@ -295,15 +295,15 @@ class HyperOptSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     if quantize:
-                        return hpo.hp.qloguniform(par, domain.min, domain.max,
-                                                  quantize)
-                    return hpo.hp.loguniform(par, np.log(domain.min),
-                                             np.log(domain.max))
+                        return hpo.hp.qloguniform(par, domain.lower,
+                                                  domain.upper, quantize)
+                    return hpo.hp.loguniform(par, np.log(domain.lower),
+                                             np.log(domain.upper))
                 elif isinstance(sampler, Uniform):
                     if quantize:
-                        return hpo.hp.quniform(par, domain.min, domain.max,
+                        return hpo.hp.quniform(par, domain.lower, domain.upper,
                                                quantize)
-                    return hpo.hp.uniform(par, domain.min, domain.max)
+                    return hpo.hp.uniform(par, domain.lower, domain.upper)
                 elif isinstance(sampler, Normal):
                     if quantize:
                         return hpo.hp.qnormal(par, sampler.mean, sampler.sd,
@@ -313,21 +313,21 @@ class HyperOptSearch(Searcher):
             elif isinstance(domain, Integer):
                 if isinstance(sampler, Uniform):
                     if quantize:
-                        logger.warning(
+                        raise ValueError(
                             "HyperOpt does not support quantization for "
-                            "integer values. Dropped quantization.")
-                    if domain.min != 0:
-                        logger.warning(
+                            "integer values. Please use 'randint' instead.")
+                    if domain.lower != 0:
+                        raise ValueError(
                             "HyperOpt only allows integer sampling with "
-                            "lower bound 0. Dropped the lower bound {}".format(
-                                domain.min))
-                    if domain.max < 1:
+                            "lower bound 0. Please set the lower bound "
+                            f"to {domain.lower}")
+                    if domain.upper < 1:
                         raise ValueError(
                             "HyperOpt does not support integer sampling "
                             "of values lower than 0. Set your maximum range "
                             "to something above 0 (currently {})".format(
-                                domain.max))
-                    return hpo.hp.randint(par, domain.max)
+                                domain.upper))
+                    return hpo.hp.randint(par, domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return hpo.hp.choice(par, domain.categories)

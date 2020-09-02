@@ -223,7 +223,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.min, domain.max],
+                        "bounds": [domain.lower, domain.upper],
                         "value_type": "float",
                         "log_scale": True
                     }
@@ -231,7 +231,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.min, domain.max],
+                        "bounds": [domain.lower, domain.upper],
                         "value_type": "float",
                         "log_scale": False
                     }
@@ -240,7 +240,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.min, domain.max],
+                        "bounds": [domain.lower, domain.upper],
                         "value_type": "int",
                         "log_scale": True
                     }
@@ -248,7 +248,7 @@ class AxSearch(Searcher):
                     return {
                         "name": par,
                         "type": "range",
-                        "bounds": [domain.min, domain.max],
+                        "bounds": [domain.lower, domain.upper],
                         "value_type": "int",
                         "log_scale": False
                     }

@@ -206,13 +206,14 @@ class OptunaSearch(Searcher):
                         logger.warning(
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization.")
-                    return param.suggest_loguniform(par, domain.min,
-                                                    domain.max)
+                    return param.suggest_loguniform(par, domain.lower,
+                                                    domain.upper)
                 elif isinstance(sampler, Uniform):
                     if quantize:
                         return param.suggest_discrete_uniform(
-                            par, domain.min, domain.max, quantize)
-                    return param.suggest_uniform(par, domain.min, domain.max)
+                            par, domain.lower, domain.upper, quantize)
+                    return param.suggest_uniform(par, domain.lower,
+                                                 domain.upper)
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     if quantize:
@@ -220,10 +221,10 @@ class OptunaSearch(Searcher):
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization.")
                     return param.suggest_int(
-                        par, domain.min, domain.max, log=True)
+                        par, domain.lower, domain.upper, log=True)
                 elif isinstance(sampler, Uniform):
                     return param.suggest_int(
-                        par, domain.min, domain.max, step=quantize or 1)
+                        par, domain.lower, domain.upper, step=quantize or 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return param.suggest_categorical(par, domain.categories)
