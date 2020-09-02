@@ -5,9 +5,9 @@ import io.ray.streaming.runtime.config.types.ContextBackendType;
 import io.ray.streaming.runtime.state.impl.AtomicFsBackend;
 import io.ray.streaming.runtime.state.impl.MemoryContextBackend;
 
-public class StateBackendFactory {
+public class ContextBackendFactory {
 
-  public static ContextBackend getStateBackend(final StreamingGlobalConfig config) {
+  public static ContextBackend getContextBackend(final StreamingGlobalConfig config) {
     ContextBackend contextBackend;
     ContextBackendType type = ContextBackendType.valueOf(
         config.stateBackendConfig.stateBackendType().toUpperCase());
@@ -20,7 +20,7 @@ public class StateBackendFactory {
         contextBackend = new AtomicFsBackend(config.stateBackendConfig);
         break;
       default:
-        throw new RuntimeException("Unsupported state backend type.");
+        throw new RuntimeException("Unsupported context backend type.");
     }
     return contextBackend;
   }
