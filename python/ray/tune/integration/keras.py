@@ -4,7 +4,7 @@ from tensorflow.keras.callbacks import Callback
 from ...reporter import Reporter
 
 
-class TuneReporterCallback(Callback):
+class TuneKerasReporterCallback(Callback):
     """Tune Callback for Keras.
 
     The pourpose of the class is to make easy to execute schedulers such as
@@ -13,12 +13,42 @@ class TuneReporterCallback(Callback):
     Keep in mind that, if you desire to track metrics such as the validation
     metrics (the ones beginning with 'val_') you will need to use 'epoch'
     as value for the frequency.
+
+    Usage example
+    ---------------------------------
+    Suppose you have a model object called `model` and you want to report the
+    metrics, including for instance the AUROC. 
+    You can achieve your goals as follows:
+
+    ```python
+    from tensorflow.keras.metrics import AUC
+    from ray.tune import 
+
+    reporter = build_my_reporter(...)
+    model = build_my_model(...)
+    model.compile(
+        optimizer="nadam",
+        loss="binary_crossentropy",
+        metrics=[
+            "accuracy",
+            AUC(curve="ROC", name="AUROC")
+        ]
+    )
+
+    model.fit(
+        X, y,
+        callbacks=[
+            TuneKerasReporterCallback(reporter)
+        ]
+    )
+    ```
+    
     """
 
     FREQUENCIES = {"batch", "epoch"}
 
     def __init__(self, reporter: Reporter, frequency: str = "epoch"):
-        """Initialize new TuneReporterCallback object.
+        """Initialize new TuneKerasReporterCallback object.
 
         Args:
             reporter (Reporter): reporter object to use to send the results.
@@ -30,13 +60,13 @@ class TuneReporterCallback(Callback):
         Raises:
             ValueError: when an unsupported frequency is given.
         """
-        if frequency not in TuneReporterCallback.FREQUENCIES:
+        if frequency not in TuneKerasReporterCallback.FREQUENCIES:
             raise ValueError(
                 "{} not supported as a frequency.".format(frequency)
             )
         self._frequency = frequency
         self._reporter = reporter
-        super(TuneReporterCallback, self).__init__()
+        super(TuneKerasReporterCallback, self).__init__()
 
     def on_batch_end(self, batch: int, logs: Dict = None):
         """Report metrics on the end of each batch if requested.
