@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.state;
 
 import io.ray.streaming.runtime.config.StreamingGlobalConfig;
-import io.ray.streaming.runtime.config.types.StateBackendType;
+import io.ray.streaming.runtime.config.types.ContextBackendType;
 import io.ray.streaming.runtime.state.impl.AtomicFsBackend;
 import io.ray.streaming.runtime.state.impl.MemoryContextBackend;
 
@@ -9,7 +9,7 @@ public class StateBackendFactory {
 
   public static ContextBackend getStateBackend(final StreamingGlobalConfig config) {
     ContextBackend contextBackend;
-    StateBackendType type = StateBackendType.valueOf(
+    ContextBackendType type = ContextBackendType.valueOf(
         config.stateBackendConfig.stateBackendType().toUpperCase());
 
     switch (type) {
