@@ -94,6 +94,9 @@ extern jmethodID java_system_gc;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// RayIntentionalSystemExitException class
+extern jclass java_ray_intentional_system_exit_exception_class;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
