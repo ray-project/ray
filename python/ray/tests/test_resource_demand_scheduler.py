@@ -450,7 +450,6 @@ class AutoscalingTest(unittest.TestCase):
                                    "init_cmd")
 
     def testDockerWorkers(self):
-        t = "custom"
         config = MULTI_WORKER_CLUSTER.copy()
         config["available_node_types"]["p2.8xlarge"]["docker"] = {
             "worker_image": "p2.8x_image:latest",
