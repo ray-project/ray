@@ -147,10 +147,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param num_chunks Total number of chunks in the object
   /// \param rpc_client Rpc client used to send message to remote object manager
   void SendChunkBatch(const UniqueID &push_id, const ObjectID &object_id,
-                      const rpc::Address &owner_address,
-                      const ClientID &client_id, uint64_t data_size,
-                      uint64_t metadata_size, uint64_t from_chunk_index,
-                      uint64_t num_chunks,
+                      const rpc::Address &owner_address, const ClientID &client_id,
+                      uint64_t data_size, uint64_t metadata_size,
+                      uint64_t from_chunk_index, uint64_t num_chunks,
                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
   /// Send object to remote object manager

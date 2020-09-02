@@ -469,41 +469,42 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
   }
 }
 
-void ObjectManager::SendChunkBatch(
-    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
-    const ClientID &client_id, uint64_t data_size, uint64_t metadata_size,
-    uint64_t from_chunk_index, uint64_t num_chunks, std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+void ObjectManager::SendChunkBatch(const UniqueID &push_id, const ObjectID &object_id,
+                                   const rpc::Address &owner_address,
+                                   const ClientID &client_id, uint64_t data_size,
+                                   uint64_t metadata_size, uint64_t from_chunk_index,
+                                   uint64_t num_chunks,
+                                   std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
+  uint64_t max_batch = RayConfig::instance().object_manager_default_batch_size();
+  uint64_t n = 1;
 
-    uint64_t max_batch = RayConfig::instance().object_manager_default_batch_size();
-    uint64_t n = 1;
+  uint64_t index = from_chunk_index;
 
-    uint64_t index = from_chunk_index;
-
-    while (true) {
-      if (n > max_batch) {
-        break;
-      }
-      if (index >= num_chunks) {
-        break;
-      }
-      uint64_t send_num_chunks = 0;
-      if (n == max_batch && index != num_chunks - 1) {
-        send_num_chunks = num_chunks;
-      }
-
-      rpc_service_.post([this, push_id, object_id, owner_address, client_id, data_size,
-                         metadata_size, index, send_num_chunks, rpc_client]() {
-        auto st = SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
-                                  metadata_size, index, send_num_chunks,  rpc_client);
-        if (!st.ok()) {
-          RAY_LOG(WARNING) << "Send object " << object_id << " chunk failed due to "
-                           << st.message() << ", chunk index " << index;
-        }
-      });
-
-      index++;
-      n++;
+  while (true) {
+    if (n > max_batch) {
+      break;
     }
+    if (index >= num_chunks) {
+      break;
+    }
+    uint64_t send_num_chunks = 0;
+    if (n == max_batch && index != num_chunks - 1) {
+      send_num_chunks = num_chunks;
+    }
+
+    rpc_service_.post([this, push_id, object_id, owner_address, client_id, data_size,
+                       metadata_size, index, send_num_chunks, rpc_client]() {
+      auto st = SendObjectChunk(push_id, object_id, owner_address, client_id, data_size,
+                                metadata_size, index, send_num_chunks, rpc_client);
+      if (!st.ok()) {
+        RAY_LOG(WARNING) << "Send object " << object_id << " chunk failed due to "
+                         << st.message() << ", chunk index " << index;
+      }
+    });
+
+    index++;
+    n++;
+  }
 }
 
 ray::Status ObjectManager::SendObjectChunk(
@@ -539,10 +540,12 @@ ray::Status ObjectManager::SendObjectChunk(
   push_request.set_data(chunk_info.data, chunk_info.buffer_length);
 
   // record the time cost between send chunk and receive reply
-  rpc::ClientCallback<rpc::PushReply> callback =
-      [this, start_time, object_id, client_id, chunk_index,
-      push_id, data_size, owner_address, metadata_size, rpc_client, continuation_num_chunks]
-          ( const Status &status, const rpc::PushReply &reply) {
+  rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
+                                                  chunk_index, push_id, data_size,
+                                                  owner_address, metadata_size,
+                                                  rpc_client, continuation_num_chunks](
+                                                     const Status &status,
+                                                     const rpc::PushReply &reply) {
     // TODO: Just print warning here, should we try to resend this chunk?
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Send object " << object_id << " chunk to client " << client_id
@@ -554,10 +557,8 @@ ray::Status ObjectManager::SendObjectChunk(
 
     // If there are more chunks to send, sent the next batch.
     if (continuation_num_chunks != 0) {
-      SendChunkBatch(
-          push_id, object_id, owner_address,
-          client_id, data_size, metadata_size,
-          chunk_index + 1, continuation_num_chunks, rpc_client);
+      SendChunkBatch(push_id, object_id, owner_address, client_id, data_size,
+                     metadata_size, chunk_index + 1, continuation_num_chunks, rpc_client);
     }
   };
   rpc_client->Push(push_request, callback);
