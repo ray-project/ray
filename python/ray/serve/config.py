@@ -3,7 +3,7 @@ import inspect
 from pydantic import BaseModel, PositiveInt, validator
 from ray.serve.constants import ASYNC_CONCURRENCY
 from typing import Optional, Dict, Any
-
+from dataclasses import dataclass
 
 def _callable_accepts_batch(func_or_class):
     if inspect.isfunction(func_or_class):
@@ -18,8 +18,8 @@ def _callable_is_blocking(func_or_class):
     elif inspect.isclass(func_or_class):
         return not inspect.iscoroutinefunction(func_or_class.__call__)
 
-
-class BackendMetadata(BaseModel):
+@dataclass
+class BackendMetadata:
     accepts_batches: bool = False
     is_blocking: bool = True
     autoscaling_config: Optional[Dict[str, Any]] = None
@@ -54,6 +54,7 @@ class BackendConfig(BaseModel):
     class Config:
         validate_assignment = True
         extra = "forbid"
+        arbitrary_types_allowed = True
 
     def _validate_batch_size(self):
         if (self.max_batch_size is not None
