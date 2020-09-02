@@ -134,11 +134,13 @@ def appo_surrogate_loss(
         max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
-    else:
-        mask = tf.ones_like(rewards)
+        mask = make_time_major(mask, drop_last=policy.config["vtrace"])
 
-    def reduce_mean_valid(t):
-        return tf.reduce_mean(tf.boolean_mask(t, mask))
+        def reduce_mean_valid(t):
+            return tf.reduce_mean(tf.boolean_mask(t, mask))
+
+    else:
+        reduce_mean_valid = tf.reduce_mean
 
     if policy.config["vtrace"]:
         logger.debug("Using V-Trace surrogate loss (vtrace=True)")
@@ -166,11 +168,10 @@ def appo_surrogate_loss(
                     unpacked_behaviour_logits, drop_last=True),
                 target_policy_logits=make_time_major(
                     unpacked_old_policy_behaviour_logits, drop_last=True),
-                actions=tf.unstack(make_time_major(
-                    loss_actions, drop_last=True), axis=2),
-                discounts=tf.cast(~make_time_major(
-                    dones, drop_last=True), tf.float32) *
-                          policy.config["gamma"],
+                actions=tf.unstack(
+                    make_time_major(loss_actions, drop_last=True), axis=2),
+                discounts=tf.cast(~make_time_major(dones, drop_last=True),
+                                  tf.float32) * policy.config["gamma"],
                 rewards=make_time_major(rewards, drop_last=True),
                 values=values_time_major[:-1],  # drop-last=True
                 bootstrap_value=values_time_major[-1],

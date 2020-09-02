@@ -130,8 +130,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
                 unpacked_old_policy_behaviour_logits, drop_last=True),
             actions=torch.unbind(
                 _make_time_major(loss_actions, drop_last=True), dim=2),
-            discounts=(1.0 - _make_time_major(dones, drop_last=True).float())
-                      * policy.config["gamma"],
+            discounts=(1.0 - _make_time_major(dones, drop_last=True).float()) *
+            policy.config["gamma"],
             rewards=_make_time_major(rewards, drop_last=True),
             values=values_time_major[:-1],  # drop-last=True
             bootstrap_value=values_time_major[-1],
