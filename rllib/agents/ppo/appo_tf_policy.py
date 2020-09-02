@@ -123,13 +123,6 @@ def appo_surrogate_loss(
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
-    old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
-
-    unpacked_behaviour_logits = tf.split(
-        behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_old_policy_behaviour_logits = tf.split(
-        old_policy_behaviour_logits, output_hidden_shape, axis=1)
-    old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = make_time_major(values)
@@ -154,20 +147,33 @@ def appo_surrogate_loss(
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
             actions, axis=1)
 
+        old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
+
         # Prepare KL for Loss
         mean_kl = make_time_major(
             old_policy_action_dist.multi_kl(action_dist), drop_last=True)
 
+        unpacked_behaviour_logits = tf.split(
+            behaviour_logits, output_hidden_shape, axis=1)
+        unpacked_old_policy_behaviour_logits = tf.split(
+            old_policy_behaviour_logits, output_hidden_shape, axis=1)
+
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=unpacked_behaviour_logits,
-                target_policy_logits=unpacked_old_policy_behaviour_logits,
-                actions=tf.unstack(loss_actions, axis=2),
-                discounts=tf.cast(~dones, tf.float32) * policy.config["gamma"],
-                rewards=rewards,
-                values=values_time_major,
-                bootstrap_value=make_time_major(values)[-1],
+                behaviour_policy_logits=make_time_major(
+                    unpacked_behaviour_logits, drop_last=True),
+                target_policy_logits=make_time_major(
+                    unpacked_old_policy_behaviour_logits, drop_last=True),
+                actions=tf.unstack(make_time_major(
+                    loss_actions, drop_last=True), axis=2),
+                discounts=tf.cast(~make_time_major(
+                    dones, drop_last=True), tf.float32) *
+                          policy.config["gamma"],
+                rewards=make_time_major(rewards, drop_last=True),
+                values=values_time_major[:-1],  # drop-last=True
+                bootstrap_value=values_time_major[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
                 clip_rho_threshold=tf.cast(
@@ -177,11 +183,11 @@ def appo_surrogate_loss(
             )
 
         actions_logp = make_time_major(
-            action_dist.logp(loss_actions), drop_last=True)
+            action_dist.logp(actions), drop_last=True)
         prev_actions_logp = make_time_major(
-            prev_action_dist.logp(loss_actions), drop_last=True)
+            prev_action_dist.logp(actions), drop_last=True)
         old_policy_actions_logp = make_time_major(
-            old_policy_action_dist.logp(loss_actions), drop_last=True)
+            old_policy_action_dist.logp(actions), drop_last=True)
 
         is_ratio = tf.clip_by_value(
             tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
@@ -201,7 +207,7 @@ def appo_surrogate_loss(
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major - vtrace_returns.vs
+        delta = values_time_major[:-1] - vtrace_returns.vs
         value_targets = vtrace_returns.vs
         mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 

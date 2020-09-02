@@ -77,9 +77,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
-    old_policy_behaviour_logits = target_model_out.detach()
 
-    old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = _make_time_major(values)
@@ -101,6 +99,9 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     if policy.config["vtrace"]:
         logger.debug("Using V-Trace surrogate loss (vtrace=True)")
+
+        old_policy_behaviour_logits = target_model_out.detach()
+        old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
 
         if isinstance(output_hidden_shape, (list, tuple, np.ndarray)):
             unpacked_behaviour_logits = torch.split(
@@ -129,9 +130,10 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
                 unpacked_old_policy_behaviour_logits, drop_last=True),
             actions=torch.unbind(
                 _make_time_major(loss_actions, drop_last=True), dim=2),
-            discounts=(1.0 - dones.float()) * policy.config["gamma"],
-            rewards=rewards,
-            values=values,
+            discounts=(1.0 - _make_time_major(dones, drop_last=True).float())
+                      * policy.config["gamma"],
+            rewards=_make_time_major(rewards, drop_last=True),
+            values=values_time_major[:-1],  # drop-last=True
             bootstrap_value=values_time_major[-1],
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=model,
@@ -148,6 +150,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         is_ratio = torch.clamp(
             torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
         logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
+        policy._is_ratio = is_ratio
 
         advantages = vtrace_returns.pg_advantages
         surrogate_loss = torch.min(
@@ -160,7 +163,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major - vtrace_returns.vs
+        delta = values_time_major[:-1] - vtrace_returns.vs
         value_targets = vtrace_returns.vs
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
@@ -235,23 +238,23 @@ def stats(policy: Policy, train_batch: SampleBatch):
 
     stats_dict = {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "policy_loss": policy._mean_policy_loss,
+        "entropy": policy._mean_entropy,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
+        "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            torch.reshape(policy.loss.value_targets, [-1]),
+            torch.reshape(policy._value_targets, [-1]),
             torch.reshape(values_batched, [-1])),
     }
 
     if policy.config["vtrace"]:
-        is_stat_mean = torch.mean(policy.loss.is_ratio, [0, 1])
-        is_stat_var = torch.var(policy.loss.is_ratio, [0, 1])
+        is_stat_mean = torch.mean(policy._is_ratio, [0, 1])
+        is_stat_var = torch.var(policy._is_ratio, [0, 1])
         stats_dict.update({"mean_IS": is_stat_mean})
         stats_dict.update({"var_IS": is_stat_var})
 
     if policy.config["use_kl_loss"]:
-        stats_dict.update({"kl": policy.loss.mean_kl})
+        stats_dict.update({"kl": policy._mean_kl})
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
