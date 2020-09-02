@@ -44,3 +44,13 @@ Weights and Biases (tune.integration.wandb)
 .. autoclass:: ray.tune.integration.wandb.WandbLogger
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
+
+
+.. _tune-integration-xgboost:
+
+XGBoost (tune.integration.xgboost)
+----------------------------------
+
+.. autoclass:: ray.tune.integration.xgboost.TuneReportCallback
+
+.. autoclass:: ray.tune.integration.xgboost.TuneReportCheckpointCallback
