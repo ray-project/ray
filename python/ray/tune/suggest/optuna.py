@@ -1,4 +1,3 @@
-import copy
 import logging
 import pickle
 from typing import Dict
@@ -6,8 +5,9 @@ from typing import Dict
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
-from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
+from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import unflatten_dict
 
 try:
     import optuna as ot
@@ -59,10 +59,6 @@ class OptunaSearch(Searcher):
             minimizing or maximizing the metric attribute.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
-        base_config (dict): Base config dict that gets overwritten by the
-            Optuna sampling and is returned to each Tune trial. This could e.g.
-            contain static variables or configurations that should be passed
-            to each trial.
 
     Example:
 
@@ -84,14 +80,11 @@ class OptunaSearch(Searcher):
 
     """
 
-    def __init__(
-            self,
-            space=None,
-            metric="episode_reward_mean",
-            mode="max",
-            sampler=None,
-            base_config=None,
-    ):
+    def __init__(self,
+                 space=None,
+                 metric="episode_reward_mean",
+                 mode="max",
+                 sampler=None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
@@ -101,8 +94,6 @@ class OptunaSearch(Searcher):
             use_early_stopped_trials=None)
 
         self._space = space
-
-        self._config = base_config or {}
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
@@ -137,7 +128,6 @@ class OptunaSearch(Searcher):
         if mode:
             self._mode = mode
         self.setup_study(mode)
-        self._config = config
         return True
 
     def suggest(self, trial_id):
@@ -154,12 +144,14 @@ class OptunaSearch(Searcher):
             self._ot_trials[trial_id] = ot.trial.Trial(self._ot_study,
                                                        ot_trial_id)
         ot_trial = self._ot_trials[trial_id]
-        params = copy.copy(self._config)
-        for (fn, args, kwargs) in self._space:
-            param_name = args[0] if len(args) > 0 else kwargs["name"]
-            value = getattr(ot_trial, fn)(*args, **kwargs)  # Call Optuna trial
-            assign_value(params, param_name.split("/"), value)
-        return params
+
+        # getattr will fetch the trial.suggest_ function on Optuna trials
+        params = {
+            args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                ot_trial, fn)(*args, **kwargs)
+            for (fn, args, kwargs) in self._space
+        }
+        return unflatten_dict(params)
 
     def on_trial_result(self, trial_id, result):
         metric = result[self.metric]
