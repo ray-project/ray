@@ -20,7 +20,7 @@ public class TestFailover {
   public void simpleFailover() throws Exception {
 
     Map<String, String> conf = new HashMap<>();
-    conf.put("streaming.state-backend.type", "LOCAL_FILE");
+    conf.put("streaming.context-backend.type", "LOCAL_FILE");
 
     // emit [1000, 1100) records
     int recordCount = new Random().nextInt(100) + 1000;

@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.state;
+package io.ray.streaming.runtime.context;
 
 import com.google.common.base.MoreObjects;
 import io.ray.streaming.runtime.transfer.channel.OffsetInfo;

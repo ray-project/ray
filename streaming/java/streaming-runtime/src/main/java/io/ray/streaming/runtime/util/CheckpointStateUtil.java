@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.streaming.runtime.state.ContextBackend;
+import io.ray.streaming.runtime.context.ContextBackend;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

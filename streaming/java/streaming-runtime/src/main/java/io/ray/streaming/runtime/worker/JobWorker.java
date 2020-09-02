@@ -12,8 +12,8 @@ import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest;
 import io.ray.streaming.runtime.message.CallResult;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
-import io.ray.streaming.runtime.state.ContextBackend;
-import io.ray.streaming.runtime.state.StateBackendFactory;
+import io.ray.streaming.runtime.context.ContextBackend;
+import io.ray.streaming.runtime.context.ContextBackendFactory;
 import io.ray.streaming.runtime.transfer.TransferHandler;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.ChannelCreationStatus;
@@ -78,7 +78,7 @@ public class JobWorker implements Serializable {
     // TODO: the following 3 lines is duplicated with that in init(), try to optimise it later.
     this.executionVertex = executionVertex;
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
-    this.contextBackend = StateBackendFactory.getStateBackend(this.workerConfig);
+    this.contextBackend = ContextBackendFactory.getContextBackend(this.workerConfig);
 
     LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
         Ray.getRuntimeContext().wasCurrentActorRestarted());
@@ -126,7 +126,7 @@ public class JobWorker implements Serializable {
     this.executionVertex = workerContext.getExecutionVertex();
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
     // init state backend
-    this.contextBackend = StateBackendFactory.getStateBackend(this.workerConfig);
+    this.contextBackend = ContextBackendFactory.getContextBackend(this.workerConfig);
 
     LOG.info("Initiating job worker succeeded: {}.", workerContext.getWorkerName());
     saveContext();

@@ -11,9 +11,9 @@ def test_word_count():
         ray.init(_load_code_from_local=True, _include_java=True)
         # time.sleep(10) # for gdb to attach
         ctx = StreamingContext.Builder() \
-            .option("streaming.state-backend.type", "local_file") \
+            .option("streaming.context-backend.type", "local_file") \
             .option(
-                "streaming.state-backend.file-state.root", "/tmp/ray/cp_files/"
+                "streaming.context-backend.file-state.root", "/tmp/ray/cp_files/"
             ) \
             .option("streaming.checkpoint.timeout.secs", "3") \
             .build()

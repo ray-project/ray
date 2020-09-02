@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.state;
+package io.ray.streaming.runtime.context;
 
 public interface ContextBackend {
 

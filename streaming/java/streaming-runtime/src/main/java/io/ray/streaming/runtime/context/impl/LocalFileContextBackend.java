@@ -1,7 +1,7 @@
-package io.ray.streaming.runtime.state.impl;
+package io.ray.streaming.runtime.context.impl;
 
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
-import io.ray.streaming.runtime.state.ContextBackend;
+import io.ray.streaming.runtime.config.global.ContextBackendConfig;
+import io.ray.streaming.runtime.context.ContextBackend;
 import java.io.File;
 import org.apache.commons.io.FileUtils;
 
@@ -10,7 +10,7 @@ public class LocalFileContextBackend implements ContextBackend {
   private final String rootPath;
 
 
-  public LocalFileContextBackend(StateBackendConfig config) {
+  public LocalFileContextBackend(ContextBackendConfig config) {
     rootPath = config.fileStateRootPath();
   }
 

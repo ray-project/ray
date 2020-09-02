@@ -10,7 +10,7 @@ public interface Function extends Serializable {
   /**
    * This method will be called periodically by framework, you should return a a serializable
    * object which represents function state, framework will help you to serialize this object, save
-   * it to storage, and load it back when in fail-over through
+   * it to storage, and load it back when in fail-over through.
    * {@link Function#loadCheckpoint(Serializable)}.
    *
    * @return A serializable object which represents function state.

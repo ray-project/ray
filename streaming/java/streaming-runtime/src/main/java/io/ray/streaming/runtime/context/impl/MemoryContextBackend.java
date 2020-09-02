@@ -1,7 +1,7 @@
-package io.ray.streaming.runtime.state.impl;
+package io.ray.streaming.runtime.context.impl;
 
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
-import io.ray.streaming.runtime.state.ContextBackend;
+import io.ray.streaming.runtime.config.global.ContextBackendConfig;
+import io.ray.streaming.runtime.context.ContextBackend;
 import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -13,7 +13,7 @@ public class MemoryContextBackend implements ContextBackend {
 
   private final Map<String, byte[]> kvStore = new HashMap<>();
 
-  public MemoryContextBackend(StateBackendConfig config) {
+  public MemoryContextBackend(ContextBackendConfig config) {
     if (LOG.isInfoEnabled()) {
       LOG.info("Start init memory state backend, config is {}.", config);
       LOG.info("Finish init memory state backend.");

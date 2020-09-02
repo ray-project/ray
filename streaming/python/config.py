@@ -27,13 +27,13 @@ class Config:
     READER_CONSUMED_STEP = "streaming.reader.consumed_step"
 
     # state backend
-    CP_STATE_BACKEND_TYPE = "streaming.state-backend.type"
+    CP_STATE_BACKEND_TYPE = "streaming.context-backend.type"
     CP_STATE_BACKEND_MEMORY = "memory"
     CP_STATE_BACKEND_LOCAL_FILE = "local_file"
     CP_STATE_BACKEND_DEFAULT = CP_STATE_BACKEND_MEMORY
 
     # local disk
-    FILE_STATE_ROOT_PATH = "streaming.state-backend.file-state.root"
+    FILE_STATE_ROOT_PATH = "streaming.context-backend.file-state.root"
     FILE_STATE_ROOT_PATH_DEFAULT = "/tmp/ray_streaming_state"
 
     # checkpoint

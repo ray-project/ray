@@ -3,7 +3,7 @@ package io.ray.streaming.runtime.config;
 import com.google.common.base.Preconditions;
 import io.ray.streaming.runtime.config.global.CheckpointConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
+import io.ray.streaming.runtime.config.global.ContextBackendConfig;
 import io.ray.streaming.runtime.config.global.TransferConfig;
 import java.io.Serializable;
 import java.lang.reflect.Method;
@@ -25,7 +25,7 @@ public class StreamingGlobalConfig implements Serializable {
   public final TransferConfig transferConfig;
   public final Map<String, String> configMap;
   public CheckpointConfig checkpointConfig;
-  public StateBackendConfig stateBackendConfig;
+  public ContextBackendConfig contextBackendConfig;
 
   public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);
@@ -33,7 +33,7 @@ public class StreamingGlobalConfig implements Serializable {
     commonConfig = ConfigFactory.create(CommonConfig.class, conf);
     transferConfig = ConfigFactory.create(TransferConfig.class, conf);
     checkpointConfig = ConfigFactory.create(CheckpointConfig.class, conf);
-    stateBackendConfig = ConfigFactory.create(StateBackendConfig.class, conf);
+    contextBackendConfig = ConfigFactory.create(ContextBackendConfig.class, conf);
     globalConfig2Map();
   }
 

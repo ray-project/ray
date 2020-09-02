@@ -1,6 +1,6 @@
-package io.ray.streaming.runtime.state.impl;
+package io.ray.streaming.runtime.context.impl;
 
-import io.ray.streaming.runtime.config.global.StateBackendConfig;
+import io.ray.streaming.runtime.config.global.ContextBackendConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +13,7 @@ public class AtomicFsBackend extends LocalFileContextBackend {
   private static final Logger LOG = LoggerFactory.getLogger(AtomicFsBackend.class);
   private static final String TMP_FLAG = "_tmp";
 
-  public AtomicFsBackend(final StateBackendConfig config) {
+  public AtomicFsBackend(final ContextBackendConfig config) {
     super(config);
   }
 
