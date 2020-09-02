@@ -63,8 +63,7 @@ if __name__ == "__main__":
         trial_name_creator=trial_str_creator,
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
-        search_alg=searcher,
         config={
-            "width": tune.qrandint(0, 100),
-            "height": tune.loguniform(0.1, 100)
+            "width": tune.randint(10, 100),
+            "height": tune.loguniform(10, 100)
         })
