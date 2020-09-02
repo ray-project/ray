@@ -16,7 +16,7 @@ from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -135,6 +135,7 @@ class StandardAutoscaler:
 
         self.last_update_time = now
         nodes = self.workers()
+        managed_workers = self.managed_workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
         # additional nodes are launched.
@@ -154,7 +155,7 @@ class StandardAutoscaler:
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
         nodes_to_terminate = []
-        for node_id in nodes:
+        for node_id in managed_workers:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
                     len(nodes) - len(nodes_to_terminate) > target_workers:
@@ -169,19 +170,22 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+            managed_workers = self.managed_workers()
             self.log_info_string(nodes, target_workers)
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        while len(nodes) > self.config["max_workers"]:
+        num_to_terminate = max(0, len(nodes) - self.config["max_workers"])
+        while (len(nodes) - len(nodes_to_terminate)) > self.config["max_workers"] and managed_workers:
+            to_terminate = managed_workers.pop()
             logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node".format(nodes[-1]))
-            nodes_to_terminate.append(nodes[-1])
-            nodes = nodes[:-1]
+                        "{}: Terminating unneeded node".format(to_terminate))
+            nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+            managed_workers = self.managed_workers()
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
@@ -208,6 +212,7 @@ class StandardAutoscaler:
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
             nodes = self.workers()
+            managed_workers = self.managed_workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
             self.bringup = False
@@ -229,6 +234,7 @@ class StandardAutoscaler:
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
+            managed_workers = self.managed_workers()
             self.log_info_string(nodes, target_workers)
 
         # Update nodes with out-of-date files.
@@ -237,7 +243,7 @@ class StandardAutoscaler:
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id, commands, ray_start in (self.should_update(node_id)
-                                             for node_id in nodes):
+                                             for node_id in managed_workers):
             if node_id is not None:
                 resources = self._node_resources(node_id)
                 T.append(
@@ -479,8 +485,15 @@ class StandardAutoscaler:
         self.launch_queue.put((config, count, node_type))
 
     def workers(self):
+        return self.managed_workers() + self.unmanaged_workers()
+
+    def managed_workers(self):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+    def unmanaged_workers(self):
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "
@@ -528,7 +541,7 @@ class StandardAutoscaler:
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
-        nodes = self.workers()
+        nodes = self.managed_workers()
         if nodes:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(

@@ -597,6 +597,46 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(11)
 
+    def testUnmanagedNodes(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 20
+        config["initial_workers"] = 0
+        config["idle_timeout_minutes"] = 0
+        config["autoscaling_mode"] = "aggressive"
+        config["target_utilization_fraction"] = 0.4
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        head_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
+
+
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "unmanaged"}, 1)
+        unmanaged_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: "unmanaged"}, )[0]
+
+        runner = MockProcessRunner()
+
+        lm = LoadMetrics()
+        lm.local_ip = head_ip
+
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        lm.update(unmanaged_ip, {"CPU": 2}, {"CPU": 0}, {})
+        autoscaler.update()
+        self.waitForNodes(3)
+
     def testDelayedLaunch(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
