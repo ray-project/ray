@@ -234,8 +234,7 @@ class TorchRunner:
         if not hasattr(self.training_operator, "_validation_loader"):
             raise RuntimeError("Training Operator does not have any "
                                "registered validation loader. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+                               "self.register(...) inside TrainingOperator.setup()?")
         return self.training_operator._validation_loader
 
     @property
