@@ -161,7 +161,7 @@ def DistributedTrainableCreator(func,
 
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         trainable_cls = DistributedTrainableCreator(
             train_func, num_workers=2)
@@ -211,7 +211,7 @@ def distributed_checkpoint_dir(step, disable=False):
             again when invoking the training_function.
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         def train_func(config, checkpoint_dir):
             if checkpoint_dir:

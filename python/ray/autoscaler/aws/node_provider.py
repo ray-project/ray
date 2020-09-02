@@ -368,8 +368,9 @@ class AWSNodeProvider(NodeProvider):
                         BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
-                    # todo: err msg
-                    cli_logger.abort(exc)
+                    cli_logger.print(
+                        "create_instances: Attempt failed with {}, retrying.",
+                        exc)
                     cli_logger.old_error(logger, exc)
 
     def terminate_node(self, node_id):
