@@ -612,7 +612,6 @@ class AutoscalingTest(unittest.TestCase):
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 
-
         self.provider.create_node({}, {TAG_RAY_NODE_KIND: "unmanaged"}, 1)
         unmanaged_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "unmanaged"}, )[0]

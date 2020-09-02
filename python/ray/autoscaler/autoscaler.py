@@ -13,10 +13,11 @@ import yaml
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+                                 TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
+                                 NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -176,7 +177,8 @@ class StandardAutoscaler:
         # Terminate nodes if there are too many
         nodes_to_terminate = []
         num_to_terminate = max(0, len(nodes) - self.config["max_workers"])
-        while (len(nodes) - len(nodes_to_terminate)) > self.config["max_workers"] and managed_workers:
+        while (len(nodes) - len(nodes_to_terminate)
+               ) > self.config["max_workers"] and managed_workers:
             to_terminate = managed_workers.pop()
             logger.info("StandardAutoscaler: "
                         "{}: Terminating unneeded node".format(to_terminate))
