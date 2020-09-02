@@ -705,9 +705,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
     def run_init(self, *, as_head, file_mounts):
         image = self.docker_config.get("image")
-        if image is None:
-            image = self.docker_config.get(
-                f"{'head' if as_head else 'worker'}_image")
+        image = self.docker_config.get(
+            f"{'head' if as_head else 'worker'}_image", image)
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
