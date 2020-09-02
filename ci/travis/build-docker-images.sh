@@ -53,6 +53,8 @@ build_or_pull_base_images() {
 
     else
         docker pull rayproject/ray-deps:latest
+        docker pull rayproject/ray-deps:latest-gpu
+        docker pull rayproject/base-deps:latest-gpu
         echo "Just pulling images"
     fi
 
