@@ -637,7 +637,7 @@ def test_atomic_creation(ray_start_cluster):
     cluster = ray_start_cluster
     bundle_cpu_size = 2
     bundle_per_node = 2
-    num_nodes = 3
+    num_nodes = 5
 
     nodes = [
         cluster.add_node(num_cpus=bundle_cpu_size * bundle_per_node)
@@ -651,9 +651,10 @@ def test_atomic_creation(ray_start_cluster):
             pass
 
     # Create an actor that will fail bundle scheduling.
+    # It is important to use pack strategy to make test less flaky.
     pg = ray.experimental.placement_group(
         name="name",
-        strategy="SPREAD",
+        strategy="PACK",
         bundles=[{
             "CPU": bundle_cpu_size
         } for _ in range(num_nodes * bundle_per_node)])
@@ -663,8 +664,10 @@ def test_atomic_creation(ray_start_cluster):
     pg_actor = NormalActor.options(
         placement_group=pg,
         placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()
-    # Destroy one of nodes to fail placement group creation.
-    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[0])
+    # Destroy some nodes to fail placement group creation.
+    nodes_to_kill = get_other_nodes(cluster, exclude_head=True)
+    for node_to_kill in nodes_to_kill:
+        cluster.remove_node(node_to_kill)
 
     # Wait on the placement group now. It should be unready
     # because normal actor takes resources that are required
@@ -673,8 +676,10 @@ def test_atomic_creation(ray_start_cluster):
     assert len(ready) == 0
     assert len(unready) == 1
 
-    # Add a node to make bundles to be scheduled.
-    nodes.append(cluster.add_node(num_cpus=bundle_cpu_size * bundle_per_node))
+    # Add a node back to schedule placement group.
+    for _ in range(len(nodes_to_kill)):
+        nodes.append(
+            cluster.add_node(num_cpus=bundle_cpu_size * bundle_per_node))
     # Wait on the placement group creation.
     ready, unready = ray.wait([pg.ready()])
     assert len(ready) == 1
@@ -683,8 +688,10 @@ def test_atomic_creation(ray_start_cluster):
     # Confirm that the placement group actor is created. It will
     # raise an exception if actor was scheduled before placement group was
     # created.
-    # TODO(sang): Turn this on after atomic creation is implemented.
-    # ray.get(pg_actor.ping.remote(), timeout=0.1)
+    # TODO(sang): This with statement should be removed after atomic creation
+    # is implemented. It will be done in the next PR.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(pg_actor.ping.remote(), timeout=3.0)
 
 
 if __name__ == "__main__":
