@@ -27,7 +27,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
-=================== ========== ======================= ================== =========== =====================
+=================== ========== ======================= ================== =========== =============================================================
 
 Multi-Agent only Methods
 
@@ -662,7 +662,7 @@ Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/mad
 Parameter Sharing
 -----------------
 
-`[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>`__, `[paper] <https://arxiv.org/abs/2005.13625>`__ and `[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__. Parameter sharing refers to a class of methods that take a base single agent method, and use it to learn a single policy for all agents. This simple approach has been shown to achieve state of the art performance in cooperative games, and is usually how you should start trying to learn a multi-agent problem. 
+`[paper] <http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf>`__, `[paper] <https://arxiv.org/abs/2005.13625>`__ and `[instructions] <rllib-env.html#multi-agent-and-hierarchical>`__. Parameter sharing refers to a class of methods that take a base single agent method, and use it to learn a single policy for all agents. This simple approach has been shown to achieve state of the art performance in cooperative games, and is usually how you should start trying to learn a multi-agent problem.
 
 Tuned examples: `PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__, `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__, `rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__, `multi-agent cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
@@ -676,4 +676,4 @@ Centralized Critic Methods
 --------------------------
 
 `[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__Centralized critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are essentially centralized critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
-Tuned examples:  `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__ 
+Tuned examples:  `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
