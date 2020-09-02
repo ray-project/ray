@@ -21,7 +21,6 @@ from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
 from ray.util.sgd.data import Dataset
 
 logger = logging.getLogger(__name__)
-RESIZE_COOLDOWN_S = 10
 
 
 def _validate_scheduler_step_freq(scheduler_step_freq):
@@ -265,8 +264,7 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
+        self.worker_group = LocalWorkerGroup()
 
         if scheduler_creator:
             _validate_scheduler_step_freq(scheduler_step_freq)
@@ -321,6 +319,11 @@ class TorchTrainer:
             scheduler_step_freq=self.scheduler_step_freq)
 
         if num_workers == 1:
+            self.worker_group = LocalWorkerGroup(1, params,
+                                                 self.initialization_hook,
+                                                 self.timeout_s,
+                                                 self.num_cpus_per_worker,
+                                                 self.use_gpu)
             # Start local worker
             self.local_worker = TorchRunner(**params)
             if self.initialization_hook:
@@ -386,25 +389,23 @@ class TorchTrainer:
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
-        if self._should_resize():
+        if self.worker_group._should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_workers()
-        success, worker_stats = self._train_epoch(
-            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
+            self.worker_group._resize_workers()
+        success, worker_stats = self.worker_group.train(num_steps=num_steps,
+                                                  profile=profile,
+                                                  info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
             if success:
                 break
             else:
                 self._num_failures += 1
-            self._resize_workers()
+            self._worker_group.resize_workers()
             logger.info("Retrying training step with %d workers." %
                         (len(self.remote_workers) + 1))
-            success, worker_stats = self._train_epoch(
-                num_steps=num_steps,
-                profile=profile,
-                info=info,
-                dataset=dataset)
+            success, worker_stats = self.worker_group.train(
+                num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -426,43 +427,6 @@ class TorchTrainer:
             else:
                 stats[stat_key] = worker_stats[0][stat_key]
         return stats
-
-    def _train_epoch(self,
-                     num_steps=None,
-                     profile=False,
-                     info=None,
-                     dataset=None):
-        params = dict(num_steps=num_steps, profile=profile, info=info)
-        remote_worker_stats = []
-        if dataset:
-            dataset.set_num_shards(self.max_replicas)
-        for i, w in enumerate(self.remote_workers):
-            params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
-            stats = w.train_epoch.remote(**params)
-            remote_worker_stats.append(stats)
-
-        try:
-            if dataset:
-                params["iterator"] = dataset.get_shard(
-                    len(self.remote_workers))
-            local_worker_stats = self.local_worker.train_epoch(**params)
-        except RuntimeError as err:
-            if "gloo" in err.args[0] and "Timed out" in err.args[0]:
-                logger.warning(err)
-                return False, None
-            if "NCCL" in err.args[0]:  # there is no specific error message
-                logger.warning(err)
-                return False, None
-
-            raise err
-
-        success = check_for_failure(remote_worker_stats)
-        if success:
-            return success, [local_worker_stats] + ray.get(remote_worker_stats)
-
-        return success, None
 
     def apply_all_workers(self, fn):
         """Run a function on all operators on the workers.
@@ -513,13 +477,8 @@ class TorchTrainer:
                 You can provide custom metrics by passing in a custom
                 ``training_operator_cls``.
         """
-        params = dict(num_steps=num_steps, profile=profile, info=info)
-
-        remote_worker_stats = [
-            w.validate.remote(**params) for w in self.remote_workers
-        ]
-        local_worker_stats = self.local_worker.validate(**params)
-        worker_stats = [local_worker_stats] + ray.get(remote_worker_stats)
+        worker_stats = self.worker_group.validate(num_steps=num_steps,
+                                                  profile=profile, info=info)
 
         if reduce_results:
             return self._process_stats(worker_stats)
@@ -531,8 +490,7 @@ class TorchTrainer:
 
         This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
         """
-        self.apply_all_operators(
-            lambda op: [sched.step(metric) for sched in op.schedulers])
+        self.worker_group.update_scheduler(metric)
 
     def get_model(self):
         """Returns the learned model(s)."""
@@ -570,80 +528,7 @@ class TorchTrainer:
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
-        if not force:
-            cleanup = [
-                worker.shutdown.remote() for worker in self.remote_workers
-            ]
-            self.local_worker.shutdown()
-            try:
-                ray.get(cleanup)
-                [
-                    worker.__ray_terminate__.remote()
-                    for worker in self.remote_workers
-                ]
-            except RayActorError:
-                logger.warning(
-                    "Failed to shutdown gracefully, forcing a shutdown.")
-
-                for worker in self.remote_workers:
-                    logger.warning(f"Killing worker {worker}.")
-                    ray.kill(worker)
-        else:
-            self.local_worker.shutdown()
-            for worker in self.remote_workers:
-                logger.debug(f"Killing worker {worker}.")
-                ray.kill(worker)
-
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
-
-    def _reset(self):
-        """Terminates models without giving up local resource reservation."""
-        self.local_worker.shutdown(cleanup=False)
-        for worker in self.remote_workers:
-            logger.debug(f"Killing worker {worker}.")
-            ray.kill(worker)
-        self.local_worker = DeactivatedRunner()
-        self.remote_workers = []
-
-    def _check_potential_remote_workers_size(self):
-        # ASSUME 1 GPU + 1 CPU is already reserved for the local worker
-        remote_resources = ray.available_resources()
-        max_remote_workers = self.max_replicas - 1
-        new_remote_workers = min(
-            remote_resources.get("CPU", 0), max_remote_workers)
-        if self.use_gpu:
-            new_remote_workers = min(
-                remote_resources.get("GPU", 0), new_remote_workers)
-        return new_remote_workers
-
-    def _resize_workers(self, max_retries=10):
-        self._reset()
-
-        time.sleep(1)
-        for i in range(max_retries):
-            new_remote_workers = self._check_potential_remote_workers_size()
-            if new_remote_workers:
-                self._last_resize = time.time()
-                self._start_workers(int(new_remote_workers) + 1)
-                self.load_state_dict(self.state_dict())
-                return
-            else:
-                delay = 2**i
-                logger.warning(
-                    "No new workers found. Retrying in %d sec." % delay)
-                time.sleep(delay)
-        raise RuntimeError("Exceeded max_retries for relaunching workers.")
-
-    def _should_resize(self):
-        """Returns True if past cooldown and exists resources to scale up."""
-        worker_gap = self.max_replicas - 1 - len(self.remote_workers)
-        past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
-        if past_cooldown and worker_gap:
-            # Assume 1 resource is already reserved for local worker.
-            potential_remote_size = self._check_potential_remote_workers_size()
-            return potential_remote_size > 0
-        return False
+        self.worker_group.shutdown(force=force)
 
     @classmethod
     def as_trainable(cls, *args, **kwargs):
