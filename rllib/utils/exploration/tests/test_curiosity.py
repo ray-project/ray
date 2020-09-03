@@ -135,9 +135,9 @@ class TestCuriosity(unittest.TestCase):
         config["train_batch_size"] = 512
         config["num_sgd_iter"] = 10
 
-        num_iterations = 30
+        num_iterations = 32
         for _ in framework_iterator(config, frameworks="torch"):
-            # W/ Curiosity.
+            # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",
                 "feature_dim": 128,
@@ -150,13 +150,12 @@ class TestCuriosity(unittest.TestCase):
             rewards_w = 0.0
             for _ in range(num_iterations):
                 result = trainer.train()
-                rewards_w += result["episode_reward_mean"]
+                rewards_w = result["episode_reward_mean"]
                 print(result)
-            rewards_w /= num_iterations
             trainer.stop()
             self.assertGreater(rewards_w, 0.1)
 
-            # W/o Curiosity.
+            # W/o Curiosity. Expect to learn nothing.
             config["exploration_config"] = {
                 "type": "StochasticSampling",
             }
