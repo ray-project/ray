@@ -143,13 +143,14 @@ class StandardAutoscaler:
         num_pending = self.pending_launches.value
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
+        del nodes  # Always work in terms of managed_workers.
         target_workers = self.target_num_workers()
 
-        if len(nodes) >= target_workers:
+        if len(managed_workers) >= target_workers:
             if "CPU" in self.resource_requests:
                 del self.resource_requests["CPU"]
 
-        self.log_info_string(nodes, target_workers)
+        self.log_info_string(managed_workers, target_workers)
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -159,7 +160,7 @@ class StandardAutoscaler:
         for node_id in managed_workers:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - len(nodes_to_terminate) > target_workers:
+                    len(managed_workers) - len(nodes_to_terminate) > target_workers:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -170,14 +171,15 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
-            nodes = self.workers()
             managed_workers = self.managed_workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(managed_workers, target_workers)
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        num_to_terminate = max(0, len(nodes) - self.config["max_workers"])
-        while (len(nodes) - len(nodes_to_terminate)
+        num_to_terminate = max(
+            0,
+            len(managed_workers) - self.config["max_workers"])
+        while (len(managed_workers) - len(nodes_to_terminate)
                ) > self.config["max_workers"] and managed_workers:
             to_terminate = managed_workers.pop()
             logger.info("StandardAutoscaler: "
@@ -186,9 +188,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
-            nodes = self.workers()
             managed_workers = self.managed_workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(managed_workers, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
         if self.resource_demand_scheduler:
@@ -205,7 +206,7 @@ class StandardAutoscaler:
                     self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
-        num_workers = len(nodes) + num_pending
+        num_workers = len(managed_workers) + num_pending
         if num_workers < target_workers:
             max_allowed = min(self.max_launch_batch,
                               self.max_concurrent_launches - num_pending)
@@ -213,12 +214,11 @@ class StandardAutoscaler:
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
-            nodes = self.workers()
             managed_workers = self.managed_workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(managed_workers, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
             self.bringup = False
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(managed_workers, target_workers)
 
         # Process any completed updates
         completed = []
@@ -235,9 +235,8 @@ class StandardAutoscaler:
             # Mark the node as active to prevent the node recovery logic
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
-            nodes = self.workers()
             managed_workers = self.managed_workers()
-            self.log_info_string(nodes, target_workers)
+            self.log_info_string(managed_workers, target_workers)
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -258,7 +257,7 @@ class StandardAutoscaler:
             t.join()
 
         # Attempt to recover unhealthy nodes
-        for node_id in nodes:
+        for node_id in managed_workers:
             self.recover_if_needed(node_id, now)
 
     def _node_resources(self, node_id):

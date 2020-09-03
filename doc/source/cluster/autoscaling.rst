@@ -37,14 +37,18 @@ The basic autoscaling config settings are as follows:
     idle_timeout_minutes: 5
 
 
-Manually Adding Nodes
----------------------
+Manually Adding Nodes without Resources (Unmanaged Nodes)
+---------------------------------------------------------
 
-Nodes can be manually added to an autoscaled cluster. To do so, the `ray-cluster-name` tag should be set and `ray-node-type` tag should be set to `unmanaged`.
+In some cases, adding special nodes without any resources (i.e. `num_cpus=0`) may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs.
 
-The autoscaler considers the reported resource utilization of unmanaged nodes when making autoscaling decisions, however, it will _not_ actively interact with unmanaged nodes. This means the autoscaler/cluster launcher will not tear down (terminate/stop), or run intialization/setup/start commands on unmanaged nodes.
+In order to manually add a node to an autoscaled cluster, the `ray-cluster-name` tag should be set and `ray-node-type` tag should be set to `unmanaged`.
+
+Unmanaged nodes **must have 0 resources**. If an unmanaged node has non-zero resources, the autoscaler may affect the accuracy of the autoscaler's decision making. 
 
 If you are using the `available_node_types` field, you should create a custom node type with the proper `resources` field, and `max_workers: 0` to ensure the autoscaler behaves properly.
+
+The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes. 
 
 
 Multiple Node Type Autoscaling

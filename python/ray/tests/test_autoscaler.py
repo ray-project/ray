@@ -604,7 +604,7 @@ class AutoscalingTest(unittest.TestCase):
         config["initial_workers"] = 0
         config["idle_timeout_minutes"] = 0
         config["autoscaling_mode"] = "aggressive"
-        config["target_utilization_fraction"] = 0.4
+        config["target_utilization_fraction"] = 0.8
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
@@ -632,7 +632,11 @@ class AutoscalingTest(unittest.TestCase):
 
         autoscaler.update()
         self.waitForNodes(2)
-        lm.update(unmanaged_ip, {"CPU": 2}, {"CPU": 0}, {})
+        # This node has num_cpus=0
+        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {})
+        autoscaler.update()
+        self.waitForNodes(2)
+        lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {"CPU": 1})
         autoscaler.update()
         self.waitForNodes(3)
 

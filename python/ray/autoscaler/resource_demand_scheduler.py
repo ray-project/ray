@@ -91,8 +91,7 @@ class ResourceDemandScheduler:
                     f"Missing entry for node_type {node_type} in "
                     f"available_node_types config: {self.node_types}. This "
                     f"node's resources will be ignored. If you are using an "
-                    f"unmanaged node, set the user_node_type tag."
-                )
+                    f"unmanaged node, set the user_node_type tag.")
                 return
             # Careful not to include the same dict object multiple times.
             node_resources.append(
