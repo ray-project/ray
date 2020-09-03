@@ -6,6 +6,7 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -354,6 +355,16 @@ def run(
     if not search_alg:
         search_alg = BasicVariantGenerator()
 
+    # TODO (krfricke): Introduce metric/mode as top level API
+    if config and not search_alg.set_search_properties(None, None, config):
+        if has_unresolved_values(config):
+            raise ValueError(
+                "You passed a `config` parameter to `tune.run()` with "
+                "unresolved parameters, but the search algorithm was already "
+                "instantiated with a search space. Make sure that `config` "
+                "does not contain any more parameter definitions - include "
+                "them in the search algorithm's search space if necessary.")
+
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler or FIFOScheduler(),
@@ -425,8 +436,11 @@ def run(
             logger.error("Trials did not complete: %s", incomplete_trials)
 
     trials = runner.get_trials()
-    return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
-
+    return ExperimentAnalysis(
+        runner.checkpoint_file,
+        trials=trials,
+        default_metric=None,
+        default_mode=None)
 
 def run_experiments(experiments,
                     scheduler=None,

@@ -37,14 +37,22 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
-message RequestResourceReserveRequest {
+message PrepareBundleResourcesRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message RequestResourceReserveReply {
-  // The status if resource reserve success.
+message PrepareBundleResourcesReply {
+  // The status if prepare request was successful.
   bool success = 1;
+}
+
+message CommitBundleResourcesRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CommitBundleResourcesReply {
 }
 
 message CancelResourceReserveRequest {
@@ -166,9 +174,14 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
-  // Request resource from the raylet for a bundle.
-  rpc RequestResourceReserve(RequestResourceReserveRequest)
-      returns (RequestResourceReserveReply);
+  // Request a raylet to lock resources for a bundle.
+  // This is the first phase of 2PC protocol for atomic placement group creation.
+  rpc PrepareBundleResources(PrepareBundleResourcesRequest)
+      returns (PrepareBundleResourcesReply);
+  // Commit bundle resources to a raylet.
+  // This is the second phase of 2PC protocol for atomic placement group creation.
+  rpc CommitBundleResources(CommitBundleResourcesRequest)
+      returns (CommitBundleResourcesReply);
   // Return resource for the raylet.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);
