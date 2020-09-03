@@ -415,22 +415,26 @@ def connect() -> Client:
 
 
 def accept_batch(f: Callable) -> Callable:
-    """Annotation to mark a serving function that batch is accepted.
+    """Annotation to mark that a serving function accepts batches of requests.
 
-    This annotation need to be used to mark a function expect all arguments
-    to be passed into a list.
+    In order to accept batches of requests as input, the implementation must
+    handle a list of requests being passed in rather than just a single
+    request.
+
+    This must be set on any backend implementation that will have
+    max_batch_size set to greater than 1.
 
     Example:
 
     >>> @serve.accept_batch
-        def serving_func(flask_request):
-            assert isinstance(flask_request, list)
+        def serving_func(requests):
+            assert isinstance(requests, list)
             ...
 
     >>> class ServingActor:
             @serve.accept_batch
-            def __call__(self, *, python_arg=None):
-                assert isinstance(python_arg, list)
+            def __call__(self, requests):
+                assert isinstance(requests, list)
     """
     f._serve_accept_batch = True
     return f
