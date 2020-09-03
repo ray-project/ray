@@ -58,34 +58,34 @@ constexpr uint32_t kBarrierHeaderSize = sizeof(StreamingBarrierType) + sizeof(ui
 
 class StreamingMessage {
  private:
-  std::shared_ptr<uint8_t> payload_data_;
-  uint32_t payload_data_size_;
+  std::shared_ptr<uint8_t> payload_;
+  uint32_t payload_size_;
   StreamingMessageType message_type_;
   uint64_t message_id_;
 
  public:
   /// Copy raw data from outside shared buffer.
-  /// \param payload_data_ raw data from user buffer
-  /// \param payload_data_size_ raw data size
+  /// \param payload_ raw data from user buffer
+  /// \param payload_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_data_size,
+  StreamingMessage(std::shared_ptr<uint8_t> &payload_data, uint32_t payload_size,
                    uint64_t msg_id, StreamingMessageType message_type);
 
   /// Move outsite raw data to message data.
-  /// \param payload_data_ raw data from user buffer
-  /// \param payload_data_size_ raw data size
+  /// \param payload_ raw data from user buffer
+  /// \param payload_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_data_size,
+  StreamingMessage(std::shared_ptr<uint8_t> &&payload_data, uint32_t payload_size,
                    uint64_t msg_id, StreamingMessageType message_type);
 
   /// Copy raw data from outside buffer.
-  /// \param payload_data_ raw data from user buffer
-  /// \param payload_data_size_ raw data size
+  /// \param payload_ raw data from user buffer
+  /// \param payload_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(const uint8_t *payload_data, uint32_t payload_data_size,
+  StreamingMessage(const uint8_t *payload_data, uint32_t payload_size,
                    uint64_t msg_id, StreamingMessageType message_type);
 
   StreamingMessage(const StreamingMessage &);
@@ -97,9 +97,9 @@ class StreamingMessage {
   inline StreamingMessageType GetMessageType() const { return message_type_; }
   inline uint64_t GetMessageId() const { return message_id_; }
 
-  inline uint8_t *Payload() const { return payload_data_.get(); }
+  inline uint8_t *Payload() const { return payload_.get(); }
 
-  inline uint32_t PayloadSize() const { return payload_data_size_; }
+  inline uint32_t PayloadSize() const { return payload_size_; }
 
   inline bool IsMessage() { return StreamingMessageType::Message == message_type_; }
   inline bool IsBarrier() { return StreamingMessageType::Barrier == message_type_; }
@@ -123,7 +123,7 @@ class StreamingMessage {
   static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
 
   inline virtual uint32_t ClassBytesSize() {
-    return kMessageHeaderSize + payload_data_size_;
+    return kMessageHeaderSize + payload_size_;
   }
 
   static inline void GetBarrierIdFromRawData(const uint8_t *data,

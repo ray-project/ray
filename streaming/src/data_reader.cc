@@ -57,7 +57,7 @@ void DataReader::Init(const std::vector<ObjectID> &input_ids,
     channel_info.resend_notify_timer = 0;
   }
 
-  reliability_helper_ = ReliabilityHelperFactory::GenReliabilityHelper(
+  reliability_helper_ = ReliabilityHelperFactory::CreateReliabilityHelper(
       runtime_context_->GetConfig(), barrier_helper_, nullptr, this);
 
   /// Make the input id location stable.

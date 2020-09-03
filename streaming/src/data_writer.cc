@@ -155,7 +155,7 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
     break;
   }
 
-  reliability_helper_ = ReliabilityHelperFactory::GenReliabilityHelper(
+  reliability_helper_ = ReliabilityHelperFactory::CreateReliabilityHelper(
       runtime_context_->GetConfig(), barrier_helper_, this, nullptr);
   // Register empty event and user event to event server.
   event_service_ = std::make_shared<EventService>();

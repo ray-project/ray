@@ -107,7 +107,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
     streaming_writer_client->Run();
 
-    // Writer some data.
+    // Write some data.
     std::thread test_loop_thread(
         &StreamingQueueWriterTestSuite::TestWriteMessageToBufferRing, this,
         streaming_writer_client, std::ref(queue_ids_));

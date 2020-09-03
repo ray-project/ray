@@ -11,34 +11,34 @@ namespace ray {
 namespace streaming {
 
 StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &payload_data,
-                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   uint32_t payload_size, uint64_t msg_id,
                                    StreamingMessageType message_type)
-    : payload_data_(payload_data),
-      payload_data_size_(payload_data_size),
+    : payload_(payload_data),
+      payload_size_(payload_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
 StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&payload_data,
-                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   uint32_t payload_size, uint64_t msg_id,
                                    StreamingMessageType message_type)
-    : payload_data_(payload_data),
-      payload_data_size_(payload_data_size),
+    : payload_(payload_data),
+      payload_size_(payload_size),
       message_type_(message_type),
       message_id_(msg_id) {}
 
 StreamingMessage::StreamingMessage(const uint8_t *payload_data,
-                                   uint32_t payload_data_size, uint64_t msg_id,
+                                   uint32_t payload_size, uint64_t msg_id,
                                    StreamingMessageType message_type)
-    : payload_data_size_(payload_data_size),
+    : payload_size_(payload_size),
       message_type_(message_type),
       message_id_(msg_id) {
-  payload_data_.reset(new uint8_t[payload_data_size], std::default_delete<uint8_t[]>());
-  std::memcpy(payload_data_.get(), payload_data, payload_data_size);
+  payload_.reset(new uint8_t[payload_size], std::default_delete<uint8_t[]>());
+  std::memcpy(payload_.get(), payload_data, payload_size);
 }
 
 StreamingMessage::StreamingMessage(const StreamingMessage &msg) {
-  payload_data_size_ = msg.payload_data_size_;
-  payload_data_ = msg.payload_data_;
+  payload_size_ = msg.payload_size_;
+  payload_ = msg.payload_;
   message_id_ = msg.message_id_;
   message_type_ = msg.message_type_;
 }
@@ -65,8 +65,8 @@ StreamingMessagePtr StreamingMessage::FromBytes(const uint8_t *bytes,
 void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   uint32_t byte_offset = 0;
   std::memcpy(serlizable_data + byte_offset,
-              reinterpret_cast<char *>(&payload_data_size_), sizeof(payload_data_size_));
-  byte_offset += sizeof(payload_data_size_);
+              reinterpret_cast<char *>(&payload_size_), sizeof(payload_size_));
+  byte_offset += sizeof(payload_size_);
 
   std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&message_id_),
               sizeof(message_id_));
@@ -77,9 +77,9 @@ void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   byte_offset += sizeof(message_type_);
 
   std::memcpy(serlizable_data + byte_offset,
-              reinterpret_cast<char *>(payload_data_.get()), payload_data_size_);
+              reinterpret_cast<char *>(payload_.get()), payload_size_);
 
-  byte_offset += payload_data_size_;
+  byte_offset += payload_size_;
 
   STREAMING_CHECK(byte_offset == this->ClassBytesSize());
 }
@@ -95,8 +95,8 @@ std::ostream &operator<<(std::ostream &os, const StreamingMessage &message) {
   os << "{"
      << " message_type_: " << static_cast<int>(message.GetMessageType())
      << " message_id_: " << message.GetMessageId()
-     << " payload_data_size_: " << message.payload_data_size_
-     << " payload_data_: " << (void *)message.payload_data_.get() << "}";
+     << " payload_size_: " << message.payload_size_
+     << " payload_: " << (void *)message.payload_.get() << "}";
   return os;
 }
 

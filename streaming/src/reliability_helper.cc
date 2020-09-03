@@ -4,7 +4,7 @@
 namespace ray {
 namespace streaming {
 
-std::shared_ptr<ReliabilityHelper> ReliabilityHelperFactory::GenReliabilityHelper(
+std::shared_ptr<ReliabilityHelper> ReliabilityHelperFactory::CreateReliabilityHelper(
     const StreamingConfig &config, StreamingBarrierHelper &barrier_helper,
     DataWriter *writer, DataReader *reader) {
   if (config.IsExactlyOnce()) {
