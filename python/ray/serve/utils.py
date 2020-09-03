@@ -9,37 +9,70 @@ import time
 from typing import List
 import io
 import os
+from ray.serve.exceptions import RayServeException
 
 import requests
+import pydantic
+from werkzeug.datastructures import ImmutableMultiDict
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.context import FakeFlaskRequest, TaskContext
+from ray.serve.context import TaskContext
 from ray.serve.http_util import build_flask_request
 import numpy as np
-
-try:
-    import pydantic
-except ImportError:
-    pydantic = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
+class ServeRequest:
+    def __init__(self, data, kwargs, headers, method):
+        self._data = data
+        self._kwargs = kwargs
+        self._headers = headers
+        self._method = method
+
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def args(self):
+        return ImmutableMultiDict(self._kwargs)
+
+    @property
+    def json(self):
+        if not isinstance(self._data, dict):
+            raise RayServeException("Request data is not a dictionary. "
+                                    f"It is {type(self._data)}.")
+        return self._data
+
+    @property
+    def form(self):
+        if not isinstance(self._data, dict):
+            raise RayServeException("Request data is not a dictionary. "
+                                    f"It is {type(self._data)}.")
+        return self._data
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def headers(self):
+        return self._headers
+
+
 def parse_request_item(request_item):
     if request_item.metadata.request_context == TaskContext.Web:
-        is_web_context = True
         asgi_scope, body_bytes = request_item.args
-
-        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
-        args = (flask_request, )
-        kwargs = {}
+        return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
     else:
-        is_web_context = False
-        args = (FakeFlaskRequest(), )
-        kwargs = request_item.kwargs
-
-    return args, kwargs, is_web_context
+        return ServeRequest(
+            request_item.args[0] if len(request_item.args) == 1 else None,
+            request_item.kwargs,
+            headers=request_item.metadata.http_headers,
+            method=request_item.metadata.http_method,
+        )
 
 
 def _get_logger():
@@ -66,7 +99,7 @@ class ServeEncoder(json.JSONEncoder):
     def default(self, o):  # pylint: disable=E0202
         if isinstance(o, bytes):
             return o.decode("utf-8")
-        if pydantic is not None and isinstance(o, pydantic.BaseModel):
+        if isinstance(o, pydantic.BaseModel):
             return o.dict()
         if isinstance(o, Exception):
             return str(o)

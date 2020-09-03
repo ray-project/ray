@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 import time
 from typing import DefaultDict, List, Dict, Any, Optional
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ray.exceptions import RayTaskError
 
@@ -25,8 +25,15 @@ class RequestMetadata:
 
     call_method: str = "__call__"
     shard_key: Optional[str] = None
+
     http_method: str = "GET"
+    http_headers: Dict[str, str] = field(default_factory=dict)
+
     is_shadow_query: bool = False
+
+    def __post_init__(self):
+        self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
+        self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
 
 
 @dataclass

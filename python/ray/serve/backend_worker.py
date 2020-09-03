@@ -2,7 +2,6 @@ import asyncio
 import traceback
 import inspect
 from collections.abc import Iterable
-from collections import defaultdict
 from itertools import groupby
 from typing import Union, List, Any, Callable, Type
 import time
@@ -11,8 +10,6 @@ import ray
 from ray.async_compat import sync_to_async
 
 from ray import serve
-from ray.serve import context as serve_context
-from ray.serve.context import FakeFlaskRequest
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future)
 from ray.serve.exceptions import RayServeException
@@ -194,94 +191,41 @@ class RayServeWorker:
             return self.callable
         return getattr(self.callable, method_name)
 
-    def has_positional_args(self, f: Callable) -> bool:
-        # NOTE:
-        # In the case of simple functions, not actors, the f will be
-        # function.__call__, but we need to inspect the function itself.
-        if self.is_function:
-            f = self.callable
-
-        signature = inspect.signature(f)
-        for param in signature.parameters.values():
-            if (param.kind == param.POSITIONAL_OR_KEYWORD
-                    and param.default is param.empty):
-                return True
-        return False
-
-    def _reset_context(self) -> None:
-        # NOTE(simon): context management won't work in async mode because
-        # many concurrent queries might be running at the same time.
-        serve_context.web = None
-        serve_context.batch_size = None
-
     async def invoke_single(self, request_item: Query) -> Any:
-        args, kwargs, is_web_context = parse_request_item(request_item)
-        serve_context.web = is_web_context
+        method_to_call = ensure_async(self.get_runner_method(request_item))
+        arg = parse_request_item(request_item)
 
-        method_to_call = self.get_runner_method(request_item)
-        args = args if self.has_positional_args(method_to_call) else []
-        method_to_call = ensure_async(method_to_call)
         try:
-            result = await method_to_call(*args, **kwargs)
+            result = await method_to_call(arg)
             self.request_counter.record(1, {"backend": self.backend_tag})
         except Exception as e:
             result = wrap_to_ray_error(e)
             self.error_counter.record(1, {"backend": self.backend_tag})
-        finally:
-            self._reset_context()
 
         return result
 
     async def invoke_batch(self, request_item_list: List[Query]) -> List[Any]:
-        arg_list = []
-        kwargs_list = defaultdict(list)
-        context_flags = set()
-        batch_size = len(request_item_list)
+        args = []
         call_methods = set()
+        batch_size = len(request_item_list)
 
+        # Construct the batch of requests
         for item in request_item_list:
-            args, kwargs, is_web_context = parse_request_item(item)
-            context_flags.add(is_web_context)
-
-            call_method = self.get_runner_method(item)
-            call_methods.add(call_method)
-
-            if is_web_context:
-                # Python context only have kwargs
-                flask_request = args[0]
-                arg_list.append(flask_request)
-            else:
-                # Web context only have one positional argument
-                for k, v in kwargs.items():
-                    kwargs_list[k].append(v)
-
-                # Set the flask request as a list to conform
-                # with batching semantics: when in batching
-                # mode, each argument is turned into list.
-                if self.has_positional_args(call_method):
-                    arg_list.append(FakeFlaskRequest())
+            args.append(parse_request_item(item))
+            call_methods.add(self.get_runner_method(item))
 
         try:
-            # Check mixing of query context (unified context needed).
-            if len(context_flags) != 1:
-                raise RayServeException(
-                    "Batched queries contain mixed context. Please only send "
-                    "the same type of requests in batching mode.")
-            serve_context.web = context_flags.pop()
-
             if len(call_methods) != 1:
                 raise RayServeException(
-                    "Queries contain mixed calling methods. Please only send "
-                    "the same type of requests in batching mode.")
-            call_method = ensure_async(call_methods.pop())
-
-            serve_context.batch_size = batch_size
-            # Flask requests are passed to __call__ as a list
-            arg_list = [arg_list]
+                    f"Queries contain mixed calling methods: {call_methods}. "
+                    "Please only send the same type of requests in batching "
+                    "mode.")
 
             self.request_counter.record(batch_size,
                                         {"backend": self.backend_tag})
-            result_list = await call_method(*arg_list, **kwargs_list)
+
+            call_method = ensure_async(call_methods.pop())
+            result_list = await call_method(args)
 
             if not isinstance(result_list, Iterable) or isinstance(
                     result_list, (dict, set)):
@@ -301,12 +245,11 @@ class RayServeWorker:
                                  "results with length equal to the batch size"
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
-            self._reset_context()
+
             return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self.error_counter.record(1, {"backend": self.backend_tag})
-            self._reset_context()
             return [wrapped_exception for _ in range(batch_size)]
 
     async def main_loop(self) -> None:
@@ -349,7 +292,7 @@ class RayServeWorker:
     async def handle_request(self,
                              request: Union[Query, bytes]) -> asyncio.Future:
         if isinstance(request, bytes):
-            request = Query.ray_deserialize(request)
+            request: Query = Query.ray_deserialize(request)
         logger.debug("Worker {} got request {}".format(self.replica_tag,
                                                        request))
         request.async_future = asyncio.get_event_loop().create_future()

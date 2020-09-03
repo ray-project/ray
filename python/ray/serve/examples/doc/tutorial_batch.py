@@ -57,17 +57,8 @@ print("Result returned:", results)
 
 # __doc_define_servable_v1_begin__
 @serve.accept_batch
-def batch_adder_v1(flask_requests: List, *, numbers: List = []):
-    # Depending on request context, we process the input data differently.
-    print("Current context is", "web" if serve.context.web else "python")
-    if serve.context.web:
-        # If the requests come from web request, we parse the flask request
-        # to numbers
-        numbers = [int(request.args["number"]) for request in flask_requests]
-    else:
-        # Otherwise, we are processing requests invoked directly from Python.
-        numbers = numbers
-
+def batch_adder_v1(requests: List):
+    numbers = [int(request.args["number"]) for request in requests]
     input_array = np.array(numbers)
     print("Our input array has shape:", input_array.shape)
     # Sleep for 200ms, this could be performing CPU intensive computation

@@ -183,9 +183,9 @@ def test_batching(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
+        def __call__(self, requests):
             self.count += 1
-            batch_size = serve.context.batch_size
+            batch_size = len(requests)
             return [self.count] * batch_size
 
     # set the max batch size
@@ -207,7 +207,7 @@ def test_batching(serve_instance):
     future_list = []
     handle = serve.get_handle("counter1")
     for _ in range(20):
-        f = handle.remote(temp=1)
+        f = handle.remote()
         future_list.append(f)
 
     counter_result = ray.get(future_list)
@@ -223,9 +223,8 @@ def test_batching_exception(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return batch_size
+        def __call__(self, requests):
+            return len(requests)
 
     # set the max batch size
     serve.create_backend(
@@ -276,7 +275,7 @@ def test_updating_config(serve_instance):
 
 
 def test_delete_backend(serve_instance):
-    def function():
+    def function(_):
         return "hello"
 
     serve.create_backend("delete:v1", function)
@@ -303,7 +302,7 @@ def test_delete_backend(serve_instance):
     with pytest.raises(ValueError):
         serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
-    def function2():
+    def function2(_):
         return "olleh"
 
     # Check that we can now reuse the previously delete backend's tag.
@@ -315,7 +314,7 @@ def test_delete_backend(serve_instance):
 
 @pytest.mark.parametrize("route", [None, "/delete-endpoint"])
 def test_delete_endpoint(serve_instance, route):
-    def function():
+    def function(_):
         return "hello"
 
     backend_name = "delete-endpoint:v1"
@@ -354,7 +353,7 @@ def test_shard_key(serve_instance, route):
     traffic_dict = {}
     for i in range(num_backends):
 
-        def function():
+        def function(_):
             return i
 
         backend_name = "backend-split-" + str(i)
@@ -396,7 +395,7 @@ def test_name():
 
     serve.init(name="cluster1", http_port=8001)
 
-    def function():
+    def function(_):
         return "hello1"
 
     serve.create_backend(backend, function)
@@ -408,7 +407,7 @@ def test_name():
     # the same names and check that they don't collide.
     serve.init(name="cluster2", http_port=8002)
 
-    def function():
+    def function(_):
         return "hello2"
 
     serve.create_backend(backend, function)
@@ -624,19 +623,19 @@ def test_shadow_traffic(serve_instance):
 
     counter = RequestCounter.remote()
 
-    def f():
+    def f(_):
         ray.get(counter.record.remote("backend1"))
         return "hello"
 
-    def f_shadow_1():
+    def f_shadow_1(_):
         ray.get(counter.record.remote("backend2"))
         return "oops"
 
-    def f_shadow_2():
+    def f_shadow_2(_):
         ray.get(counter.record.remote("backend3"))
         return "oops"
 
-    def f_shadow_3():
+    def f_shadow_3(_):
         ray.get(counter.record.remote("backend4"))
         return "oops"
 

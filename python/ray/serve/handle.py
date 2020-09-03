@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict, Any, Union
 
 import ray
 from ray import serve
@@ -31,41 +31,56 @@ class RayServeHandle:
             self,
             router_handle,
             endpoint_name,
-            http_method=None,
+            *,
             method_name=None,
             shard_key=None,
+            http_method=None,
+            http_headers=None,
     ):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
-        self.http_method = http_method
+
         self.method_name = method_name
         self.shard_key = shard_key
+        self.http_method = http_method
+        self.http_headers = http_headers
 
-    def remote(self, *args, **kwargs):
-        if len(args) > 0:
-            raise ValueError(
-                "handle.remote must be invoked with keyword arguments.")
+    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
+               **kwargs):
+        """Issue an asynchrounous request to the endpoint.
+
+        Input:
+            request_data(dict, Any): If it's a dictionary, the data will be
+              available in ``request.json()`` or ``request.form()``. Otherwise,
+              it will be available in ``request.data``.
+            **kwargs: All keyword arguments will be available in
+              ``request.args``.
+        """
         request_metadata = RequestMetadata(
             self.endpoint_name,
             TaskContext.Python,
-            http_method=self.http_method or "GET",
             call_method=self.method_name or "__call__",
             shard_key=self.shard_key,
+            http_method=self.http_method or "GET",
+            http_headers=self.http_headers or dict(),
         )
         return self.router_handle.enqueue_request.remote(
-            request_metadata, **kwargs)
+            request_metadata, request_data, **kwargs)
 
     def options(self,
                 method_name: Optional[str] = None,
+                *,
+                shard_key: Optional[str] = None,
                 http_method: Optional[str] = None,
-                shard_key: Optional[str] = None):
+                http_headers: Optional[Dict[str, str]] = None):
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,
             # Don't override existing method
-            http_method=self.http_method or http_method,
             method_name=self.method_name or method_name,
             shard_key=self.shard_key or shard_key,
+            http_method=self.http_method or http_method,
+            http_headers=self.http_headers or http_headers,
         )
 
     def _get_traffic_policy(self):
