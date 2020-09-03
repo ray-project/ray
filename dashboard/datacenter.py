@@ -37,8 +37,8 @@ class DataOrganizer:
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * hostname_to_ip
-        #   * ip_to_hostname
+        #   * node_id_to_ip
+        #   * node_id_to_hostname
         logger.info("Purge data.")
         alive_nodes = set(node_id
                           for node_id, node_info in DataSource.nodes.items()
