@@ -40,7 +40,7 @@ class OneHotWrapper(gym.core.ObservationWrapper):
         if self.step_count == 0:
             for _ in range(self.framestack):
                 self.frame_buffer.append(np.zeros((self.single_frame_dim,)))
-            if self.vector_index == 1:
+            if self.vector_index == 0:
                 if self.x_positions:
                     max_diff = max(
                         np.sqrt(
@@ -176,48 +176,61 @@ class TestCuriosity(unittest.TestCase):
         config = ppo.DEFAULT_CONFIG.copy()
         config["env"] = "mini-grid"
         config["env_config"] = {
-            "name": "MiniGrid-MultiRoom-N4-S5-v0",  # "MiniGrid-Empty-16x16-v0"
+            "name": "MiniGrid-MultiRoom-N4-S5-v0",
             "framestack": 1,  # seems to work even w/o framestacking
         }
-        config["horizon"] = 40  # Make it impossible to reach goal by chance.
-        config["num_envs_per_worker"] = 8
-        # config["model"]["fcnet_hiddens"] = [256, 256]
+        config["horizon"] = 20  # Make it impossible to reach goal by chance.
+        config["num_envs_per_worker"] = 4
+        config["model"]["fcnet_hiddens"] = [256, 256]
         config["model"]["fcnet_activation"] = "relu"
         # config["model"]["use_lstm"] = True
         # config["model"]["lstm_cell_size"] = 256
         # config["model"]["lstm_use_prev_action_reward"] = True
-        config["num_sgd_iter"] = 6
-        config["num_workers"] = 2
+        config["num_sgd_iter"] = 8
+        config["num_workers"] = 0
 
         config["exploration_config"] = {
             "type": "Curiosity",
             # For the feature NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
             "eta": 0.1,
-            "lr": 0.001,  # 0.0003 or 0.0005 seem to work fine as well.
+            "lr": 0.0005,  # 0.0003 or 0.0005 seem to work fine as well.
             "feature_dim": 256,
+            # No actual feature net: map directly from observations to feature
+            # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": [256],
+                "fcnet_hiddens": [],
                 "fcnet_activation": "relu",
             },
-            ## Use swish activation function (just like Unity does it for
-            ## their Pyramids env).
-            "inverse_net_activation": "relu",
-            "forward_net_activation": "relu",
 
             "sub_exploration": {
                 "type": "StochasticSampling",
             }
         }
 
-        min_reward = 0.01
+        min_reward = 0.02
         stop = {
-            "training_iteration": 25,
+            "training_iteration": 1000,
             "episode_reward_mean": min_reward,
         }
         for _ in framework_iterator(config, frameworks="torch"):
             results = tune.run("PPO", config=config, stop=stop, verbose=1)
             check_learning_achieved(results, min_reward)
+            iters = results.trials[0].last_result["training_iteration"]
+            print("Learnt in {} iterations.".format(iters))
+
+            config_wo = config.copy()
+            config_wo["exploration_config"] = {"type": "StochasticSampling"}
+            stop_wo = stop.copy()
+            stop_wo["training_iteration"] = iters
+            results = tune.run(
+                "PPO", config=config_wo, stop=stop_wo, verbose=1)
+            try:
+                check_learning_achieved(results, min_reward)
+            except ValueError:
+                print("Did not learn w/o curiosity (expected).")
+            else:
+                raise ValueError("Learnt w/o curiosity (not expected)!")
 
 
 if __name__ == "__main__":
