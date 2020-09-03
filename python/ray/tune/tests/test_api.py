@@ -246,16 +246,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 os.environ["TUNE_DISABLE_QUEUE_TRIALS"] = "1"
             else:
                 os.environ.pop("TUNE_DISABLE_QUEUE_TRIALS", None)
-            return run_experiments(
-                {
-                    "foo": {
-                        "run": "B",
-                        "config": {
-                            "cpu": cpus,
-                            "gpu": gpus,
-                        },
-                    }
-                })[0]
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            })[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
@@ -639,8 +638,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             loggers=None)
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(
-            test, resume="ERRORED_ONLY", **config).trials
+        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
