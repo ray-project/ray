@@ -127,7 +127,7 @@ def test_worker_env(shutdown_only):
     assert ray.get(get_env.remote("foo2")) == "bar2"
 
 
-def test_kill_idle_workers(shutdown_only):
+def test_worker_capping_kill_idle_workers(shutdown_only):
     # Avoid starting initial workers by setting num_cpus to 0.
     ray.init(num_cpus=0, _system_config={"enable_multi_tenancy": True})
     assert get_num_workers() == 0
@@ -170,6 +170,51 @@ def test_kill_idle_workers(shutdown_only):
 
     # This holds a reference of the created actor and avoids killing it.
     del actor
+
+
+def test_worker_capping_run_many_small_tasks(shutdown_only):
+    ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+
+    @ray.remote(num_cpus=0.5)
+    def foo():
+        time.sleep(5)
+
+    # Run more tasks than `num_cpus`, but the CPU resource requirement is
+    # still within `num_cpus`.
+    ray.get([foo.remote() for _ in range(4)])
+    assert get_num_workers() == 4
+
+    # Eventually, some workers will be killed to keep the total number of
+    # workers <= num_cpus.
+    wait_for_condition(lambda: get_num_workers() == 2)
+
+    time.sleep(2)
+    # The two remaining workers will stay alive.
+    assert get_num_workers() == 2
+
+
+def test_worker_capping_run_chained_tasks(shutdown_only):
+    ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+
+    @ray.remote(num_cpus=0.5)
+    def foo(x):
+        if x > 1:
+            return ray.get(foo.remote(x - 1)) + x
+        else:
+            return x
+
+    # Run a chain of tasks which exceed `num_cpus` in amount, but the CPU
+    # resource requirement is still within `num_cpus`.
+    ray.get(foo.remote(4))
+    assert get_num_workers() == 4
+
+    # Eventually, some workers will be killed to keep the total number of
+    # workers <= num_cpus.
+    wait_for_condition(lambda: get_num_workers() == 2)
+
+    time.sleep(2)
+    # The two remaining workers will stay alive.
+    assert get_num_workers() == 2
 
 
 if __name__ == "__main__":
