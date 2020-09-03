@@ -1,6 +1,7 @@
 import inspect
 import logging
 
+import pytorch_lightning
 import torch
 import torch.nn as nn
 
@@ -619,6 +620,15 @@ class TrainingOperator:
         Args:
             state_dict (dict): State dict as returned by the operator. """
         pass
+
+    @staticmethod
+    def from_ptl(lightning_module):
+        """Creates a TrainingOperator from a Pytorch Lightning Module."""
+        if not isinstance(lightning_module, pytorch_lightning.LightningModule):
+            raise ValueError("Argument must be instance of "
+                             "pytorch_lightning.LightningModule, got object "
+                             "of type {} instead.".format(type(lightning_module)))
+        
 
     @staticmethod
     def from_creators(model_creator,
