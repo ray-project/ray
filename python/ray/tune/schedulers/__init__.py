@@ -47,5 +47,5 @@ __all__ = [
     "TrialScheduler", "HyperBandScheduler", "AsyncHyperBandScheduler",
     "ASHAScheduler", "MedianStoppingRule", "FIFOScheduler",
     "PopulationBasedTraining", "PopulationBasedTrainingReplay",
-    "HyperBandForBOHB", "create_scheduler"
+    "HyperBandForBOHB"
 ]
