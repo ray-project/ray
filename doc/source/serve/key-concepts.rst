@@ -9,7 +9,7 @@ To follow along, you'll need to make the necessary imports.
 .. code-block:: python
 
   from ray import serve
-  serve.init() # Initializes Ray and Ray Serve.
+  client = serve.start() # Starts Ray and initializes a Ray Serve instance.
 
 .. _`serve-backend`:
 
@@ -17,9 +17,10 @@ Backends
 ========
 
 Backends define the implementation of your business logic or models that will handle requests when queries come in to :ref:`serve-endpoint`.
+In order to support seamless scalability backends can have many replicas, which are individual processes running in the Ray cluster to handle requests.
 To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
 The handler should take as input a `Flask Request object <https://flask.palletsprojects.com/en/1.1.x/api/?highlight=request#flask.Request>`_ and return any JSON-serializable object as output.
-A backend is defined using :mod:`serve.create_backend <ray.serve.create_backend>`, and the implementation can be defined as either a function or a class.
+A backend is defined using :mod:`client.create_backend <ray.serve.create_backend>`, and the implementation can be defined as either a function or a class.
 Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
 When using a class, you can specify arguments to be passed to the constructor in :mod:`serve.create_backend <ray.serve.create_backend>`, shown below.
 
@@ -38,23 +39,23 @@ A backend consists of a number of *replicas*, which are individual copies of the
     def __call__(self, flask_request):
         return self.msg
 
-  serve.create_backend("simple_backend", handle_request)
+  client.create_backend("simple_backend", handle_request)
   # Pass in the message that the backend will return as an argument.
   # If we call this backend, it will respond with "hello, world!".
-  serve.create_backend("simple_backend_class", RequestHandler, "hello, world!")
+  client.create_backend("simple_backend_class", RequestHandler, "hello, world!")
 
 We can also list all available backends and delete them to reclaim resources.
 Note that a backend cannot be deleted while it is in use by an endpoint because then traffic to an endpoint may not be able to be handled.
 
 .. code-block:: python
 
-  >> serve.list_backends()
+  >> client.list_backends()
   {
       'simple_backend': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
       'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
   }
-  >> serve.delete_backend("simple_backend")
-  >> serve.list_backends()
+  >> client.delete_backend("simple_backend")
+  >> client.list_backends()
   {
       'simple_backend_class': {'accepts_batches': False, 'num_replicas': 1, 'max_batch_size': None},
   }
@@ -72,7 +73,7 @@ For information on how to do this, please see :ref:`serve-split-traffic`.
 
 .. code-block:: python
 
-  serve.create_endpoint("simple_endpoint", backend="simple_backend", route="/simple", methods=["GET"])
+  client.create_endpoint("simple_endpoint", backend="simple_backend", route="/simple", methods=["GET"])
 
 After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified backend.
 We can query the model to verify that it's working.
@@ -86,7 +87,7 @@ To view all of the existing endpoints that have created, use :mod:`serve.list_en
 
 .. code-block:: python
 
-  >>> serve.list_endpoints()
+  >>> client.list_endpoints()
   {'simple_endpoint': {'route': '/simple', 'methods': ['GET'], 'traffic': {}}}
 
 You can also delete an endpoint using :mod:`serve.delete_endpoint <ray.serve.delete_endpoint>`.
@@ -95,4 +96,4 @@ However, an endpoint must be deleted in order to delete the backends that serve 
 
 .. code-block:: python
 
-  serve.delete_endpoint("simple_endpoint")
+  client.delete_endpoint("simple_endpoint")

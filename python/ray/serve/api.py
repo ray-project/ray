@@ -374,7 +374,7 @@ def start(detached: bool = False,
 
 
 def connect() -> Client:
-    """Connect to an existing Serve instance on this Ray cluster.
+    """Connect to an existing detached Serve instance on this Ray cluster.
 
     The Serve instance must first have been initialized using
     `serve.start(detached=True)`.
