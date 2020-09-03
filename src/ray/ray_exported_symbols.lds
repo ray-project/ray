@@ -12,7 +12,6 @@
 *ray*TaskOptions*
 *ray*Buffer*
 *ray*LocalMemoryBuffer*
-*ray*rpc*;
 # util
 *ray*RayLog*
 *ray*RayLogLevel*
