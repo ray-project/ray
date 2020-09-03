@@ -328,6 +328,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod",
+    size = "medium",
+    srcs = ["tests/test_horovod.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
@@ -361,6 +369,15 @@ py_test(
     srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_simple",
+    size = "medium",
+    srcs = ["examples/horovod_simple.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 

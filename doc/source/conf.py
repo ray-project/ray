@@ -36,6 +36,8 @@ MOCK_MODULES = [
     "blist",
     "gym",
     "gym.spaces",
+    "horovod",
+    "horovod.ray",
     "kubernetes",
     "psutil",
     "ray._raylet",
