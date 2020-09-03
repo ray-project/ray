@@ -61,13 +61,21 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
       </Box>
       <Grid container className={classes.title}>
         <LabeledDatum
-          label={<ActorStateRepr state={Alive} variant="body1" />}
+          label={
+            <ActorStateRepr state={Alive} variant="body1" showTooltip={true} />
+          }
           datum={
             Alive in summary.stateToCount ? summary.stateToCount[Alive] : 0
           }
         />
         <LabeledDatum
-          label={<ActorStateRepr state={Infeasible} variant="body1" />}
+          label={
+            <ActorStateRepr
+              state={Infeasible}
+              variant="body1"
+              showTooltip={true}
+            />
+          }
           datum={
             Infeasible in summary.stateToCount
               ? summary.stateToCount[Infeasible]
@@ -75,7 +83,13 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
           }
         />
         <LabeledDatum
-          label={<ActorStateRepr state={PendingResources} variant="body1" />}
+          label={
+            <ActorStateRepr
+              state={PendingResources}
+              variant="body1"
+              showTooltip={true}
+            />
+          }
           datum={
             PendingResources in summary.stateToCount
               ? summary.stateToCount[PendingResources]

@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { ActorGroup, ActorState } from "../../../api";
 import { stableSort } from "../../../common/tableUtils";
 
-
 import { sum } from "../../../common/util";
 import ActorClassGroup from "./ActorClassGroup";
 
@@ -23,7 +22,9 @@ const ActorClassGroups: React.FC<ActorClassGroupsProps> = ({ actorGroups }) => {
   ) => {
     const infeasible1 = numInfeasible(group1);
     const infeasible2 = numInfeasible(group2);
-    if (infeasible1 !== infeasible2) {return infeasible1 > infeasible2 ? -1 : 1;}
+    if (infeasible1 !== infeasible2) {
+      return infeasible1 > infeasible2 ? -1 : 1;
+    }
     return title1 > title2 ? 1 : -1;
   };
   const children = stableSort(
