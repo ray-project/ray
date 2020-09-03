@@ -1,6 +1,7 @@
 from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
+import time
 from typing import Callable, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -72,6 +73,7 @@ class Unity3DEnv(MultiAgentEnv):
         # Try connecting to the Unity3D game instance. If a port
         while True:
             self.worker_id = worker_id
+            time.sleep(1)
             try:
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
