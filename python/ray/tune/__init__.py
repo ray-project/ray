@@ -14,8 +14,8 @@ from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
                                         JupyterNotebookReporter)
 from ray.tune.sample import (function, sample_from, uniform, choice, randint,
                              randn, loguniform)
-from ray.tune.suggest.create import create_searcher
-from ray.tune.schedulers.create import create_scheduler
+from ray.tune.suggest import create_searcher
+from ray.tune.schedulers import create_scheduler
 
 __all__ = [
     "Trainable", "DurableTrainable", "TuneError", "grid_search",
