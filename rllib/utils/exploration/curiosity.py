@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Union
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.misc import SlimFC, normc_initializer
+from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -14,8 +14,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.torch_ops import one_hot
-from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, \
-    SampleBatchType
+from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict
 
 torch, nn = try_import_torch()
 F = None

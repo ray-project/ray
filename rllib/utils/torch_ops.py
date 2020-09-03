@@ -175,20 +175,6 @@ def softmax_cross_entropy_with_logits(logits, labels):
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
 
 
-#class SwishFunction(torch.autograd.Function):
-#    @staticmethod
-#    def forward(ctx, x):
-#        result = x * torch.sigmoid(x)
-#        ctx.save_for_backward(x)
-#        return result
-
-#    @staticmethod
-#    def backward(ctx, grad_output):
-#        x = ctx.saved_variables[0]
-#        sigmoid_i = torch.sigmoid(x)
-#        return grad_output * (sigmoid_i * (1 + x * (1 - sigmoid_i)))
-
-
 class Swish(nn.Module):
     def __init__(self):
         super().__init__()
@@ -196,7 +182,3 @@ class Swish(nn.Module):
 
     def forward(self, input_tensor):
         return input_tensor * torch.sigmoid(self._beta * input_tensor)
-
-#class Swish(nn.Module):
-#    def forward(self, x):
-#        return SwishFunction.apply(x)
