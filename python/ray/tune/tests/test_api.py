@@ -14,7 +14,7 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping)
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.schedulers import (TrialScheduler, FIFOScheduler, 
+from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
@@ -1123,7 +1123,7 @@ class ShimCreationTest(unittest.TestCase):
         shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
         real_searcher_ax = AxSearch(searcher_ax, **kwargs)
         assert shim_searcher_ax == real_searcher_ax
-        
+
         searcher_hyperopt = "hyperopt"
         shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
                                                       **kwargs)
