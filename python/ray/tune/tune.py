@@ -25,6 +25,27 @@ _SCHEDULERS = {
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
+class SyncConfig:
+    sync_to_cloud = None
+    sync_to_driver = None
+    sync_on_checkpoint = None
+    """
+        sync_to_cloud (func|str): Function for syncing the local_dir to and
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            commands. By default local_dir is synced to remote_dir every 300
+            seconds. To change this, set the TUNE_CLOUD_SYNC_S
+            environment variable in the driver machine.
+        sync_to_driver (func|str|bool): Function for syncing trial logdir from
+            remote node to local. If string, then it must be a string template
+            that includes `{source}` and `{target}` for the syncer to run.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
+    """
+
+
+
 try:
     class_name = get_ipython().__class__.__name__
     IS_NOTEBOOK = True if "Terminal" not in class_name else False
@@ -77,32 +98,30 @@ def run(run_or_experiment,
         trial_dirname_creator=None,
         loggers=None,
         log_to_file=False,
-        sync_to_cloud=None,
-        sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        sync_on_checkpoint=True,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
-        global_checkpoint_period=10,
         export_formats=None,
         max_failures=0,
         fail_fast=False,
         restore=None,
         search_alg=None,
         scheduler=None,
-        with_server=False,
-        server_port=TuneServer.DEFAULT_PORT,
+        server_port=None,
         verbose=2,
         progress_reporter=None,
         resume=False,
         run_errored_only=False,
-        queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
-        return_trials=False,
-        ray_auto_init=True):
+        ray_auto_init=None,
+        queue_trials=None,
+        global_checkpoint_period=None,
+        sync_to_cloud=None,
+        sync_to_driver=None,
+        sync_on_checkpoint=None,):
     """Executes training.
 
     Examples:
@@ -184,18 +203,6 @@ def run(run_or_experiment,
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
-        sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template that
-            includes `{source}` and `{target}` for the syncer to run. If not
-            provided, the sync command defaults to standard S3 or gsutil sync
-            commands. By default local_dir is synced to remote_dir every 300
-            seconds. To change this, set the TUNE_CLOUD_SYNC_S
-            environment variable in the driver machine.
-        sync_to_driver (func|str|bool): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If True or not provided, it defaults to using rsync. If False,
-            syncing to driver is disabled.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
             This has no effect when using the Functional Training API.
@@ -213,9 +220,6 @@ def run(run_or_experiment,
             best checkpoint. Default is increasing order. If attribute starts
             with `min-` it will rank attribute in decreasing order, i.e.
             `min-validation_loss`.
-        global_checkpoint_period (int): Seconds between global checkpointing.
-            This does not affect `checkpoint_freq`, which specifies frequency
-            for individual trials.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial at least this many times.
@@ -234,8 +238,6 @@ def run(run_or_experiment,
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options.
-        with_server (bool): Starts a background Tune server. Needed for
-            using the Client API.
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
@@ -254,10 +256,6 @@ def run(run_or_experiment,
             Experiment location is determined
             by `name` and `local_dir`. Previous trial artifacts will
             be left untouched.
-        queue_trials (bool): Whether to queue trials when the cluster does
-            not currently have enough resources to launch one. This should
-            be set to True when running on an autoscaling cluster to enable
-            automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -265,9 +263,6 @@ def run(run_or_experiment,
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
-        ray_auto_init (bool): Automatically starts a local Ray cluster
-            if using a RayTrialExecutor (which is the default) and
-            if Ray is not initialized. Defaults to True.
 
 
     Returns:
@@ -276,12 +271,19 @@ def run(run_or_experiment,
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    if global_checkpoint_period:
+        raise DeprecationWarning("...")
+    if queue_trials:
+        raise DeprecationWarning
+    if ray_auto_init:
+        raise DeprecationWarning
+    if with_server:
+        raise DeprecationWarning
+
     config = config or {}
 
     trial_executor = trial_executor or RayTrialExecutor(
-        queue_trials=queue_trials,
-        reuse_actors=reuse_actors,
-        ray_auto_init=ray_auto_init)
+        reuse_actors=reuse_actors)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -338,7 +340,7 @@ def run(run_or_experiment,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
         run_errored_only=run_errored_only,
-        launch_web_server=with_server,
+        launch_web_server=server_port is not None,
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
@@ -402,8 +404,6 @@ def run(run_or_experiment,
             logger.error("Trials did not complete: %s", incomplete_trials)
 
     trials = runner.get_trials()
-    if return_trials:
-        return trials
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
 
 
@@ -460,8 +460,7 @@ def run_experiments(experiments,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial,
-            return_trials=True)
+            raise_on_failed_trial=raise_on_failed_trial).trials
     else:
         trials = []
         for exp in experiments:
@@ -477,6 +476,5 @@ def run_experiments(experiments,
                 queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
-                raise_on_failed_trial=raise_on_failed_trial,
-                return_trials=True)
+                raise_on_failed_trial=raise_on_failed_trial).trials
         return trials
