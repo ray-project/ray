@@ -212,7 +212,7 @@ to Java:
           "example binary".getBytes()};  // byte[]
       for (Object o : inputs) {
         ObjectRef res = Ray.task(
-            PyFunction.of("ray_demo", "py_return_input", o.getClass()),
+            PyFunction.of("ray_serialization", "py_return_input", o.getClass()),
             o).remote();
         Assert.assertEquals(res.get(), o);
       }
@@ -255,6 +255,8 @@ and a Python module as follows:
   @ray.remote
   def raise_exception():
       1 / 0
+
+Then, run the following code:
 
 .. code-block:: python
 
