@@ -140,16 +140,14 @@ void ParallelRunning(int nthreads, int loop_times,
   }
 }
 
-std::vector<std::string> ReadEventFromFile(std::string log_file) {
+void ReadEventFromFile(std::vector<std::string> &vc, std::string log_file) {
   std::string line;
   std::ifstream read_file;
   read_file.open(log_file, std::ios::binary);
-  std::vector<std::string> vc;
   while (std::getline(read_file, line)) {
     vc.push_back(line);
   }
   read_file.close();
-  return vc;
 }
 
 std::string GenerateLogDir() {
@@ -225,7 +223,8 @@ TEST(EVENT_TEST, GLOG_ONE_THREAD) {
 
   ray::EventManager::Instance().ClearReporters();
 
-  const std::vector<std::string> &vc = ReadEventFromFile(log_dir + "/event_RAYLET.log");
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
 
   EXPECT_EQ((int)vc.size(), 1000);
 
@@ -264,7 +263,8 @@ TEST(EVENT_TEST, GLOG_MULTI_THREAD) {
 
   ray::EventManager::Instance().ClearReporters();
 
-  std::vector<std::string> vc = ReadEventFromFile(log_dir + "/event_GCS.log");
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event_GCS.log");
 
   std::set<std::string> label_set;
   std::set<std::string> message_set;

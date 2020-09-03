@@ -1324,10 +1324,10 @@ cc_library(
         "@boost//:filesystem",
         "@boost//:property_tree",
         "@com_github_google_glog//:glog",
+        "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@com_github_spdlog//:spdlog"
     ],
 )
 
