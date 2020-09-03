@@ -7,10 +7,10 @@ from ray.tune.suggest.repeater import Repeater
 
 
 def create_searcher(
-  search_alg,
-  metric="episode_reward_mean",
-  mode="max",
-  **kwargs,
+      search_alg,
+      metric="episode_reward_mean",
+      mode="max",
+      **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
     
@@ -84,6 +84,7 @@ def create_searcher(
         "sigopt": _import_sigopt_search,
     }
     return SEARCH_ALG_IMPORT[search_alg](**kwargs)
+
 
 __all__ = [
     "SearchAlgorithm", "Searcher", "BasicVariantGenerator", "SearchGenerator",
