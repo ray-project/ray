@@ -35,7 +35,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/log_index")
     async def get_log_index(self, req) -> aiohttp.web.Response:
         url_list = []
-        for ip, ports in DataSource.agents.items():
+        for node_id, ports in DataSource.agents.items():
+            ip = DataSource.node_id_to_ip[node_id]
             url_list.append(
                 self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0])))
         if self._dashboard_head.ip not in DataSource.agents:

@@ -32,6 +32,7 @@ def test_node_info(ray_start_with_dashboard):
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
 
     timeout_seconds = 10
     start_time = time.time()
@@ -47,7 +48,7 @@ def test_node_info(ray_start_with_dashboard):
             assert len(hostname_list) == 1
 
             hostname = hostname_list[0]
-            response = requests.get(webui_url + f"/nodes/{hostname}")
+            response = requests.get(webui_url + f"/nodes/{node_id}")
             response.raise_for_status()
             detail = response.json()
             assert detail["result"] is True, detail["msg"]

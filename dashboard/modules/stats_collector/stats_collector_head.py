@@ -54,7 +54,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             self._stubs.pop(node_id)
         if change.new:
             node_id, node_info = change.new
-            address = "{}:{}".format(node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"]))
+            address = "{}:{}".format(node_info["nodeManagerAddress"],
+                                     int(node_info["nodeManagerPort"]))
             channel = aiogrpc.insecure_channel(address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub

@@ -40,7 +40,9 @@ class DataOrganizer:
         #   * hostname_to_ip
         #   * ip_to_hostname
         logger.info("Purge data.")
-        alive_nodes = set(node_id for node_id, node_info in DataSource.nodes.items() if node_info["state"] == "ALIVE")
+        alive_nodes = set(node_id
+                          for node_id, node_info in DataSource.nodes.items()
+                          if node_info["state"] == "ALIVE")
         for key in DataSource.node_stats.keys() - alive_nodes:
             DataSource.node_stats.pop(key)
 
@@ -63,6 +65,7 @@ class DataOrganizer:
     async def get_node_info(cls, node_id):
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
+        node = DataSource.nodes.get(node_id, {})
 
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         workers_stats = node_stats.pop("workersStats", {})
@@ -84,11 +87,13 @@ class DataOrganizer:
             worker["language"] = pid_to_language.get(worker["pid"], "")
             worker["jobId"] = pid_to_job_id.get(worker["pid"], "ffff")
 
-        # Merge node stats to node physical stats
         node_info = node_physical_stats
+        # Merge node stats to node physical stats
         node_info["raylet"] = node_stats
+        # Merge GcsNodeInfo to node physical stats
+        node_info["raylet"].update(node)
+        # Merge actors to node physical stats
         node_info["actors"] = await cls.get_node_actors(node_id)
-        node_info["state"] = DataSource.nodes.get(node_id, {}).get("state", "DEAD")
 
         await GlobalSignals.node_info_fetched.send(node_info)
 

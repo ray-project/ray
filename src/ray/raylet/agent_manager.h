@@ -18,9 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
-#include "ray/common/id.h"
 #include "ray/util/process.h"
 
 namespace ray {
