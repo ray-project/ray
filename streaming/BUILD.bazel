@@ -185,6 +185,9 @@ cc_library(
     hdrs = glob([ "src/ring_buffer/*.h"]),
     includes = ["src/"],
     deps = [
+        ":ray_common.so",
+        ":ray_util.so",
+        "core_worker_lib.so",
         "@boost//:circular_buffer",
         "@boost//:thread",
         ":streaming_message"
@@ -361,7 +364,6 @@ cc_binary(
     ]),
     copts = COPTS,
     linkshared = 1,
-    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":streaming_lib",

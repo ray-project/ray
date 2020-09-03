@@ -6,7 +6,6 @@
 #include <numeric>
 #include <string>
 
-#include "message.h"
 #include "message/message.h"
 #include "ray/common/id.h"
 

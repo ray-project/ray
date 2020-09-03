@@ -1,5 +1,4 @@
-#ifndef RAY_STREAMING_RELIABILITY_HELPER_H
-#define RAY_STREAMING_RELIABILITY_HELPER_H
+#pragma once
 #include "channel/channel.h"
 #include "data_reader.h"
 #include "data_writer.h"
@@ -65,4 +64,3 @@ class ExactlyOnceHelper : public ReliabilityHelper {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_RELIABILITY_H

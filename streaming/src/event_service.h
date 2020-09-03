@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include "channel/channel.h"
-#include "ray/core_worker/core_worker.h"
 #include "ring_buffer/ring_buffer.h"
 #include "util/streaming_util.h"
 
