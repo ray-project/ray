@@ -1,24 +1,24 @@
 package io.ray.streaming.runtime.core.common;
 
 import com.google.common.base.MoreObjects;
-import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.ContainerId;
 import java.io.Serializable;
 import java.util.UUID;
 
 /**
- * Streaming system unique identity base class. For example, ${@link ContainerID }
+ * Streaming system unique identity base class. For example, ${@link ContainerId }
  */
-public class AbstractID implements Serializable {
+public class AbstractId implements Serializable {
 
   private UUID id;
 
-  public AbstractID() {
+  public AbstractId() {
     this.id = UUID.randomUUID();
   }
 
   @Override
   public boolean equals(Object obj) {
-    return id.equals(((AbstractID) obj).getId());
+    return id.equals(((AbstractId) obj).getId());
   }
 
   public UUID getId() {
