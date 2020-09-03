@@ -50,6 +50,7 @@ def test_single_step(ray_start_2_cpus):  # noqa: F811
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=True,
         num_workers=1)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1

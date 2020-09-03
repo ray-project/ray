@@ -3,20 +3,15 @@ import logging
 import os
 import numbers
 import tempfile
-import time
 import torch
 import torch.distributed as dist
 
 import ray
-from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
-from ray.util.sgd.torch.distributed_torch_runner import (
-    DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
-from ray.util.sgd.torch.worker_group import LocalWorkerGroup
-from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
-from ray.util.sgd.torch.torch_runner import TorchRunner
+from ray.util.sgd.torch.worker_group import LocalWorkerGroup, RemoteWorkerGroup
+from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
 from ray.util.sgd.torch.constants import VALID_SCHEDULER_STEP, NCCL_TIMEOUT_S
 from ray.util.sgd.data import Dataset
 
@@ -158,6 +153,10 @@ class TorchTrainer:
             "manual", the scheduler will not be incremented automatically -
             you are expected to call ``trainer.update_schedulers`` manually.
             If a scheduler is passed in, this value is expected to not be None.
+        use_local (bool): If True, 1 worker will be a local worker running
+            on the driver process, and all other workers will be remote. If
+            False, all workers will be remote. Set this to True for easy
+            debugging of worker on driver process. Defaults to False.
 
     """
 
@@ -192,6 +191,7 @@ class TorchTrainer:
             num_replicas=None,
             batch_size=None,
             data_loader_args=None,
+            use_local=False,
     ):
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
@@ -264,7 +264,10 @@ class TorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
-        self.worker_group = LocalWorkerGroup()
+        if use_local:
+            self.worker_group = LocalWorkerGroup()
+        else:
+            self.worker_group = RemoteWorkerGroup()
 
         if scheduler_creator:
             _validate_scheduler_step_freq(scheduler_step_freq)
@@ -318,28 +321,17 @@ class TorchTrainer:
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
-        if num_workers == 1:
-            self.worker_group = LocalWorkerGroup(1, params,
-                                                 self.initialization_hook,
-                                                 self.timeout_s,
-                                                 self.num_cpus_per_worker,
-                                                 self.use_gpu)
-            # Start local worker
-            self.local_worker = TorchRunner(**params)
-            if self.initialization_hook:
-                self.apply_all_workers(self.initialization_hook)
-            self.local_worker.setup()
-        else:
+        if num_workers > 1:
             params.update(
                 backend=self.backend,
                 add_dist_sampler=self.add_dist_sampler,
                 wrap_ddp=self.wrap_ddp)
-            self.worker_group = LocalWorkerGroup(num_workers,
-                                                 params,
-                                                 self.initialization_hook,
-                                                 self.timeout_s,
-                                                 self.num_cpus_per_worker,
-                                                 self.use_gpu)
+
+        self.worker_group.start_workers(num_workers, params,
+                                        initialization_hook=self.initialization_hook,
+                                        num_cpus_per_worker=self.num_cpus_per_worker,
+                                        use_gpu=self.use_gpu,
+                                        timeout_s=self.timeout_s)
 
 
 
@@ -401,9 +393,9 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._worker_group.resize_workers()
+            self.worker_group.resize_workers()
             logger.info("Retrying training step with %d workers." %
-                        (len(self.remote_workers) + 1))
+                        (self.worker_group.get_num_workers()))
             success, worker_stats = self.worker_group.train(
                 num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         if not success:
