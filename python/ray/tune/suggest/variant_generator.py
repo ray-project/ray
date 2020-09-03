@@ -282,6 +282,10 @@ def _unresolved_values(spec):
     return _split_resolved_unresolved_values(spec)[1]
 
 
+def has_unresolved_values(spec):
+    return True if _unresolved_values(spec) else False
+
+
 class _UnresolvedAccessGuard(dict):
     def __init__(self, *args, **kwds):
         super(_UnresolvedAccessGuard, self).__init__(*args, **kwds)

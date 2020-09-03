@@ -5,6 +5,7 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -330,11 +331,13 @@ def run(run_or_experiment,
 
     # TODO (krfricke): Introduce metric/mode as top level API
     if config and not search_alg.set_search_properties(None, None, config):
-        logger.warning(
-            "You passed a `config` parameter to `tune.run()`, but the "
-            "search algorithm was already instantiated with a search space. "
-            "Any search definitions in the `config` passed to `tune.run()` "
-            "will be ignored.")
+        if has_unresolved_values(config):
+            raise ValueError(
+                "You passed a `config` parameter to `tune.run()` with "
+                "unresolved parameters, but the search algorithm was already "
+                "instantiated with a search space. Make sure that `config` "
+                "does not contain any more parameter definitions - include "
+                "them in the search algorithm's search space if necessary.")
 
     runner = TrialRunner(
         search_alg=search_alg,
