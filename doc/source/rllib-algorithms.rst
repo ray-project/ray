@@ -532,9 +532,6 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :end-before: __sphinx_doc_end__
 
 
-   :end-before: __sphinx_doc_end__
-
-
 Contextual Bandits (contrib/bandits)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
