@@ -17,7 +17,7 @@ def _ensure_connected(f: Callable) -> Callable:
     @wraps(f)
     def check(self, *args, **kwargs):
         if self._controller is None:
-            raise RayServeException("TODO: not connected.")
+            raise RayServeException("Client has already been shut down.")
         return f(self, *args, **kwargs)
 
     return check
@@ -300,18 +300,21 @@ def start(detached: bool = False,
           http_host: str = DEFAULT_HTTP_HOST,
           http_port: int = DEFAULT_HTTP_PORT,
           _http_middlewares: List[Any] = []) -> Client:
-    """Initialize a serve cluster.
+    """Initialize a serve instance.
 
-    If serve cluster is already initialized, this function will just return.
-
-    If `ray.init` has not been called in this process, it will be called with
-    no arguments. To specify kwargs to `ray.init`, it should be called
-    separately before calling `serve.init`.
+    By default, the instance will be scoped to the lifetime of the returned
+    Client object (or when the script exits). If detached is set to True, the
+    instance will instead persist until client.shutdown() is called and clients
+    to it can be connected using serve.connect(). This is only relevant if
+    connecting to a long-running Ray cluster (e.g., with address="auto").
 
     Args:
-        detached (bool): TODO.
-        http_host (str): Host for HTTP servers. Default to "0.0.0.0". Serve
-            starts one HTTP server per node in the Ray cluster.
+        detached (bool): Whether not the instance should be detached from this
+            script.
+        http_host (str): Host for HTTP servers to listen on. Defaults to
+            "127.0.0.1". To expose Serve publicly, you probably want to set
+            this to "0.0.0.0". One HTTP server will be started on each node in
+            the Ray cluster.
         http_port (int): Port for HTTP server. Defaults to 8000.
     """
     # Initialize ray if needed.
@@ -360,7 +363,11 @@ def start(detached: bool = False,
 
 
 def connect() -> Client:
-    """TODO."""
+    """Connect to an existing Serve instance on this Ray cluster.
+
+    The Serve instance must first have been initialized using
+    `serve.start(detached=True)`.
+    """
 
     # Initialize ray if needed.
     if not ray.is_initialized():
@@ -370,7 +377,10 @@ def connect() -> Client:
     try:
         controller = ray.get_actor(SERVE_CONTROLLER_NAME)
     except ValueError:
-        raise Exception("TODO")
+        raise RayServeException("Called `serve.connect()` but there is no "
+                                "instance running on this Ray cluster. Please "
+                                "call `serve.start(detached=True) to start "
+                                "one.")
 
     return Client(controller, SERVE_CONTROLLER_NAME, detached=True)
 
