@@ -10,7 +10,7 @@ Suppose we have a Java static method and a Java class as follows:
 
 .. code-block:: java
 
-  package io.ray.demo
+  package io.ray.demo;
 
   public class Math {
     public static int add(int a, int b) {
@@ -20,7 +20,7 @@ Suppose we have a Java static method and a Java class as follows:
 
 .. code-block:: java
 
-  package io.ray.demo
+  package io.ray.demo;
 
   // A regular Java class.
   public class Counter {
@@ -88,6 +88,8 @@ Then, in Java, we can call the above Python remote function, or create an actor
 from the above Python class.
 
 .. code-block:: java
+
+  package io.ray.demo;
 
   import io.ray.api.Ray;
   import io.ray.api.function.PyActorClass;
@@ -182,12 +184,12 @@ to Java:
 
 .. code-block:: java
 
-  package io.ray.demo
+  package io.ray.demo;
 
+  import io.ray.api.ObjectRef;
   import io.ray.api.Ray;
-  import io.ray.api.function.PyActorClass;
-  import io.ray.api.function.PyActorMethod;
   import io.ray.api.function.PyFunction;
+  import java.math.BigInteger;
   import org.testng.Assert;
 
   public class MyRayApp {
@@ -224,7 +226,7 @@ Suppose we have a Java package as follows:
 
 .. code-block:: java
 
-  package io.ray.demo
+  package io.ray.demo;
 
   import io.ray.api.ObjectRef;
   import io.ray.api.Ray;
