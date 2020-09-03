@@ -11,7 +11,8 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import run_string_as_driver, get_non_head_nodes
+from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
+                            wait_for_condition)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
@@ -645,6 +646,27 @@ assert ray.get(handle.ping.remote()) == "pong"
     with pytest.raises(Exception):
         detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
+
+    # Check that the names are reclaimed after actors die.
+
+    def check_name_available(name):
+        try:
+            ray.get_actor(name)
+            return False
+        except ValueError:
+            return True
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.options(name="my_actor_1").remote()
+    ray.kill(a, no_restart=True)
+    wait_for_condition(lambda: check_name_available("my_actor_1"))
+
+    b = A.options(name="my_actor_2").remote()
+    del b
+    wait_for_condition(lambda: check_name_available("my_actor_2"))
 
 
 def test_detached_actor(ray_start_regular):
