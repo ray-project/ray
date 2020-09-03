@@ -16,8 +16,7 @@ def create_scheduler(
 ):
     """Instantiate a scheduler based on the given string.
 
-    This is particularly useful when you want end-users to input which
-    scheduler they want to use.
+    This is useful for swapping between different schedulers.
 
     Args:
         scheduler (str): The scheduler to use.
