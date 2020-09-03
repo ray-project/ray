@@ -7,7 +7,7 @@ import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.master.JobMaster;
 import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.master.coordinator.command.BaseWorkerCmd;
-import io.ray.streaming.runtime.master.coordinator.command.InterruptCpRequest;
+import io.ray.streaming.runtime.master.coordinator.command.InterruptCheckpointRequest;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerRollbackRequest;
 import io.ray.streaming.runtime.rpc.async.AsyncRemoteCaller;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
@@ -161,7 +161,7 @@ public class FailoverCoordinator extends BaseCoordinator {
     // interrupt current checkpoint to avoid waiting.
     // 2. when we want to rollback vertex to n, job finished checkpoint n+1 and cleared state
     // of checkpoint n.
-    jobMaster.getRuntimeContext().cpCmds.offer(new InterruptCpRequest());
+    jobMaster.getRuntimeContext().cpCmds.offer(new InterruptCheckpointRequest());
   }
 
   /**
