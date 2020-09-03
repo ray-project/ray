@@ -75,7 +75,7 @@ public class FailoverCoordinator extends BaseCoordinator {
     LOG.warn("Fo coordinator thread exit.");
   }
 
-  private Boolean isDuplicatedRequest(WorkerRollbackRequest request) {
+  private Boolean isDuplicateRequest(WorkerRollbackRequest request) {
     try {
       Object[] foCmdsArray = runtimeContext.foCmds.toArray();
       for (Object cmd : foCmdsArray) {
@@ -92,7 +92,7 @@ public class FailoverCoordinator extends BaseCoordinator {
   public Boolean requestJobWorkerRollback(WorkerRollbackRequest request) {
     LOG.info("Request job worker rollback {}.", request);
     boolean ret;
-    if (!isDuplicatedRequest(request)) {
+    if (!isDuplicateRequest(request)) {
       ret = runtimeContext.foCmds.offer(request);
     } else {
       LOG.warn("Skip duplicated worker rollback request, {}.", request.toString());
@@ -131,14 +131,14 @@ public class FailoverCoordinator extends BaseCoordinator {
     }
 
     if (rollbackRequest.isForcedRollback) {
-      interruptCpAndRollback(rollbackRequest);
+      interruptCheckpointAndRollback(rollbackRequest);
     } else {
       asyncRemoteCaller.checkIfNeedRollbackAsync(exeVertex.getWorkerActor(), res -> {
         if (!res) {
           LOG.info("Vertex {} doesn't need to rollback, skip it.", exeVertex);
           return;
         }
-        interruptCpAndRollback(rollbackRequest);
+        interruptCheckpointAndRollback(rollbackRequest);
       }, throwable -> {
         LOG.error("Exception when calling checkIfNeedRollbackAsync, maybe vertex is dead" +
             ", ignore this request, vertex={}.", exeVertex, throwable);
@@ -148,7 +148,7 @@ public class FailoverCoordinator extends BaseCoordinator {
     LOG.info("Deal with rollback request {} success.", rollbackRequest);
   }
 
-  private void interruptCpAndRollback(WorkerRollbackRequest rollbackRequest) {
+  private void interruptCheckpointAndRollback(WorkerRollbackRequest rollbackRequest) {
     // assign a cascadingGroupId
     if (rollbackRequest.cascadingGroupId == null) {
       rollbackRequest.cascadingGroupId = curCascadingGroupId++;

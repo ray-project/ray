@@ -138,7 +138,6 @@ define_java_module(
         "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_slf4j_slf4j_log4j12",
         "@ray_streaming_maven//:commons_collections_commons_collections",
-        "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
     ],
 )
