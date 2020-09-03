@@ -87,8 +87,7 @@ def create_searcher(
     if search_alg not in SEARCH_ALG_IMPORT:
         raise ValueError(
             f"Search alg must be one of {list(SEARCH_ALG_IMPORT)}. "
-            f"Got: {search_alg}"
-        )
+            f"Got: {search_alg}")
 
     SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
     return SearcherClass(metric=metric, mode=mode, **kwargs)

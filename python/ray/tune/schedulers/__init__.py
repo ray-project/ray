@@ -64,8 +64,7 @@ def create_scheduler(
     if scheduler not in SCHEDULER_IMPORT:
         raise ValueError(
             f"Search alg must be one of {list(SCHEDULER_IMPORT)}. "
-            f"Got: {scheduler}"
-        )
+            f"Got: {scheduler}")
 
     SchedulerClass = SCHEDULER_IMPORT[scheduler]()
     return SchedulerClass(metric=metric, mode=mode, **kwargs)
