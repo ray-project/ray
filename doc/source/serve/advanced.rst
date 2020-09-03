@@ -327,7 +327,7 @@ You can follow the same pattern for other Starlette middlewares.
 
 .. note::
 
-  Serve doesn't not list ``Starlette`` as one of its dependencies. To utilize this feature,
+  Serve does not list ``Starlette`` as one of its dependencies. To utilize this feature,
   you will need to:
 
   .. code-block:: bash
