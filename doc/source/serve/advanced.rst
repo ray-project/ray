@@ -325,6 +325,15 @@ and custom middlewares in Starlette format. For example, to enable Serve
 for `Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_
 you can:
 
+.. note::
+
+  Serve doesn't not list ``Starlette`` as one of its dependencies. To utilize this feature,
+  you will need to:
+
+  .. code-block:: bash
+
+    pip install starlette
+
 .. code-block:: python
 
     from starlette.middleware import Middleware
