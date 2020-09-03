@@ -6,6 +6,8 @@ import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
+import io.ray.streaming.runtime.context.ContextBackend;
+import io.ray.streaming.runtime.context.OpCheckpointInfo;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
@@ -14,8 +16,6 @@ import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.generated.RemoteCall;
 import io.ray.streaming.runtime.master.coordinator.command.WorkerCommitReport;
 import io.ray.streaming.runtime.rpc.RemoteCallMaster;
-import io.ray.streaming.runtime.context.ContextBackend;
-import io.ray.streaming.runtime.context.OpCheckpointInfo;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
@@ -222,8 +222,7 @@ public abstract class StreamTask implements Runnable {
   // ----------------------------------------------------------------------
 
   public boolean triggerCheckpoint(Long barrierId) {
-    LOG.error("Unsupported access.");
-    return false;
+    throw new UnsupportedOperationException("Only source operator supports trigger checkpoints.");
   }
 
   public void doCheckpoint(long checkpointId, Map<String, OffsetInfo> inputPoints) {
