@@ -384,8 +384,8 @@ def start(detached: bool = False,
 def connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
-    If calling from the driver program, the Serve instance must first have been
-    initialized using `serve.start(detached=True)`.
+    If calling from the driver program, the Serve instance on this Ray cluster
+    must first have been initialized using `serve.start(detached=True)`.
 
     If called from within a backend, will connect to the same Serve instance
     that the backend is running in.

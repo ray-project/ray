@@ -1,4 +1,5 @@
 import ray
+from ray import serve
 
 import requests
 
@@ -12,6 +13,7 @@ def test_handle_in_endpoint(serve_instance):
 
     class Endpoint2:
         def __init__(self):
+            client = serve.connect()
             self.handle = client.get_handle("endpoint1")
 
         def __call__(self):

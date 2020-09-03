@@ -1,33 +1,21 @@
 Serve API Reference
 ===================
 
+``serve.accept_batch`` is a decorator to mark that your backend implementation
+does accepts a list of requests as input instead of just a request.
+.. autofunction:: ray.serve.accept_batch
+
 Basic APIs
 ----------
 .. autofunction:: ray.serve.start
 .. autofunction:: ray.serve.connect
 
-Management APIs
----------------
-.. autoclass:: ray.serve.Client
-    :members: create_backend
-    :members: list_backends
-    :members: delete_backend
-    :members: get_backend_config
-    :members: update_backend_config
-    :members: create_endpoint
-    :members: list_endpoints
-    :members: delete_endpoint
-    :members: set_traffic
-    :members: shadow_traffic
-    :members: get_handle
+Client API
+----------
+.. autoclass:: ray.serve.api.Client
+    :members: create_backend, list_backends, delete_backend, get_backend_config, update_backend_config, create_endpoint, list_endpoints, delete_endpoint, set_traffic, shadow_traffic, get_handle
 
-Serve Handle API
-----------------
-.. autoclass:: ray.serve.RayServeHandle
-    :members: remote
-    :members: options
-
-
-``serve.accept_batch`` is a decorator to mark that your backend implementation
-does accepts a list of requests as input instead of just a request.
-.. autofunction:: ray.serve.accept_batch
+Handle API
+----------
+.. autoclass:: ray.serve.handle.RayServeHandle
+    :members: remote, options
