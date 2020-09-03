@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -25,11 +26,11 @@ _SCHEDULERS = {
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
+@dataclass
 class SyncConfig:
-    sync_to_cloud = None
-    sync_to_driver = None
-    sync_on_checkpoint = None
-    """
+    """Configuration object for syncing.
+
+    Args:
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -42,7 +43,14 @@ class SyncConfig:
             that includes `{source}` and `{target}` for the syncer to run.
             If True or not provided, it defaults to using rsync. If False,
             syncing to driver is disabled.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+            driver. If set to False, checkpoint syncing from worker to driver
+            is asynchronous and best-effort. This does not affect persistent
+            storage syncing. Defaults to True.
     """
+    sync_to_cloud = None
+    sync_to_driver = None
+    sync_on_checkpoint = None
 
 
 
@@ -93,7 +101,7 @@ def run(run_or_experiment,
         resources_per_trial=None,
         num_samples=1,
         local_dir=None,
-        upload_dir=None,
+        progress_reporter=None,
         trial_name_creator=None,
         trial_dirname_creator=None,
         loggers=None,
@@ -110,15 +118,15 @@ def run(run_or_experiment,
         scheduler=None,
         server_port=None,
         verbose=2,
-        progress_reporter=None,
         resume=False,
-        run_errored_only=False,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        sync_config=None,
         ray_auto_init=None,
         queue_trials=None,
         global_checkpoint_period=None,
+        upload_dir=None,
         sync_to_cloud=None,
         sync_to_driver=None,
         sync_on_checkpoint=None,):
@@ -148,7 +156,7 @@ def run(run_or_experiment,
 
         # Rerun ONLY failed trials after an experiment is finished.
         tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True, run_errored_only=True)
+                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
 
     Args:
         run_or_experiment (function | class | str | :class:`Experiment`): If
@@ -184,14 +192,24 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket`` or ``gs://bucket``).
-        trial_name_creator (Callable[[Trial], str]): Optional function
-            for generating the trial string representation.
-        trial_dirname_creator (Callable[[Trial], str]): Function
-            for generating the trial dirname. This function should take
-            in a Trial object and return a string representing the
-            name of the directory. The return value cannot be a path.
+        search_alg (Searcher): Search algorithm for optimization.
+        scheduler (TrialScheduler): Scheduler for executing
+            the experiment. Choose among FIFO (default), MedianStopping,
+            AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
+            ray.tune.schedulers for more options.
+        keep_checkpoints_num (int): Number of checkpoints to keep. A value of
+            `None` keeps all checkpoints. Defaults to `None`. If set, need
+            to provide `checkpoint_score_attr`.
+        checkpoint_score_attr (str): Specifies by which attribute to rank the
+            best checkpoint. Default is increasing order. If attribute starts
+            with `min-` it will rank attribute in decreasing order, i.e.
+            `min-validation_loss`.
+        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
+            1 = only status updates, 2 = status and trial results.
+        progress_reporter (ProgressReporter): Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
@@ -203,23 +221,21 @@ def run(run_or_experiment,
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
+        trial_name_creator (Callable[[Trial], str]): Optional function
+            for generating the trial string representation.
+        trial_dirname_creator (Callable[[Trial], str]): Function
+            for generating the trial dirname. This function should take
+            in a Trial object and return a string representing the
+            name of the directory. The return value cannot be a path.
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
+        sync_config (SyncConfig): TODO
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
             This has no effect when using the Functional Training API.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
-            driver. If set to False, checkpoint syncing from worker to driver
-            is asynchronous and best-effort. This does not affect persistent
-            storage syncing. Defaults to True.
-        keep_checkpoints_num (int): Number of checkpoints to keep. A value of
-            `None` keeps all checkpoints. Defaults to `None`. If set, need
-            to provide `checkpoint_score_attr`.
-        checkpoint_score_attr (str): Specifies by which attribute to rank the
-            best checkpoint. Default is increasing order. If attribute starts
-            with `min-` it will rank attribute in decreasing order, i.e.
-            `min-validation_loss`.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial at least this many times.
@@ -233,29 +249,16 @@ def run(run_or_experiment,
             is best used with `ray.init(local_mode=True)`).
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        search_alg (Searcher): Search algorithm for optimization.
-        scheduler (TrialScheduler): Scheduler for executing
-            the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options.
         server_port (int): Port number for launching TuneServer.
-        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
-            1 = only status updates, 2 = status and trial results.
-        progress_reporter (ProgressReporter): Progress reporter for reporting
-            intermediate experiment progress. Defaults to CLIReporter if
-            running in command-line, or JupyterNotebookReporter if running in
-            a Jupyter notebook.
-        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
-            LOCAL/True restores the checkpoint from the local_checkpoint_dir.
-            REMOTE restores the checkpoint from remote_checkpoint_dir.
-            PROMPT provides CLI feedback. False forces a new
-            experiment. If resume is set but checkpoint does not exist,
+        resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
+            or bool. LOCAL/True restores the checkpoint from the
+            local_checkpoint_dir, determined
+            by `name` and `local_dir`. REMOTE restores the checkpoint
+            from remote_checkpoint_dir. PROMPT provides CLI feedback.
+            False forces a new experiment. ERRORED_ONLY resets and reruns
+            ERRORED trials upon resume - previous trial artifacts will
+            be left untouched.  If resume is set but checkpoint does not exist,
             ValueError will be thrown.
-        run_errored_only (bool): Only to be used with `resume` enabled.
-            Resets and reruns ERRORED trials upon resume.
-            Experiment location is determined
-            by `name` and `local_dir`. Previous trial artifacts will
-            be left untouched.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -278,6 +281,8 @@ def run(run_or_experiment,
     if ray_auto_init:
         raise DeprecationWarning
     if with_server:
+        raise DeprecationWarning
+    if sync_on_checkpoint:
         raise DeprecationWarning
 
     config = config or {}
