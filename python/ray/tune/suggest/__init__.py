@@ -68,7 +68,7 @@ def create_searcher(
 
 __all__ = [
     "SearchAlgorithm", "Searcher", "BasicVariantGenerator", "SearchGenerator",
-    "grid_search", "Repeater", "ConcurrencyLimiter", "create_searcher"
+    "grid_search", "Repeater", "ConcurrencyLimiter"
 ]
 
 
