@@ -13,9 +13,9 @@ public interface Processor<T> extends Serializable {
   void process(T t);
 
   /**
-   * See {@link Function#doCheckpoint()}.
+   * See {@link Function#saveCheckpoint()}.
    */
-  Serializable doCheckpoint();
+  Serializable saveCheckpoint();
 
   /**
    * See {@link Function#loadCheckpoint(Serializable)}.

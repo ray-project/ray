@@ -15,16 +15,16 @@ public interface Function extends Serializable {
    *
    * @return A serializable object which represents function state.
    */
-  default Serializable doCheckpoint() {
+  default Serializable saveCheckpoint() {
     return null;
   }
 
   /**
    * This method will be called by framework when a worker died and been restarted.
-   * We will pass the last object you returned in {@link Function#doCheckpoint()} when
+   * We will pass the last object you returned in {@link Function#saveCheckpoint()} when
    * doing checkpoint, you are responsible to load this object back to you function.
    *
-   * @param checkpointObject the last object you returned in {@link Function#doCheckpoint()}
+   * @param checkpointObject the last object you returned in {@link Function#saveCheckpoint()}
    */
   default void loadCheckpoint(Serializable checkpointObject) {
   }

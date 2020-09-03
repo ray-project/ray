@@ -74,8 +74,8 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public Serializable doCheckpoint() {
-    return function.doCheckpoint();
+  public Serializable saveCheckpoint() {
+    return function.saveCheckpoint();
   }
 
   @Override

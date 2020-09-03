@@ -37,8 +37,8 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
   }
 
   @Override
-  public Serializable doCheckpoint() {
-    return operator.doCheckpoint();
+  public Serializable saveCheckpoint() {
+    return operator.saveCheckpoint();
   }
 
   @Override

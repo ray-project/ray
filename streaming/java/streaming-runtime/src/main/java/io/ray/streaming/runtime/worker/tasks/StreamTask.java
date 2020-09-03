@@ -241,7 +241,7 @@ public abstract class StreamTask implements Runnable {
         inputPoints, outputPoints);
 
     this.lastCheckpointId = checkpointId;
-    Object processorCheckpoint = processor.doCheckpoint();
+    Object processorCheckpoint = processor.saveCheckpoint();
 
     try {
       OpCheckpointInfo opCpInfo =

@@ -86,7 +86,7 @@ public class TestFailover {
     }
 
     @Override
-    public Serializable doCheckpoint() {
+    public Serializable saveCheckpoint() {
       LOG.info("do checkpoint, value={}", value);
       return value;
     }

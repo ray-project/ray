@@ -26,9 +26,9 @@ public interface Operator extends Serializable {
   ChainStrategy getChainStrategy();
 
   /**
-   * See {@link Function#doCheckpoint()}.
+   * See {@link Function#saveCheckpoint()}.
    */
-  Serializable doCheckpoint();
+  Serializable saveCheckpoint();
 
   /**
    * See {@link Function#loadCheckpoint(Serializable)}.

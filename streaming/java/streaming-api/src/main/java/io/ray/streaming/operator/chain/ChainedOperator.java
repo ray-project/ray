@@ -87,10 +87,10 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   }
 
   @Override
-  public Serializable doCheckpoint() {
+  public Serializable saveCheckpoint() {
     Object[] checkpoints = new Object[operators.size()];
     for (int i = 0; i < operators.size(); ++i) {
-      checkpoints[i] = operators.get(i).doCheckpoint();
+      checkpoints[i] = operators.get(i).saveCheckpoint();
     }
     return checkpoints;
   }
