@@ -327,13 +327,13 @@ class TorchTrainer:
                 add_dist_sampler=self.add_dist_sampler,
                 wrap_ddp=self.wrap_ddp)
 
-        self.worker_group.start_workers(num_workers, params,
-                                        initialization_hook=self.initialization_hook,
-                                        num_cpus_per_worker=self.num_cpus_per_worker,
-                                        use_gpu=self.use_gpu,
-                                        timeout_s=self.timeout_s)
-
-
+        self.worker_group.start_workers(
+            num_workers,
+            params,
+            initialization_hook=self.initialization_hook,
+            num_cpus_per_worker=self.num_cpus_per_worker,
+            use_gpu=self.use_gpu,
+            timeout_s=self.timeout_s)
 
     def train(self,
               num_steps=None,
@@ -384,9 +384,8 @@ class TorchTrainer:
         if self.worker_group.should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
             self.worker_group.resize_workers()
-        success, worker_stats = self.worker_group.train(num_steps=num_steps,
-                                                  profile=profile,
-                                                  info=info, dataset=dataset)
+        success, worker_stats = self.worker_group.train(
+            num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
         for i in range(max_retries):
             if success:
@@ -397,7 +396,10 @@ class TorchTrainer:
             logger.info("Retrying training step with %d workers." %
                         (self.worker_group.get_num_workers()))
             success, worker_stats = self.worker_group.train(
-                num_steps=num_steps, profile=profile, info=info, dataset=dataset)
+                num_steps=num_steps,
+                profile=profile,
+                info=info,
+                dataset=dataset)
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -469,8 +471,8 @@ class TorchTrainer:
                 You can provide custom metrics by passing in a custom
                 ``training_operator_cls``.
         """
-        worker_stats = self.worker_group.validate(num_steps=num_steps,
-                                                  profile=profile, info=info)
+        worker_stats = self.worker_group.validate(
+            num_steps=num_steps, profile=profile, info=info)
 
         if reduce_results:
             return self._process_stats(worker_stats)
@@ -568,8 +570,8 @@ class TorchTrainer:
                 num_cpus = config.get("num_cpus_per_worker",
                                       kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
-                use_local = config.get("use_local", kwargs.get("use_local",
-                                                               False))
+                use_local = config.get("use_local",
+                                       kwargs.get("use_local", False))
 
                 if use_local:
                     remote_worker_count = num_workers - 1

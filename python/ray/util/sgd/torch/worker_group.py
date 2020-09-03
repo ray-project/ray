@@ -6,8 +6,8 @@ from datetime import timedelta
 import ray
 import torch
 from ray.exceptions import RayActorError
-from ray.util.sgd.torch.distributed_torch_runner import LocalDistributedRunner, \
-    DistributedTorchRunner, DeactivatedRunner
+from ray.util.sgd.torch.distributed_torch_runner import \
+    LocalDistributedRunner, DistributedTorchRunner, DeactivatedRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
@@ -15,10 +15,12 @@ from ray.util.sgd.utils import check_for_failure
 RESIZE_COOLDOWN_S = 10
 logger = logging.getLogger(__name__)
 
+
 class BaseWorkerGroup:
     def start_workers(self, num_workers, params, initialization_hook,
-                       timeout_s, num_cpus_per_worker, use_gpu):
+                      timeout_s, num_cpus_per_worker, use_gpu):
         raise NotImplementedError
+
     def apply_all_operators(self, fn):
         raise NotImplementedError
 
@@ -47,8 +49,7 @@ class BaseWorkerGroup:
         self.apply_all_operators(
             lambda op: [sched.step(metric) for sched in op.schedulers])
 
-    def validate(self, num_steps=None, profile=False,
-                 info=None):
+    def validate(self, num_steps=None, profile=False, info=None):
         raise NotImplementedError
 
     def should_resize(self):
@@ -60,8 +61,10 @@ class BaseWorkerGroup:
     def get_num_workers(self):
         raise NotImplementedError
 
+
 class RemoteWorkerGroup(BaseWorkerGroup):
     """Groups together multiple DistributedTorchRunner workers."""
+
     def __init__(self):
         self.remote_workers = []
         self.num_workers = 0
@@ -73,8 +76,9 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         self.use_gpu = use_gpu
 
         # Generate actor class
-        RemoteRunner = ray.remote(num_cpus=num_cpus_per_worker,
-                                  num_gpus=int(use_gpu))(DistributedTorchRunner)
+        RemoteRunner = ray.remote(
+            num_cpus=num_cpus_per_worker,
+            num_gpus=int(use_gpu))(DistributedTorchRunner)
 
         # Start workers
         self.remote_workers = [
@@ -92,8 +96,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
     def _setup_process_group(self, address, timeout_s, num_workers):
         # Setup the process group among all workers.
         remote_pgroup_setups = [
-            worker.setup_process_group.remote(address, i,
-                                              num_workers,
+            worker.setup_process_group.remote(address, i, num_workers,
                                               timedelta(timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
@@ -108,13 +111,12 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         return remote_operator_setups
 
     def start_workers(self, num_workers, params, initialization_hook,
-                       timeout_s, num_cpus_per_worker, use_gpu):
-        if num_workers==1:
-            RemoteRunner = ray.remote(num_cpus=num_cpus_per_worker,
-                                      num_gpus=int(use_gpu))(TorchRunner)
-            self.remote_workers = [
-                RemoteRunner.remote(**params)
-            ]
+                      timeout_s, num_cpus_per_worker, use_gpu):
+        if num_workers == 1:
+            RemoteRunner = ray.remote(
+                num_cpus=num_cpus_per_worker,
+                num_gpus=int(use_gpu))(TorchRunner)
+            self.remote_workers = [RemoteRunner.remote(**params)]
             self.num_workers = num_workers
             ray.get(self.remote_workers[0].setup.remote())
         else:
@@ -129,7 +131,9 @@ class RemoteWorkerGroup(BaseWorkerGroup):
 
             ray.get(self._setup_components())
 
-            ray.get(self._setup_process_group(address, timeout_s, self.num_workers))
+            ray.get(
+                self._setup_process_group(address, timeout_s,
+                                          self.num_workers))
 
             ray.get(self._setup_operator())
 
@@ -149,13 +153,14 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         return ray.get(self._apply_all_workers(fn))
 
     def get_local_operator(self):
-        raise NotImplementedError("Cannot return a local operators if all "
-                                  "workers are remote. Set use_local to True in"
-                                  "TorchTrainer to access a local operator.")
+        raise NotImplementedError(
+            "Cannot return a local operators if all "
+            "workers are remote. Set use_local to True in"
+            "TorchTrainer to access a local operator.")
 
     def get_model(self):
-        ready, _ = ray.wait([r.get_models.remote() for r in
-                             self.remote_workers])
+        ready, _ = ray.wait(
+            [r.get_models.remote() for r in self.remote_workers])
         models = ray.get(ready[0])
         return models
 
@@ -178,9 +183,9 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             ray.get(remote_calls)
 
     def state_dict(self):
-        ready, _ = ray.wait([r.state_dict.remote() for r in
-                             self.remote_workers],
-                            num_returns=1)
+        ready, _ = ray.wait(
+            [r.state_dict.remote() for r in self.remote_workers],
+            num_returns=1)
         return ray.get(ready[0])
 
     def _train(self, num_steps, profile, info, dataset=None):
@@ -208,8 +213,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         ]
         return remote_worker_stats
 
-    def validate(self, num_steps=None, profile=False,
-                 info=None):
+    def validate(self, num_steps=None, profile=False, info=None):
         params = dict(num_steps=num_steps, profile=profile, info=info)
         remote_worker_stats = self._validate(params)
         return ray.get(remote_worker_stats)
@@ -287,9 +291,8 @@ class LocalWorkerGroup(BaseWorkerGroup):
         self.remote_worker_group = RemoteWorkerGroup()
         self.num_workers = 0
 
-    def start_workers(self, num_workers, params,
-                 initialization_hook,
-                 timeout_s, num_cpus_per_worker, use_gpu):
+    def start_workers(self, num_workers, params, initialization_hook,
+                      timeout_s, num_cpus_per_worker, use_gpu):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
 
         self.num_workers = num_workers
@@ -302,11 +305,9 @@ class LocalWorkerGroup(BaseWorkerGroup):
         else:
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=num_cpus_per_worker,
-                num_gpus=int(use_gpu),
-                **params)
-            self.remote_worker_group._init_workers(num_workers-1, params,
-                                                   num_cpus_per_worker, use_gpu)
+                num_cpus=num_cpus_per_worker, num_gpus=int(use_gpu), **params)
+            self.remote_worker_group._init_workers(
+                num_workers - 1, params, num_cpus_per_worker, use_gpu)
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
 
@@ -319,7 +320,7 @@ class LocalWorkerGroup(BaseWorkerGroup):
 
             remote_pgs = self.remote_worker_group._setup_process_group(
                 address, timeout_s, num_workers)
-            self.local_worker.setup_process_group(address, num_workers-1,
+            self.local_worker.setup_process_group(address, num_workers - 1,
                                                   num_workers,
                                                   timedelta(timeout_s))
             ray.get(remote_pgs)
@@ -393,13 +394,11 @@ class LocalWorkerGroup(BaseWorkerGroup):
         if dataset:
             dataset.set_num_shards(self.num_workers)
 
-        remote_worker_stats = self.remote_worker_group._train(num_steps,
-                                                              profile, info,
-                                                              dataset)
+        remote_worker_stats = self.remote_worker_group._train(
+            num_steps, profile, info, dataset)
         try:
             if dataset:
-                params["iterator"] = dataset.get_shard(
-                    self.num_workers-1)
+                params["iterator"] = dataset.get_shard(self.num_workers - 1)
             local_worker_stats = self.local_worker.train_epoch(**params)
         except RuntimeError as err:
             if "gloo" in err.args[0] and "Timed out" in err.args[0]:
@@ -435,4 +434,3 @@ class LocalWorkerGroup(BaseWorkerGroup):
 
     def get_num_workers(self):
         return self.remote_worker_group.get_num_workers() + 1
-

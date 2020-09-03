@@ -43,6 +43,7 @@ def ray_start_4_cpus():
     if dist.is_initialized():
         dist.destroy_process_group()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
@@ -59,18 +60,6 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
     assert val_metrics[BATCH_COUNT] == 1
     trainer.shutdown()
 
-
-def test_resize(ray_start_2_cpus):  # noqa: F811
-    trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
-        num_workers=1)
-    trainer.train(num_steps=1)
-    trainer.max_replicas = 2
-    results = trainer.train(num_steps=1, reduce_results=False)
-    assert len(results) == 2
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_non_serialized_data(ray_start_2_cpus, use_local):  # noqa: F811
@@ -96,6 +85,7 @@ def test_non_serialized_data(ray_start_2_cpus, use_local):  # noqa: F811
     assert elapsed < duration * 2
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
@@ -109,6 +99,7 @@ def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
     trainer.shutdown()
     with pytest.raises(RuntimeError):
         trainer.train()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
@@ -322,6 +313,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq, use_local):  # noqa:
             trainer.train()
         trainer.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_profiling(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
@@ -336,6 +328,7 @@ def test_profiling(ray_start_2_cpus, use_local):  # noqa: F811
     stats = trainer.validate(profile=True)
     assert "profile" in stats
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_dataset(ray_start_4_cpus, use_local):
@@ -366,6 +359,7 @@ def test_dataset(ray_start_4_cpus, use_local):
     prediction = float(trainer.get_model()(input)[0][0])
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_split_batch(ray_start_2_cpus, use_local):
@@ -399,6 +393,7 @@ def test_split_batch(ray_start_2_cpus, use_local):
     assert stats[NUM_SAMPLES] == 600
     assert stats[BATCH_COUNT] == (data_size // 20)
     trainer.shutdown()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_reduce_result(ray_start_2_cpus, use_local):
@@ -524,6 +519,7 @@ def test_metrics_nan(ray_start_2_cpus, num_workers, use_local):
     assert np.isnan(stats["score"])
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_scheduler_validate(ray_start_2_cpus, use_local):  # noqa: F811
     from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -620,6 +616,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
     trainer2.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_wrap_ddp(ray_start_2_cpus, tmp_path, use_local):  # noqa: F811
     if not dist.is_available():
@@ -659,6 +656,7 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path, use_local):  # noqa: F811
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
     trainer2.shutdown()
 
+
 def gen_step_with_fail(num_fails):
     def step_with_fail(self,
                        num_steps=None,
@@ -687,6 +685,7 @@ def gen_step_with_fail(num_fails):
 
     return step_with_fail
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
@@ -712,6 +711,7 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
             trainer1.train(max_retries=1)
 
         trainer1.shutdown(force=True)
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
@@ -745,6 +745,7 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
 
         trainer1.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
@@ -769,6 +770,7 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
         trainer1.shutdown()
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_multi_input_model(ray_start_2_cpus, use_local):
