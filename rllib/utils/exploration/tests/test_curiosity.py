@@ -180,7 +180,7 @@ class TestCuriosity(unittest.TestCase):
             "name": "MiniGrid-Empty-8x8-v0",
             "framestack": 1,  # seems to work even w/o framestacking
         }
-        config["horizon"] = 11  # Make it impossible to reach goal by chance.
+        config["horizon"] = 15  # Make it impossible to reach goal by chance.
         config["num_envs_per_worker"] = 4
         config["model"]["fcnet_hiddens"] = [256, 256]
         config["model"]["fcnet_activation"] = "relu"
@@ -195,15 +195,14 @@ class TestCuriosity(unittest.TestCase):
             # For the feature NN, use a non-LSTM fcnet (same as the one
             # in the policy model).
             "eta": 0.1,
-            "lr": 0.0005,  # 0.0003 or 0.0005 seem to work fine as well.
-            "feature_dim": 256,
+            "lr": 0.0003,  # 0.0003 or 0.0005 seem to work fine as well.
+            "feature_dim": 64,
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "feature_net_config": {
                 "fcnet_hiddens": [],
                 "fcnet_activation": "relu",
             },
-
             "sub_exploration": {
                 "type": "StochasticSampling",
             }
