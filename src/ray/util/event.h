@@ -15,7 +15,6 @@
 #pragma once
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
-#include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>

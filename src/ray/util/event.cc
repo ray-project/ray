@@ -83,9 +83,13 @@ std::string LogEventReporter::EventToString(const rpc::Event &event) {
   }
 
   pt.put("message", message_buffer.str());
+
+  boost::property_tree::ptree pt_child;
   for (auto &ele : event.custom_fields()) {
-    pt.put("custom_fields." + ele.first, ele.second);
+    pt_child.put(ele.first, ele.second);
   }
+
+  pt.add_child("custom_fields", pt_child);
 
   std::stringstream ss;
   boost::property_tree::json_parser::write_json(ss, pt, false);
