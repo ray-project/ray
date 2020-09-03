@@ -626,6 +626,7 @@ Multi-Agent Methods
 -------------------
 
 .. _qmix:
+
 QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)
 ---------------------------------------------------
 |pytorch|
