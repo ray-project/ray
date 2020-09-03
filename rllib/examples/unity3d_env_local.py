@@ -119,9 +119,12 @@ if __name__ == "__main__":
     if args.env == "Pyramids":
         config["exploration_config"] = {
             "type": "Curiosity",
-            "lr": 0.0005,
+            "eta": 0.1,
+            "lr": 0.0003,
+            # No actual feature net: map directly from observations to feature
+            # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": [256, 256],
+                "fcnet_hiddens": [],
                 "fcnet_activation": "relu",
             },
             "sub_exploration": {
