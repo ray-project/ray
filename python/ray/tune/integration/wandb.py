@@ -7,6 +7,7 @@ from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
+from ray.tune.utils import flatten_dict
 
 try:
     import wandb
@@ -145,11 +146,16 @@ class _WandbLoggingProcess(Process):
     def _handle_result(self, result):
         config_update = result.get("config", {}).copy()
         log = {}
+        flat_result = flatten_dict(result, delimiter="/")
 
-        for k, v in result.items():
-            if k in self._to_config:
+        for k, v in flat_result.items():
+            if any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._to_config):
                 config_update[k] = v
-            elif k in self._exclude:
+            elif any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._exclude):
                 continue
             elif not isinstance(v, Number):
                 continue
@@ -253,6 +259,8 @@ class WandbLogger(Logger):
 
     def _init(self):
         config = self.config.copy()
+
+        config.pop("callbacks", None)  # Remove callbacks
 
         try:
             if config.get("logger_config", {}).get("wandb"):

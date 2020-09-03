@@ -8,7 +8,7 @@ import java.util.Map;
 public class CommonUtils {
 
   public static Map<String, Object> strMapToObjectMap(Map<String, String> srcMap) {
-    Map<String,Object> destMap = (Map) srcMap;
+    Map<String, Object> destMap = (Map) srcMap;
     return destMap;
   }
 }
