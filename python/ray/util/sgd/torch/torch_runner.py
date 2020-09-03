@@ -312,6 +312,10 @@ class TorchRunner:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    def get_models(self):
+        """Getter method. Needed for remote actor calls."""
+        return self.models
+
     @property
     def given_models(self):
         if len(self.models) > 1:

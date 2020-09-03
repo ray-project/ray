@@ -43,14 +43,14 @@ def ray_start_4_cpus():
     if dist.is_initialized():
         dist.destroy_process_group()
 
-
-def test_single_step(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        use_local=True,
+        use_local=use_local,
         num_workers=1)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
@@ -72,8 +72,8 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
     results = trainer.train(num_steps=1, reduce_results=False)
     assert len(results) == 2
 
-
-def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_non_serialized_data(ray_start_2_cpus, use_local):  # noqa: F811
     duration = 10
 
     def slow_data(func):
@@ -90,32 +90,35 @@ def test_non_serialized_data(ray_start_2_cpus):  # noqa: F811
         optimizer_creator=optimizer_creator,
         serialize_data_creation=False,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=2)
     elapsed = time.time() - start
     assert elapsed < duration * 2
     trainer.shutdown()
 
-
-def test_dead_trainer(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=2)
     trainer.train(num_steps=1)
     trainer.shutdown()
     with pytest.raises(RuntimeError):
         trainer.train()
 
-
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=num_workers)
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
@@ -132,7 +135,8 @@ def test_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_workers):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_multi_model(ray_start_2_cpus, num_workers, use_local):
     def train(*, model=None, criterion=None, optimizer=None, iterator=None):
         model.train()
         train_loss = 0
@@ -182,6 +186,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         loss_creator=lambda config: nn.MSELoss(),
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
+        use_local=use_local,
         num_workers=num_workers)
     trainer1.train()
     state = trainer1.state_dict()
@@ -197,6 +202,7 @@ def test_multi_model(ray_start_2_cpus, num_workers):
         loss_creator=lambda config: nn.MSELoss(),
         config={"custom_func": train_epoch},
         training_operator_cls=_TestingOperator,
+        use_local=use_local,
         num_workers=num_workers)
     trainer2.load_state_dict(state)
 
@@ -216,7 +222,9 @@ def test_multi_model(ray_start_2_cpus, num_workers):
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
+    # noqa: F811
     def train_epoch(self, iterator, info):
         if self.config.get("models", 1) > 1:
             assert len(self.models) == self.config["models"], self.config
@@ -265,6 +273,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                     scheduler_step_freq="epoch",
                     training_operator_cls=_TestingOperator,
                     num_workers=num_workers,
+                    use_local=use_local,
                     config={
                         "models": model_count,
                         "optimizers": optimizer_count,
@@ -276,7 +285,9 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
 
 
 @pytest.mark.parametrize("scheduler_freq", ["epoch", "batch", "manual", None])
-def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_scheduler_freq(ray_start_2_cpus, scheduler_freq, use_local):  # noqa:
+    # F811
     def train_epoch(self, iterator, info):
         assert info[SCHEDULER_STEP] == scheduler_freq
         return {"done": 1}
@@ -293,6 +304,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
                 optimizer_creator=optimizer_creator,
                 loss_creator=lambda config: nn.MSELoss(),
                 scheduler_creator=scheduler_creator,
+                use_local=use_local,
                 scheduler_step_freq=scheduler_freq)
     else:
         trainer = TorchTrainer(
@@ -303,18 +315,20 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
             config={"custom_func": train_epoch},
             training_operator_cls=_TestingOperator,
             scheduler_creator=scheduler_creator,
+            use_local=use_local,
             scheduler_step_freq=scheduler_freq)
 
         for i in range(3):
             trainer.train()
         trainer.shutdown()
 
-
-def test_profiling(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_profiling(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
+        use_local=use_local,
         loss_creator=lambda config: nn.MSELoss())
 
     stats = trainer.train(profile=True)
@@ -323,8 +337,8 @@ def test_profiling(ray_start_2_cpus):  # noqa: F811
     assert "profile" in stats
     trainer.shutdown()
 
-
-def test_dataset(ray_start_4_cpus):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_dataset(ray_start_4_cpus, use_local):
     """
     This test tries training the mlp_identity example. We check the accuracy of
     the model as an all inclusive way of ensuring that we are properly sharding
@@ -340,6 +354,7 @@ def test_dataset(ray_start_4_cpus):
         data_creator=None,
         optimizer_creator=optimizer_creator,
         loss_creator=torch.nn.MSELoss,
+        use_local=use_local,
         num_workers=2,
     )
 
@@ -352,8 +367,8 @@ def test_dataset(ray_start_4_cpus):
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
-
-def test_split_batch(ray_start_2_cpus):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_split_batch(ray_start_2_cpus, use_local):
     if not dist.is_available():
         return
 
@@ -374,6 +389,7 @@ def test_split_batch(ray_start_2_cpus):
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=2,
+        use_local=use_local,
         config={
             BATCH_SIZE: batch_size,
             "data_size": data_size,
@@ -384,8 +400,8 @@ def test_split_batch(ray_start_2_cpus):
     assert stats[BATCH_COUNT] == (data_size // 20)
     trainer.shutdown()
 
-
-def test_reduce_result(ray_start_2_cpus):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_reduce_result(ray_start_2_cpus, use_local):
     if not dist.is_available():
         return
 
@@ -405,6 +421,7 @@ def test_reduce_result(ray_start_2_cpus):
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=2,
+        use_local=use_local,
         config={"data_size": data_size})
     list_stats = trainer.train(reduce_results=False, profile=True)
     assert len(list_stats) == 2
@@ -418,7 +435,8 @@ def test_reduce_result(ray_start_2_cpus):
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_metrics(ray_start_2_cpus, num_workers):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_metrics(ray_start_2_cpus, num_workers, use_local):
     data_size, val_size = 600, 500
     batch_size = 4
 
@@ -433,6 +451,7 @@ def test_metrics(ray_start_2_cpus, num_workers):
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers,
+        use_local=use_local,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -467,7 +486,8 @@ def test_metrics(ray_start_2_cpus, num_workers):
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_metrics_nan(ray_start_2_cpus, num_workers):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_metrics_nan(ray_start_2_cpus, num_workers, use_local):
     data_size, val_size = 100, 100
     batch_size = 10
 
@@ -482,6 +502,7 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_workers=num_workers,
+        use_local=use_local,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -503,8 +524,8 @@ def test_metrics_nan(ray_start_2_cpus, num_workers):
     assert np.isnan(stats["score"])
     trainer.shutdown()
 
-
-def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_scheduler_validate(ray_start_2_cpus, use_local):  # noqa: F811
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     trainer = TorchTrainer(
@@ -514,6 +535,7 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
         loss_creator=lambda config: nn.MSELoss(),
         scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer),
         scheduler_step_freq="manual",
+        use_local=use_local,
         training_operator_cls=_TestingOperator)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
@@ -523,8 +545,9 @@ def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
     trainer.shutdown()
 
 
-@pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
+@pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
+@pytest.mark.parametrize("use_local", [False])
+def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
     TorchTrainable = TorchTrainer.as_trainable(
         **{
             "model_creator": model_creator,
@@ -532,6 +555,7 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
             "optimizer_creator": optimizer_creator,
             "loss_creator": lambda config: nn.MSELoss(),
             "num_workers": num_workers,
+            "use_local": use_local,
             "use_gpu": False,
             "backend": "gloo",
             "config": {
@@ -558,13 +582,15 @@ def test_tune_train(ray_start_2_cpus, num_workers):  # noqa: F811
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_workers,
+@pytest.mark.parametrize("use_local", [True, False])
+def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
                           tmp_path):  # noqa: F811
     trainer1 = TorchTrainer(
         model_creator=model_creator,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=num_workers)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
@@ -579,6 +605,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers,
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=num_workers)
     trainer2.load(checkpoint_path)
 
@@ -593,8 +620,8 @@ def test_save_and_restore(ray_start_2_cpus, num_workers,
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
     trainer2.shutdown()
 
-
-def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_wrap_ddp(ray_start_2_cpus, tmp_path, use_local):  # noqa: F811
     if not dist.is_available():
         return
     trainer1 = TorchTrainer(
@@ -603,14 +630,13 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         wrap_ddp=False,
+        use_local=use_local,
         num_workers=2)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
     trainer1.save(checkpoint_path)
 
     model1 = trainer1.get_model()
-    assert not hasattr(trainer1.local_worker.training_operator.model, "module")
-    assert hasattr(trainer1.local_worker.training_operator, "device_ids")
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
@@ -632,7 +658,6 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     for k in model1_state_dict:
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
     trainer2.shutdown()
-
 
 def gen_step_with_fail(num_fails):
     def step_with_fail(self,
@@ -662,8 +687,8 @@ def gen_step_with_fail(num_fails):
 
     return step_with_fail
 
-
-def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
         return
 
@@ -680,6 +705,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
             optimizer_creator=optimizer_creator,
             loss_creator=lambda config: nn.MSELoss(),
             config={"batch_size": 100000},
+            use_local=use_local,
             num_workers=2)
 
         with pytest.raises(RuntimeError):
@@ -687,8 +713,8 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
 
         trainer1.shutdown(force=True)
 
-
-def test_resize(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
         return
 
@@ -705,6 +731,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
             optimizer_creator=optimizer_creator,
             config={"batch_size": 100000},
             loss_creator=lambda config: nn.MSELoss(),
+            use_local=use_local,
             num_workers=2)
 
         @ray.remote
@@ -718,8 +745,8 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
 
         trainer1.shutdown()
 
-
-def test_fail_twice(ray_start_2_cpus):  # noqa: F811
+@pytest.mark.parametrize("use_local", [True, False])
+def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
         return
 
@@ -736,14 +763,15 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
             optimizer_creator=optimizer_creator,
             config={"batch_size": 100000},
             loss_creator=lambda config: nn.MSELoss(),
+            use_local=use_local,
             num_workers=2)
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
         trainer1.shutdown()
 
-
-def test_multi_input_model(ray_start_2_cpus):
+@pytest.mark.parametrize("use_local", [True, False])
+def test_multi_input_model(ray_start_2_cpus, use_local):
     def model_creator(config):
         class MultiInputModel(nn.Module):
             def __init__(self):
@@ -784,6 +812,7 @@ def test_multi_input_model(ray_start_2_cpus):
         data_creator=data_creator,
         optimizer_creator=optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
+        use_local=use_local,
         num_workers=1)
 
     metrics = trainer.train(num_steps=1)

@@ -381,9 +381,9 @@ class TorchTrainer:
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
-        if self.worker_group._should_resize():
+        if self.worker_group.should_resize():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self.worker_group._resize_workers()
+            self.worker_group.resize_workers()
         success, worker_stats = self.worker_group.train(num_steps=num_steps,
                                                   profile=profile,
                                                   info=info, dataset=dataset)
@@ -486,7 +486,13 @@ class TorchTrainer:
 
     def get_model(self):
         """Returns the learned model(s)."""
-        return self.worker_group.get_model()
+        unwrapped = []
+        models = self.worker_group.get_model()
+        for model in models:
+            unwrapped += [model.module if hasattr(model, "module") else model]
+        if len(unwrapped) == 1:
+            return unwrapped[0]
+        return unwrapped
 
     def get_local_operator(self):
         """Returns the local TrainingOperator object.
@@ -499,13 +505,20 @@ class TorchTrainer:
         """
         return self.worker_group.get_local_operator()
 
+    def state_dict(self):
+        return self.worker_group.state_dict()
+
+    def load_state_dict(self, state_dict, blocking=False):
+        self.worker_group.load_state_dict(state_dict, blocking=blocking)
+
     def save(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        return self.worker_group.save(checkpoint)
+        torch.save(self.state_dict(), checkpoint)
+        return checkpoint
 
     def load(self, checkpoint):
         """Loads the Trainer and all workers from the provided checkpoint.
@@ -513,7 +526,8 @@ class TorchTrainer:
         Args:
             checkpoint (str): Path to target checkpoint file.
         """
-        self.worker_group.load(checkpoint)
+        state_dict = torch.load(checkpoint)
+        self.load_state_dict(state_dict)
 
     def restore(self, *args):
         raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
@@ -554,8 +568,13 @@ class TorchTrainer:
                 num_cpus = config.get("num_cpus_per_worker",
                                       kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
+                use_local = config.get("use_local", kwargs.get("use_local",
+                                                               False))
 
-                remote_worker_count = num_workers - 1
+                if use_local:
+                    remote_worker_count = num_workers - 1
+                else:
+                    remote_worker_count = num_workers
 
                 return Resources(
                     cpu=num_cpus,
