@@ -79,6 +79,7 @@ py_test_module_list(
     "test_command_runner.py",
     "test_coordinator_server.py",
     "test_dask_scheduler.py",
+    "test_dask_callback.py",
     "test_debug_tools.py",
     "test_global_state.py",
     "test_job.py",
