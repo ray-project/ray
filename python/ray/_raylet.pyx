@@ -343,6 +343,7 @@ def switch_worker_log_if_needed(worker, next_job_id):
 
 cdef execute_task(
         CTaskType task_type,
+        const c_string name,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -386,16 +387,18 @@ cdef execute_task(
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
+    task_name = name.decode("utf-8")
+    title = f"ray::{task_name}"
+
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        title = "ray::{}()".format(function_name)
         next_title = "ray::IDLE"
         function_executor = execution_info.function
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
-        title = "ray::{}.{}()".format(class_name, function_name)
-        next_title = "ray::{}".format(class_name)
-        worker_name = "ray_{}_{}".format(class_name, os.getpid())
+        next_title = f"ray::{class_name}"
+        pid = os.getpid()
+        worker_name = f"ray_{class_name}_{pid}"
         if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
                 worker_name,
@@ -470,8 +473,7 @@ cdef execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
                 class_name = actor.__class__.__name__
-                actor_title = "{}({}, {})".format(
-                    class_name, repr(args), repr(kwargs))
+                actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -535,6 +537,7 @@ cdef execute_task(
 
 cdef CRayStatus task_execution_handler(
         CTaskType task_type,
+        const c_string task_name,
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -547,8 +550,9 @@ cdef CRayStatus task_execution_handler(
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
-                execute_task(task_type, ray_function, c_resources, c_args,
-                             c_arg_reference_ids, c_return_ids, returns)
+                execute_task(task_type, task_name, ray_function, c_resources,
+                             c_args, c_arg_reference_ids, c_return_ids,
+                             returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -985,6 +989,7 @@ cdef class CoreWorker:
                     Language language,
                     FunctionDescriptor function_descriptor,
                     args,
+                    c_string name,
                     int num_returns,
                     resources,
                     int max_retries,
@@ -1002,7 +1007,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_returns, c_resources)
+                name, num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1112,6 +1117,7 @@ cdef class CoreWorker:
                           ActorID actor_id,
                           FunctionDescriptor function_descriptor,
                           args,
+                          c_string name,
                           int num_returns,
                           double num_method_cpus):
 
@@ -1126,7 +1132,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_returns, c_resources)
+            task_options = CTaskOptions(name, num_returns, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)

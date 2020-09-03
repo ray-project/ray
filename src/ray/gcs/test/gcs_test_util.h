@@ -38,9 +38,10 @@ struct Mocker {
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     auto resource = std::unordered_map<std::string, double>();
-    builder.SetCommonTaskSpec(task_id, Language::PYTHON, empty_descriptor, job_id,
-                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1, resource,
-                              resource, PlacementGroupID::Nil());
+    builder.SetCommonTaskSpec(task_id, name + ":" + empty_descriptor->CallString(),
+                              Language::PYTHON, empty_descriptor, job_id, TaskID::Nil(),
+                              0, TaskID::Nil(), owner_address, 1, resource, resource,
+                              PlacementGroupID::Nil());
     builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }

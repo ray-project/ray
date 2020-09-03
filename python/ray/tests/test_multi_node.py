@@ -371,6 +371,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1"])
     check_call_ray(["stop"])
 
+    # Test starting Ray with a system config parameter set.
+    check_call_ray([
+        "start", "--head", "--system-config",
+        "{\"metrics_report_interval_ms\":100}"
+    ])
+    check_call_ray(["stop"])
+
     # Test starting Ray with the object manager and node manager ports
     # specified.
     check_call_ray([

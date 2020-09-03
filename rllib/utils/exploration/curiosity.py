@@ -197,8 +197,6 @@ class Curiosity(Exploration):
         })
         phi, next_phi = phis[:batch_size], phis[batch_size:]
 
-        # Detach phi from graph (should not backpropagate through feature net
-        # for forward-loss).
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat(
                 [
