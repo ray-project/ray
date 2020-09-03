@@ -14,8 +14,7 @@ def create_searcher(
 ):
     """Instantiate a search algorithm based on the given string.
 
-    This is particularly useful when you want end-users to input which
-    search algorithm they want to use.
+    This is useful for swapping between different search algorithms.
 
     Args:
         search_alg (str): The search algorithm to use.
