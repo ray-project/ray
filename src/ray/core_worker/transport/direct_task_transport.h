@@ -134,6 +134,27 @@ class CoreWorkerDirectTaskSubmitter {
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
       const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Look for workers with a surplus of tasks in flight, and, if it is possible,
+  /// steal some of those tasks and submit them to the current worker. If no tasks
+  /// are available for stealing, return the worker to the Raylet.
+  ///
+  /// \param[in] thief_addr The address of the worker that has finished its own work,
+  ///                       and is ready for stealing.
+  /// \param[in] was_error Whether the last task failed to be submitted to the worker.
+  /// \param[in] scheduling_key The scheduling class of the worker.
+  /// \param[in] assigned_resources Resource ids previously assigned to the worker.
+  void StealWorkIfNeeded(const rpc::WorkerAddress &thief_addr, bool was_error,
+                         const SchedulingKey &scheduling_key,
+                         const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
+
+                             &assigned_resources);
+
+  /// This function takes care of returning a worker to the Raylet.
+  /// \param[in] addr The address of the worker.
+  /// \param[in] was_error Whether the task failed to be submitted.
+  void ReturnWorker(const rpc::WorkerAddress addr, bool was_error,
+                    const SchedulingKey &scheduling_key);
+
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
@@ -193,12 +214,14 @@ class CoreWorkerDirectTaskSubmitter {
   /// (3) The number of tasks that are currently in flight to the worker
   /// (4) The resources assigned to the worker
   /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
+  /// (6) The set of TaskIDs of the tasks that can be stolen by other workers
   struct LeaseEntry {
     std::shared_ptr<WorkerLeaseInterface> lease_client;
     int64_t lease_expiration_time;
     uint32_t tasks_in_flight;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
+    absl::flat_hash_set<TaskID> stealable_tasks = absl::flat_hash_set<TaskID>();
 
     LeaseEntry(
         std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
@@ -270,6 +293,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
+
+  // struct timespec initial_time_;
+
+  bool work_stealing_enabled_ = RayConfig::instance().work_stealing_enabled();
 };
 
 };  // namespace ray

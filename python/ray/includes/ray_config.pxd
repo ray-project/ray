@@ -66,3 +66,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint64_t metrics_report_interval_ms() const
 
         c_bool enable_timeline() const
+
+        c_bool work_stealing_enabled() const

@@ -320,6 +320,28 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     return;
   }
 
+  if (!task_spec.IsActorTask() && !task_spec.IsActorCreationTask()) {
+    absl::MutexLock lock(&mu_);
+    auto tasks_received_entry = tasks_received_.find(task_spec.TaskId());
+    if (tasks_received_entry == tasks_received_.end()) {
+      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                     << " was stolen and is not in the queue. Setting "
+                        "reply->set_task_stolen(true). worker: "
+                     << this_worker_id_;
+      // task stolen. respond accordingly
+      reply->set_task_stolen(true);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+      return;
+    }
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                   << " was NOT stolen, so it's still in the queue. Proceeding with "
+                      "HandlePushTask normally! worker: "
+                   << this_worker_id_;
+    tasks_received_.erase(tasks_received_entry);
+  }
+
+
+
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::shared_ptr<ResourceMappingType> resource_ids;

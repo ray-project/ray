@@ -115,3 +115,7 @@ cdef class Config:
     @staticmethod
     def enable_timeline():
         return RayConfig.instance().enable_timeline()
+
+    @staticmethod
+    def work_stealing_enabled():
+        return RayConfig.instance().work_stealing_enabled()
