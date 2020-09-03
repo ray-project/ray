@@ -147,13 +147,13 @@ class CoreWorkerDirectTaskSubmitter {
                          const SchedulingKey &scheduling_key,
                          const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
 
-                             &assigned_resources);
+                             &assigned_resources) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This function takes care of returning a worker to the Raylet.
   /// \param[in] addr The address of the worker.
   /// \param[in] was_error Whether the task failed to be submitted.
   void ReturnWorker(const rpc::WorkerAddress addr, bool was_error,
-                    const SchedulingKey &scheduling_key);
+                    const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
