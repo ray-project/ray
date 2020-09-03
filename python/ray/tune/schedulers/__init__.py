@@ -15,10 +15,10 @@ def create_scheduler(
       **kwargs,
 ):
     """Instantiate a scheduler based on the given string.
-    
+
     This is particularly useful when you want end-users to input which
     scheduler they want to use.
-    
+
     Args:
         scheduler (str): The scheduler to use.
         metric (str): The training result objective value attribute. Stopping
