@@ -29,12 +29,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.old:
             node_id, port = change.old
             ip = DataSource.node_id_to_ip[node_id]
-            logger.info("_update_stubs old %s %s", change, ip)
             self._stubs.pop(ip)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            logger.info("_update_stubs new %s %s", change, ip)
             channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub

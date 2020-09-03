@@ -89,16 +89,12 @@ class DashboardHead:
                         alive_node_infos.append(node)
 
                 agents = dict(DataSource.agents)
-                logger.info("DataSource.agents: %s", agents)
-                logger.info("alive node ids: %s", alive_node_ids)
                 for node_id in alive_node_ids:
                     key = "{}{}".format(
                         dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_id)
                     agent_port = await self.aioredis_client.get(key)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
-                    else:
-                        logger.error("Not found %s from redis.", key)
                 for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 

@@ -190,11 +190,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             curr_proc = psutil.Process()
             parent = curr_proc.parent()
             if parent.pid == 1:
-                return ""
+                return []
             else:
                 return parent.cmdline()
         except (psutil.AccessDenied, ProcessLookupError):
-            return ""
+            return []
 
     def _get_load_avg(self):
         if sys.platform == "win32":
