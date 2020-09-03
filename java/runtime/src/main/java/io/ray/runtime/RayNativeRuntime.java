@@ -85,10 +85,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
-    loadConfigFromGCS(rayConfig);
+    loadConfigFromGcs(rayConfig);
   }
 
-  private static void loadConfigFromGCS(RayConfig rayConfig) {
+  private static void loadConfigFromGcs(RayConfig rayConfig) {
     if (rayConfig.getRedisAddress() != null) {
       GcsClient tempGcsClient =
           new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);

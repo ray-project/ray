@@ -24,7 +24,7 @@ public class Container implements Serializable {
   /**
    * container id
    */
-  private ContainerID id;
+  private ContainerId id;
 
   /**
    * Container address
@@ -64,7 +64,7 @@ public class Container implements Serializable {
       UniqueId nodeId, String hostname,
       Map<String, Double> availableResources) {
 
-    this.id = new ContainerID();
+    this.id = new ContainerId();
     this.address = address;
     this.hostname = hostname;
     this.nodeId = nodeId;
@@ -80,11 +80,11 @@ public class Container implements Serializable {
     );
   }
 
-  public ContainerID getId() {
+  public ContainerId getId() {
     return id;
   }
 
-  public void setId(ContainerID id) {
+  public void setId(ContainerId id) {
     this.id = id;
   }
 
