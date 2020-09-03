@@ -401,7 +401,7 @@ class ServeController:
             **backend_info.replica_config.ray_actor_options).remote(
                 backend_tag, replica_tag,
                 backend_info.replica_config.actor_init_args,
-                backend_info.backend_config)
+                backend_info.backend_config, self.controller_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle

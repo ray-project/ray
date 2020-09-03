@@ -13,11 +13,18 @@ from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
+_INTERNAL_CONTROLLER_NAME = None
+
+
+def _set_internal_controller_name(name):
+    global _INTERNAL_CONTROLLER_NAME
+    _INTERNAL_CONTROLLER_NAME = name
+
 
 def _ensure_connected(f: Callable) -> Callable:
     @wraps(f)
     def check(self, *args, **kwargs):
-        if self._controller is None:
+        if self._shutdown:
             raise RayServeException("Client has already been shut down.")
         return f(self, *args, **kwargs)
 
@@ -32,6 +39,7 @@ class Client:
         self._controller = controller
         self._controller_name = controller_name
         self._detached = detached
+        self._shutdown = False
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -53,10 +61,10 @@ class Client:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        if self._controller is not None:
+        if not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             ray.kill(self._controller, no_restart=True)
-            self._controller = None
+            self._shutdown = True
 
     @_ensure_connected
     def create_endpoint(self,
@@ -374,26 +382,36 @@ def start(detached: bool = False,
 
 
 def connect() -> Client:
-    """Connect to an existing detached Serve instance on this Ray cluster.
+    """Connect to an existing Serve instance on this Ray cluster.
 
-    The Serve instance must first have been initialized using
-    `serve.start(detached=True)`.
+    If calling from the driver program, the Serve instance must first have been
+    initialized using `serve.start(detached=True)`.
+
+    If called from within a backend, will connect to the same Serve instance
+    that the backend is running in.
     """
 
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
 
+    # When running inside of a backend, _INTERNAL_CONTROLLER_NAME is set to
+    # ensure that the correct instance is connected to.
+    if _INTERNAL_CONTROLLER_NAME is None:
+        controller_name = SERVE_CONTROLLER_NAME
+    else:
+        controller_name = _INTERNAL_CONTROLLER_NAME
+
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(SERVE_CONTROLLER_NAME)
+        controller = ray.get_actor(controller_name)
     except ValueError:
         raise RayServeException("Called `serve.connect()` but there is no "
                                 "instance running on this Ray cluster. Please "
                                 "call `serve.start(detached=True) to start "
                                 "one.")
 
-    return Client(controller, SERVE_CONTROLLER_NAME, detached=True)
+    return Client(controller, controller_name, detached=True)
 
 
 def accept_batch(f: Callable) -> Callable:

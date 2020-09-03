@@ -19,7 +19,8 @@ pytestmark = pytest.mark.asyncio
 def setup_worker(name,
                  func_or_class,
                  init_args=None,
-                 backend_config=BackendConfig({})):
+                 backend_config=BackendConfig({}),
+                 controller_name=""):
     if init_args is None:
         init_args = ()
 
@@ -27,7 +28,8 @@ def setup_worker(name,
     class WorkerActor:
         def __init__(self):
             self.worker = create_backend_worker(func_or_class)(
-                name, name + ":tag", init_args, backend_config)
+                name, name + ":tag", init_args, backend_config,
+                controller_name)
 
         def ready(self):
             pass

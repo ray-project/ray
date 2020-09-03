@@ -699,6 +699,38 @@ def test_shadow_traffic(serve_instance):
     wait_for_condition(check_requests)
 
 
+def test_connect(serve_instance):
+    client = serve_instance
+
+    # Check that you can have multiple clients to the same detached instance.
+    client2 = serve.connect()
+    assert client._controller_name == client2._controller_name
+
+    # Check that you can have detached and non-detached instances.
+    client3 = serve.start(http_port=8004)
+    assert client3._controller_name != client._controller_name
+
+    # Check that you can call serve.connect() from within a backend for both
+    # detached and non-detached instances.
+
+    def connect_in_backend():
+        client = serve.connect()
+        client.create_backend("backend-ception", connect_in_backend)
+        return client._controller_name
+
+    client.create_backend("connect_in_backend", connect_in_backend)
+    client.create_endpoint("endpoint", backend="connect_in_backend")
+    handle = client.get_handle("endpoint")
+    assert ray.get(handle.remote()) == client._controller_name
+    assert "backend-ception" in client.list_backends()
+
+    client3.create_backend("connect_in_backend", connect_in_backend)
+    client3.create_endpoint("endpoint", backend="connect_in_backend")
+    handle = client3.get_handle("endpoint")
+    assert ray.get(handle.remote()) == client3._controller_name
+    assert "backend-ception" in client3.list_backends()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
