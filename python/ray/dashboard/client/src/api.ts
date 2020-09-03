@@ -149,15 +149,14 @@ export type RayletWorkerStats = {
 export enum ActorState {
   // These two are virtual states that we air because there is
   // an existing task to create an actor
-  Infeasible = -2,
-  PendingResources = -1,
-  // These are real actor states that you can read about in the
-  // Ray docs.
-  DependenciesUnready = 0,
-  PendingCreation = 1,
-  Alive = 2,
-  Restarting = 3,
-  Dead = 4,
+  Infeasible = -2, // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
+  PendingResources = -1, // Actor task is waiting on resources the cluster has but are in-use
+  // The rest below are "official" GCS actor states
+  DependenciesUnready = 0, // Actor is pending on an argument to be ready
+  PendingCreation = 1, // Actor creation is running
+  Alive = 2, // Actor is alive and handling tasks
+  Restarting = 3, // Actor died and is being restarted
+  Dead = 4, // Actor died and is not being restarted
 }
 
 export type ActorInfo = FullActorInfo | ActorTaskInfo;
