@@ -141,8 +141,42 @@ def test_set_traffic_missing_data(serve_instance):
     with pytest.raises(ValueError):
         serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
-
 def test_scaling_replicas(serve_instance):
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, _):
+            self.count += 1
+            return self.count
+
+    serve.create_backend("counter:v1", Counter, config=BackendConfig(num_replicas=2))
+    serve.create_endpoint("counter", backend="counter:v1", route="/increment")
+
+    # Keep checking the routing table until /increment is populated
+    while "/increment" not in requests.get(
+            "http://127.0.0.1:8000/-/routes").json():
+        time.sleep(0.2)
+
+    counter_result = []
+    for _ in range(10):
+        resp = requests.get("http://127.0.0.1:8000/increment").json()
+        counter_result.append(resp)
+
+    # If the load is shared among two replicas. The max result cannot be 10.
+    assert max(counter_result) < 10
+
+    serve.update_backend_config("counter:v1", {"num_replicas": 1})
+
+    counter_result = []
+    for _ in range(10):
+        resp = requests.get("http://127.0.0.1:8000/increment").json()
+        counter_result.append(resp)
+    # Give some time for a replica to spin down. But majority of the request
+    # should be served by the only remaining replica.
+    assert max(counter_result) - min(counter_result) > 6
+
+def test_scaling_replicas_legacy(serve_instance):
     class Counter:
         def __init__(self):
             self.count = 0
@@ -193,6 +227,43 @@ def test_batching(serve_instance):
     serve.create_backend(
         "counter:v11",
         BatchingExample,
+        config=BackendConfig(max_batch_size=5, batch_wait_timeout=1))
+    serve.create_endpoint(
+        "counter1", backend="counter:v11", route="/increment2")
+
+    # Keep checking the routing table until /increment is populated
+    while "/increment2" not in requests.get(
+            "http://127.0.0.1:8000/-/routes").json():
+        time.sleep(0.2)
+
+    future_list = []
+    handle = serve.get_handle("counter1")
+    for _ in range(20):
+        f = handle.remote(temp=1)
+        future_list.append(f)
+
+    counter_result = ray.get(future_list)
+    # since count is only updated per batch of queries
+    # If there atleast one __call__ fn call with batch size greater than 1
+    # counter result will always be less than 20
+    assert max(counter_result) < 20
+
+    
+def test_batching_legacy(serve_instance):
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+
+        @serve.accept_batch
+        def __call__(self, flask_request, temp=None):
+            self.count += 1
+            batch_size = serve.context.batch_size
+            return [self.count] * batch_size
+
+    # set the max batch size
+    serve.create_backend(
+        "counter:v11",
+        BatchingExample,
         config={
             "max_batch_size": 5,
             "batch_wait_timeout": 1
@@ -219,6 +290,26 @@ def test_batching(serve_instance):
 
 
 def test_batching_exception(serve_instance):
+    class NoListReturned:
+        def __init__(self):
+            self.count = 0
+
+        @serve.accept_batch
+        def __call__(self, flask_request, temp=None):
+            batch_size = serve.context.batch_size
+            return batch_size
+
+    # set the max batch size
+    serve.create_backend(
+        "exception:v1", NoListReturned, config=BackendConfig(max_batch_size=5))
+    serve.create_endpoint(
+        "exception-test", backend="exception:v1", route="/noListReturned")
+
+    handle = serve.get_handle("exception-test")
+    with pytest.raises(ray.exceptions.RayTaskError):
+        assert ray.get(handle.remote(temp=1))
+
+def test_batching_exception_legacy(serve_instance):
     class NoListReturned:
         def __init__(self):
             self.count = 0
@@ -493,6 +584,42 @@ def test_parallel_start(serve_instance):
             return "Ready"
 
     serve.create_backend(
+        "p:v0", LongStartingServable, config=BackendConfig(num_replicas=2))
+    serve.create_endpoint("test-parallel", backend="p:v0")
+    handle = serve.get_handle("test-parallel")
+
+    ray.get(handle.remote(), timeout=10)
+
+def test_parallel_start_legacy(serve_instance):
+    # Test the ability to start multiple replicas in parallel.
+    # In the past, when Serve scale up a backend, it does so one by one and
+    # wait for each replica to initialize. This test avoid this by preventing
+    # the first replica to finish initialization unless the second replica is
+    # also started.
+    @ray.remote
+    class Barrier:
+        def __init__(self, release_on):
+            self.release_on = release_on
+            self.current_waiters = 0
+            self.event = asyncio.Event()
+
+        async def wait(self):
+            self.current_waiters += 1
+            if self.current_waiters == self.release_on:
+                self.event.set()
+            else:
+                await self.event.wait()
+
+    barrier = Barrier.remote(release_on=2)
+
+    class LongStartingServable:
+        def __init__(self):
+            ray.get(barrier.wait.remote(), timeout=10)
+
+        def __call__(self, _):
+            return "Ready"
+
+    serve.create_backend(
         "p:v0", LongStartingServable, config={"num_replicas": 2})
     serve.create_endpoint("test-parallel", backend="p:v0")
     handle = serve.get_handle("test-parallel")
@@ -551,6 +678,32 @@ def test_list_backends(serve_instance):
     def f():
         pass
 
+    serve.create_backend("backend", f, config=BackendConfig(max_batch_size=10))
+    backends = serve.list_backends()
+    assert len(backends) == 1
+    assert "backend" in backends
+    assert backends["backend"]["max_batch_size"] == 10
+
+    serve.create_backend("backend2", f, config=BackendConfig(num_replicas=10))
+    backends = serve.list_backends()
+    assert len(backends) == 2
+    assert backends["backend2"]["num_replicas"] == 10
+
+    serve.delete_backend("backend")
+    backends = serve.list_backends()
+    assert len(backends) == 1
+    assert "backend2" in backends
+
+    serve.delete_backend("backend2")
+    assert len(serve.list_backends()) == 0
+
+def test_list_backends_legacy(serve_instance):
+    serve.init()
+
+    @serve.accept_batch
+    def f():
+        pass
+
     serve.create_backend("backend", f, config={"max_batch_size": 10})
     backends = serve.list_backends()
     assert len(backends) == 1
@@ -588,6 +741,36 @@ def test_endpoint_input_validation(serve_instance):
 
 
 def test_create_infeasible_error(serve_instance):
+    serve.init()
+
+    def f():
+        pass
+
+    # Non existent resource should be infeasible.
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "MagicMLResource": 100
+            }})
+
+    # Even each replica might be feasible, the total might not be.
+    current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
+    with pytest.raises(RayServeException, match="Cannot scale backend"):
+        serve.create_backend(
+            "f:1",
+            f,
+            ray_actor_options={"resources": {
+                "CPU": 1,
+            }},
+            config=BackendConfig(num_replicas=(current_cpus + 20)))
+
+    # No replica should be created!
+    replicas = ray.get(serve.api.controller._list_replicas.remote("f1"))
+    assert len(replicas) == 0
+
+def test_create_infeasible_error_legacy(serve_instance):
     serve.init()
 
     def f():
