@@ -53,7 +53,7 @@ def train(config):
     )
     optimizer = hvd.DistributedOptimizer(optimizer)
 
-    num_steps = 50
+    num_steps = 5
     print(hvd.size())
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)

@@ -378,6 +378,7 @@ py_test(
     srcs = ["examples/horovod_simple.py"],
     tags = ["exclusive", "example", "py37"],
     deps = [":tune_lib"],
+    args = ["--smoke-test"]
 )
 
 py_test(
