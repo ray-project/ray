@@ -12,6 +12,25 @@ def create_searcher(
   mode="max",
   **kwargs,
 ):
+    """Instantiate a search algorithm based on the given string.
+    
+    This is particularly useful when you want end-users to input which
+    search algorithm they want to use.
+    
+    Args:
+        search_alg (str): The search algorithm to use.
+        metric (str): The training result objective value attribute. Stopping
+            procedures will use this attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+        **kwargs: Additional parameters.
+            These keyword arguments will be passed to the initialization
+            function of the chosen class.
+    Returns:
+        ray.tune.suggest.Searcher: The search algorithm.
+    Example:
+        >>> search_alg = tune.create_searcher('ax')
+    """
     def _import_ax_search():
         from ray.tune.suggest.ax import AxSearch
         return AxSearch
