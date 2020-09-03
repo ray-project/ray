@@ -37,14 +37,22 @@ message RequestWorkerLeaseReply {
   bool canceled = 4;
 }
 
-message RequestResourceReserveRequest {
+message PrepareBundleResourcesRequest {
   // Bundle containing the requested resources.
   Bundle bundle_spec = 1;
 }
 
-message RequestResourceReserveReply {
-  // The status if resource reserve success.
+message PrepareBundleResourcesReply {
+  // The status if prepare request was successful.
   bool success = 1;
+}
+
+message CommitBundleResourcesRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CommitBundleResourcesReply {
 }
 
 message CancelResourceReserveRequest {
@@ -114,6 +122,10 @@ message WorkerStats {
   CoreWorkerStats core_worker_stats = 3;
   // Error string if fetching core worker stats failed.
   string fetch_error = 4;
+  // Worker id of core worker.
+  bytes worker_id = 5;
+  // Worker language.
+  Language language = 6;
 }
 
 message GetNodeStatsReply {
@@ -122,6 +134,7 @@ message GetNodeStatsReply {
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
+  int32 pid = 6;
 }
 
 message GlobalGCRequest {
@@ -161,9 +174,14 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
-  // Request resource from the raylet for a bundle.
-  rpc RequestResourceReserve(RequestResourceReserveRequest)
-      returns (RequestResourceReserveReply);
+  // Request a raylet to lock resources for a bundle.
+  // This is the first phase of 2PC protocol for atomic placement group creation.
+  rpc PrepareBundleResources(PrepareBundleResourcesRequest)
+      returns (PrepareBundleResourcesReply);
+  // Commit bundle resources to a raylet.
+  // This is the second phase of 2PC protocol for atomic placement group creation.
+  rpc CommitBundleResources(CommitBundleResourcesRequest)
+      returns (CommitBundleResourcesReply);
   // Return resource for the raylet.
   rpc CancelResourceReserve(CancelResourceReserveRequest)
       returns (CancelResourceReserveReply);

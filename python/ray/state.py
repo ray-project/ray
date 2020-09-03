@@ -48,7 +48,7 @@ class GlobalState:
         """
         if (self.redis_client is None or self.redis_clients is None
                 or self.global_state_accessor is None):
-            raise ray.exceptions.RayConnectionError(
+            raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
 
@@ -844,7 +844,7 @@ state = GlobalState()
 
 
 def jobs():
-    """Get a list of the jobs in the cluster.
+    """Get a list of the jobs in the cluster (for debugging only).
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
@@ -858,7 +858,7 @@ def jobs():
 
 
 def nodes():
-    """Get a list of the nodes in the cluster.
+    """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
         Information about the Ray clients in the cluster.
@@ -899,7 +899,7 @@ def node_ids():
 
 
 def actors(actor_id=None):
-    """Fetch and parse the actor info for one or more actor IDs.
+    """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If

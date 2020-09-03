@@ -4,7 +4,7 @@ from ray.streaming import StreamingContext
 
 
 def test_word_count():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(_load_code_from_local=True, _include_java=True)
     ctx = StreamingContext.Builder() \
         .build()
     ctx.read_text_file(__file__) \
@@ -23,7 +23,7 @@ def test_word_count():
 
 
 def test_simple_word_count():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(_load_code_from_local=True, _include_java=True)
     ctx = StreamingContext.Builder() \
         .build()
     sink_file = "/tmp/ray_streaming_test_simple_word_count.txt"

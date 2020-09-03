@@ -141,4 +141,5 @@ if __name__ == "__main__":
             "use_gpu": int(args.cuda)
         })
 
-    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config is:",
+          analysis.get_best_config(metric="mean_accuracy", mode="max"))
