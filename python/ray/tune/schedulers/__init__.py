@@ -9,10 +9,10 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
 
 
 def create_scheduler(
-      scheduler,
-      metric="episode_reward_mean",
-      mode="max",
-      **kwargs,
+        scheduler,
+        metric="episode_reward_mean",
+        mode="max",
+        **kwargs,
 ):
     """Instantiate a scheduler based on the given string.
 
@@ -33,6 +33,7 @@ def create_scheduler(
     Example:
         >>> scheduler = tune.create_scheduler('pbt')
     """
+
     def _import_async_hyperband_scheduler():
         from ray.tune.schedulers import AsyncHyperBandScheduler
         return AsyncHyperBandScheduler
@@ -60,7 +61,8 @@ def create_scheduler(
         "hb_bohb": _import_hb_bohb_scheduler,
         "pbt": _import_pbt_search,
     }
-    return SCHEDULER_IMPORT[scheduler](metric=metric, mode=mode, **kwargs)
+    SchedulerClass = SCHEDULER_IMPORT[scheduler]()
+    return SchedulerClass(metric=metric, mode=mode, **kwargs)
 
 
 __all__ = [
