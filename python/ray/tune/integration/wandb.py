@@ -260,6 +260,8 @@ class WandbLogger(Logger):
     def _init(self):
         config = self.config.copy()
 
+        config.pop("callbacks", None)  # Remove callbacks
+
         try:
             if config.get("logger_config", {}).get("wandb"):
                 logger_config = config.pop("logger_config")

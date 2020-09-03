@@ -72,6 +72,7 @@ public class GcsClient {
       // and it's only one final state for each node in recorded table.
       NodeInfo nodeInfo = new NodeInfo(
           nodeId, data.getNodeManagerAddress(), data.getNodeManagerHostname(),
+          data.getNodeManagerPort(), data.getObjectStoreSocketName(), data.getRayletSocketName(),
           data.getState() == GcsNodeInfo.GcsNodeState.ALIVE, new HashMap<>());
       nodes.put(nodeId, nodeInfo);
     }

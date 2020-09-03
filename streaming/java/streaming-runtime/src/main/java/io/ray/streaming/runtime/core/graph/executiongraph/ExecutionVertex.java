@@ -7,7 +7,7 @@ import io.ray.streaming.api.Language;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
-import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.ContainerId;
 import io.ray.streaming.runtime.core.resource.ResourceType;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -58,7 +58,7 @@ public class ExecutionVertex implements Serializable {
   /**
    * The id of the container which this vertex's worker actor belongs to.
    */
-  private ContainerID containerId;
+  private ContainerId containerId;
 
   /**
    * Worker actor handle.
@@ -211,15 +211,15 @@ public class ExecutionVertex implements Serializable {
     return buildTime;
   }
 
-  public ContainerID getContainerId() {
+  public ContainerId getContainerId() {
     return containerId;
   }
 
-  public void setContainerId(ContainerID containerId) {
+  public void setContainerId(ContainerId containerId) {
     this.containerId = containerId;
   }
 
-  public void setContainerIfNotExist(ContainerID containerId) {
+  public void setContainerIfNotExist(ContainerId containerId) {
     if (null == this.containerId) {
       this.containerId = containerId;
     }

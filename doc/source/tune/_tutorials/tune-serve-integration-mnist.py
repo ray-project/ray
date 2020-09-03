@@ -73,9 +73,9 @@ This example will support both modes. After each model selection run,
 we will tell Ray Serve to serve an updated model. We also include a
 small utility to query our served model to see if it works as it should.
 
-.. code-block::
+.. code-block:: bash
 
-    python tune-serve-integration-mnist.py --query 6
+    $ python tune-serve-integration-mnist.py --query 6
     Querying model with example #6. Label = 1, Response = 1, Correct = True
 
 Imports
