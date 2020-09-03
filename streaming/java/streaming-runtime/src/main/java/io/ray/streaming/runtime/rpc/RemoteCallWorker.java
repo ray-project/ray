@@ -107,19 +107,21 @@ public class RemoteCallWorker {
     }
   }
 
-  public static void clearExpiredCpParallel(
+  public static void clearExpiredCheckpointParallel(
       List<BaseActorHandle> actors, Long stateCheckpointId,
       Long queueCheckpointId) {
     if (LOG.isInfoEnabled()) {
-      LOG.info("Call worker clearExpiredCpParallel, state checkpoint id is {}," +
+      LOG.info("Call worker clearExpiredCheckpoint, state checkpoint id is {}," +
           " queue checkpoint id is {}.", stateCheckpointId, queueCheckpointId);
     }
 
-    List<Object> result = cpCompleteCommonCallTwoWay(actors, stateCheckpointId, queueCheckpointId,
-        "clear_expired_cp", JobWorker::clearExpiredCp);
+    List<Object> result =
+        checkpointCompleteCommonCallTwoWay(actors, stateCheckpointId, queueCheckpointId,
+            "clear_expired_cp", JobWorker::clearExpiredCheckpoint);
 
     if (LOG.isInfoEnabled()) {
-      result.forEach(obj -> LOG.info("Finish call worker clearExpiredCpParallel, ret is {}.", obj));
+      result.forEach(
+          obj -> LOG.info("Finish call worker clearExpiredCheckpointParallel, ret is {}.", obj));
     }
   }
 
@@ -144,16 +146,16 @@ public class RemoteCallWorker {
     LOG.info("Finish call worker notifyCheckpointTimeoutParallel.");
   }
 
-  private static List<Object> cpCompleteCommonCallTwoWay(
+  private static List<Object> checkpointCompleteCommonCallTwoWay(
       List<BaseActorHandle> actors, Long stateCheckpointId, Long queueCheckpointId,
       String pyFuncName, RayFunc3<JobWorker, Long, Long, Boolean> rayFunc) {
     List<ObjectRef<Object>> waitFor =
-        cpCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
+        checkpointCompleteCommonCall(actors, stateCheckpointId, queueCheckpointId,
             pyFuncName, rayFunc);
     return Ray.get(waitFor);
   }
 
-  private static List<ObjectRef<Object>> cpCompleteCommonCall(
+  private static List<ObjectRef<Object>> checkpointCompleteCommonCall(
       List<BaseActorHandle> actors,
       Long stateCheckpointId, Long queueCheckpointId,
       String pyFuncName,

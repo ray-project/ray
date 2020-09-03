@@ -144,7 +144,7 @@ public class DataReader {
     return new ChannelRecoverInfo(queueCreationStatusMap);
   }
 
-  private String getQidString(ByteBuffer buffer) {
+  private String getQueueIdString(ByteBuffer buffer) {
     byte[] bytes = new byte[ChannelId.ID_LENGTH];
     buffer.get(bytes);
     return ChannelId.idBytesToStr(bytes);
@@ -278,7 +278,7 @@ public class DataReader {
       }
       // rawBundleSize
       rawBundleSize = buffer.getInt();
-      channelID = getQidString(buffer);
+      channelID = getQueueIdString(buffer);
     }
 
     public int getMagicNum() {
@@ -320,7 +320,7 @@ public class DataReader {
       queueSize = buffer.getInt();
       queueOffsetInfo = new HashMap<>(queueSize);
       for (int i = 0; i < queueSize; ++i) {
-        String qid = getQidString(buffer);
+        String qid = getQueueIdString(buffer);
         long streamingMsgId = buffer.getLong();
         queueOffsetInfo.put(qid, new OffsetInfo(streamingMsgId));
       }

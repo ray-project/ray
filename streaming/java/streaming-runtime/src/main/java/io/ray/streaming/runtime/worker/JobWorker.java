@@ -227,7 +227,7 @@ public class JobWorker implements Serializable {
     return true;
   }
 
-  public Boolean clearExpiredCp(Long expiredStateCpId, Long expiredQueueCpId) {
+  public Boolean clearExpiredCheckpoint(Long expiredStateCpId, Long expiredQueueCpId) {
     LOG.info("Clear expired checkpoint state, checkpoint id is {}; " +
             "Clear expired queue msg, checkpoint id is {}",
         expiredStateCpId, expiredQueueCpId);

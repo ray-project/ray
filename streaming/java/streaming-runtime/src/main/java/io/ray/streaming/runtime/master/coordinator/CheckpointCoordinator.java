@@ -192,13 +192,13 @@ public class CheckpointCoordinator extends BaseCoordinator {
     List<BaseActorHandle> allActor = graphManager.getExecutionGraph().getAllActors();
     if (1 == runtimeContext.checkpointIds.size()) {
       Long msgExpiredCheckpointId = runtimeContext.checkpointIds.get(0);
-      RemoteCallWorker.clearExpiredCpParallel(allActor, 0L, msgExpiredCheckpointId);
+      RemoteCallWorker.clearExpiredCheckpointParallel(allActor, 0L, msgExpiredCheckpointId);
     }
 
     if (runtimeContext.checkpointIds.size() > 1) {
       Long stateExpiredCpId = runtimeContext.checkpointIds.remove(0);
       Long msgExpiredCheckpointId = runtimeContext.checkpointIds.get(0);
-      RemoteCallWorker.clearExpiredCpParallel(allActor, stateExpiredCpId, msgExpiredCheckpointId);
+      RemoteCallWorker.clearExpiredCheckpointParallel(allActor, stateExpiredCpId, msgExpiredCheckpointId);
     }
     return true;
   }
