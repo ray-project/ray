@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 PYCLASSNAME_RE = re.compile(r"(.+?)\(")
 
 
-def group_actors_by_python_class(actors):
+def _group_actors_by_python_class(actors):
     groups = defaultdict(list)
     for actor in actors.values():
         actor_title = actor.get("actorTitle")
@@ -39,7 +39,7 @@ def group_actors_by_python_class(actors):
     return groups
 
 
-def get_actor_group_stats(group):
+def _get_actor_group_stats(group):
     state_to_count = defaultdict(lambda: 0)
     executed_tasks = 0
     min_timestamp = None
@@ -199,9 +199,9 @@ class NodeStats(threading.Thread):
             for ready_task in ready_tasks:
                 _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
                                          "pendingActor")
-        actor_groups = group_actors_by_python_class(actors)
+        actor_groups = _group_actors_by_python_class(actors)
         stats_by_group = {
-            name: get_actor_group_stats(group)
+            name: _get_actor_group_stats(group)
             for name, group in actor_groups.items()
         }
 
