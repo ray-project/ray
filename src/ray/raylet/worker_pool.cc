@@ -595,9 +595,16 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 
 void WorkerPool::TryToKillWorker(std::shared_ptr<WorkerInterface> worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
+  if (state.killed_workers.count(worker) > 0) {
+    // This worker has already been killed.
+    // This is possible because a Java worker process may hold multiple workers.
+    return;
+  }
+
   auto registered_size = GetAllRegisteredWorkers().size();
-  RAY_CHECK(registered_size > state.killed_workers.size());
-  registered_size -= state.killed_workers.size();
+  for (const auto &entry : states_by_lang_) {
+    registered_size -= entry.second.killed_workers.size();
+  }
   if (registered_size <= static_cast<size_t>(num_workers_soft_limit_)) {
     return;
   }
@@ -608,27 +615,24 @@ void WorkerPool::TryToKillWorker(std::shared_ptr<WorkerInterface> worker) {
     return;
   }
   if (state.starting_worker_processes.count(worker->GetProcess()) > 0) {
-    // A Java worker process may holds multiple workers.
+    // A Java worker process may hold multiple workers.
     RAY_LOG(DEBUG) << "Some workers of pid " << pid
                    << " are pending registration. Skip killing worker " << worker_id;
     return;
   }
 
   // Make sure all workers in this worker process are idle.
-  bool all_idle = true;
+  // This block of code is needed by Java workers.
   std::unordered_set<std::shared_ptr<WorkerInterface>> workers_in_the_same_process;
   for (const auto &worker_in_the_same_process : state.registered_workers) {
     if (worker_in_the_same_process->GetProcess().GetId() == pid) {
       if (state.idle.count(worker_in_the_same_process) == 0) {
-        all_idle = false;
-        break;
+        // Another worker in this process isn't idle, so this process can't be killed.
+        return;
       } else {
         workers_in_the_same_process.insert(worker_in_the_same_process);
       }
     }
-  }
-  if (!all_idle) {
-    return;
   }
 
   for (auto worker_it = workers_in_the_same_process.begin();
