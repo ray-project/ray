@@ -128,6 +128,11 @@ extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
 
+/// CallOptions class
+extern jclass java_call_options_class;
+/// name field of CallOptions class
+extern jfieldID java_call_options_name;
+
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
 /// global field of ActorCreationOptions class

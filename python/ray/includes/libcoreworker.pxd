@@ -217,6 +217,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stderr_file
         (CRayStatus(
             CTaskType task_type,
+            const c_string name,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
