@@ -112,4 +112,4 @@ if __name__ == "__main__":
         config={"lr": tune.uniform(0.1, 1)},
         num_samples=2 if args.smoke_test else 10,
         fail_fast=True)
-    config = analysis.get_best_config(metric="loss")
+    config = analysis.get_best_config(metric="loss", mode="min")
