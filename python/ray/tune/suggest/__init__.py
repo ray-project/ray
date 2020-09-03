@@ -13,10 +13,10 @@ def create_searcher(
       **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
-    
+
     This is particularly useful when you want end-users to input which
     search algorithm they want to use.
-    
+
     Args:
         search_alg (str): The search algorithm to use.
         metric (str): The training result objective value attribute. Stopping
