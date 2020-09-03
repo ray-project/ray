@@ -254,7 +254,7 @@ class RayServeWorker:
         finally:
             self._reset_context()
         self.processing_latency_tracker.record(
-            (time.time() - start) * 1e3, {
+            (time.time() - start) * 1000, {
                 "backend": self.backend_tag,
                 "replica": self.replica_tag,
                 "batch_size": "1"
@@ -340,7 +340,7 @@ class RayServeWorker:
             result_list = [wrapped_exception for _ in range(batch_size)]
 
         self.processing_latency_tracker.record(
-            (time.time() - timing_start) * 1e3, {
+            (time.time() - timing_start) * 1000, {
                 "backend": self.backend_tag,
                 "replica_tag": self.replica_tag,
                 "batch_size": str(batch_size)
@@ -366,7 +366,7 @@ class RayServeWorker:
                     "replica_tag": self.replica_tag
                 })
             for query in batch:
-                queuing_time = (time.time() - query.tick_enter_replica) * 1e3
+                queuing_time = (time.time() - query.tick_enter_replica) * 1000
                 self.queuing_latency_tracker.record(queuing_time, {
                     "backend": self.backend_tag,
                     "replica_tag": self.replica_tag
