@@ -171,8 +171,8 @@ public class WorkerLifecycleController {
       List<ExecutionVertex> executionVertices) {
     final Object asyncContext = Ray.getAsyncContext();
 
-    List<CompletableFuture<Boolean>> futureResults = executionVertices.stream()
-        .map(vertex -> CompletableFuture.supplyAsync(() -> {
+    List<CompletableFuture<Boolean>> futureResults =
+        executionVertices.stream().map(vertex -> CompletableFuture.supplyAsync(() -> {
           Ray.setAsyncContext(asyncContext);
           return operation.apply(vertex);
         })).collect(Collectors.toList());

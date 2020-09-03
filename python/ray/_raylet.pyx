@@ -297,7 +297,8 @@ cdef prepare_args(
             if language != Language.PYTHON:
                 if metadata not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
-                        ray_constants.OBJECT_METADATA_TYPE_RAW]:
+                        ray_constants.OBJECT_METADATA_TYPE_RAW,
+                        ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
                         metadata, language))
             size = serialized_arg.total_bytes

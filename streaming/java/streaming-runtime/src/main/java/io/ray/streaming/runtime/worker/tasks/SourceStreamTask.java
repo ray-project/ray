@@ -14,8 +14,8 @@ public class SourceStreamTask extends StreamTask {
   private final SourceProcessor sourceProcessor;
 
   /**
-   * SourceStreamTask for executing a {@link SourceOperator}.
-   * It is responsible for running the corresponding source operator.
+   * SourceStreamTask for executing a {@link SourceOperator}. It is responsible for running the
+   * corresponding source operator.
    */
   public SourceStreamTask(int taskId, Processor sourceProcessor, JobWorker jobWorker) {
     super(taskId, sourceProcessor, jobWorker);

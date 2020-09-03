@@ -46,7 +46,8 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
         .filter(pair -> !pair.word.contains("world"))
         .keyBy(pair -> pair.word)
         .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) ->
-            new WordAndCount(oldValue.word, oldValue.count + newValue.count))
+            new WordAndCount(oldValue.word,
+                oldValue.count + newValue.count))
         .sink((SinkFunction<WordAndCount>)
             result -> wordCount.put(result.word, result.count));
 
