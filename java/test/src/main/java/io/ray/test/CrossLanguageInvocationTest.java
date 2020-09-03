@@ -10,7 +10,6 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.actor.NativePyActorHandle;
 import io.ray.runtime.exception.CrossLanguageException;
 import io.ray.runtime.exception.RayException;
 import io.ray.runtime.generated.Common.Language;
@@ -192,8 +191,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     } catch (RayException e) {
       String formattedException = org.apache.commons.lang3.exception.ExceptionUtils
           .getStackTrace(e);
-      io.ray.runtime.generated.Common.RayException exception = io.ray.runtime.generated.Common.RayException
-          .parseFrom(e.toBytes());
+      io.ray.runtime.generated.Common.RayException exception =
+          io.ray.runtime.generated.Common.RayException.parseFrom(e.toBytes());
       Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
     }
   }
