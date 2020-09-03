@@ -73,41 +73,41 @@ class DashboardHead:
             try:
                 nodes = await self._get_nodes()
 
-                # Get correct node info by state,
-                #   1. The node is ALIVE if any ALIVE node info
-                #      of the hostname exists.
-                #   2. The node is DEAD if all node info of the
-                #      hostname are DEAD.
-                hostname_to_node_info = {}
-                for node in nodes:
-                    hostname = node["nodeManagerAddress"]
+                alive_node_ids = []
+                alive_node_infos = []
+                node_id_to_ip = {}
+                node_id_to_hostname = {}
+                for node in nodes.values():
+                    node_id = node["nodeId"]
+                    ip = node["nodeManagerAddress"]
+                    hostname = node["nodeManagerHostname"]
+                    node_id_to_ip[node_id] = ip
+                    node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
-                    choose = hostname_to_node_info.get(hostname)
-                    if choose is not None and choose["state"] == "ALIVE":
-                        continue
-                    hostname_to_node_info[hostname] = node
-
-                self._gcs_rpc_error_counter = 0
-                node_ips = [node["nodeManagerAddress"] for node in hostname_to_node_info.values()]
-                node_hostnames = [
-                    node["nodeManagerHostname"] for node in hostname_to_node_info.keys()
-                ]
+                    if node["state"] == "ALIVE":
+                        alive_node_ids.append(node_id)
+                        alive_node_infos.append(node)
 
                 agents = dict(DataSource.agents)
-                for node in nodes:
-                    node_id = node["nodeId"]
+                logger.info("DataSource.agents: %s", agents)
+                logger.info("alive node ids: %s", alive_node_ids)
+                for node_id in alive_node_ids:
                     key = "{}{}".format(
                         dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_id)
                     agent_port = await self.aioredis_client.get(key)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(node_ips):
+                    else:
+                        logger.error("Not found %s from redis.", key)
+                for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 
+                DataSource.node_id_to_ip.reset(node_id_to_ip)
+                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(nodes)
-                DataSource.hostname_to_ip.reset(
-                    dict(zip(node_hostnames, node_ips)))
+
+                self._gcs_rpc_error_counter = 0
             except aiogrpc.AioRpcError:
                 logger.exception("Got AioRpcError when updating nodes.")
                 self._gcs_rpc_error_counter += 1

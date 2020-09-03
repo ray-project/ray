@@ -27,8 +27,6 @@ class DataSource:
     node_id_to_ip = Dict()
     # {node id hex(str): hostname(str)}
     node_id_to_hostname = Dict()
-    # {hostname(str): ip address(str)}
-    hostname_to_ip = Dict()
 
 
 class DataOrganizer:

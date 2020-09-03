@@ -27,10 +27,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = change.old
+            node_id, port = change.old
+            ip = DataSource.node_id_to_ip[node_id]
+            logger.info("_update_stubs old %s %s", change, ip)
             self._stubs.pop(ip)
         if change.new:
-            ip, ports = change.new
+            node_id, ports = change.new
+            ip = DataSource.node_id_to_ip[node_id]
+            logger.info("_update_stubs new %s %s", change, ip)
             channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
@@ -62,6 +66,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             try:
                 key, data = msg
                 data = json.loads(ray.utils.decode(data))
+                key = key.decode("utf-8")
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = data
             except Exception:

@@ -186,12 +186,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_raylet_cmdline():
-        curr_proc = psutil.Process()
-        parent = curr_proc.parent()
-        if parent.pid == 1:
+        try:
+            curr_proc = psutil.Process()
+            parent = curr_proc.parent()
+            if parent.pid == 1:
+                return ""
+            else:
+                return parent.cmdline()
+        except (psutil.AccessDenied, ProcessLookupError):
             return ""
-        else:
-            return parent.cmdline()
 
     def _get_load_avg(self):
         if sys.platform == "win32":

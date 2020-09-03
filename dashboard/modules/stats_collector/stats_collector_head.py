@@ -69,10 +69,14 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 message="Node summary fetched.",
                 summary=all_node_summary)
         elif view is not None and view.lower() == "hostNameList".lower():
+            alive_hostnames = set()
+            for node in DataSource.nodes.values():
+                if node["state"] == "ALIVE":
+                    alive_hostnames.add(node["nodeManagerHostname"])
             return await dashboard_utils.rest_response(
                 success=True,
                 message="Node hostname list fetched.",
-                host_name_list=list(DataSource.hostname_to_ip.keys()))
+                host_name_list=list(alive_hostnames))
         else:
             return await dashboard_utils.rest_response(
                 success=False, message=f"Unknown view {view}")
