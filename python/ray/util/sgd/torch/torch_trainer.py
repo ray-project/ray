@@ -484,7 +484,8 @@ class TorchTrainer:
 
         This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
         """
-        self.worker_group.update_scheduler(metric)
+        self.worker_group.apply_all_operators(
+            lambda op: [sched.step(metric) for sched in op.schedulers])
 
     def get_model(self):
         """Returns the learned model(s)."""

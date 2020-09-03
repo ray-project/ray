@@ -45,10 +45,6 @@ class BaseWorkerGroup:
     def train(self, num_steps=None, profile=False, info=None, dataset=None):
         raise NotImplementedError
 
-    def update_scheduler(self, metric):
-        self.apply_all_operators(
-            lambda op: [sched.step(metric) for sched in op.schedulers])
-
     def validate(self, num_steps=None, profile=False, info=None):
         raise NotImplementedError
 
