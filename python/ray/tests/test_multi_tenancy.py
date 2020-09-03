@@ -134,11 +134,13 @@ def test_worker_capping_kill_idle_workers(shutdown_only):
 
     @ray.remote(num_cpus=0)
     class Actor:
-        pass
+        def ping(self):
+            pass
 
     actor = Actor.remote()
-    # Worker 1 holds an actor, and it won't be killed.
-    wait_for_condition(lambda: get_num_workers() == 1)
+    ray.get(actor.ping.remote())
+    # Actor is now alive and worker 1 which holds the actor is alive
+    assert get_num_workers() == 1
 
     @ray.remote(num_cpus=0)
     def foo():
@@ -148,28 +150,17 @@ def test_worker_capping_kill_idle_workers(shutdown_only):
     obj1 = foo.remote()
     # Worker 2 runs a normal task
     wait_for_condition(lambda: get_num_workers() == 2)
-    time.sleep(8)
-    # Worker 2 is still running the task
-    assert get_num_workers() == 2
+
     obj2 = foo.remote()
     # Worker 3 runs a normal task
     wait_for_condition(lambda: get_num_workers() == 3)
 
     ray.get(obj1)
-    # Worker 2 now becomes idle
-    assert get_num_workers() == 3
+    # Worker 2 now becomes idle and should be killed
+    wait_for_condition(lambda: get_num_workers() == 2)
     ray.get(obj2)
-    # Worker 3 now becomes idle
-    # Now we should have 2 workers becuase worker 2 had been idle for a long
-    # time and has been killed.
-    assert get_num_workers() == 2
-
-    time.sleep(10)
-    # Worker 3 is killed but worker 1 is still alive.
-    assert get_num_workers() == 1
-
-    # This holds a reference of the created actor and avoids killing it.
-    del actor
+    # Worker 3 now becomes idle and should be killed
+    wait_for_condition(lambda: get_num_workers() == 1)
 
 
 def test_worker_capping_run_many_small_tasks(shutdown_only):
@@ -181,15 +172,16 @@ def test_worker_capping_run_many_small_tasks(shutdown_only):
 
     # Run more tasks than `num_cpus`, but the CPU resource requirement is
     # still within `num_cpus`.
-    ray.get([foo.remote() for _ in range(4)])
-    assert get_num_workers() == 4
+    obj_refs = [foo.remote() for _ in range(4)]
+    wait_for_condition(lambda: get_num_workers() == 4)
 
-    # Eventually, some workers will be killed to keep the total number of
-    # workers <= num_cpus.
+    ray.get(obj_refs)
+    # After finished the tasks, some workers are killed to keep the total
+    # number of workers <= num_cpus.
     wait_for_condition(lambda: get_num_workers() == 2)
 
     time.sleep(2)
-    # The two remaining workers will stay alive.
+    # The two remaining workers stay alive forever.
     assert get_num_workers() == 2
 
 
@@ -201,19 +193,21 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
         if x > 1:
             return ray.get(foo.remote(x - 1)) + x
         else:
+            time.sleep(5)
             return x
 
     # Run a chain of tasks which exceed `num_cpus` in amount, but the CPU
     # resource requirement is still within `num_cpus`.
-    ray.get(foo.remote(4))
-    assert get_num_workers() == 4
+    obj = foo.remote(4)
+    wait_for_condition(lambda: get_num_workers() == 4)
 
-    # Eventually, some workers will be killed to keep the total number of
-    # workers <= num_cpus.
+    ray.get(obj)
+    # After finished the tasks, some workers are killed to keep the total
+    # number of workers <= num_cpus.
     wait_for_condition(lambda: get_num_workers() == 2)
 
     time.sleep(2)
-    # The two remaining workers will stay alive.
+    # The two remaining workers stay alive forever.
     assert get_num_workers() == 2
 
 

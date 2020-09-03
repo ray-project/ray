@@ -236,15 +236,6 @@ class MockWorker : public WorkerInterface {
     return nullptr;
   }
 
-  int64_t GetLastIdleTimeMs() {
-    RAY_CHECK(false) << "Method unused";
-    return 0;
-  }
-
-  void SetLastIdleTimeMs(int64_t last_idle_time_ms) {
-    RAY_CHECK(false) << "Method unused";
-  }
-
  private:
   WorkerID worker_id_;
   int port_;

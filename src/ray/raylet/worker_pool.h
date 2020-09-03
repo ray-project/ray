@@ -73,6 +73,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// the pool.
   ///
   /// \param num_workers The number of workers to start, per language.
+  /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_initial_python_workers_for_first_job The number of initial Python
   /// workers for the first job.
   /// \param maximum_startup_concurrency The maximum number of worker processes
@@ -88,7 +89,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int num_initial_python_workers_for_first_job,
+             int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
@@ -180,8 +181,10 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Make sure idle workers are within a reasonable size.
-  void KillIdleWorkers(const boost::system::error_code &error);
+  /// Try to kill the worker if it's idle.
+  ///
+  /// \param worker The worker to be killed.
+  void TryToKillWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -278,7 +281,7 @@ class WorkerPool : public WorkerPoolInterface {
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
-    std::list<std::shared_ptr<WorkerInterface>> idle;
+    std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
     /// The pool of idle I/O workers.
@@ -295,6 +298,9 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
+    /// All workers that have been killed physically but haven't go through
+    /// `DisconnectWorker` yet.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> killed_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
@@ -357,6 +363,8 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
+  /// The soft limit of the number of registered workers.
+  int num_workers_soft_limit_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.
@@ -388,9 +396,6 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
-
-  /// The timer to trigger idle worker killing.
-  boost::asio::deadline_timer kill_idle_workers_timer_;
 };
 
 }  // namespace raylet
