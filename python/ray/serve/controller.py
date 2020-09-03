@@ -382,8 +382,8 @@ class ServeController:
         """Fetched by serve handles."""
         return self.traffic_policies[endpoint]
 
-    async def _start_backend_worker(self, backend_tag: str,
-                                    replica_tag: str) -> ActorHandle:
+    async def _start_backend_worker(self, backend_tag: str, replica_tag: str,
+                                    replica_name: str) -> ActorHandle:
         """Creates a backend worker and waits for it to start up.
 
         Assumes that the backend configuration has already been registered
@@ -393,7 +393,6 @@ class ServeController:
             replica_tag, backend_tag))
         backend_info = self.backends[backend_tag]
 
-        replica_name = format_actor_name(replica_tag, self.controller_name)
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
             lifetime="detached" if self.detached else None,
@@ -411,11 +410,12 @@ class ServeController:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
+        replica_name = format_actor_name(replica_tag, self.controller_name)
         try:
-            worker_handle = ray.get_actor(replica_tag)
+            worker_handle = ray.get_actor(replica_name)
         except ValueError:
             worker_handle = await self._start_backend_worker(
-                backend_tag, replica_tag)
+                backend_tag, replica_tag, replica_name)
 
         self.replicas[backend_tag].append(replica_tag)
         self.workers[backend_tag][replica_tag] = worker_handle
@@ -457,8 +457,10 @@ class ServeController:
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
                 try:
-                    replica = ray.get_actor(replica_tag)
+                    replica = ray.get_actor(replica_name)
                 except ValueError:
                     continue
 
@@ -547,7 +549,7 @@ class ServeController:
                 self.replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
-            logger.debug("Removing {} replicas from backend {}".format(
+            logger.debug("Removing {} replicas from backend '{}'".format(
                 -delta_num_replicas, backend_tag))
             assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
