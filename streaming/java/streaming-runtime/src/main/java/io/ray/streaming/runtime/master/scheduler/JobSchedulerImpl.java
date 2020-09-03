@@ -27,14 +27,14 @@ public class JobSchedulerImpl implements JobScheduler {
   private final ResourceManager resourceManager;
   private final GraphManager graphManager;
   private final WorkerLifecycleController workerLifecycleController;
-  private StreamingConfig jobConf;
+  private StreamingConfig jobConfig;
 
   public JobSchedulerImpl(JobMaster jobMaster) {
     this.jobMaster = jobMaster;
     this.graphManager = jobMaster.getGraphManager();
     this.resourceManager = jobMaster.getResourceManager();
     this.workerLifecycleController = new WorkerLifecycleController();
-    this.jobConf = jobMaster.getRuntimeContext().getConf();
+    this.jobConfig = jobMaster.getRuntimeContext().getConf();
 
     LOG.info("Scheduler initiated.");
   }
@@ -125,7 +125,7 @@ public class JobSchedulerImpl implements JobScheduler {
     boolean result;
     try {
       result = workerLifecycleController.initWorkers(vertexToContextMap,
-          jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
+          jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to initiate workers.", e);
       return false;
@@ -141,7 +141,7 @@ public class JobSchedulerImpl implements JobScheduler {
     try {
       result = workerLifecycleController.startWorkers(
           executionGraph, checkpointId,
-          jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
+          jobConfig.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to start workers.", e);
       return false;

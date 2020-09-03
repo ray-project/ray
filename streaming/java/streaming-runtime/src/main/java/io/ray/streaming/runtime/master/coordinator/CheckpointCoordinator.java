@@ -57,7 +57,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
 
         if (!pendingCheckpointActors.isEmpty()) {
           // if wait commit report timeout, this cp fail, and restart next cp
-          if (isTimeoutOfWaitCp()) {
+          if (timeoutOnWaitCheckpoint()) {
             LOG.warn("Waiting for checkpoint {} timeout, pending cp actors is {}.",
                 runtimeContext.lastCheckpointId,
                 graphManager.getExecutionGraph().getActorName(pendingCheckpointActors));
@@ -182,7 +182,7 @@ public class CheckpointCoordinator extends BaseCoordinator {
   }
 
   private void maybeTriggerCheckpoint() {
-    if (isReadyToTrigger()) {
+    if (readyToTrigger()) {
       triggerCheckpoint();
     }
   }
@@ -203,12 +203,12 @@ public class CheckpointCoordinator extends BaseCoordinator {
     return true;
   }
 
-  private boolean isReadyToTrigger() {
+  private boolean readyToTrigger() {
     return (System.currentTimeMillis() - runtimeContext.lastCpTimestamp) >=
         cpIntervalSecs * 1000;
   }
 
-  private boolean isTimeoutOfWaitCp() {
+  private boolean timeoutOnWaitCheckpoint() {
     return (System.currentTimeMillis() - runtimeContext.lastCpTimestamp) >= cpTimeoutSecs * 1000;
   }
 }
