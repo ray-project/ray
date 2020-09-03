@@ -298,8 +298,7 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have been killed physically but haven't go through
-    /// `DisconnectWorker` yet.
+    /// All workers that have been killed but haven't go through `DisconnectWorker` yet.
     std::unordered_set<std::shared_ptr<WorkerInterface>> killed_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
