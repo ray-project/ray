@@ -35,6 +35,7 @@ MOCK_MODULES = [
     "gym",
     "gym.spaces",
     "kubernetes",
+    "mxnet.model",
     "psutil",
     "ray._raylet",
     "ray.core.generated",
