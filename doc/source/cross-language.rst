@@ -13,6 +13,7 @@ Suppose we have a Java static method and a Java class as follows:
   package io.ray.demo;
 
   public class Math {
+
     public static int add(int a, int b) {
       return a + b;
     }
@@ -91,36 +92,35 @@ from the above Python class.
 
   package io.ray.demo;
 
+  import io.ray.api.ObjectRef;
+  import io.ray.api.PyActorHandle;
   import io.ray.api.Ray;
   import io.ray.api.function.PyActorClass;
   import io.ray.api.function.PyActorMethod;
   import io.ray.api.function.PyFunction;
   import org.testng.Assert;
 
-  public class MyRayApp {
+  public class JavaCallPythonDemo {
 
     public static void main(String[] args) {
       Ray.init();
-      
+
       // Define a Python class.
       PyActorClass actorClass = PyActorClass.of(
           "ray_demo", "Counter");
-      
+
       // Create a Python actor and call actor method.
       PyActorHandle actor = Ray.actor(actorClass).remote();
-      ObjectRef<Integer> objRef1 = actor.task(
-          PyActorMethod.of("increment", Integer.class)).remote();
+      ObjectRef objRef1 = actor.task(
+          PyActorMethod.of("increment", int.class)).remote();
       Assert.assertEquals(objRef1.get(), 1);
-      ObjectRef<Integer> objRef2 = actor.task(
-          PyActorMethod.of("increment", Integer.class)).remote();
+      ObjectRef objRef2 = actor.task(
+          PyActorMethod.of("increment", int.class)).remote();
       Assert.assertEquals(objRef2.get(), 2);
 
-      // Define a Python remote function.
-      PyFunction<Integer> addFunction = PyFunction.of(
-          "ray_demo", "add", Integer.class);
-
       // Call the Python remote function.
-      ObjectRef<Integer> objRef3 = Ray.task(add_function, 1, 2).remote();
+      ObjectRef objRef3 = Ray.task(PyFunction.of(
+          "ray_demo", "add", int.class), 1, 2).remote();
       Assert.assertEquals(objRef3.get(), 3);
 
       Ray.shutdown();
@@ -173,7 +173,9 @@ You can write a Python function which returns the input data:
 
 .. code-block:: python
 
-  # ray_demo.py
+  # ray_serialization.py
+
+  import ray
 
   @ray.remote
   def py_return_input(v):
@@ -192,7 +194,7 @@ to Java:
   import java.math.BigInteger;
   import org.testng.Assert;
 
-  public class MyRayApp {
+  public class SerializationDemo {
 
     public static void main(String[] args) {
       Ray.init();
@@ -236,7 +238,7 @@ Suppose we have a Java package as follows:
 
     public static int raiseExceptionFromPython() {
       PyFunction<Integer> raiseException = PyFunction.of(
-          "ray_demo", "raise_exception", Integer.class);
+          "ray_exception", "raise_exception", Integer.class);
       ObjectRef<Integer> refObj = Ray.task(raiseException).remote();
       return refObj.get();
     }
@@ -246,13 +248,19 @@ and a Python module as follows:
 
 .. code-block:: python
 
-  # ray_demo.py
+  # ray_exception.py
 
   import ray
 
   @ray.remote
   def raise_exception():
       1 / 0
+
+.. code-block:: python
+
+  # ray_exception_demo.py
+
+  import ray
 
   ray.init(_include_java=True, _load_code_from_local=True)
 
