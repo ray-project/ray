@@ -16,7 +16,7 @@ Example usage for rollout:
 
 def cli():
     parser = argparse.ArgumentParser(
-        description="Train or Run an RLlib Agent.",
+        description="Train or Run an RLlib Trainer.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=EXAMPLE_USAGE)
     subcommand_group = parser.add_subparsers(

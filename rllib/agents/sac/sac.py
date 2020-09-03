@@ -3,7 +3,6 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +22,11 @@ DEFAULT_CONFIG = with_common_config({
     "Q_model": {
         "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
-        "hidden_activation": DEPRECATED_VALUE,
-        "hidden_layer_sizes": DEPRECATED_VALUE,
     },
     # RLlib model options for the policy function.
     "policy_model": {
         "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
-        "hidden_activation": DEPRECATED_VALUE,
-        "hidden_layer_sizes": DEPRECATED_VALUE,
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
@@ -117,11 +112,6 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
-
-    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
-    # by user's config). If we don't set them here, we will get an error
-    # from the config-key checker.
-    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -142,27 +132,8 @@ def validate_config(config):
             "was specified.")
         config["use_state_preprocessor"] = True
 
-    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("grad_norm_clipping", "grad_clip")
-        config["grad_clip"] = config.pop("grad_norm_clipping")
-
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
-
-    # Use same keys as for standard Trainer "model" config.
-    for model in ["Q_model", "policy_model"]:
-        if config[model].get("hidden_activation", DEPRECATED_VALUE) != \
-                DEPRECATED_VALUE:
-            deprecation_warning(
-                "{}.hidden_activation".format(model),
-                "{}.fcnet_activation".format(model),
-                error=True)
-        if config[model].get("hidden_layer_sizes", DEPRECATED_VALUE) != \
-                DEPRECATED_VALUE:
-            deprecation_warning(
-                "{}.hidden_layer_sizes".format(model),
-                "{}.fcnet_hiddens".format(model),
-                error=True)
 
 
 SACTrainer = GenericOffPolicyTrainer.with_updates(

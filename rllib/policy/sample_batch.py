@@ -7,7 +7,6 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Union
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
@@ -611,8 +610,3 @@ class MultiAgentBatch:
     def __repr__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count)
-
-    # Deprecated.
-    def total(self):
-        deprecation_warning("batch.total()", "batch.agent_steps()")
-        return self.agent_steps()

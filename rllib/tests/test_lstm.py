@@ -109,7 +109,7 @@ class TestRNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
-                    "state_shape": [3, 3],
+                    #"state_shape": [3, 3],
                 },
                 "framework": "tf",
             })
@@ -168,7 +168,7 @@ class TestRNNSequencing(unittest.TestCase):
                 "model": {
                     "custom_model": "rnn",
                     "max_seq_len": 4,
-                    "state_shape": [3, 3],
+                    #"state_shape": [3, 3],
                 },
                 "framework": "tf",
             })
