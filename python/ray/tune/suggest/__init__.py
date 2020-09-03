@@ -7,10 +7,10 @@ from ray.tune.suggest.repeater import Repeater
 
 
 def create_searcher(
-      search_alg,
-      metric="episode_reward_mean",
-      mode="max",
-      **kwargs,
+        search_alg,
+        metric="episode_reward_mean",
+        mode="max",
+        **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
 
@@ -31,6 +31,7 @@ def create_searcher(
     Example:
         >>> search_alg = tune.create_searcher('ax')
     """
+
     def _import_ax_search():
         from ray.tune.suggest.ax import AxSearch
         return AxSearch
@@ -83,7 +84,8 @@ def create_searcher(
         "zoopt": _import_zoopt_search,
         "sigopt": _import_sigopt_search,
     }
-    return SEARCH_ALG_IMPORT[search_alg](**kwargs)
+    SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
+    return SearcherClass(metric=metric, mode=mode, **kwargs)
 
 
 __all__ = [
