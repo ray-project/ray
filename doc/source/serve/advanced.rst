@@ -175,7 +175,7 @@ Session Affinity
 Splitting traffic randomly among backends for each request is is general and simple, but it can be an issue when you want to ensure that a given user or client is served by the same backend repeatedly.
 To address this, Serve offers a "shard key" can be specified for each request that will deterministically map to a backend.
 In practice, this should be something that uniquely identifies the entity that you want to consistently map, like a client ID or session ID.
-The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or ``handle.options(shard_key="key")``.
+The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :mod:`handle.options(shard_key="key") <ray.serve.handle.RayServeHandle.options>`.
 
 .. note:: The mapping from shard key to backend may change when you update the traffic policy for an endpoint.
 

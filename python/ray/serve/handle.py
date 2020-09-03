@@ -40,6 +40,14 @@ class RayServeHandle:
         self.shard_key = shard_key
 
     def remote(self, *args, **kwargs):
+        """Invoke a request on the endpoint.
+
+        Returns a Ray ObjectRef whose result can be waited for or retrieved
+        using `ray.wait` or `ray.get`, respectively.
+
+        Returns:
+            ray.ObjectRef
+        """
         if len(args) > 0:
             raise ValueError(
                 "handle.remote must be invoked with keyword arguments.")
@@ -57,6 +65,14 @@ class RayServeHandle:
                 method_name: Optional[str] = None,
                 http_method: Optional[str] = None,
                 shard_key: Optional[str] = None):
+        """Set options for this handle.
+
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,

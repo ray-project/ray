@@ -304,8 +304,9 @@ class Client:
         Returns:
             RayServeHandle
         """
-        assert endpoint_name in ray.get(
-            self._controller.get_all_endpoints.remote())
+        if endpoint_name not in ray.get(
+                self._controller.get_all_endpoints.remote()):
+            raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
         # TODO(edoakes): we should choose the router on the same node.
         routers = ray.get(self._controller.get_routers.remote())
