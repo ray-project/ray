@@ -73,7 +73,6 @@ public class ExitActorTest extends BaseTest {
   }
 
   public void testExitActorInMultiWorker() {
-    // TODO (Kai Yang): do we really need to skip it?
     Assert.assertTrue(TestUtils.getRuntime().getRayConfig().numWorkersPerProcess > 1);
     ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new)
         .setMaxRestarts(10000).remote();
