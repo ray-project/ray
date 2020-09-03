@@ -141,6 +141,7 @@ def test_set_traffic_missing_data(serve_instance):
     with pytest.raises(ValueError):
         serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
+
 def test_scaling_replicas(serve_instance):
     class Counter:
         def __init__(self):
@@ -150,7 +151,8 @@ def test_scaling_replicas(serve_instance):
             self.count += 1
             return self.count
 
-    serve.create_backend("counter:v1", Counter, config=BackendConfig(num_replicas=2))
+    serve.create_backend(
+        "counter:v1", Counter, config=BackendConfig(num_replicas=2))
     serve.create_endpoint("counter", backend="counter:v1", route="/increment")
 
     # Keep checking the routing table until /increment is populated
@@ -175,6 +177,7 @@ def test_scaling_replicas(serve_instance):
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
     assert max(counter_result) - min(counter_result) > 6
+
 
 def test_scaling_replicas_legacy(serve_instance):
     class Counter:
@@ -248,7 +251,7 @@ def test_batching(serve_instance):
     # counter result will always be less than 20
     assert max(counter_result) < 20
 
-    
+
 def test_batching_legacy(serve_instance):
     class BatchingExample:
         def __init__(self):
@@ -308,6 +311,7 @@ def test_batching_exception(serve_instance):
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
+
 
 def test_batching_exception_legacy(serve_instance):
     class NoListReturned:
@@ -590,6 +594,7 @@ def test_parallel_start(serve_instance):
 
     ray.get(handle.remote(), timeout=10)
 
+
 def test_parallel_start_legacy(serve_instance):
     # Test the ability to start multiple replicas in parallel.
     # In the past, when Serve scale up a backend, it does so one by one and
@@ -697,6 +702,7 @@ def test_list_backends(serve_instance):
     serve.delete_backend("backend2")
     assert len(serve.list_backends()) == 0
 
+
 def test_list_backends_legacy(serve_instance):
     serve.init()
 
@@ -769,6 +775,7 @@ def test_create_infeasible_error(serve_instance):
     # No replica should be created!
     replicas = ray.get(serve.api.controller._list_replicas.remote("f1"))
     assert len(replicas) == 0
+
 
 def test_create_infeasible_error_legacy(serve_instance):
     serve.init()
