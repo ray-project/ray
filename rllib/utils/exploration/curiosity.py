@@ -182,25 +182,23 @@ class Curiosity(Exploration):
         self.model._curiosity_forward_fcnet = \
             self._curiosity_forward_fcnet.to(self.device)
 
-        #TEST
-        # Add the Adam for curiosity NN updating to the Policy's optimizers.
+        # Create, but don't add Adam for curiosity NN updating to the policy.
+        # If we added and returned it here, it would be used in the policy's
+        # update loop, which we don't want (curiosity updating happens inside
+        # `postprocess_trajectory`).
         self._optimizer = torch.optim.Adam(
             forward_params + inverse_params + feature_params, lr=self.lr)
-        return optimizers
 
-        ## Add the Adam for curiosity NN updating to the Policy's optimizers.
-        #return optimizers + [
-        #    torch.optim.Adam(
-        #        forward_params + inverse_params + feature_params, lr=self.lr)
-        #]
+        return optimizers
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Calculates phi values (obs, obs', and predicted obs') and ri.
 
-        Stores calculated phi, phi' and predicted phi' as well as the intrinsic
-        rewards in the batch for loss processing by the policy.
+        Also calculates forward and inverse losses and updates the curiosity
+        module on the provided batch using our optimizer.
         """
+        # Push both observations through feature net to get both phis.
         phis, _ = self.model._curiosity_feature_net({
             SampleBatch.OBS: torch.cat([
                 torch.from_numpy(sample_batch[SampleBatch.OBS]),
@@ -211,6 +209,7 @@ class Curiosity(Exploration):
         actions_tensor = torch.from_numpy(
             sample_batch[SampleBatch.ACTIONS]).long()
 
+        # Predict next phi with forward model.
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat([
                 phi,
@@ -223,7 +222,7 @@ class Curiosity(Exploration):
             torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1)
         forward_loss = torch.mean(forward_l2_norm_sqared)
 
-        # Scale forward loss by eta hyper-parameter.
+        # Scale intrinsic reward by eta hyper-parameter.
         sample_batch[SampleBatch.REWARDS] = \
             sample_batch[SampleBatch.REWARDS] + \
             self.eta * forward_l2_norm_sqared.detach().cpu().numpy()
@@ -241,58 +240,15 @@ class Curiosity(Exploration):
         inverse_loss = -action_dist.logp(actions_tensor)
         inverse_loss = torch.mean(inverse_loss)
 
-        # Calculate the ICM loss and update the model right here.
+        # Calculate the ICM loss.
         loss = (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
-
-        # Do an optimizer step.
+        # Perform an optimizer step.
         self._optimizer.zero_grad()
         loss.backward()
         self._optimizer.step()
 
-        # Return the processed sample batch.
+        # Return the postprocessed sample batch (with the corrected rewards).
         return sample_batch
-
-    @override(Exploration)
-    def get_exploration_loss(self, policy_loss, train_batch: SampleBatchType):
-        return policy_loss
-        #"""Adds the loss for the inverse and forward models to policy_loss.
-        #"""
-        #phis, _ = self.model._curiosity_feature_net({
-        #    SampleBatch.OBS: torch.cat([
-        #        train_batch[SampleBatch.OBS],
-        #        train_batch[SampleBatch.NEXT_OBS]
-        #    ])
-        #})
-        #phi, next_phi = torch.chunk(phis, 2)
-        ## Inverse loss term (prediced action that led from phi to phi' vs
-        ## actual action taken).
-        #phi_next_phi = torch.cat([phi, next_phi], dim=-1)
-        #dist_inputs = self.model._curiosity_inverse_fcnet(phi_next_phi)
-        #action_dist = TorchCategorical(dist_inputs, self.model) if \
-        #    isinstance(self.action_space, Discrete) else \
-        #    TorchMultiCategorical(
-        #        dist_inputs, self.model, self.action_space.nvec)
-        ## Neg log(p); p=probability of observed action given the inverse-NN
-        ## predicted action distribution.
-        #inverse_loss = -action_dist.logp(train_batch[SampleBatch.ACTIONS])
-        #inverse_loss = torch.mean(inverse_loss)
-
-        #predicted_next_phi = self.model._curiosity_forward_fcnet(
-        #    torch.cat(
-        #        [
-        #            phi,
-        #            one_hot(train_batch[SampleBatch.ACTIONS].long(),
-        #                    self.action_space).float(),
-        #        ],
-        #        dim=-1))
-        #forward_loss = torch.mean(0.5 * torch.sum(
-        #    torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1))
-
-        ## Append our loss to the policy loss(es).
-        #print("inverse-loss={} forw-loss={}".format(inverse_loss, forward_loss))
-        #return policy_loss + [
-        #    (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
-        #]
 
     def _create_fc_net(self, layer_dims, activation):
         """Given a list of layer dimensions (incl. input-dim), creates FC-net.
