@@ -324,7 +324,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 local_dir=local_dir,
-                upload_dir=upload_dir,
+                upload_dir=sync_config.upload_dir,
                 sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
