@@ -1,5 +1,12 @@
 package io.ray.streaming.runtime.context;
 
+import io.ray.streaming.runtime.master.JobMaster;
+import io.ray.streaming.runtime.worker.JobWorker;
+
+/**
+ * This interface is used for storing context of {@link JobWorker} and {@link JobMaster}.
+ * The checkpoint returned by user function is also saved using this interface.
+ */
 public interface ContextBackend {
 
   /**

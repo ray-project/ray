@@ -5,6 +5,12 @@ import io.ray.streaming.runtime.context.ContextBackend;
 import java.io.File;
 import org.apache.commons.io.FileUtils;
 
+/**
+ * This context backend uses local file system and doesn't supports failover in cluster.
+ * But it supports failover in single node.
+ * This is a pure file system backend which doesn't support atomic writing, please don't use this
+ * class, instead, use {@link AtomicFsBackend} which extends this class.
+ */
 public class LocalFileContextBackend implements ContextBackend {
 
   private final String rootPath;

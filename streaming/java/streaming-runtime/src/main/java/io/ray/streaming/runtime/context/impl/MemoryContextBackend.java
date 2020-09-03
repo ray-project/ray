@@ -7,6 +7,10 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * This context backend uses memory and doesn't supports failover.
+ * Data will be lost after worker died.
+ */
 public class MemoryContextBackend implements ContextBackend {
 
   private static final Logger LOG = LoggerFactory.getLogger(MemoryContextBackend.class);
