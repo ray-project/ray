@@ -30,7 +30,7 @@ def test_failed_task(ray_start_regular, error_pubsub):
     def throw_exception_fct2():
         raise Exception("Test function 2 intentionally failed.")
 
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def throw_exception_fct3(x):
         raise Exception("Test function 3 intentionally failed.")
 
@@ -362,7 +362,7 @@ def test_worker_dying(ray_start_regular, error_pubsub):
     def f():
         eval("exit()")
 
-    with pytest.raises(ray.exceptions.RayWorkerError):
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(f.remote())
 
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
@@ -901,7 +901,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(object_ref)
     thread.join()
 
@@ -1000,7 +1000,7 @@ def test_fill_object_store_lru_fallback(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        lru_evict=True,
+        _lru_evict=True,
         _system_config=config)
 
     @ray.remote
@@ -1062,7 +1062,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj)
 
     @ray.remote

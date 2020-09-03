@@ -22,7 +22,6 @@ import java.util.List;
 
 /**
  * Represents a stream of data.
- *
  * <p>This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
@@ -33,9 +32,10 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(streamingContext, streamOperator);
   }
 
-  public DataStream(StreamingContext streamingContext,
-                    StreamOperator streamOperator,
-                    Partition<T> partition) {
+  public DataStream(
+      StreamingContext streamingContext,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(streamingContext, streamOperator, partition);
   }
 
@@ -43,15 +43,16 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
     super(input, streamOperator);
   }
 
-  public <R> DataStream(DataStream<R> input,
-                        StreamOperator streamOperator,
-                        Partition<T> partition) {
+  public <R> DataStream(
+      DataStream<R> input,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     super(input, streamOperator, partition);
   }
 
   /**
-   * Create a java stream that reference passed python stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a java stream that reference passed python stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public DataStream(PythonDataStream referencedStream) {
     super(referencedStream);
@@ -84,8 +85,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link DataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of the same
+   * type with each other.
    *
    * @param stream The DataStream to union output with.
    * @param others The other DataStreams to union output with.
@@ -100,8 +101,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link DataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link DataStream} outputs of the same
+   * type with each other.
    *
    * @param streams The DataStreams to union output with.
    * @return A new UnionStream.
@@ -177,8 +178,8 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * If parent stream is a python stream, we can't call partition related methods
-   * in the java stream.
+   * If parent stream is a python stream, we can't call partition related methods in the java
+   * stream.
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.PYTHON) {
@@ -188,9 +189,9 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   /**
-   * Convert this stream as a python stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a python stream. The converted stream and this stream are the same
+   * logical stream, which has same stream id. Changes in converted stream will be reflected in this
+   * stream and vice versa.
    */
   public PythonDataStream asPythonStream() {
     return new PythonDataStream(this);

@@ -24,6 +24,11 @@ from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 import psutil
 
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
@@ -36,6 +41,7 @@ class DashboardAgent(object):
                  redis_password=None,
                  temp_dir=None,
                  log_dir=None,
+                 metrics_export_port=None,
                  node_manager_port=None,
                  object_store_name=None,
                  raylet_name=None):
@@ -45,6 +51,7 @@ class DashboardAgent(object):
         self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.log_dir = log_dir
+        self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
@@ -69,7 +76,7 @@ class DashboardAgent(object):
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
-        logger.info("Loaded {} modules.".format(len(modules)))
+        logger.info("Loaded %d modules.", len(modules))
         return modules
 
     async def run(self):
@@ -86,7 +93,7 @@ class DashboardAgent(object):
                     dashboard_consts.
                     DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
 
-        check_parent_task = asyncio.create_task(_check_parent())
+        check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
         try:
@@ -172,6 +179,11 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="The address to use for Redis.")
+    parser.add_argument(
+        "--metrics-export-port",
+        required=True,
+        type=int,
+        help="The port to expose metrics through Prometheus.")
     parser.add_argument(
         "--node-manager-port",
         required=True,
@@ -277,6 +289,7 @@ if __name__ == "__main__":
             redis_password=args.redis_password,
             temp_dir=temp_dir,
             log_dir=log_dir,
+            metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name)

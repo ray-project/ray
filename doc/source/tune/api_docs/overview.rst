@@ -22,6 +22,7 @@ on `Github`_.
    schedulers.rst
    sklearn.rst
    logging.rst
+   integration.rst
    internals.rst
    client.rst
    cli.rst

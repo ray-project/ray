@@ -12,10 +12,11 @@ import java.util.Set;
 import sun.nio.ch.DirectBuffer;
 
 /**
- * ChannelID is used to identify a transfer channel between a upstream worker
- * and downstream worker.
+ * ChannelID is used to identify a transfer channel between a upstream worker and downstream
+ * worker.
  */
 public class ChannelId {
+
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
@@ -132,7 +133,7 @@ public class ChannelId {
    * Generate channel name, which will be 20 character
    *
    * @param fromTaskId upstream task id
-   * @param toTaskId   downstream task id
+   * @param toTaskId downstream task id
    * @return channel name
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {

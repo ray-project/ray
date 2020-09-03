@@ -32,7 +32,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReserve) \
+  RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)
 
@@ -66,9 +67,14 @@ class NodeManagerServiceHandler {
                                        rpc::CancelWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRequestResourceReserve(
-      const rpc::RequestResourceReserveRequest &request,
-      rpc::RequestResourceReserveReply *reply,
+  virtual void HandlePrepareBundleResources(
+      const rpc::PrepareBundleResourcesRequest &request,
+      rpc::PrepareBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCommitBundleResources(
+      const rpc::CommitBundleResourcesRequest &request,
+      rpc::CommitBundleResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelResourceReserve(

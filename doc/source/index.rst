@@ -99,21 +99,23 @@ Slides
 - `Talk given in October 2019 <https://docs.google.com/presentation/d/13K0JsogYQX3gUCGhmQ1PQ8HILwEDFysnq0cI2b88XbU/edit?usp=sharing>`_
 - [Tune] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
 
-Academic Papers
----------------
+Papers
+------
 
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older papers:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
-
-
-
 
 .. toctree::
    :hidden:
@@ -141,10 +143,12 @@ Academic Papers
 
    cluster/index.rst
    cluster/launcher.rst
+   cluster/autoscaling.rst
    cluster/cloud.rst
    cluster/deploy.rst
 
 .. toctree::
+   :hidden:
    :maxdepth: -1
    :caption: Ray Serve
 
@@ -200,13 +204,14 @@ Academic Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Other Libraries
+   :caption: Community Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
    pandas_on_ray.rst
-   projects.rst
+   dask-on-ray.rst
+   mars-on-ray.rst
 
 .. toctree::
    :hidden:
@@ -228,6 +233,7 @@ Academic Papers
    :caption: Development and Ray Internals
 
    development.rst
+   whitepaper.rst
    debugging.rst
    profiling.rst
    fault-tolerance.rst

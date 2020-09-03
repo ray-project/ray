@@ -17,8 +17,7 @@ def NamespacedKubernetesSyncer(namespace, use_rsync=False):
             installed in the Kubernetes pods for this to work.
             If False, ``tar`` will need to be installed instead.
 
-    Returns: A ``KubernetesSyncer`` class to be passed to
-        ``tune.run(sync_to_driver)``.
+    Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
     Example:
 

@@ -9,7 +9,7 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.sample import sample_from
+from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
@@ -27,10 +27,12 @@ class PBTTrialState:
         self.last_score = None
         self.last_checkpoint = None
         self.last_perturbation_time = 0
+        self.last_train_time = 0  # Used for synchronous mode.
+        self.last_result = None  # Used for synchronous mode.
 
     def __repr__(self):
         return str((self.last_score, self.last_checkpoint,
-                    self.last_perturbation_time))
+                    self.last_train_time, self.last_perturbation_time))
 
 
 def explore(config, mutations, resample_probability, custom_explore_fn):
@@ -66,8 +68,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
-                new_config[key] = distribution.func(None) if isinstance(
-                    distribution, sample_from) else distribution()
+                new_config[key] = distribution.sample(None) if isinstance(
+                    distribution, Domain) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -94,8 +96,8 @@ def fill_config(config, attr, search_space):
     """Add attr to config by sampling from search_space."""
     if callable(search_space):
         config[attr] = search_space()
-    elif isinstance(search_space, sample_from):
-        config[attr] = search_space.func(None)
+    elif isinstance(search_space, Domain):
+        config[attr] = search_space.sample(None)
     elif isinstance(search_space, list):
         config[attr] = random.choice(search_space)
     elif isinstance(search_space, dict):
@@ -174,6 +176,13 @@ class PopulationBasedTraining(FIFOScheduler):
         require_attrs (bool): Whether to require time_attr and metric to appear
             in result for every iteration. If True, error will be raised
             if these values are not present in trial result.
+        synch (bool): If False, will use asynchronous implementation of
+            PBT. Trial perturbations occur every perturbation_interval for each
+            trial independently. If True, will use synchronous implementation
+            of PBT. Perturbations will occur only after all trials are
+            synced at the same time_attr every perturbation_interval.
+            Defaults to False. See Appendix A.1 here
+            https://arxiv.org/pdf/1711.09846.pdf.
 
     .. code-block:: python
 
@@ -215,14 +224,15 @@ class PopulationBasedTraining(FIFOScheduler):
                  resample_probability=0.25,
                  custom_explore_fn=None,
                  log_config=True,
-                 require_attrs=True):
+                 require_attrs=True,
+                 synch=False):
         for value in hyperparam_mutations.values():
             if not (isinstance(value,
-                               (list, dict, sample_from)) or callable(value)):
+                               (list, dict, Domain)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
-                                "callable.")
-            if type(value) is sample_from:
+                                "a callable.")
+            if isinstance(value, Function):
                 raise ValueError("arbitrary tune.sample_from objects are not "
                                  "supported for `hyperparam_mutation` values."
                                  "You must use other built in primitives like"
@@ -234,9 +244,14 @@ class PopulationBasedTraining(FIFOScheduler):
                 "`custom_explore_fn` to use PBT.")
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
-            raise TuneError(
+            raise ValueError(
                 "You must set `quantile_fraction` to a value between 0 and"
                 "0.5. Current value: '{}'".format(quantile_fraction))
+
+        if perturbation_interval <= 0:
+            raise ValueError(
+                "perturbation_interval must be a positive number greater "
+                "than 0. Current value: '{}'".format(perturbation_interval))
 
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
@@ -263,6 +278,8 @@ class PopulationBasedTraining(FIFOScheduler):
         self._custom_explore_fn = custom_explore_fn
         self._log_config = log_config
         self._require_attrs = require_attrs
+        self._synch = synch
+        self._next_perturbation_sync = self._perturbation_interval
 
         # Metrics
         self._num_checkpoints = 0
@@ -320,33 +337,89 @@ class PopulationBasedTraining(FIFOScheduler):
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
+        # Continue training if perturbation interval has not been reached yet.
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
+        # This trial has reached its perturbation interval
         score = self._metric_op * result[self._metric]
         state.last_score = score
-        state.last_perturbation_time = time
-        lower_quantile, upper_quantile = self._quantiles()
+        state.last_train_time = time
+        state.last_result = result
 
+        if not self._synch:
+            state.last_perturbation_time = time
+            lower_quantile, upper_quantile = self._quantiles()
+            self._perturb_trial(trial, trial_runner, upper_quantile,
+                                lower_quantile)
+            for trial in trial_runner.get_trials():
+                if trial.status in [Trial.PENDING, Trial.PAUSED]:
+                    return TrialScheduler.PAUSE  # yield time to other trials
+
+            return TrialScheduler.CONTINUE
+        else:
+            # Synchronous mode.
+            if any(self._trial_state[t].last_train_time <
+                   self._next_perturbation_sync and t != trial
+                   for t in trial_runner.get_trials()):
+                logger.debug("Pausing trial {}".format(trial))
+            else:
+                # All trials are synced at the same timestep.
+                lower_quantile, upper_quantile = self._quantiles()
+                all_trials = trial_runner.get_trials()
+                not_in_quantile = []
+                for t in all_trials:
+                    if t not in lower_quantile and t not in upper_quantile:
+                        not_in_quantile.append(t)
+                # Move upper quantile trials to beginning and lower quantile
+                # to end. This ensures that checkpointing of strong trials
+                # occurs before exploiting of weaker ones.
+                all_trials = upper_quantile + not_in_quantile + lower_quantile
+                for t in all_trials:
+                    logger.debug("Perturbing Trial {}".format(t))
+                    self._trial_state[t].last_perturbation_time = time
+                    self._perturb_trial(t, trial_runner, upper_quantile,
+                                        lower_quantile)
+
+                all_train_times = [
+                    self._trial_state[trial].last_train_time
+                    for trial in trial_runner.get_trials()
+                ]
+                max_last_train_time = max(all_train_times)
+                self._next_perturbation_sync = max(
+                    self._next_perturbation_sync + self._perturbation_interval,
+                    max_last_train_time)
+            # In sync mode we should pause all trials once result comes in.
+            # Once a perturbation step happens for all trials, they should
+            # still all be paused.
+            # choose_trial_to_run will then pick the next trial to run out of
+            # the paused trials.
+            return TrialScheduler.PAUSE
+
+    def _perturb_trial(self, trial, trial_runner, upper_quantile,
+                       lower_quantile):
+        """Checkpoint if in upper quantile, exploits if in lower."""
+        state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
             # callback. So, we override with the current result.
-            state.last_checkpoint = trial_runner.trial_executor.save(
-                trial, Checkpoint.MEMORY, result=result)
+            logger.debug("Trial {} is in upper quantile".format(trial))
+            logger.debug("Checkpointing {}".format(trial))
+            if trial.status == Trial.PAUSED:
+                # Paused trial will always have an in-memory checkpoint.
+                state.last_checkpoint = trial.checkpoint
+            else:
+                state.last_checkpoint = trial_runner.trial_executor.save(
+                    trial, Checkpoint.MEMORY, result=state.last_result)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
 
         if trial in lower_quantile:
+            logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
             self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
-
-        for trial in trial_runner.get_trials():
-            if trial.status in [Trial.PENDING, Trial.PAUSED]:
-                return TrialScheduler.PAUSE  # yield time to other trials
-
-        return TrialScheduler.CONTINUE
 
     def _log_config_on_step(self, trial_state, new_state, trial,
                             trial_to_clone, new_config):
@@ -417,26 +490,40 @@ class PopulationBasedTraining(FIFOScheduler):
 
         new_tag = make_experiment_tag(trial_state.orig_tag, new_config,
                                       self._hyperparam_mutations)
-        reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                      new_tag)
-
-        # TODO(ujvl): Refactor Scheduler abstraction to abstract
-        #  mechanism for trial restart away. We block on restore
-        #  and suppress train on start as a stop-gap fix to
-        #  https://github.com/ray-project/ray/issues/7258.
-        if reset_successful:
-            trial_executor.restore(
-                trial, new_state.last_checkpoint, block=True)
-        else:
-            trial_executor.stop_trial(trial, stop_logger=False)
+        if trial.status == Trial.PAUSED:
+            # If trial is paused we update it with a new checkpoint.
+            # When the trial is started again, the new checkpoint is used.
+            if not self._synch:
+                raise TuneError("Trials should be paused here only if in "
+                                "synchronous mode. If you encounter this error"
+                                " please raise an issue on Ray Github.")
             trial.config = new_config
             trial.experiment_tag = new_tag
-            trial_executor.start_trial(
-                trial, new_state.last_checkpoint, train=False)
+            trial.on_checkpoint(new_state.last_checkpoint)
+        else:
+            # If trial is running, we first try to reset it.
+            # If that is unsuccessful, then we have to stop it and start it
+            # again with a new checkpoint.
+            reset_successful = trial_executor.reset_trial(
+                trial, new_config, new_tag)
+            # TODO(ujvl): Refactor Scheduler abstraction to abstract
+            #  mechanism for trial restart away. We block on restore
+            #  and suppress train on start as a stop-gap fix to
+            #  https://github.com/ray-project/ray/issues/7258.
+            if reset_successful:
+                trial_executor.restore(
+                    trial, new_state.last_checkpoint, block=True)
+            else:
+                trial_executor.stop_trial(trial, stop_logger=False)
+                trial.config = new_config
+                trial.experiment_tag = new_tag
+                trial_executor.start_trial(
+                    trial, new_state.last_checkpoint, train=False)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time
+        trial_state.last_train_time = new_state.last_train_time
 
     def _quantiles(self):
         """Returns trials in the lower and upper `quantile` of the population.
@@ -445,6 +532,9 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trials = []
         for trial, state in self._trial_state.items():
+            logger.debug("Trial {}, state {}".format(trial, state))
+            if trial.is_finished():
+                logger.debug("Trial {} is finished".format(trial))
             if state.last_score is not None and not trial.is_finished():
                 trials.append(trial)
         trials.sort(key=lambda t: self._trial_state[t].last_score)
@@ -469,9 +559,13 @@ class PopulationBasedTraining(FIFOScheduler):
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
                     trial_runner.has_resources(trial.resources):
-                candidates.append(trial)
+                if not self._synch:
+                    candidates.append(trial)
+                elif self._trial_state[trial].last_train_time < \
+                        self._next_perturbation_sync:
+                    candidates.append(trial)
         candidates.sort(
-            key=lambda trial: self._trial_state[trial].last_perturbation_time)
+            key=lambda trial: self._trial_state[trial].last_train_time)
         return candidates[0] if candidates else None
 
     def reset_stats(self):
