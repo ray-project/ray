@@ -24,7 +24,7 @@ from ray.tune.logger import UnifiedLogger
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
     TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
-    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE, LOGDIR_PATH)
+    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
@@ -224,9 +224,8 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        self._logger_creator = logger_creator
         self._result_logger = self._logdir = None
-        self._create_logger(self.config)
+        self._create_logger(self.config, logger_creator)
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
@@ -535,22 +534,17 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, new_logdir):
+    def reset(self, new_config, logger_creator=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
         self.config = new_config
 
-        logger_config = new_config.copy()
-        logger_config[LOGDIR_PATH] = new_logdir
-
-        self._logdir = new_logdir
-
         self._result_logger.flush()
         self._result_logger.close()
 
-        self._create_logger(logger_config)
+        self._create_logger(new_config.copy(), logger_creator)
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
@@ -576,10 +570,13 @@ class Trainable:
         """
         return False
 
-    def _create_logger(self, config):
-        """Create logger from logger creator"""
-        if self._logger_creator:
-            self._result_logger = self._logger_creator(config)
+    def _create_logger(self, config, logger_creator=None):
+        """Create logger from logger creator.
+
+        Sets _logdir and _result_logger.
+        """
+        if logger_creator:
+            self._result_logger = logger_creator(config)
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")

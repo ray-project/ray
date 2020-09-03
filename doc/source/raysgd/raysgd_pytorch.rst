@@ -664,7 +664,7 @@ Here's some simple tips on how to debug the TorchTrainer.
 
 Try using ``ipdb``, a custom TrainingOperator, and ``num_workers=1``. This will provide you introspection what is being called and when.
 
-.. code-block::
+.. code-block:: python
 
     # first run pip install ipdb
 
