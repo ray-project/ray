@@ -50,11 +50,13 @@ Serve a function by defining a function, an endpoint, and a backend (in this cas
 connecting the two by setting traffic from the endpoint to the backend.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_function.py
+   :lines: 2-4,6-7,9-
 
 Serve a stateful class by defining a class (``Counter``), creating an endpoint and a backend, then connecting
 the two by setting traffic from the endpoint to the backend.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/quickstart_class.py
+   :lines: 2-4,6-7,9-
 
 See :doc:`key-concepts` for more exhaustive coverage about Ray Serve and its core concepts.
 
