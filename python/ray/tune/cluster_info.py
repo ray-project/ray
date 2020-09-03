@@ -2,6 +2,10 @@ import getpass
 import os
 
 
+def is_ray_cluster():
+    return os.path.exists(os.path.expanduser("~/ray_bootstrap_config.yaml"))
+
+
 def get_ssh_user():
     """Returns ssh username for connecting to cluster workers."""
 

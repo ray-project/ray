@@ -15,7 +15,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
-from ray.tune.web_server import TuneServer
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +25,14 @@ _SCHEDULERS = {
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
+
 @dataclass
 class SyncConfig:
     """Configuration object for syncing.
 
     Args:
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
         sync_to_cloud (func|str): Function for syncing the local_dir to and
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
@@ -48,10 +50,10 @@ class SyncConfig:
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
     """
+    upload_dir: str = None
     sync_to_cloud = None
     sync_to_driver = None
-    sync_on_checkpoint = None
-
+    sync_on_checkpoint: bool = True
 
 
 try:
@@ -94,7 +96,8 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
-def run(run_or_experiment,
+def run(
+        run_or_experiment,
         name=None,
         stop=None,
         config=None,
@@ -123,13 +126,17 @@ def run(run_or_experiment,
         trial_executor=None,
         raise_on_failed_trial=True,
         sync_config=None,
+        # Deprecated args
         ray_auto_init=None,
+        run_errored_only=None,
         queue_trials=None,
         global_checkpoint_period=None,
+        with_server=None,
         upload_dir=None,
         sync_to_cloud=None,
         sync_to_driver=None,
-        sync_on_checkpoint=None,):
+        sync_on_checkpoint=None,
+):
     """Executes training.
 
     Examples:
@@ -227,8 +234,6 @@ def run(run_or_experiment,
             for generating the trial dirname. This function should take
             in a Trial object and return a string representing the
             name of the directory. The return value cannot be a path.
-        upload_dir (str): Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket`` or ``gs://bucket``).
         sync_config (SyncConfig): TODO
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
@@ -275,15 +280,28 @@ def run(run_or_experiment,
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
     if global_checkpoint_period:
-        raise DeprecationWarning("...")
+        raise ValueError("global_checkpoint_period is deprecated. "
+                         "Set 'TUNE_GLOBAL_CHECKPOINT_S' instead.")
     if queue_trials:
-        raise DeprecationWarning
+        raise ValueError(
+            "queue_trials is deprecated. "
+            "Set 'TUNE_DISABLE_QUEUE_TRIALS=1' instead to disable queuing"
+            "behavior.")
     if ray_auto_init:
-        raise DeprecationWarning
+        raise ValueError(
+            "ray_auto_init is deprecated. "
+            "Set 'TUNE_DISABLE_AUTO_INIT=1' instead or call 'ray.init' "
+            "before calling 'tune.run'.")
     if with_server:
-        raise DeprecationWarning
-    if sync_on_checkpoint:
-        raise DeprecationWarning
+        raise ValueError(
+            "with_server is deprecated. It is now enabled by default "
+            "if 'server_port' is not None.")
+    if sync_on_checkpoint or sync_to_cloud or sync_to_driver or upload_dir:
+        raise ValueError(
+            "sync_on_checkpoint / sync_to_cloud / sync_to_driver / "
+            "upload_dir must now be set via `tune.run("
+            "sync_config=SyncConfig(...)`. See `ray.tune.SyncConfig` for "
+            "more details.")
 
     config = config or {}
 
@@ -305,14 +323,14 @@ def run(run_or_experiment,
                 num_samples=num_samples,
                 local_dir=local_dir,
                 upload_dir=upload_dir,
-                sync_to_driver=sync_to_driver,
+                sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
-                sync_on_checkpoint=sync_on_checkpoint,
+                sync_on_checkpoint=sync_config.sync_on_checkpoint,
                 keep_checkpoints_num=keep_checkpoints_num,
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
@@ -321,7 +339,7 @@ def run(run_or_experiment,
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
-    if sync_to_cloud:
+    if sync_config.sync_to_cloud:
         for exp in experiments:
             assert exp.remote_checkpoint_dir, (
                 "Need `upload_dir` if `sync_to_cloud` given.")
@@ -340,12 +358,9 @@ def run(run_or_experiment,
         scheduler=scheduler or FIFOScheduler(),
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
-        sync_to_cloud=sync_to_cloud,
+        sync_to_cloud=sync_config.sync_to_cloud,
         stopper=experiments[0].stopper,
-        checkpoint_period=global_checkpoint_period,
         resume=resume,
-        run_errored_only=run_errored_only,
-        launch_web_server=server_port is not None,
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
@@ -413,14 +428,10 @@ def run(run_or_experiment,
 
 
 def run_experiments(experiments,
-                    search_alg=None,
-                    scheduler=None,
-                    with_server=False,
-                    server_port=TuneServer.DEFAULT_PORT,
+                    server_port=None,
                     verbose=2,
                     progress_reporter=None,
                     resume=False,
-                    queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
@@ -434,15 +445,6 @@ def run_experiments(experiments,
         >>> experiment_spec = {"experiment": {"run": my_func}}
         >>> run_experiments(experiments=experiment_spec)
 
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     scheduler=MedianStoppingRule(...))
-
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     search_alg=SearchAlgorithm(),
-        >>>     scheduler=MedianStoppingRule(...))
-
     Returns:
         List of Trial objects, holding data for each executed trial.
 
@@ -455,14 +457,10 @@ def run_experiments(experiments,
     if concurrent:
         return run(
             experiments,
-            search_alg=search_alg,
-            scheduler=scheduler,
-            with_server=with_server,
             server_port=server_port,
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
-            queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial).trials
@@ -471,14 +469,10 @@ def run_experiments(experiments,
         for exp in experiments:
             trials += run(
                 exp,
-                search_alg=search_alg,
-                scheduler=scheduler,
-                with_server=with_server,
                 server_port=server_port,
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
-                queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial).trials
