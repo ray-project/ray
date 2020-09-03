@@ -1134,9 +1134,4 @@ class ShimCreationTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main([__file__]))
-
-if __name__ == "__main__":
-    import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
