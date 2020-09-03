@@ -1876,10 +1876,9 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   task_queue_length_ += 1;
   const TaskSpecification task_spec(request.task_spec());
   if (!task_spec.IsActorTask() && !task_spec.IsActorCreationTask()) {
-    absl::MutexLock lock(&direct_task_receiver_->mu_);
     RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId()
-                   << ". Adding it to the tasks_received_ queue!";
-    direct_task_receiver_->tasks_received_.emplace(task_spec.TaskId(), task_spec);
+                   << ". Adding it to the tasks_available_for_stealing_ queue!";
+    direct_task_receiver_->MarkTaskAvailableForStealing(task_spec);
   }
   task_execution_service_.post([=] {
     // We have posted an exit task onto the main event loop,
@@ -1892,42 +1891,8 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
                                  rpc::StealWorkReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Entering HandleStealWork!";
-  {
-    absl::MutexLock lock(&direct_task_receiver_->mu_);
-
-    int half = direct_task_receiver_->tasks_received_.size() / 2;
-    RAY_CHECK(half >= 0);
-
-    if (half == 0) {
-      RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
-      reply->set_number_of_tasks_stolen(0);
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-
-    absl::flat_hash_map<TaskID, TaskSpecification>::iterator it =
-        direct_task_receiver_->tasks_received_.begin();
-    absl::flat_hash_map<TaskID, TaskSpecification>::iterator it2 = it;
-    int i = 0;
-    for (; i < half; i++) {
-      if (it == direct_task_receiver_->tasks_received_.end()) {
-        break;
-      }
-      reply->add_tasks_stolen()->CopyFrom(it->second.GetMessage());
-      RAY_LOG(DEBUG) << "Task " << it->second.TaskId()
-                     << " was stolen and removed from the tasks_received_ queue. worker: "
-                     << GetWorkerID();
-      it2 = it;
-      it++;
-      direct_task_receiver_->tasks_received_.erase(it2);
-    }
-    RAY_LOG(DEBUG) << "Setting the total number of tasks stolen to " << i;
-    reply->set_number_of_tasks_stolen(i);
-  }
-
-  // send reply back
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  RAY_LOG(DEBUG) << "Entering CoreWorker::HandleStealWork!";
+  direct_task_receiver_->HandleStealWork(request, reply, send_reply_callback);
 }
 
 

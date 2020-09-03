@@ -322,8 +322,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
   if (!task_spec.IsActorTask() && !task_spec.IsActorCreationTask()) {
     absl::MutexLock lock(&mu_);
-    auto tasks_received_entry = tasks_received_.find(task_spec.TaskId());
-    if (tasks_received_entry == tasks_received_.end()) {
+    auto tasks_available_for_stealing_entry = tasks_available_for_stealing_.find(task_spec.TaskId());
+    if (tasks_available_for_stealing_entry == tasks_available_for_stealing_.end()) {
       RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
                      << " was stolen and is not in the queue. Setting "
                         "reply->set_task_stolen(true). worker: "
@@ -337,7 +337,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                    << " was NOT stolen, so it's still in the queue. Proceeding with "
                       "HandlePushTask normally! worker: "
                    << this_worker_id_;
-    tasks_received_.erase(tasks_received_entry);
+    tasks_available_for_stealing_.erase(tasks_available_for_stealing_entry);
   }
 
 
@@ -444,6 +444,41 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   }
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
+}
+
+void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mu_);
+
+  int half = tasks_available_for_stealing_.size() / 2;
+  RAY_CHECK(half >= 0);
+
+  if (half == 0) {
+    RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
+    reply->set_number_of_tasks_stolen(0);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  absl::flat_hash_map<TaskID, TaskSpecification>::iterator it = tasks_available_for_stealing_.begin();
+  absl::flat_hash_map<TaskID, TaskSpecification>::iterator it2 = it;
+  int i = 0;
+  for (; i < half; i++) {
+    if (it == tasks_available_for_stealing_.end()) {
+      break;
+    }
+    reply->add_tasks_stolen()->CopyFrom(it->second.GetMessage());
+    RAY_LOG(DEBUG) << "Task " << it->second.TaskId()
+                   << " was stolen and removed from the tasks_available_for_stealing_ queue. worker: "
+                   << this_worker_id_;
+    it2 = it;
+    it++;
+    tasks_available_for_stealing_.erase(it2);
+  }
+  RAY_LOG(DEBUG) << "Setting the total number of tasks stolen to " << i;
+  reply->set_number_of_tasks_stolen(i);
+
+  // send reply back
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

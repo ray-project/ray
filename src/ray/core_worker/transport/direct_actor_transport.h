@@ -506,9 +506,21 @@ class CoreWorkerDirectTaskReceiver {
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback);
 
-  absl::Mutex mu_;
+  /// Add a task to the tasks_available_for_stealing_ hashmap
+  ///
+  /// \param[in] task_spec The TaskSpecification of the task to be added.
+  void MarkTaskAvailableForStealing(const TaskSpecification &task_spec) {
+    absl::MutexLock lock(&mu_);
+    tasks_available_for_stealing_.emplace(task_spec.TaskId(), task_spec);
+  }
 
-  absl::flat_hash_map<TaskID, TaskSpecification> tasks_received_ GUARDED_BY(mu_);
+  /// Handle a `StealTask` request.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  void HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply, rpc::SendReplyCallback send_reply_callback);
+
 
  private:
   // Worker context.
@@ -530,6 +542,10 @@ class CoreWorkerDirectTaskReceiver {
   std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;
   /// The Worker ID of the worker running this task receiver
   WorkerID this_worker_id_;
+  /// Protects the tasks_available_for_stealing_ hashmap
+  absl::Mutex mu_;
+  /// Contains the set of tasks that were received by the worker, and that are currently available for stealing
+  absl::flat_hash_map<TaskID, TaskSpecification> tasks_available_for_stealing_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray
