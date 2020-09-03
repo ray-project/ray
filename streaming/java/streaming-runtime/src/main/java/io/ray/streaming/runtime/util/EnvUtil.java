@@ -21,7 +21,7 @@ public class EnvUtil {
     try {
       hostname = InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
-      LOG.error("Error occurs while fetching local ip.", e);
+      LOG.error("Error occurs while fetching local host.", e);
     }
     return hostname;
   }

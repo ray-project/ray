@@ -7,7 +7,7 @@ import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.runtime.config.worker.WorkerInternalConfig;
 import io.ray.streaming.runtime.context.ContextBackend;
-import io.ray.streaming.runtime.context.OpCheckpointInfo;
+import io.ray.streaming.runtime.context.OperatorCheckpointInfo;
 import io.ray.streaming.runtime.core.collector.OutputCollector;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
@@ -25,6 +25,7 @@ import io.ray.streaming.runtime.util.Serializer;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
 import io.ray.streaming.runtime.worker.context.StreamingRuntimeContext;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -110,7 +111,7 @@ public abstract class StreamTask implements Runnable {
     jobWorker.getWorkerConfig().workerInternalConfig.setProperty(
         WorkerInternalConfig.OP_NAME_INTERNAL, executionVertex.getExecutionJobVertexName());
 
-    OpCheckpointInfo opCheckpointInfo = new OpCheckpointInfo();
+    OperatorCheckpointInfo operatorCheckpointInfo = new OperatorCheckpointInfo();
     byte[] bytes = null;
 
     // Fetch checkpoint from storage only in recreate mode not for new startup worker
@@ -128,21 +129,21 @@ public abstract class StreamTask implements Runnable {
 
     // when use memory state, if actor throw exception, will miss state
     if (bytes != null) {
-      opCheckpointInfo = Serializer.decode(bytes);
-      processor.loadCheckpoint(opCheckpointInfo.processorCheckpoint);
+      operatorCheckpointInfo = Serializer.decode(bytes);
+      processor.loadCheckpoint(operatorCheckpointInfo.processorCheckpoint);
       LOG.info(
           "Stream task recover from checkpoint state, checkpoint bytes len={}, checkpointInfo={}.",
-          bytes.length, opCheckpointInfo);
+          bytes.length, operatorCheckpointInfo);
     }
 
     // writer
     if (!executionVertex.getOutputEdges().isEmpty()) {
       LOG.info("Register queue writer, channels={}, outputCheckpoints={}.",
-          executionVertex.getOutputChannelIdList(), opCheckpointInfo.outputPoints);
+          executionVertex.getOutputChannelIdList(), operatorCheckpointInfo.outputPoints);
       writer = new DataWriter(
           executionVertex.getOutputChannelIdList(),
           executionVertex.getOutputActorList(),
-          opCheckpointInfo.outputPoints,
+          operatorCheckpointInfo.outputPoints,
           jobWorker.getWorkerConfig()
       );
     }
@@ -150,11 +151,11 @@ public abstract class StreamTask implements Runnable {
     // reader
     if (!executionVertex.getInputEdges().isEmpty()) {
       LOG.info("Register queue reader, channels={}, inputCheckpoints={}.",
-          executionVertex.getInputChannelIdList(), opCheckpointInfo.inputPoints);
+          executionVertex.getInputChannelIdList(), operatorCheckpointInfo.inputPoints);
       reader = new DataReader(
           executionVertex.getInputChannelIdList(),
           executionVertex.getInputActorList(),
-          opCheckpointInfo.inputPoints,
+          operatorCheckpointInfo.inputPoints,
           jobWorker.getWorkerConfig()
       );
     }
@@ -240,11 +241,11 @@ public abstract class StreamTask implements Runnable {
         inputPoints, outputPoints);
 
     this.lastCheckpointId = checkpointId;
-    Object processorCheckpoint = processor.saveCheckpoint();
+    Serializable processorCheckpoint = processor.saveCheckpoint();
 
     try {
-      OpCheckpointInfo opCpInfo =
-          new OpCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
+      OperatorCheckpointInfo opCpInfo =
+          new OperatorCheckpointInfo(inputPoints, outputPoints, processorCheckpoint,
               checkpointId);
       saveCpStateAndReport(opCpInfo, checkpointId);
     } catch (Exception e) {
@@ -257,19 +258,19 @@ public abstract class StreamTask implements Runnable {
   }
 
   private void saveCpStateAndReport(
-      OpCheckpointInfo opCheckpointInfo,
+      OperatorCheckpointInfo operatorCheckpointInfo,
       long checkpointId) {
-    saveCp(opCheckpointInfo, checkpointId);
+    saveCp(operatorCheckpointInfo, checkpointId);
     reportCommit(checkpointId);
 
     LOG.info("Finish save cp state and report, checkpoint id is {}.", checkpointId);
   }
 
-  private void saveCp(OpCheckpointInfo opCheckpointInfo, long checkpointId) {
-    byte[] bytes = Serializer.encode(opCheckpointInfo);
+  private void saveCp(OperatorCheckpointInfo operatorCheckpointInfo, long checkpointId) {
+    byte[] bytes = Serializer.encode(operatorCheckpointInfo);
     String cpKey = genOpCheckpointKey(checkpointId);
     LOG.info("Saving task checkpoint, cpKey={}, byte len={}, checkpointInfo={}.", cpKey,
-        bytes.length, opCheckpointInfo);
+        bytes.length, operatorCheckpointInfo);
     synchronized (checkpointState) {
       if (outdatedCheckpoints.contains(checkpointId)) {
         LOG.info("Outdated checkpoint, skip save checkpoint.");
@@ -322,8 +323,8 @@ public abstract class StreamTask implements Runnable {
       return;
     }
     if (bytes != null) {
-      final OpCheckpointInfo opCheckpointInfo = Serializer.decode(bytes);
-      long cpId = opCheckpointInfo.checkpointId;
+      final OperatorCheckpointInfo operatorCheckpointInfo = Serializer.decode(bytes);
+      long cpId = operatorCheckpointInfo.checkpointId;
       if (writer != null) {
         writer.clearCheckpoint(cpId);
       }

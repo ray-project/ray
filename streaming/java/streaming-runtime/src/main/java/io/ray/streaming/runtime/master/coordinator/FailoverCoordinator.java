@@ -30,7 +30,7 @@ public class FailoverCoordinator extends BaseCoordinator {
   private static final int ROLLBACK_RETRY_TIME_MS = 10 * 1000;
   private final Object cmdLock = new Object();
   private final AsyncRemoteCaller asyncRemoteCaller;
-  private long curCascadingGroupId = 0;
+  private long currentCascadingGroupId = 0;
   private final Map<ExecutionVertex, Boolean> isRollbacking =
       DefaultedMap.decorate(new ConcurrentHashMap<ExecutionVertex, Boolean>(), false);
 
@@ -151,11 +151,11 @@ public class FailoverCoordinator extends BaseCoordinator {
   private void interruptCheckpointAndRollback(WorkerRollbackRequest rollbackRequest) {
     // assign a cascadingGroupId
     if (rollbackRequest.cascadingGroupId == null) {
-      rollbackRequest.cascadingGroupId = curCascadingGroupId++;
+      rollbackRequest.cascadingGroupId = currentCascadingGroupId++;
     }
     // get last valid checkpoint id then call worker rollback
     rollback(jobMaster.getRuntimeContext().getLastValidCheckpointId(), rollbackRequest,
-        curCascadingGroupId);
+        currentCascadingGroupId);
     // we interrupt current checkpoint for 2 considerations:
     // 1. current checkpoint might be timeout, because barrier might be lost after failover. so we
     // interrupt current checkpoint to avoid waiting.

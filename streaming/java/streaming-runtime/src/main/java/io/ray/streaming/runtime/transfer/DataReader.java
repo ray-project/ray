@@ -237,8 +237,7 @@ public class DataReader {
   }
 
   public enum BarrierType {
-    GLOBAL_BARRIER(0),
-    END_OF_DATA_BARRIER(2);
+    GLOBAL_BARRIER(0);
     private int code;
 
     BarrierType(int code) {
@@ -356,11 +355,7 @@ public class DataReader {
       data = buffer.slice();
       data.order(ByteOrder.nativeOrder());
       buffer.position(buffer.limit());
-      if (BarrierType.END_OF_DATA_BARRIER.code == barrierTypeInt) {
-        barrierType = BarrierType.END_OF_DATA_BARRIER;
-      } else {
-        barrierType = BarrierType.GLOBAL_BARRIER;
-      }
+      barrierType = BarrierType.GLOBAL_BARRIER;
     }
 
     public long getBarrierMsgId() {

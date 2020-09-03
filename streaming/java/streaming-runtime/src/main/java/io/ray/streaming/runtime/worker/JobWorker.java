@@ -70,7 +70,7 @@ public class JobWorker implements Serializable {
    * rollback, set to false when finish rollback.
    */
   private boolean isNeedRollback = false;
-  private int rollbackCnt = 0;
+  private int rollbackCount = 0;
 
   public JobWorker(ExecutionVertex executionVertex) {
     LOG.info("Creating job worker.");
@@ -151,8 +151,8 @@ public class JobWorker implements Serializable {
     LOG.info("Start rollback[{}], checkpoint is {}, remote call cost {}ms.",
         executionVertex.getExecutionJobVertexName(), checkpointId, remoteCallCost);
 
-    rollbackCnt++;
-    if (rollbackCnt > 1) {
+    rollbackCount++;
+    if (rollbackCount > 1) {
       isRecreate.set(true);
     }
 

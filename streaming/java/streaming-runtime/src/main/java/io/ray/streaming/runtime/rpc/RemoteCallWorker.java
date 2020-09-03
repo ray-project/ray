@@ -51,6 +51,7 @@ public class RemoteCallWorker {
    * Call JobWorker actor to start.
    *
    * @param actor target JobWorker actor
+   * @param checkpointId checkpoint ID to be rollback
    * @return start result
    */
   public static ObjectRef rollback(BaseActorHandle actor, final Long checkpointId) {

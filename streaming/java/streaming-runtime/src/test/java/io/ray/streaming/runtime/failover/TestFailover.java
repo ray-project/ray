@@ -42,6 +42,8 @@ public class TestFailover {
 
     Thread.sleep(1000 * 300);
 
+    // check
+
   }
 
   // this function depends on the log in JobWorker#init
@@ -56,7 +58,7 @@ public class TestFailover {
     private static final Logger LOG = LoggerFactory.getLogger(DemoSource.class);
 
     private int value = 0;
-    private int total = 0;
+    private int total;
 
     public DemoSource(int total) {
       this.total = total;

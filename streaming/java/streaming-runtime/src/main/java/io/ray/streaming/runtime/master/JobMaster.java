@@ -164,9 +164,7 @@ public class JobMaster {
 
   public synchronized void saveContext() {
     if (runtimeContext != null && getConf() != null) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Save JobMaster context.");
-      }
+      LOG.debug("Save JobMaster context.");
 
       byte[] contextBytes = Serializer.encode(runtimeContext);
       CheckpointStateUtil
