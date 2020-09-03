@@ -25,7 +25,7 @@ def create_scheduler(
             procedures will use this attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        **kwargs: Additional parameters for .
+        **kwargs: Additional parameters.
             These keyword arguments will be passed to the initialization
             function of the chosen class.
     Returns:
