@@ -316,3 +316,22 @@ To call a method via Python, do the following:
 
     handle = serve.get_handle("backend_name")
     handle.options(method_name="other_method").remote(5)
+
+How do I enable CORS and other HTTP features?
+---------------------------------------------
+
+Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
+and custom middlewares in Starlette format. For example, to enable Serve
+for `Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_
+you can:
+
+.. code-block:: python
+
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
+
+    serve.init(
+        http_middlewares=[
+            Middleware(
+                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+        ])

@@ -68,3 +68,4 @@ tensorflow
 testfixtures
 werkzeug
 xlrd
+starlette

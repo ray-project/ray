@@ -59,7 +59,7 @@ def accept_batch(f: Callable) -> Callable:
 def init(name: Optional[str] = None,
          http_host: str = DEFAULT_HTTP_HOST,
          http_port: int = DEFAULT_HTTP_PORT,
-         _http_middlewares: List[Any] = []) -> None:
+         http_middlewares: List[Any] = []) -> None:
     """Initialize or connect to a serve cluster.
 
     If serve cluster is already initialized, this function will just return.
@@ -97,7 +97,7 @@ def init(name: Optional[str] = None,
         lifetime="detached",
         max_restarts=-1,
         max_task_retries=-1,
-    ).remote(name, http_host, http_port, _http_middlewares)
+    ).remote(name, http_host, http_port, http_middlewares)
 
     futures = []
     for node_id in ray.state.node_ids():
