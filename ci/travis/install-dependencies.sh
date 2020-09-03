@@ -296,7 +296,7 @@ install_dependencies() {
   # Additional Tune dependency for Horovod.
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 pip install -U git+https://github.com/horovod/horovod.git
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 pip install -U git+https://github.com/horovod/horovod.git@cmake-fix
   fi
 
   # Additional RaySGD test dependencies.
