@@ -1,3 +1,4 @@
+import atexit
 from functools import wraps
 
 import ray
@@ -31,6 +32,16 @@ class Client:
         self._controller = controller
         self._controller_name = controller_name
         self._detached = detached
+
+        # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
+        # when the interpreter is exiting so we can't rely on __del__ (it
+        # throws a nasty stacktrace).
+        if not self._detached:
+
+            def shutdown_serve_client():
+                self.shutdown()
+
+            atexit.register(shutdown_serve_client)
 
     def __del__(self):
         if not self._detached:
