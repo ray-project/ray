@@ -1,3 +1,7 @@
+"""
+The test file for all standalone tests that doesn't
+requires a shared Serve instance.
+"""
 import sys
 import socket
 

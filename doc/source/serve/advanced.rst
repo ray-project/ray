@@ -321,9 +321,9 @@ How do I enable CORS and other HTTP features?
 ---------------------------------------------
 
 Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
-and custom middlewares in Starlette format. For example, to enable Serve
-for `Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_
-you can:
+and custom middlewares in Starlette format. The example below shows how to enable
+`Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
+You can follow the same pattern for other Starlette middlewares.
 
 .. note::
 
