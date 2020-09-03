@@ -149,7 +149,8 @@ class LoadMetrics:
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self._get_resource_usage()
+        nodes_used, resources_used, resources_total = self._get_resource_usage(
+        )
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
