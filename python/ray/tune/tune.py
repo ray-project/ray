@@ -304,6 +304,7 @@ def run(
             "more details.")
 
     config = config or {}
+    sync_config = sync_config or SyncConfig()
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors)
@@ -428,6 +429,7 @@ def run(
 
 
 def run_experiments(experiments,
+                    scheduler=None,
                     server_port=None,
                     verbose=2,
                     progress_reporter=None,
@@ -463,7 +465,8 @@ def run_experiments(experiments,
             resume=resume,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial).trials
+            raise_on_failed_trial=raise_on_failed_trial,
+            scheduler=scheduler).trials
     else:
         trials = []
         for exp in experiments:
@@ -475,5 +478,6 @@ def run_experiments(experiments,
                 resume=resume,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
-                raise_on_failed_trial=raise_on_failed_trial).trials
+                raise_on_failed_trial=raise_on_failed_trial,
+                scheduler=scheduler).trials
         return trials

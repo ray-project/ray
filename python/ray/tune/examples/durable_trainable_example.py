@@ -102,6 +102,12 @@ if __name__ == "__main__":
     address = None if args.local else "auto"
     ray.init(address=address)
 
+    sync_config = tune.SyncConfig(
+        sync_to_driver=False,
+        sync_on_checkpoint=False,
+        upload_dir="s3://ray-tune-test/exps/",
+    )
+
     config = {
         "seed": None,
         "startup_delay": 0.001,
@@ -117,12 +123,8 @@ if __name__ == "__main__":
         config=config,
         num_samples=4,
         verbose=1,
-        queue_trials=True,
         # fault tolerance parameters
         max_failures=-1,
         checkpoint_freq=20,
-        sync_to_driver=False,
-        sync_on_checkpoint=False,
-        upload_dir="s3://ray-tune-test/exps/",
         checkpoint_score_attr="training_iteration",
     )
