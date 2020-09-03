@@ -5,7 +5,7 @@ from ray.streaming import StreamingContext
 
 
 def test_union_stream():
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(_load_code_from_local=True, _include_java=True)
     ctx = StreamingContext.Builder() \
         .option("streaming.metrics.reporters", "") \
         .build()

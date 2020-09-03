@@ -564,6 +564,27 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_multi_objective_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_multi_objective_example.py"],
+#     deps = [":tune_lib"],                 s
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_prior_beliefs_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_prior_beliefs_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
 py_test(
     name = "skopt_example",
     size = "medium",

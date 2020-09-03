@@ -6,8 +6,7 @@ import java.io.Serializable;
 import java.util.UUID;
 
 /**
- * Streaming system unique identity base class.
- * For example, ${@link ContainerId}
+ * Streaming system unique identity base class. For example, ${@link ContainerId }
  */
 public class AbstractId implements Serializable {
 

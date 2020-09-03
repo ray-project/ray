@@ -297,7 +297,7 @@ You can run multiple serve instances on the same Ray cluster by providing a ``na
   serve.create_backend("backend2", function)
   serve.create_endpoint("endpoint2", backend="backend2", route="/increment")
 
-  # Switch back the the first cluster and create the same backend on it.
+  # Switch back to the first cluster and create the same backend on it.
   serve.init(name="cluster1")
   serve.create_backend("backend1", function)
   serve.create_endpoint("endpoint1", backend="backend1", route="/increment")

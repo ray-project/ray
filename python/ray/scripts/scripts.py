@@ -506,8 +506,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        _system_config=json.loads(system_config)
-        if system_config else system_config,
+        _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
