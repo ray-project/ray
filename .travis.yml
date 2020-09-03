@@ -159,7 +159,7 @@ matrix:
         - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
-        - true  # we still need this block to exist, otherwise it will fall back to the global one
+        - sleep 30  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build MacOS wheels and MacOS jars
     - os: osx

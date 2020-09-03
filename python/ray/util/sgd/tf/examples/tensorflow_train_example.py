@@ -95,8 +95,8 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
 
 def tune_example(num_replicas=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(simple_model),
-        "data_creator": tune.function(simple_dataset),
+        "model_creator": simple_model,
+        "data_creator": simple_dataset,
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
         "trainer_config": create_config(batch_size=128)

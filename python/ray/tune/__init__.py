@@ -12,15 +12,17 @@ from ray.tune.session import (report, get_trial_dir, get_trial_name,
                               save_checkpoint, checkpoint_dir)
 from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
                                         JupyterNotebookReporter)
-from ray.tune.sample import (function, sample_from, uniform, choice, randint,
-                             randn, loguniform)
+from ray.tune.sample import (function, sample_from, uniform, quniform, choice,
+                             randint, qrandint, randn, qrandn, loguniform,
+                             qloguniform)
 
 __all__ = [
     "Trainable", "DurableTrainable", "TuneError", "grid_search",
     "register_env", "register_trainable", "run", "run_experiments", "Stopper",
     "EarlyStopping", "Experiment", "function", "sample_from", "track",
-    "uniform", "choice", "randint", "randn", "loguniform",
-    "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
-    "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id", "make_checkpoint_dir", "save_checkpoint", "checkpoint_dir"
+    "uniform", "quniform", "choice", "randint", "qrandint", "randn", "qrandn",
+    "loguniform", "qloguniform", "ExperimentAnalysis", "Analysis",
+    "CLIReporter", "JupyterNotebookReporter", "ProgressReporter", "report",
+    "get_trial_dir", "get_trial_name", "get_trial_id", "make_checkpoint_dir",
+    "save_checkpoint", "checkpoint_dir"
 ]

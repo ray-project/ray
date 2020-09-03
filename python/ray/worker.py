@@ -622,6 +622,7 @@ def init(
 
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
+        print("Connecting to existing Ray cluster at address:", redis_address)
     else:
         redis_address = None
 

@@ -75,6 +75,9 @@ jfieldID java_function_arg_value;
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
+jclass java_call_options_class;
+jfieldID java_call_options_name;
+
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
 jfieldID java_actor_creation_options_name;
@@ -197,6 +200,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
+
+  java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
+  java_call_options_name =
+      env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");

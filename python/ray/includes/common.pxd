@@ -241,7 +241,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns,
+        CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
