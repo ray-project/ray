@@ -140,7 +140,7 @@ Experimental APIs
 ray.experimental.queue
 ~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ray.experimental.queue
+.. autoclass:: ray.experimental.queue.Queue
    :members:
 
 

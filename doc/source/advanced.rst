@@ -106,6 +106,7 @@ actors, you can use ``ray.experimental.queue.Queue`` (:ref:`docs <ray-queue-ref>
     from ray.experimental.queue import Queue
 
     ray.init()
+    # You can pass this object around to different tasks/actors
     queue = Queue(maxsize=100)
 
     @ray.remote
