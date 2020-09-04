@@ -26,7 +26,6 @@ from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search, HyperOptSearch
 from ray.tune.suggest.ax import AxSearch
-from ax.service.ax_client import AxClient
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
@@ -1122,13 +1121,7 @@ class ShimCreationTest(unittest.TestCase):
 
         searcher_ax = "ax"
         shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
-        client = AxClient(enforce_sequential_optimization=False)
-        client.create_experiment(
-            parameters=[],
-            objective_name=kwargs["metric"],
-            minimize=kwargs["mode"] == "min",
-        )
-        real_searcher_ax = AxSearch(client, mode=kwargs["mode"])
+        real_searcher_ax = AxSearch(space=[], objective_name=kwargs["mode"])
         assert type(shim_searcher_ax) is type(real_searcher_ax)
 
         searcher_hyperopt = "hyperopt"
