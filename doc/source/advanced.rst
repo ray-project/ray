@@ -259,3 +259,79 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+Synchronization
+---------------
+
+Often times you need to have tasks or actors contentding over the same resource, or communicate some signals to each other.
+You can use several ways to perform synchronization.
+
+Inter-process synchronization on the same node using FileLock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have several tasks or actors writing to the same file on the node, you can use FileLock to synchronize their writes.
+This often occurs for data loading and preprocessing.
+
+.. code-block:: python
+   :emphasize-lines: 4
+
+    from filelock import FileLock
+
+    @ray.remote
+    def write_to_file(text):
+        with FileLock("my_data.txt.lock"):
+            with open("my_data.txt","a") as f:
+                f.write(text)
+
+    ray.init()
+    ray.get([write_to_file.remote("hi there!")])
+
+Multi-node synchronization using Ray SignalActor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you have multiple tasks that need to wait on some condition, you can use a SignalActor to coordinate.
+
+.. code-block:: python
+
+    from ray.test_utils import SignalActor
+
+    @ray.remote
+    def wait_and_go(signal):
+        ray.get(signal.wait.remote())
+
+        print("go!")
+
+    ray.init()
+    signal = SignalActor.remote()
+    tasks = [wait_and_go.remote() for _ in range(4)]
+
+    # Tasks will all be waiting for the singals.
+    ray.get(signal.send.remote())
+    # Tasks are unblocked.
+    ray.get(tasks)
+
+
+Message passing using Ray Queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
+actors, you can use ``ray.experimental.queue.Queue``.
+
+.. code-block:: python
+
+    from ray.experimental.queue import Queue
+
+    ray.init()
+    queue = Queue(maxsize=100)
+
+    @ray.remote
+    def consumer():
+        next_item = queue.get(block=True)
+        print(f"got work {next_item}")
+
+    consumers = [consumer.remote() for _ in range(2)]
+
+    [queue.put(i) for i in range(10)]
+
+Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+
