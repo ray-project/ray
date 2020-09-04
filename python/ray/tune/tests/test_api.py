@@ -1114,7 +1114,7 @@ class ShimCreationTest(unittest.TestCase):
         scheduler = "async_hyperband"
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(scheduler, **kwargs)
-        assert shim_scheduler == real_scheduler
+        assert type(shim_scheduler) == type(real_scheduler)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
@@ -1122,13 +1122,13 @@ class ShimCreationTest(unittest.TestCase):
         searcher_ax = "ax"
         shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
         real_searcher_ax = AxSearch(searcher_ax, **kwargs)
-        assert shim_searcher_ax == real_searcher_ax
+        assert type(shim_searcher_ax) == type(real_searcher_ax)
 
         searcher_hyperopt = "hyperopt"
         shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
                                                       **kwargs)
         real_searcher_hyperopt = HyperOptSearch(searcher_hyperopt)
-        assert shim_searcher_hyperopt == real_searcher_hyperopt
+        assert type(shim_searcher_hyperopt) == type(real_searcher_hyperopt)
 
 
 if __name__ == "__main__":
