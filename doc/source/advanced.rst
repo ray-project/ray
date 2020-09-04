@@ -3,6 +3,124 @@ Advanced Usage
 
 This page will cover some more advanced examples of using Ray's flexible programming model.
 
+.. contents::
+  :local:
+
+Synchronization
+---------------
+
+Tasks or actors can often contend over the same resource or need to communicate with each other. Here are some standard ways to perform synchronization across Ray processes.
+
+Inter-process synchronization using FileLock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have several tasks or actors writing to the same file or downloading a file on a single node, you can use `FileLock <https://pypi.org/project/filelock/>`_ to synchronize.
+
+This often occurs for data loading and preprocessing.
+
+.. code-block:: python
+   :emphasize-lines: 4
+
+    import ray
+    from filelock import FileLock
+
+    @ray.remote
+    def write_to_file(text):
+        # Create a filelock object. Consider using an absolute path for the lock.
+        with FileLock("my_data.txt.lock"):
+            with open("my_data.txt","a") as f:
+                f.write(text)
+
+    ray.init()
+    ray.get([write_to_file.remote("hi there!\n") for i in range(3)])
+
+    with open("my_data.txt") as f:
+        print(f.read())
+
+    ## Output is:
+
+    # hi there!
+    # hi there!
+    # hi there!
+
+Multi-node synchronization using ``SignalActor``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you have multiple tasks that need to wait on some condition, you can use a ``SignalActor`` to coordinate.
+
+.. code-block:: python
+
+    # Also available via `from ray.test_utils import SignalActor`
+    import ray
+    import asyncio
+
+    @ray.remote(num_cpus=0)
+    class SignalActor:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self, clear=False):
+            self.ready_event.set()
+            if clear:
+                self.ready_event.clear()
+
+        async def wait(self, should_wait=True):
+            if should_wait:
+                await self.ready_event.wait()
+
+    @ray.remote
+    def wait_and_go(signal):
+        ray.get(signal.wait.remote())
+
+        print("go!")
+
+    ray.init()
+    signal = SignalActor.remote()
+    tasks = [wait_and_go.remote(signal) for _ in range(4)]
+    print("ready...")
+    # Tasks will all be waiting for the singals.
+    print("set..")
+    ray.get(signal.send.remote())
+
+    # Tasks are unblocked.
+    ray.get(tasks)
+
+    ##  Output is:
+    # ready...
+    # get set..
+
+    # (pid=77366) go!
+    # (pid=77372) go!
+    # (pid=77367) go!
+    # (pid=77358) go!
+
+
+Message passing using Ray Queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
+actors, you can use ``ray.experimental.queue.Queue`` (:ref:`docs <ray-queue-ref>`).
+
+.. code-block:: python
+
+    import ray
+    from ray.experimental.queue import Queue
+
+    ray.init()
+    queue = Queue(maxsize=100)
+
+    @ray.remote
+    def consumer():
+        next_item = queue.get(block=True)
+        print(f"got work {next_item}")
+
+    consumers = [consumer.remote() for _ in range(2)]
+
+    [queue.put(i) for i in range(10)]
+
+Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+
+
 Dynamic Remote Parameters
 -------------------------
 
@@ -260,78 +378,4 @@ To get information about the current available resource capacity of your cluster
 .. autofunction:: ray.available_resources
     :noindex:
 
-Synchronization
----------------
-
-Often times you need to have tasks or actors contentding over the same resource, or communicate some signals to each other.
-You can use several ways to perform synchronization.
-
-Inter-process synchronization on the same node using FileLock
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you have several tasks or actors writing to the same file on the node, you can use FileLock to synchronize their writes.
-This often occurs for data loading and preprocessing.
-
-.. code-block:: python
-   :emphasize-lines: 4
-
-    from filelock import FileLock
-
-    @ray.remote
-    def write_to_file(text):
-        with FileLock("my_data.txt.lock"):
-            with open("my_data.txt","a") as f:
-                f.write(text)
-
-    ray.init()
-    ray.get([write_to_file.remote("hi there!")])
-
-Multi-node synchronization using Ray SignalActor
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When you have multiple tasks that need to wait on some condition, you can use a SignalActor to coordinate.
-
-.. code-block:: python
-
-    from ray.test_utils import SignalActor
-
-    @ray.remote
-    def wait_and_go(signal):
-        ray.get(signal.wait.remote())
-
-        print("go!")
-
-    ray.init()
-    signal = SignalActor.remote()
-    tasks = [wait_and_go.remote() for _ in range(4)]
-
-    # Tasks will all be waiting for the singals.
-    ray.get(signal.send.remote())
-    # Tasks are unblocked.
-    ray.get(tasks)
-
-
-Message passing using Ray Queue
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
-actors, you can use ``ray.experimental.queue.Queue``.
-
-.. code-block:: python
-
-    from ray.experimental.queue import Queue
-
-    ray.init()
-    queue = Queue(maxsize=100)
-
-    @ray.remote
-    def consumer():
-        next_item = queue.get(block=True)
-        print(f"got work {next_item}")
-
-    consumers = [consumer.remote() for _ in range(2)]
-
-    [queue.put(i) for i in range(10)]
-
-Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
 
