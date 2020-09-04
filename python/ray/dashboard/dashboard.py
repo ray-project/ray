@@ -36,7 +36,7 @@ from ray.dashboard.memory import construct_memory_table, MemoryTable, \
 from ray.dashboard.metrics_exporter.client import Exporter
 from ray.dashboard.metrics_exporter.client import MetricsExportClient
 from ray.dashboard.node_stats import NodeStats
-from ray.dashboard.util import to_unix_time, measures_to_dict, format_resource
+from ray.dashboard.util import to_unix_time
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 try:
@@ -97,12 +97,14 @@ class DashboardController(BaseDashboardController):
         plasma_stats = {}
         # HTTP call to metrics port for each node in nodes/
         used_views = ("object_store_num_local_objects",
-                         "object_store_available_memory",
-                         "object_store_used_memory")
+                      "object_store_available_memory",
+                      "object_store_used_memory")
         for address, data in D.items():
             # process view data
-            measures_dicts = {}
-            views = [view for view in data.get("viewData", []) if view.get("viewName") in used_views]
+            views = [
+                view for view in data.get("viewData", [])
+                if view.get("viewName") in used_views
+            ]
             node_plasma_stats = {}
             for view in views:
                 view_name = view["viewName"]
@@ -111,10 +113,10 @@ class DashboardController(BaseDashboardController):
                     view_data = view_measures[0].get("doubleValue", .0)
                 else:
                     view_data = .0
-                node_plasma_stats[view_name] = view_data 
+                node_plasma_stats[view_name] = view_data
             plasma_stats[address] = node_plasma_stats
 
-        return {"nodes": D, "actors": actors, "plasmaStats": plasma_stats }
+        return {"nodes": D, "actors": actors, "plasmaStats": plasma_stats}
 
     def get_ray_config(self):
         try:
