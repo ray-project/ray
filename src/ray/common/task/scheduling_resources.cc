@@ -699,7 +699,6 @@ void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
 void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
                                           const int bundle_index,
                                           const std::string &original_resource_name) {
-  // SANG-TODO This method should know if resources are committed or prepared.
   auto index_resource_name =
       FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
   auto iter_index = available_resources_.find(index_resource_name);

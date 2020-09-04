@@ -164,7 +164,8 @@ class ResourceSet {
   /// \brief Return back all the bundle resource. Changing the resource name and adding
   /// any missing resource labels to this set.
   ///
-  /// This is the inverse of AddBundleResources().
+  /// Note that this method assumes bundle resources are COMMITTED.
+  /// Please make sure to commit bundle resources before calling this method.
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The bundle index to return resources for.
@@ -442,6 +443,7 @@ class ResourceIdSet {
   /// \brief remove a Bundle resource in the ResourceIdSet.
   ///
   /// The bundle resources will be returned to their original resource names.
+  /// Note that the bundle resources should've been COMMITTED before this method is called.
   ///
   /// \param group_id: The placement group id.
   /// \param bundle_index: The index of the bundle.
