@@ -71,7 +71,7 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -130,7 +130,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -179,7 +179,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -236,7 +236,7 @@ def test_basic_reconstruction_actor_task(ray_start_cluster,
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -309,7 +309,7 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -388,7 +388,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     cluster.add_node(
         num_cpus=0,
         _system_config=config,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
@@ -449,7 +449,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
         num_cpus=0,
         _system_config=config,
         object_store_memory=10**8,
-        _enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
@@ -494,7 +494,7 @@ def test_reconstruction_stress(ray_start_cluster):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(
-        num_cpus=0, _system_config=config, _enable_object_reconstruction=True)
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
     ray.init(address=cluster.address)
     # Node to place the initial object.
     node_to_kill = cluster.add_node(
