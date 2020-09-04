@@ -180,7 +180,7 @@ def test_worker_capping_run_many_small_tasks(shutdown_only):
     # number of workers <= num_cpus.
     wait_for_condition(lambda: get_num_workers() == 2)
 
-    time.sleep(2)
+    time.sleep(1)
     # The two remaining workers stay alive forever.
     assert get_num_workers() == 2
 
@@ -206,7 +206,7 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
     # number of workers <= num_cpus.
     wait_for_condition(lambda: get_num_workers() == 2)
 
-    time.sleep(2)
+    time.sleep(1)
     # The two remaining workers stay alive forever.
     assert get_num_workers() == 2
 

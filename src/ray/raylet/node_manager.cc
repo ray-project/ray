@@ -1364,7 +1364,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   }
   // If the worker remains idle after scheduling, we may kill it to ensure the registered
   // workers are in a reasonable size.
-  worker_pool_.TryToKillWorker(worker);
+  worker_pool_.TryKillingIdleWorker(worker);
 }
 
 void NodeManager::ProcessDisconnectClientMessage(

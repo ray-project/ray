@@ -184,7 +184,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Try to kill the worker if it's idle.
   ///
   /// \param worker The worker to be killed.
-  void TryToKillWorker(std::shared_ptr<WorkerInterface> worker);
+  void TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -298,8 +298,10 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have been killed but haven't go through `DisconnectWorker` yet.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> killed_workers;
+    /// All workers that have been killed but been unregistered yet.
+    /// This field is used to calculate the size of running workers when trying to kill an
+    /// idle worker.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_unregistration_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
