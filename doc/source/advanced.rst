@@ -108,12 +108,12 @@ Accelerator Types
 Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator.
 
 .. code-block:: python
+
     from ray.accelerators import NVIDIA_TESLA_V100
-    ray.init()
-    @ray.remote(num_gpus=1, constraints=NVIDIA_TESLA_V100)
+    
+    @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
     def train(data):
         return "This function was run on a node with a Tesla V100 GPU"
-    print(ray.get(train.remote(None)))
 
 See `ray.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
