@@ -11,7 +11,7 @@ def gen_streaming_java_deps():
             "com.github.davidmoten:flatbuffers-java:1.9.0.1",
             "com.google.protobuf:protobuf-java:3.8.0",
             "org.apache.commons:commons-lang3:3.4",
-            "de.ruedigermoeller:fst:2.57.2-SNAPSHOT",
+            "de.ruedigermoeller:fst:2.57",
             "org.aeonbits.owner:owner:1.0.10",
             "org.slf4j:slf4j-api:1.7.12",
             "org.slf4j:slf4j-log4j12:1.7.25",
