@@ -4,7 +4,6 @@ import ray
 from ray import serve
 
 ray.init(num_cpus=10)
-serve.init()
 client = serve.start()
 
 # Our pipeline will be structured as follows:
@@ -28,7 +27,8 @@ def model_two(_unused_flask_request, data=None):
 
 class ComposedModel:
     def __init__(self):
-        self.model_one = serve.get_handle("model_one")
+        client = serve.connect()
+        self.model_one = client.get_handle("model_one")
         self.model_two = serve.get_handle("model_two")
 
     # This method can be called concurrently!

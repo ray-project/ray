@@ -56,7 +56,7 @@ print("Result returned:", results)
 
 
 # __doc_define_servable_v1_begin__
-@client.accept_batch
+@serve.accept_batch
 def batch_adder_v1(flask_requests: List, *, numbers: List = []):
     # Depending on request context, we process the input data differently.
     print("Current context is", "web" if client.context.web else "python")
