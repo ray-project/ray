@@ -73,7 +73,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
 
         all_ = np.concatenate([objects, colors, states], -1)
         all_flat = np.reshape(all_, (-1, ))
-        direction = one_hot(np.array(self.agent_dir), depth=4).astype(np.float32)
+        direction = one_hot(np.array(self.agent_dir), depth=4).astype(
+            np.float32)
         single_frame = np.concatenate([all_flat, direction])
         self.frame_buffer.append(single_frame)
         return np.concatenate(self.frame_buffer)
@@ -85,7 +86,10 @@ def env_maker(config):
     env = gym.make(name)
     # Only use image portion of observation (discard goal and direction).
     env = gym_minigrid.wrappers.ImgObsWrapper(env)
-    env = OneHotWrapper(env, config.vector_index if hasattr(config, "vector_index") else 0, framestack=framestack)
+    env = OneHotWrapper(
+        env,
+        config.vector_index if hasattr(config, "vector_index") else 0,
+        framestack=framestack)
     return env
 
 
@@ -130,30 +134,37 @@ class TestCuriosity(unittest.TestCase):
         }
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 40
-        config["num_workers"] = 0  # local only
-        config["train_batch_size"] = 512
+        config["horizon"] = 35
+        config["train_batch_size"] = 1024
         config["num_sgd_iter"] = 10
+        config["num_workers"] = 0  # local only
 
         num_iterations = 32
         for _ in framework_iterator(config, frameworks="torch"):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",
+                "lr": 0.0003,
                 "feature_dim": 128,
-                "eta": 0.05,
+#                "feature_net_config": {
+#                    "fcnet_hiddens": [],
+#                    "fcnet_activation": "relu",
+#                },
                 "sub_exploration": {
                     "type": "StochasticSampling",
                 }
             }
             trainer = ppo.PPOTrainer(config=config)
-            rewards_w = 0.0
+            learnt = False
             for _ in range(num_iterations):
                 result = trainer.train()
-                rewards_w = result["episode_reward_mean"]
                 print(result)
+                if result["episode_reward_mean"] >= 0.001:
+                    print("Reached goal!")
+                    learnt = True
+                    break
             trainer.stop()
-            self.assertGreater(rewards_w, 0.1)
+            self.assertTrue(learnt)
 
             # W/o Curiosity. Expect to learn nothing.
             config["exploration_config"] = {
@@ -165,7 +176,6 @@ class TestCuriosity(unittest.TestCase):
                 result = trainer.train()
                 rewards_wo += result["episode_reward_mean"]
                 print(result)
-            rewards_wo /= num_iterations
             trainer.stop()
 
             self.assertTrue(rewards_wo == 0.0)
@@ -184,9 +194,6 @@ class TestCuriosity(unittest.TestCase):
         config["num_envs_per_worker"] = 4
         config["model"]["fcnet_hiddens"] = [256, 256]
         config["model"]["fcnet_activation"] = "relu"
-        # config["model"]["use_lstm"] = True
-        # config["model"]["lstm_cell_size"] = 256
-        # config["model"]["lstm_use_prev_action_reward"] = True
         config["num_sgd_iter"] = 8
         config["num_workers"] = 0
 
@@ -229,7 +236,7 @@ class TestCuriosity(unittest.TestCase):
                 "PPO", config=config, stop=stop, verbose=1)
             check_learning_achieved(results, min_reward)
             iters = results.trials[0].last_result["training_iteration"]
-            print("Learnt in {} iterations.".format(iters))
+            print("Reached in {} iterations.".format(iters))
 
             # config_wo = config.copy()
             # config_wo["exploration_config"] = {"type": "StochasticSampling"}
