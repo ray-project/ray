@@ -461,6 +461,15 @@ py_test(
 )
 
 py_test(
+    name = "mxnet_example",
+    size = "small",
+    srcs = ["examples/mxnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "nevergrad_example",
     size = "medium",
     srcs = ["examples/nevergrad_example.py"],
