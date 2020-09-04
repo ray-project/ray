@@ -9,7 +9,7 @@ from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters)
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
 from ray.actor import ActorHandle
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -142,16 +142,18 @@ class Client:
         return ray.get(self._controller.get_all_endpoints.remote())
 
     @_ensure_connected
-    def update_backend_config(self, backend_tag: str,
-                              config_options: Dict[str, Any]) -> None:
+    def update_backend_config(
+            self, backend_tag: str,
+            config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
         """Update a backend configuration for a backend tag.
 
         Keys not specified in the passed will be left unchanged.
 
         Args:
             backend_tag(str): A registered backend.
-            config_options(dict): Backend config options to update.
-                Supported options:
+            config_options(dict, serve.BackendConfig): Backend config options
+                to update. Either a BackendConfig object or a dict mapping
+                strings to values for the following supported options:
                 - "num_replicas": number of worker processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
@@ -163,14 +165,16 @@ class Client:
                 that will be sent to a replica of this backend
                 without receiving a response.
         """
-        if not isinstance(config_options, dict):
-            raise ValueError("config_options must be a dictionary.")
+
+        if not isinstance(config_options, (BackendConfig, dict)):
+            raise TypeError(
+                "config_options must be a BackendConfig or dictionary.")
         ray.get(
             self._controller.update_backend_config.remote(
                 backend_tag, config_options))
 
     @_ensure_connected
-    def get_backend_config(self, backend_tag: str):
+    def get_backend_config(self, backend_tag: str) -> BackendConfig:
         """Get the backend configuration for a backend tag.
 
         Args:
@@ -179,12 +183,14 @@ class Client:
         return ray.get(self._controller.get_backend_config.remote(backend_tag))
 
     @_ensure_connected
-    def create_backend(self,
-                       backend_tag: str,
-                       func_or_class: Union[Callable, Type[Callable]],
-                       *actor_init_args: Any,
-                       ray_actor_options: Optional[Dict] = None,
-                       config: Optional[Dict[str, Any]] = None) -> None:
+    def create_backend(
+            self,
+            backend_tag: str,
+            func_or_class: Union[Callable, Type[Callable]],
+            *actor_init_args: Any,
+            ray_actor_options: Optional[Dict] = None,
+            config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
+    ) -> None:
         """Create a backend with the provided tag.
 
         The backend will serve requests with func_or_class.
@@ -197,8 +203,9 @@ class Client:
                 initialization method.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
-            config (optional): configuration options for this backend.
-                Supported options:
+            config (dict, serve.BackendConfig, optional): configuration options
+                for this backend. Either a BackendConfig, or a dictionary
+                mapping strings to values for the following supported options:
                 - "num_replicas": number of worker processes to start up that
                 will handle requests to this backend.
                 - "max_batch_size": the maximum number of requests that will
@@ -217,16 +224,23 @@ class Client:
 
         if config is None:
             config = {}
-        if not isinstance(config, dict):
-            raise TypeError("config must be a dictionary.")
-
         replica_config = ReplicaConfig(
             func_or_class,
             *actor_init_args,
             ray_actor_options=ray_actor_options)
-        backend_config = BackendConfig(config, replica_config.accepts_batches,
-                                       replica_config.is_blocking)
-
+        metadata = BackendMetadata(
+            accepts_batches=replica_config.accepts_batches,
+            is_blocking=replica_config.is_blocking)
+        if isinstance(config, dict):
+            backend_config = BackendConfig.parse_obj({
+                **config, "internal_metadata": metadata
+            })
+        elif isinstance(config, BackendConfig):
+            backend_config = config.copy(
+                update={"internal_metadata": metadata})
+        else:
+            raise TypeError("config must be a BackendConfig or a dictionary.")
+        backend_config._validate_complete()
         ray.get(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))

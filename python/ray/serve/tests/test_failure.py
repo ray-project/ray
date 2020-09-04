@@ -182,7 +182,8 @@ def test_worker_replica_failure(serve_instance):
     temp_path = os.path.join(tempfile.gettempdir(),
                              serve.utils.get_random_letters())
     client.create_backend("replica_failure", Worker, temp_path)
-    client.update_backend_config("replica_failure", {"num_replicas": 2})
+    client.update_backend_config(
+        "replica_failure", BackendConfig(num_replicas=2))
     client.create_endpoint(
         "replica_failure", backend="replica_failure", route="/replica_failure")
 
@@ -218,7 +219,7 @@ def test_create_backend_idempotent(serve_instance):
     controller = client._controller
 
     replica_config = ReplicaConfig(f)
-    backend_config = BackendConfig({"num_replicas": 1})
+    backend_config = BackendConfig(num_replicas=1)
 
     for i in range(10):
         ray.get(
