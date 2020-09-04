@@ -253,21 +253,25 @@ Automatic termination
 Self-termination
 ^^^^^^^^^^^^^^^^
 
+If necessary, you can manually terminate an actor from within one of the actor methods.
+This will kill the actor process and release resources associated/assigned to the actor.
+
 .. tabs::
   .. group-tab:: Python
 
-    If necessary, you can manually terminate an actor by calling
-    ``ray.actor.exit_actor()`` from within one of the actor methods. This will kill
-    the actor process and release resources associated/assigned to the actor. This
-    approach should generally not be necessary as actors are automatically garbage
+    This approach should generally not be necessary as actors are automatically garbage
     collected. The ``ObjectRef`` resulting from the task can be waited on to wait
     for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
-    Note that this method of termination will wait until any previously submitted
-    tasks finish executing and then exit the process gracefully with sys.exit.
 
   .. group-tab:: Java
 
-    Terminating an actor from within one of the actor methods hasn't been implemented in Java yet.
+    Garbage collection for actors haven't been implemented yet, so this is currently the
+    only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
+    can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
+    throw a ``RayActorException``).
+
+Note that this method of termination will wait until any previously submitted
+tasks finish executing and then exit the process gracefully with sys.exit.
 
 Forceful termination
 ^^^^^^^^^^^^^^^^^^^^
