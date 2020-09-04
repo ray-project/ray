@@ -63,9 +63,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
-    # When using modelv1 models with a modelv2 algorithm, you may have to
-    # define the state shape here (e.g., [256, 256]).
-    #"state_shape": None,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs

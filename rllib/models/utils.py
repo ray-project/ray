@@ -1,6 +1,6 @@
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
-    
+
     Args:
         shape (Tuple[int]): The input (image) shape, e.g. (84,84,3).
 
