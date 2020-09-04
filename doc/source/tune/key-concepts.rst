@@ -104,16 +104,16 @@ See more documentation: :ref:`tune-run-ref`.
 Search spaces
 -------------
 
-To optimize your hyperparameters, you will have to define a *search space*.
+To optimize your hyperparameters, you have to define a *search space*.
 A search space defines valid values for your hyperparameters and can specify
-how these values are sample (e.g. from a uniform distribution, or a normal
+how these values are sampled (e.g. from a uniform distribution or a normal
 distribution).
 
 Tune offers various functions to define search spaces and sampling methods.
 :ref:`You can find the documentation of these search space definitions here <tune-sample-docs>`.
 
-Usually you pass your search space definition in the `config` parameters of
-`tune.run()`. Tune automatically converts these definitions to the search
+Usually you pass your search space definition in the `config` parameter of
+``tune.run()``. Tune automatically converts these definitions to the search
 spaces the search algorithms expect.
 
 .. note::
@@ -124,7 +124,7 @@ spaces the search algorithms expect.
     search spaces at the moment.
 
 Here's an example covering all search space functions. Again,
-:ref:`here is the full exaplantion of all these functions <tune-sample-docs>`.
+:ref:`here is the full explanation of all these functions <tune-sample-docs>`.
 
 
     .. code-block :: python

@@ -169,7 +169,7 @@ For a high-level overview, see this example:
             # Sample a float uniformly between -5.0 and -1.0
             "uniform": tune.uniform(-5, -1),
 
-            # Sample a float uniformly between 3.2 and 5.4, and
+            # Sample a float uniformly between 3.2 and 5.4,
             # rounding to increments of 0.2
             "quniform": tune.quniform(3.2, 5.4, 0.2),
 
@@ -196,11 +196,11 @@ For a high-level overview, see this example:
             # rounding to increments of 3 (includes 12)
             "qrandint": tune.qrandint(-21, 12, 3),
 
-            # Sample a category uniformly from the choices given.
+            # Sample an option uniformly from the specified choices
             "choice": tune.choice(["a", "b", "c"]),
 
-            # Sample from a random functions, in this case one that
-            # depends on another value from the search space.
+            # Sample from a random function, in this case one that
+            # depends on another value from the search space
             "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
 
             # Do a grid search over these values. Every value will be sampled
