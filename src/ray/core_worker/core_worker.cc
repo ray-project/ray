@@ -32,15 +32,16 @@ const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
-    const ray::rpc::Address &address, const ray::RayFunction &function,
+    const std::string name, const TaskID &current_task_id, const int task_index,
+    const TaskID &caller_id, const ray::rpc::Address &address,
+    const ray::RayFunction &function,
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
-      task_id, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, placement_group_id);
   // Set task arguments.
@@ -1268,8 +1269,11 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
+  auto task_name = task_options.name.empty()
+                       ? function.GetFunctionDescriptor()->DefaultTaskName()
+                       : task_options.name;
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
@@ -1310,16 +1314,21 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   auto new_resource = AddPlacementGroupConstraint(
       actor_creation_options.resources, actor_creation_options.placement_options.first,
       actor_creation_options.placement_options.second);
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
+  const auto actor_name = actor_creation_options.name;
+  const auto task_name =
+      actor_name.empty()
+          ? function.GetFunctionDescriptor()->DefaultTaskName()
+          : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options.first);
-  builder.SetActorCreationTaskSpec(
-      actor_id, actor_creation_options.max_restarts,
-      actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_creation_options.name, actor_creation_options.is_asyncio, extension_data);
+  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.max_concurrency,
+                                   actor_creation_options.is_detached, actor_name,
+                                   actor_creation_options.is_asyncio, extension_data);
 
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
@@ -1340,7 +1349,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     if (task_spec.IsDetachedActor()) {
       // Since local mode doesn't pass GCS actor management code path,
       // it just register actor names in memory.
-      local_mode_named_actor_registry_.emplace(actor_creation_options.name, actor_id);
+      local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
   } else {
@@ -1412,7 +1421,10 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
   const std::unordered_map<std::string, double> required_resources;
-  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
+  const auto task_name = task_options.name.empty()
+                             ? function.GetFunctionDescriptor()->DefaultTaskName()
+                             : task_options.name;
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, return_ids, PlacementGroupID::Nil());
@@ -1687,8 +1699,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   status = options_.task_execution_callback(
-      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
-      arg_reference_ids, return_ids, return_objects);
+      task_type, task_spec.GetName(), func,
+      task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
+      return_ids, return_objects);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
@@ -2143,6 +2156,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_current_task_name(current_task_.GetName());
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());

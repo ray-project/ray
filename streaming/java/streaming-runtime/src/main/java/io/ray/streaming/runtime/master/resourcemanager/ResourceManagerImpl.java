@@ -77,7 +77,7 @@ public class ResourceManagerImpl implements ResourceManager {
     ResourceAssignStrategyType resourceAssignStrategyType =
         ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
     this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
-      resourceAssignStrategyType);
+        resourceAssignStrategyType);
     LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
 
     //Init resource
@@ -89,7 +89,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   @Override
-  public ResourceAssignmentView assignResource(List<Container> containers,
+  public ResourceAssignmentView assignResource(
+      List<Container> containers,
       ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
@@ -106,8 +107,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   /**
-   * Check the status of ray cluster node and update the internal resource information of
-   * streaming system.
+   * Check the status of ray cluster node and update the internal resource information of streaming
+   * system.
    */
   private void checkAndUpdateResource() {
     //Get add&del nodes(node -> container)
@@ -117,7 +118,8 @@ public class ResourceManagerImpl implements ResourceManager {
         .filter(this::isAddedNode).collect(Collectors.toList());
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
-        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
+        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
+        .collect(Collectors.toList());
     LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
@@ -156,7 +158,6 @@ public class ResourceManagerImpl implements ResourceManager {
     // failover case: container has already allocated actors
     double availableCapacity = actorNumPerContainer - container.getAllocatedActorNum();
 
-
     //Create ray resource.
     Ray.setResource(container.getNodeId(), container.getName(), availableCapacity);
     //Mark container is already registered.
@@ -164,7 +165,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
     // update container's available dynamic resources
     container.getAvailableResources()
-      .put(container.getName(), availableCapacity);
+        .put(container.getName(), availableCapacity);
 
     // update register container list
     resources.registerContainer(container);

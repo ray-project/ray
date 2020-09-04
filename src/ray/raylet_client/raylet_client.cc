@@ -378,12 +378,20 @@ void raylet::RayletClient::CancelWorkerLease(
   grpc_client_->CancelWorkerLease(request, callback);
 }
 
-void raylet::RayletClient::RequestResourceReserve(
+void raylet::RayletClient::PrepareBundleResources(
     const BundleSpecification &bundle_spec,
-    const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback) {
-  rpc::RequestResourceReserveRequest request;
+    const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
+  rpc::PrepareBundleResourcesRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  grpc_client_->RequestResourceReserve(request, callback);
+  grpc_client_->PrepareBundleResources(request, callback);
+}
+
+void raylet::RayletClient::CommitBundleResources(
+    const BundleSpecification &bundle_spec,
+    const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) {
+  rpc::CommitBundleResourcesRequest request;
+  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  grpc_client_->CommitBundleResources(request, callback);
 }
 
 void raylet::RayletClient::CancelResourceReserve(

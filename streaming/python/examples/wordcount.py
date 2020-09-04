@@ -65,7 +65,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     titles_file = str(args.titles_file)
 
-    ray.init(load_code_from_local=True, include_java=True)
+    ray.init(_load_code_from_local=True, _include_java=True)
 
     ctx = StreamingContext.Builder() \
         .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \

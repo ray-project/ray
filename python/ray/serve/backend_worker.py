@@ -4,7 +4,6 @@ import inspect
 from collections.abc import Iterable
 from collections import defaultdict
 from itertools import groupby
-from operator import attrgetter
 from typing import Union, List, Any, Callable, Type
 import time
 
@@ -20,6 +19,7 @@ from ray.serve.exceptions import RayServeException
 from ray.experimental import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
+from ray.serve.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -163,6 +163,8 @@ class RayServeWorker:
         self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
                                       self.config.batch_wait_timeout)
 
+        self.num_ongoing_requests = 0
+
         self.request_counter = metrics.Count(
             "backend_request_counter", ("Number of queries that have been "
                                         "processed in this replica"),
@@ -177,6 +179,25 @@ class RayServeWorker:
              "has been restarted due to failure."), "restarts",
             ["backend", "replica_tag"])
 
+        self.queuing_latency_tracker = metrics.Histogram(
+            "backend_queuing_latency_ms",
+            ("The latency for queries waiting in the replica's queue "
+             "waiting to be processed or batched."), "ms",
+            DEFAULT_LATENCY_BUCKET_MS, ["backend", "replica_tag"])
+        self.processing_latency_tracker = metrics.Histogram(
+            "backend_processing_latency_ms",
+            "The latency for queries to be processed", "ms",
+            DEFAULT_LATENCY_BUCKET_MS,
+            ["backend", "replica_tag", "batch_size"])
+        self.num_queued_items = metrics.Gauge(
+            "replica_queued_queries",
+            "Current number of queries queued in the the backend replicas",
+            "requests", ["backend", "replica_tag"])
+        self.num_processing_items = metrics.Gauge(
+            "replica_processing_queries",
+            "Current number of queries being processed", "requests",
+            ["backend", "replica_tag"])
+
         self.restart_counter.record(1, {
             "backend": self.backend_tag,
             "replica_tag": self.replica_tag
@@ -185,7 +206,7 @@ class RayServeWorker:
         asyncio.get_event_loop().create_task(self.main_loop())
 
     def get_runner_method(self, request_item: Query) -> Callable:
-        method_name = request_item.call_method
+        method_name = request_item.metadata.call_method
         if not hasattr(self.callable, method_name):
             raise RayServeException("Backend doesn't have method {} "
                                     "which is specified in the request. "
@@ -222,6 +243,8 @@ class RayServeWorker:
         method_to_call = self.get_runner_method(request_item)
         args = args if self.has_positional_args(method_to_call) else []
         method_to_call = ensure_async(method_to_call)
+
+        start = time.time()
         try:
             result = await method_to_call(*args, **kwargs)
             self.request_counter.record(1, {"backend": self.backend_tag})
@@ -230,6 +253,12 @@ class RayServeWorker:
             self.error_counter.record(1, {"backend": self.backend_tag})
         finally:
             self._reset_context()
+        self.processing_latency_tracker.record(
+            (time.time() - start) * 1000, {
+                "backend": self.backend_tag,
+                "replica": self.replica_tag,
+                "batch_size": "1"
+            })
 
         return result
 
@@ -262,6 +291,7 @@ class RayServeWorker:
                 if self.has_positional_args(call_method):
                     arg_list.append(FakeFlaskRequest())
 
+        timing_start = time.time()
         try:
             # Check mixing of query context (unified context needed).
             if len(context_flags) != 1:
@@ -303,12 +333,20 @@ class RayServeWorker:
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
             self._reset_context()
-            return result_list
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self.error_counter.record(1, {"backend": self.backend_tag})
             self._reset_context()
-            return [wrapped_exception for _ in range(batch_size)]
+            result_list = [wrapped_exception for _ in range(batch_size)]
+
+        self.processing_latency_tracker.record(
+            (time.time() - timing_start) * 1000, {
+                "backend": self.backend_tag,
+                "replica_tag": self.replica_tag,
+                "batch_size": str(batch_size)
+            })
+
+        return result_list
 
     async def main_loop(self) -> None:
         while True:
@@ -317,15 +355,34 @@ class RayServeWorker:
             # updated until after the current iteration.
             batch = await self.batch_queue.wait_for_batch()
 
+            # Record metrics
+            self.num_queued_items.record(self.batch_queue.qsize(), {
+                "backend": self.backend_tag,
+                "replica_tag": self.replica_tag
+            })
+            self.num_processing_items.record(
+                self.num_ongoing_requests - self.batch_queue.qsize(), {
+                    "backend": self.backend_tag,
+                    "replica_tag": self.replica_tag
+                })
+            for query in batch:
+                queuing_time = (time.time() - query.tick_enter_replica) * 1000
+                self.queuing_latency_tracker.record(queuing_time, {
+                    "backend": self.backend_tag,
+                    "replica_tag": self.replica_tag
+                })
+
             all_evaluated_futures = []
 
-            if not self.config.accepts_batches:
+            if not self.config.internal_metadata.accepts_batches:
                 query = batch[0]
                 evaluated = asyncio.ensure_future(self.invoke_single(query))
                 all_evaluated_futures = [evaluated]
                 chain_future(evaluated, query.async_future)
             else:
-                get_call_method = attrgetter("call_method")
+                get_call_method = (
+                    lambda query: query.metadata.call_method  # noqa: E731
+                )
                 sorted_batch = sorted(batch, key=get_call_method)
                 for _, group in groupby(sorted_batch, key=get_call_method):
                     group = list(group)
@@ -335,7 +392,7 @@ class RayServeWorker:
                     chain_future(
                         unpack_future(evaluated, len(group)), result_futures)
 
-            if self.config.is_blocking:
+            if self.config.internal_metadata.is_blocking:
                 # We use asyncio.wait here so if the result is exception,
                 # it will not be raised.
                 await asyncio.wait(all_evaluated_futures)
@@ -349,8 +406,15 @@ class RayServeWorker:
                              request: Union[Query, bytes]) -> asyncio.Future:
         if isinstance(request, bytes):
             request = Query.ray_deserialize(request)
+
+        request.tick_enter_replica = time.time()
         logger.debug("Worker {} got request {}".format(self.replica_tag,
                                                        request))
         request.async_future = asyncio.get_event_loop().create_future()
+        self.num_ongoing_requests += 1
+
         self.batch_queue.put(request)
-        return await request.async_future
+        result = await request.async_future
+
+        self.num_ongoing_requests -= 1
+        return result
