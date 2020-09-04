@@ -57,7 +57,7 @@ reports to use ``max_depth=6`` for the maximum decision tree depth. Here, anythi
 between 2 and 10 might make sense (though that naturally depends on your problem).
 
 For **learning rates**, we suggest using a **loguniform distribution** between
-**1e-1** and **1e-5**: ``tune.loguniform(1e-1, 1e05)``.
+**1e-1** and **1e-5**: ``tune.loguniform(1e-1, 1e-5)``.
 
 For **batch sizes**, we suggest trying **powers of 2**, for instance, 2, 4, 8,
 16, 32, 64, 128, 256, etc. The magnitude depends on your problem. For easy

@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 from tensorflow.keras.datasets import mnist
 
-from ray.tune.integration.keras import TuneReporterCallback
+from ray.tune.integration.keras import TuneReportCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -39,7 +39,9 @@ def train_mnist(config):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReporterCallback()])
+        callbacks=[TuneReportCallback({
+            "mean_accuracy": "accuracy"
+        })])
 
 
 if __name__ == "__main__":

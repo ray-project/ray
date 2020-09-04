@@ -9,7 +9,7 @@ import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
-from ray.serve.config import BackendConfig
+from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
 
 pytestmark = pytest.mark.asyncio
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.asyncio
 def setup_worker(name,
                  func_or_class,
                  init_args=None,
-                 backend_config=BackendConfig({})):
+                 backend_config=BackendConfig()):
     if init_args is None:
         init_args = ()
 
@@ -134,13 +134,9 @@ async def test_task_runner_custom_method_batch(serve_instance, router):
             return ["b-{}".format(i) for i in range(len(requests))]
 
     backend_config = BackendConfig(
-        {
-            "max_batch_size": 4,
-            # We always want a full batch. If this time out, the test should
-            # fail. (timeout == fail, the timing doesn't introduce flakey test)
-            "batch_wait_timeout": 10
-        },
-        accepts_batches=True)
+        max_batch_size=4,
+        batch_wait_timeout=10,
+        internal_metadata=BackendMetadata(accepts_batches=True))
     _ = await add_servable_to_router(
         Batcher, router, backend_config=backend_config)
 
@@ -192,10 +188,9 @@ async def test_task_runner_perform_batch(serve_instance, router):
         return [batch_size] * batch_size
 
     config = BackendConfig(
-        {
-            "max_batch_size": 2,
-            "batch_wait_timeout": 5
-        }, accepts_batches=True)
+        max_batch_size=2,
+        batch_wait_timeout=10,
+        internal_metadata=BackendMetadata(accepts_batches=True))
 
     _ = await add_servable_to_router(batcher, router, backend_config=config)
 
@@ -226,7 +221,9 @@ async def test_task_runner_perform_async(serve_instance, router):
         await barrier.wait.remote()
         return "done!"
 
-    config = BackendConfig({"max_concurrent_queries": 10}, is_blocking=False)
+    config = BackendConfig(
+        max_concurrent_queries=10,
+        internal_metadata=BackendMetadata(is_blocking=False))
 
     _ = await add_servable_to_router(
         wait_and_go, router, backend_config=config)

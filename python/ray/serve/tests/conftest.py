@@ -13,7 +13,10 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 def _shared_serve_instance():
     # Uncomment the line below to turn on debug log for tests.
     # os.environ["SERVE_LOG_DEBUG"] = "1"
-    ray.init(num_cpus=36)
+    ray.init(
+        num_cpus=36,
+        _metrics_export_port=9999,
+        _system_config={"metrics_report_interval_ms": 1000})
     serve.init()
     yield
 

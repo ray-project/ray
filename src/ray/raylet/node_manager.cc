@@ -1795,12 +1795,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task);
 }
 
-void NodeManager::HandleRequestResourceReserve(
-    const rpc::RequestResourceReserveRequest &request,
-    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+void NodeManager::HandlePrepareBundleResources(
+    const rpc::PrepareBundleResourcesRequest &request,
+    rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(sang): Port this onto the new scheduler.
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
   if (resource_ids.AvailableResources().size() == 0) {
@@ -1813,6 +1814,13 @@ void NodeManager::HandleRequestResourceReserve(
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleCommitBundleResources(
+    const rpc::CommitBundleResourcesRequest &request,
+    rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // TODO(sang): Implement this in the next PR.
 }
 
 void NodeManager::HandleCancelResourceReserve(

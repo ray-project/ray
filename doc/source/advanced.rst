@@ -51,6 +51,26 @@ And vary the number of return values for tasks (and actor methods too):
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 
+And specify a name for tasks (and actor methods too) at task submission time:
+
+.. code-block:: python
+
+   import setproctitle
+
+   @ray.remote
+   def f(x):
+      assert setproctitle.getproctitle() == "ray::special_f"
+      return x + 1
+
+   obj = f.options(name="special_f").remote(3)
+   assert ray.get(obj) == 4
+
+This name will appear as the task name in the machine view of the dashboard, will appear
+as the worker process name when this task is executing (if a Python task), and will
+appear as the task name in the logs.
+
+.. image:: images/task_name_dashboard.png
+
 
 Dynamic Custom Resources
 ------------------------

@@ -21,9 +21,9 @@ import ray
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss as TFLoss
+    ppo_surrogate_loss as tf_loss
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy, \
-    KLCoeffMixin as TorchKLCoeffMixin, PPOLoss as TorchLoss
+    KLCoeffMixin as TorchKLCoeffMixin, ppo_surrogate_loss as torch_loss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -119,42 +119,22 @@ def centralized_critic_postprocessing(policy,
     return train_batch
 
 
-# Copied from PPO but optimizing the central value function
+# Copied from PPO but optimizing the central value function.
 def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
+    func = tf_loss if not policy.config["framework"] == "torch" else torch_loss
 
-    logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
-    policy.central_value_out = policy.model.central_value_function(
+    vf_saved = model.value_function
+    model.value_function = lambda: policy.model.central_value_function(
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])
 
-    func = TFLoss if not policy.config["framework"] == "torch" else TorchLoss
-    adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool) \
-        if policy.config["framework"] != "torch" else \
-        torch.ones_like(train_batch[Postprocessing.ADVANTAGES],
-                        dtype=torch.bool)
+    policy._central_value_out = model.value_function()
+    loss = func(policy, model, dist_class, train_batch)
 
-    policy.loss_obj = func(
-        dist_class,
-        model,
-        train_batch[Postprocessing.VALUE_TARGETS],
-        train_batch[Postprocessing.ADVANTAGES],
-        train_batch[SampleBatch.ACTIONS],
-        train_batch[SampleBatch.ACTION_DIST_INPUTS],
-        train_batch[SampleBatch.ACTION_LOGP],
-        train_batch[SampleBatch.VF_PREDS],
-        action_dist,
-        policy.central_value_out,
-        policy.kl_coeff,
-        adv,
-        entropy_coeff=policy.entropy_coeff,
-        clip_param=policy.config["clip_param"],
-        vf_clip_param=policy.config["vf_clip_param"],
-        vf_loss_coeff=policy.config["vf_loss_coeff"],
-        use_gae=policy.config["use_gae"])
+    model.value_function = vf_saved
 
-    return policy.loss_obj.loss
+    return loss
 
 
 def setup_mixins(policy, obs_space, action_space, config):
@@ -170,7 +150,7 @@ def central_vf_stats(policy, train_batch, grads):
     return {
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.central_value_out),
+            policy._central_value_out),
     }
 
 
@@ -197,8 +177,8 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
 
 
 def get_policy_class(config):
-    return CCPPOTorchPolicy if config["framework"] == "torch" \
-        else CCPPOTFPolicy
+    if config["framework"] == "torch":
+        return CCPPOTorchPolicy
 
 
 CCTrainer = PPOTrainer.with_updates(
