@@ -77,7 +77,7 @@ class Unity3DEnv(MultiAgentEnv):
 
         # Try connecting to the Unity3D game instance. If a port
         while True:
-            time.sleep(1)
+            time.sleep(2)
             port = self._BASE_PORT
             self._BASE_PORT += 1
             try:
