@@ -19,7 +19,6 @@ If you have several tasks or actors writing to the same file or downloading a fi
 This often occurs for data loading and preprocessing.
 
 .. code-block:: python
-   :emphasize-lines: 4
 
     import ray
     from filelock import FileLock
