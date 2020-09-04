@@ -1362,9 +1362,11 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-  // If the worker remains idle after scheduling, we may kill it to ensure the registered
-  // workers are in a reasonable size.
-  worker_pool_.TryKillingIdleWorker(worker);
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the worker remains idle after scheduling, we may kill it to ensure the
+    // registered workers are in a reasonable size.
+    worker_pool_.TryKillingIdleWorker(worker);
+  }
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
