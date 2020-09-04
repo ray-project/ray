@@ -40,7 +40,7 @@ For single query backend, the input type is a single Flask request or
     ):
         pass
 
-For batched backend, the inputs type is converted to list of their original
+For batched backends, the input types are converted to list of their original
 types:
 
 .. code-block:: python
@@ -67,7 +67,7 @@ configuration option limits the maximum possible batch size send to the backend.
     the next batch, Ray Serve will look at the pending queries and take
     ``max(number_of_pending_queries, max_batch_size)`` queries to form a batch.
     You can provide :mod:`batch_wait_timeout <ray.serve.BackendConfig>` to override
-    this behavior to enforce full batch under some timeout.
+    this behavior to wait for a full batch to arrive before executing (under a timeout).
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_deploy_begin__

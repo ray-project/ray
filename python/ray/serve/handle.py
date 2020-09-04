@@ -48,7 +48,12 @@ class RayServeHandle:
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchrounous request to the endpoint.
-
+        
+        Returns a Ray ObjectRef whose results can be waited for or retrieved
+        using ray.wait or ray.get, respectively.
+        
+        Returns:
+            ray.ObjectRef
         Input:
             request_data(dict, Any): If it's a dictionary, the data will be
               available in ``request.json()`` or ``request.form()``. Otherwise,
@@ -73,6 +78,14 @@ class RayServeHandle:
                 shard_key: Optional[str] = None,
                 http_method: Optional[str] = None,
                 http_headers: Optional[Dict[str, str]] = None):
+        """Set options for this handle.
+
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,

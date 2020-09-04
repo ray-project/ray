@@ -348,19 +348,19 @@ You can follow the same pattern for other Starlette middlewares.
 
 .. _serve-handle-explainer:
 
-How does ``ServeHandle`` and ``ServeRequest`` work?
+How do ``ServeHandle`` and ``ServeRequest`` work?
 ---------------------------------------------------
 
 Ray Serve enables you to query models both from HTTP and Python. This feature
 enables seamless :ref:`model composition<serve-model-composition>`. You can
 get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
 reach an endpoint through HTTP via a specific route. When you issue a request
-to an endpoint through ``ServeHandle``, the request go through the same code
-path as the HTTP request would go through: choosing backends through :ref:`traffic
-policies <serve-split-traffic>`, finding the next available replicas, and
-participate in micro-batching.
+to an endpoint through ``ServeHandle``, the request goes through the same code
+path as an HTTP request would: choosing backends through :ref:`traffic
+policies <serve-split-traffic>`, finding the next available replica, and
+batching requests together.
 
-When the request arrives in the model, you can access the data similar to the way
+When the request arrives in the model, you can access the data similarly to how
 you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
 
 .. list-table::
@@ -394,9 +394,9 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
 
 .. note::
 
-    You might noticed the last row of the table shows that ServeRequest supports
+    You might have noticed that the last row of the table shows that ServeRequest supports
     Python object pass through the handle. This is not possible in HTTP. If you
-    need to distinguish the origin of the request, you can do an ``isinstance``
+    need to distinguish if the origin of the request is from Python or HTTP, you can do an ``isinstance``
     check:
 
     .. code-block:: python
@@ -405,5 +405,5 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
 
         if isinstance(request, flask.Request):
             print("Request coming from web!")
-        else:
+        elif isinstance(request, ServeRequest):
             print("Request coming from Python!")

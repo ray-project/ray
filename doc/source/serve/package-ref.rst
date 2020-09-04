@@ -33,8 +33,8 @@ Advanced APIs
 .. autofunction:: ray.serve.get_handle
 .. autoclass:: ray.serve.handle.RayServeHandle
 
-When calling from Python, Servable will receives ``ServeRequest``
-instead of Flask requests.
+When calling from Python, the backend implementation will receive ``ServeRequest``
+objects instead of Flask requests.
 
 .. autoclass:: ray.serve.utils.ServeRequest
     :members:
