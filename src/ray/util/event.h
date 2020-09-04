@@ -52,7 +52,8 @@ class BaseEventReporter {
 class LogEventReporter : public BaseEventReporter {
  public:
   LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
-                   bool force_flush = true);
+                   bool force_flush = true, int rotate_max_file_size = 100,
+                   int rotate_max_file_num = 20);
 
   virtual ~LogEventReporter();
 
@@ -70,12 +71,13 @@ class LogEventReporter : public BaseEventReporter {
   virtual std::string GetReporterKey() override { return "glog.event.reporter"; }
 
  protected:
-  const int rotate_max_file_size_ = 100;  // MB
-  const int rotate_max_file_num_ = 20;
-
-  bool force_flush_;
-  std::string file_name_;
   std::string log_dir_;
+  bool force_flush_;
+  int rotate_max_file_size_;  // MB
+  int rotate_max_file_num_;
+
+  std::string file_name_;
+
   std::shared_ptr<spdlog::logger> log_sink_;
 };
 

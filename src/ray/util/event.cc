@@ -19,8 +19,12 @@ namespace ray {
 /// LogEventReporter
 ///
 LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
-                                   std::string &log_dir, bool force_flush)
-    : force_flush_(force_flush), log_dir_(log_dir) {
+                                   std::string &log_dir, bool force_flush,
+                                   int rotate_max_file_size, int rotate_max_file_num)
+    : log_dir_(log_dir),
+      force_flush_(force_flush),
+      rotate_max_file_size_(rotate_max_file_size),
+      rotate_max_file_num_(rotate_max_file_num) {
   RAY_CHECK(log_dir_ != "");
   if (log_dir_.back() != '/') {
     log_dir_ += '/';
@@ -69,20 +73,7 @@ std::string LogEventReporter::EventToString(const rpc::Event &event) {
   pt.put("source_type", Event_SourceType_Name(event.source_type()));
   pt.put("host_name", event.source_hostname());
   pt.put("pid", std::to_string(event.source_pid()));
-
-  std::stringstream message_buffer;
-  const std::string &message = event.message();
-  for (int i = 0, len = message.size(); i < len; ++i) {
-    if (message[i] == '\n' || message[i] == '\r') {
-      message_buffer << "\\n";
-    } else if (message[i] == '\"') {
-      message_buffer << "\'";
-    } else {
-      message_buffer << message[i];
-    }
-  }
-
-  pt.put("message", message_buffer.str());
+  pt.put("message", event.message());
 
   boost::property_tree::ptree pt_child;
   for (auto &ele : event.custom_fields()) {
@@ -101,7 +92,8 @@ void LogEventReporter::Report(const rpc::Event &event) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
   std::string result = EventToString(event);
-  result.pop_back();  // pop '\n'
+  // Pop the last character from the result string because it is breakline '\n'.
+  result.pop_back();
 
   log_sink_->info(result);
   if (force_flush_) {
