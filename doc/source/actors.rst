@@ -239,7 +239,7 @@ Actor Pool
 The ``ray.util`` module contains a utility class, ``ActorPool``.
 This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
-.. code-block::
+.. code-block:: python
 
   from ray.util import ActorPool
 

@@ -628,6 +628,10 @@ def init(
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
+
     if local_mode:
         driver_mode = LOCAL_MODE
     else:
@@ -1611,7 +1615,8 @@ def cancel(object_ref, *, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError or a
+    WorkerCrashedError if ``force=True``.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task

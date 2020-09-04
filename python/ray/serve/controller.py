@@ -1,8 +1,10 @@
 import asyncio
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 import os
 import random
 import time
+from typing import Union, Dict, Any, List, Tuple
+from pydantic import BaseModel
 
 import ray
 import ray.cloudpickle as pickle
@@ -16,7 +18,6 @@ from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.actor import ActorHandle
-from typing import Dict, List, Any, Tuple
 
 import numpy as np
 
@@ -62,8 +63,17 @@ class TrafficPolicy:
             self.shadow_dict[backend] = proportion
 
 
-BackendInfo = namedtuple("BackendInfo",
-                         ["worker_class", "backend_config", "replica_config"])
+class BackendInfo(BaseModel):
+    # TODO(architkulkarni): Add type hint for worker_class after upgrading
+    # cloudpickle and adding types to RayServeWrappedWorker
+    worker_class: Any
+    backend_config: BackendConfig
+    replica_config: ReplicaConfig
+
+    class Config:
+        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
+        # model
+        arbitrary_types_allowed = True
 
 
 @ray.remote
@@ -92,13 +102,17 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, instance_name: str, http_host: str,
-                       http_port: str, _http_middlewares: List[Any]) -> None:
-        # Unique name of the serve instance managed by this actor. Used to
-        # namespace child actors and checkpoints.
-        self.instance_name = instance_name
+    async def __init__(self,
+                       controller_name: str,
+                       http_host: str,
+                       http_port: str,
+                       http_middlewares: List[Any],
+                       detached: bool = False):
+        self.detached = detached
+        # Name of this controller actor.
+        self.controller_name = controller_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=instance_name)
+        self.kv_store = RayInternalKVStore(namespace=controller_name)
         # path -> (endpoint, methods).
         self.routes = dict()
         # backend -> BackendInfo.
@@ -135,7 +149,7 @@ class ServeController:
 
         self.http_host = http_host
         self.http_port = http_port
-        self._http_middlewares = _http_middlewares
+        self.http_middlewares = http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
@@ -170,7 +184,7 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -180,7 +194,7 @@ class ServeController:
                                 self.http_port))
                 router = HTTPProxyActor.options(
                     name=router_name,
-                    lifetime="detached",
+                    lifetime="detached" if self.detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
@@ -191,8 +205,8 @@ class ServeController:
                     node_id,
                     self.http_host,
                     self.http_port,
-                    instance_name=self.instance_name,
-                    _http_middlewares=self._http_middlewares)
+                    controller_name=self.controller_name,
+                    http_middlewares=self.http_middlewares)
 
             self.routers[node_id] = router
 
@@ -277,7 +291,7 @@ class ServeController:
 
         for node_id in router_node_ids:
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
@@ -287,7 +301,7 @@ class ServeController:
         for backend_tag, replica_tags in self.replicas.items():
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
-                                                 self.instance_name)
+                                                 self.controller_name)
                 self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
@@ -313,9 +327,10 @@ class ServeController:
                 for router in self.routers.values()
             ])
             await self.broadcast_backend_config(backend)
-            if info.backend_config.autoscaling_config is not None:
+            metadata = info.backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[backend] = BasicAutoscalingPolicy(
-                    backend, info.backend_config.autoscaling_config)
+                    backend, metadata.autoscaling_config)
 
         # Push configuration state to the routers.
         await asyncio.gather(*[
@@ -378,8 +393,8 @@ class ServeController:
         """Fetched by serve handles."""
         return self.traffic_policies[endpoint]
 
-    async def _start_backend_worker(self, backend_tag: str,
-                                    replica_tag: str) -> ActorHandle:
+    async def _start_backend_worker(self, backend_tag: str, replica_tag: str,
+                                    replica_name: str) -> ActorHandle:
         """Creates a backend worker and waits for it to start up.
 
         Assumes that the backend configuration has already been registered
@@ -389,18 +404,15 @@ class ServeController:
             replica_tag, backend_tag))
         backend_info = self.backends[backend_tag]
 
-        replica_name = format_actor_name(replica_tag, self.instance_name)
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
-            lifetime="detached",
+            lifetime="detached" if self.detached else None,
             max_restarts=-1,
             max_task_retries=-1,
             **backend_info.replica_config.ray_actor_options).remote(
-                backend_tag,
-                replica_tag,
+                backend_tag, replica_tag,
                 backend_info.replica_config.actor_init_args,
-                backend_info.backend_config,
-                instance_name=self.instance_name)
+                backend_info.backend_config, self.controller_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle
@@ -409,11 +421,12 @@ class ServeController:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
+        replica_name = format_actor_name(replica_tag, self.controller_name)
         try:
-            worker_handle = ray.get_actor(replica_tag)
+            worker_handle = ray.get_actor(replica_name)
         except ValueError:
             worker_handle = await self._start_backend_worker(
-                backend_tag, replica_tag)
+                backend_tag, replica_tag, replica_name)
 
         self.replicas[backend_tag].append(replica_tag)
         self.workers[backend_tag][replica_tag] = worker_handle
@@ -455,8 +468,10 @@ class ServeController:
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
                 try:
-                    replica = ray.get_actor(replica_tag)
+                    replica = ray.get_actor(replica_name)
                 except ValueError:
                     continue
 
@@ -545,7 +560,7 @@ class ServeController:
                 self.replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
-            logger.debug("Removing {} replicas from backend {}".format(
+            logger.debug("Removing {} replicas from backend '{}'".format(
                 -delta_num_replicas, backend_tag))
             assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):
@@ -753,11 +768,14 @@ class ServeController:
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
             self.backends[backend_tag] = BackendInfo(
-                backend_worker, backend_config, replica_config)
-            if backend_config.autoscaling_config is not None:
+                worker_class=backend_worker,
+                backend_config=backend_config,
+                replica_config=replica_config)
+            metadata = backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
                     backend_tag] = BasicAutoscalingPolicy(
-                        backend_tag, backend_config.autoscaling_config)
+                        backend_tag, metadata.autoscaling_config)
 
             try:
                 self._scale_replicas(backend_tag, backend_config.num_replicas)
@@ -814,16 +832,25 @@ class ServeController:
             await self._stop_pending_replicas()
             await self._remove_pending_backends()
 
-    async def update_backend_config(self, backend_tag: str,
-                                    config_options: Dict[str, Any]) -> None:
+    async def update_backend_config(
+            self, backend_tag: str,
+            config_options: "Union[BackendConfig, Dict[str, Any]]") -> None:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (backend_tag in self.backends
                     ), "Backend {} is not registered.".format(backend_tag)
-            assert isinstance(config_options, dict)
+            assert isinstance(config_options, BackendConfig) or isinstance(
+                config_options, dict)
 
-            self.backends[backend_tag].backend_config.update(config_options)
-            backend_config = self.backends[backend_tag].backend_config
+            if isinstance(config_options, BackendConfig):
+                update_data = config_options.dict(exclude_unset=True)
+            elif isinstance(config_options, dict):
+                update_data = config_options
+
+            stored_backend_config = self.backends[backend_tag].backend_config
+            backend_config = stored_backend_config.copy(update=update_data)
+            backend_config._validate_complete()
+            self.backends[backend_tag].backend_config = backend_config
 
             # Scale the replicas with the new configuration.
             self._scale_replicas(backend_tag, backend_config.num_replicas)

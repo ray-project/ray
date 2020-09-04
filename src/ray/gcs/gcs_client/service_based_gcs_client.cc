@@ -83,7 +83,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 
   is_connected_ = true;
 
-  RAY_LOG(INFO) << "ServiceBasedGcsClient Connected.";
+  RAY_LOG(DEBUG) << "ServiceBasedGcsClient connected.";
   return Status::OK();
 }
 
@@ -192,8 +192,8 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                      << address.second;
+        RAY_LOG(DEBUG) << "Reconnected to GCS server: " << address.first << ":"
+                       << address.second;
         break;
       }
     }

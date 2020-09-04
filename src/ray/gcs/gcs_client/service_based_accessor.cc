@@ -89,7 +89,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 }
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for job info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -419,7 +419,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 }
 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for actor info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -805,7 +805,7 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 }
 
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for node info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1081,7 +1081,7 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 }
 
 void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for task info.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for task info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1256,7 +1256,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
 }
 
 void ServiceBasedObjectInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for object locations.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for object locations.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
@@ -1367,7 +1367,7 @@ Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
 }
 
 void ServiceBasedWorkerInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
-  RAY_LOG(INFO) << "Reestablishing subscription for worker failures.";
+  RAY_LOG(DEBUG) << "Reestablishing subscription for worker failures.";
   // If the pub-sub server has restarted, we need to resubscribe to the pub-sub server.
   if (subscribe_operation_ != nullptr && is_pubsub_server_restarted) {
     RAY_CHECK_OK(subscribe_operation_(nullptr));
