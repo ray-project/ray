@@ -160,6 +160,7 @@ def test_set_traffic_missing_data(serve_instance):
 @pytest.mark.parametrize("use_legacy_config", [False, True])
 def test_scaling_replicas(serve_instance, use_legacy_config):
     client = serve_instance
+
     class Counter:
         def __init__(self):
             self.count = 0
@@ -247,6 +248,7 @@ def test_batching(serve_instance, use_legacy_config):
 @pytest.mark.parametrize("use_legacy_config", [False, True])
 def test_batching_exception(serve_instance, use_legacy_config):
     client = serve_instance
+
     class NoListReturned:
         def __init__(self):
             self.count = 0
@@ -271,7 +273,7 @@ def test_batching_exception(serve_instance, use_legacy_config):
 @pytest.mark.parametrize("use_legacy_config", [False, True])
 def test_updating_config(serve_instance, use_legacy_config):
     client = serve_instance
-    
+
     class BatchSimple:
         def __init__(self):
             self.count = 0
