@@ -160,6 +160,13 @@ def _format_msg(msg,
     res = [str(x) for x in res]
     return ", ".join(res)
 
+formatter = logging.Formatter(
+    # TODO(maximsmol): figure out the required log level padding
+    #                  width automatically
+    fmt="[{asctime}] {levelname:6} {message}",
+    datefmt="%x %X",
+    # We want alignment on our level names
+    style="{")
 class _CliLogger():
     """Singleton class for CLI logging.
 
@@ -198,7 +205,9 @@ class _CliLogger():
 
     def __init__(self):
         self._non_interactive = False
-        self.color_mode = "auto"
+        self._non_interactive_mode = "auto"
+
+        self._color_mode = "auto"
         self.indent_level = 0
 
         self._verbosity = 0
@@ -210,17 +219,38 @@ class _CliLogger():
         # so it has some non-trivial logic to determine this)
         self._autodetected_cf_colormode = cf.colormode
 
-        self.non_interactive = True
+    @property
+    def non_interactive_mode(self):
+        return self._non_interactive_mode
+    @non_interactive_mode.setter
+    def non_interactive_mode(self, x):
+        self._non_interactive_mode = x
+
+        if self.non_interactive_mode == "auto":
+            self.non_interactive = not sys.stdin.isatty()
+        elif self.non_interactive_mode == "false":
+            self.non_interactive = False
+        elif self.non_interactive_mode == "true":
+            self.non_interactive = True
 
     @property
     def non_interactive(self):
         return self._non_interactive
     @non_interactive.setter
     def non_interactive(self, x):
+        if self._non_interactive_mode != "auto":
+            self._non_interactive_mode = "true" if x else "false"
         if x:
             self.color_mode = "false"
-            self.detect_colors()
         self._non_interactive = x
+
+    @property
+    def color_mode(self):
+        return self._color_mode
+    @color_mode.setter
+    def color_mode(self, x):
+        self._color_mode = x
+        self.detect_colors()
 
     @property
     def verbosity(self):
@@ -273,12 +303,23 @@ class _CliLogger():
             if msg.strip() == "":
                 return
 
-            timestamp = time.strftime("[%x %X] ")
-            # TODO(maximsmol): figure out the required level string
-            #                  width automatically
-            rendered_message = "{}{:6} {}".format(timestamp,
-                                                 _level_str,
-                                                 msg)
+            record = logging.LogRecord(
+                name = "cli",
+                # We override the level name later
+                # TODO(maximsmol): give approximate level #s to our log levels
+                level = 0,
+                # The user-facing logs do not need this information anyway
+                # and it would be very tedious to extract since _print
+                # can be at varying depths in the call stack
+                # TODO(maximsmol): do it anyway to be extra
+                pathname = "n/a",
+                lineno = 0,
+                msg = msg,
+                args = {},
+                # No exception
+                exc_info = None)
+            record.levelname = _level_str
+            rendered_message = formatter.format(record)
         else:
             rendered_message = "  " * self.indent_level + msg
 
@@ -415,6 +456,9 @@ class _CliLogger():
         self.print(cf.red(msg), *args, _level_str=_level_str, **kwargs)
     def error(self, *args, **kwargs):
         self._error(*args, _level_str="ERR", **kwargs)
+
+    def panic(self, *args, **kwargs):
+        self._error(*args, _level_str="PANIC", **kwargs)
 
     # Fine to expose _level_str here, since this is a general log function.
     def print(self, msg, *args, _level_str="INFO", _linefeed=True, **kwargs):
