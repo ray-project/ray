@@ -622,6 +622,7 @@ def init(
 
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
+        print("Connecting to existing Ray cluster at address:", redis_address)
     else:
         redis_address = None
 
@@ -1611,7 +1612,8 @@ def cancel(object_ref, *, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError or a
+    WorkerCrashedError if ``force=True``.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task
