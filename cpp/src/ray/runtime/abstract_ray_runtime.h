@@ -1,11 +1,12 @@
 
 #pragma once
 
-#include <mutex>
-
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_runtime.h>
+
 #include <msgpack.hpp>
+#include <mutex>
+
 #include "./object/object_store.h"
 #include "./task/task_executor.h"
 #include "./task/task_submitter.h"
@@ -59,6 +60,8 @@ class AbstractRayRuntime : public RayRuntime {
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
   static std::shared_ptr<AbstractRayRuntime> DoInit(std::shared_ptr<RayConfig> config);
+
+  static void DoShutdown(std::shared_ptr<RayConfig> config);
 
   static void DoShutdown(std::shared_ptr<RayConfig> config);
 

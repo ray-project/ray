@@ -1,8 +1,9 @@
 #pragma once
 
+#include <ray/api/ray_runtime.h>
+
 #include <memory>
 
-#include <ray/api/ray_runtime.h>
 #include "invocation_spec.h"
 
 namespace ray {

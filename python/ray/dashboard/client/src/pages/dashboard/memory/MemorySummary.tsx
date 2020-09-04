@@ -1,91 +1,59 @@
-import {
-  createStyles,
-  TableCell,
-  TableRow,
-  Theme,
-  withStyles,
-  WithStyles,
-} from "@material-ui/core";
+import { createStyles, Grid, makeStyles, Theme } from "@material-ui/core";
 import React from "react";
 import { MemoryTableSummary } from "../../../api";
+import { formatByteAmount } from "../../../common/formatUtils";
+import LabeledDatum from "../../../common/LabeledDatum";
 
-const styles = (theme: Theme) =>
+const useMemorySummaryStyles = makeStyles((theme: Theme) =>
   createStyles({
-    cell: {
-      padding: theme.spacing(1),
-      textAlign: "center",
-      "&:last-child": {
-        paddingRight: theme.spacing(1),
-      },
-    },
-    expandCollapseCell: {
-      cursor: "pointer",
-    },
     expandCollapseIcon: {
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
-    extraInfo: {
-      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre",
+    container: {
+      padding: theme.spacing(1),
+      margin: theme.spacing(1),
     },
-  });
+  }),
+);
 
-type Props = {
+type MemorySummaryProps = {
   memoryTableSummary: MemoryTableSummary;
   initialExpanded: boolean;
 };
 
-type State = {
-  expanded: boolean;
+const MemorySummary: React.FC<MemorySummaryProps> = ({
+  memoryTableSummary,
+}) => {
+  const classes = useMemorySummaryStyles();
+  const memoryData = [
+    [
+      "Total Local Reference Count",
+      `${memoryTableSummary.total_local_ref_count}`,
+    ],
+    ["Pinned in Memory Count", `${memoryTableSummary.total_pinned_in_memory}`],
+    [
+      "Total Used by Pending Tasks Count",
+      `${memoryTableSummary.total_used_by_pending_task}`,
+    ],
+    [
+      "Total Captured in Objects Count",
+      `${memoryTableSummary.total_captured_in_objects}`,
+    ],
+    [
+      "Total Memory Used by Objects",
+      `${formatByteAmount(memoryTableSummary.total_object_size, "mebibyte")}`,
+    ],
+    ["Total Actor Handle Count", `${memoryTableSummary.total_actor_handles}`],
+  ];
+
+  return (
+    <Grid container className={classes.container}>
+      {memoryData.map(([label, value]) => (
+        <LabeledDatum key={label} label={label} datum={value} />
+      ))}
+    </Grid>
+  );
 };
-
-class MemorySummary extends React.Component<
-  Props & WithStyles<typeof styles>,
-  State
-> {
-  state: State = {
-    expanded: this.props.initialExpanded,
-  };
-
-  toggleExpand = () => {
-    this.setState((state) => ({
-      expanded: !state.expanded,
-    }));
-  };
-
-  render() {
-    const { classes, memoryTableSummary } = this.props;
-
-    const memorySummaries =
-      memoryTableSummary !== null
-        ? [
-            "", // Padding
-            `Total Local Reference Count: ${memoryTableSummary.total_local_ref_count}`,
-            `Total Pinned In Memory Count: ${memoryTableSummary.total_pinned_in_memory}`,
-            `Total Used By Pending Tasks Count: ${memoryTableSummary.total_used_by_pending_task}`,
-            `Total Caputed In Objects Count: ${memoryTableSummary.total_captured_in_objects}`,
-            `Total Object Size: ${memoryTableSummary.total_object_size} B`,
-            `Total Actor Handle Count: ${memoryTableSummary.total_actor_handles}`,
-            "", // Padding
-          ]
-        : ["No Summary Provided"];
-
-    return (
-      memoryTableSummary !== null && (
-        <React.Fragment>
-          <TableRow hover>
-            {memorySummaries.map((summary, index) => (
-              <TableCell key={index} className={classes.cell}>
-                {summary}
-              </TableCell>
-            ))}
-          </TableRow>
-        </React.Fragment>
-      )
-    );
-  }
-}
-
-export default withStyles(styles)(MemorySummary);
+export default MemorySummary;

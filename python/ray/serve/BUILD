@@ -65,15 +65,6 @@ py_test(
 
 
 py_test(
-    name = "test_metric",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-
-py_test(
     name = "test_persistence",
     size = "small",
     srcs = serve_tests_srcs,
@@ -100,7 +91,7 @@ py_test(
 
 
 py_test(
-    name = "test_scaling",
+    name = "test_standalone",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -195,14 +186,6 @@ py_test(
 
 py_test(
     name = "snippet_model_composition",
-    size = "small",
-    srcs = glob(["examples/doc/*.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"]
-)
-
-py_test(
-    name = "snippet_metric_export",
     size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],

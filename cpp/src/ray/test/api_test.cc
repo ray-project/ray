@@ -1,6 +1,7 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+
 #include <future>
 #include <thread>
 

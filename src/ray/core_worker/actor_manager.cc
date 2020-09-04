@@ -91,35 +91,6 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
-
-    if (!RayConfig::instance().gcs_actor_service_enabled()) {
-      RAY_CHECK(reference_counter_->SetDeleteCallback(
-          actor_creation_return_id,
-          [this, actor_id, is_owner_handle](const ObjectID &object_id) {
-            if (is_owner_handle) {
-              // If we own the actor and the actor handle is no longer in scope,
-              // terminate the actor. We do not do this if the GCS service is
-              // enabled since then the GCS will terminate the actor for us.
-              // TODO(sang): Remove this block once gcs_actor_service is enabled by
-              // default.
-              RAY_LOG(INFO) << "Owner's handle and creation ID " << object_id
-                            << " has gone out of scope, sending message to actor "
-                            << actor_id << " to do a clean exit.";
-              RAY_CHECK(CheckActorHandleExists(actor_id));
-              direct_actor_submitter_->KillActor(actor_id,
-                                                 /*force_kill=*/false,
-                                                 /*no_restart=*/false);
-
-              // TODO(swang): Erase the actor handle once all refs to the actor
-              // have gone out of scope. We cannot erase it here in case the
-              // language frontend receives another ref to the same actor. In this
-              // case, we must remember the last task counter that we sent to the
-              // actor.
-              // TODO(ekl) we can't unsubscribe to actor notifications here due to
-              // https://github.com/ray-project/ray/pull/6885
-            }
-          }));
-    }
   }
 
   return inserted;

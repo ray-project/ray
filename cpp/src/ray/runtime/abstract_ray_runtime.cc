@@ -1,11 +1,12 @@
 
 #include "abstract_ray_runtime.h"
 
-#include <cassert>
-
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/api/ray_exception.h>
+
+#include <cassert>
+
 #include "../util/address_helper.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
@@ -21,7 +22,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
   if (config->run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
   } else {
-    ProcessHelper::getInstance()->RayStart(config, TaskExecutor::ExecuteTask);
+    ProcessHelper::getInstance().RayStart(config, TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime(config));
   }
   runtime->config_ = config;
@@ -52,7 +53,7 @@ void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   ObjectID object_id =
-      ObjectID::ForPut(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
+      ObjectID::FromIndex(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
   Put(data, &object_id);
   return object_id;
 }

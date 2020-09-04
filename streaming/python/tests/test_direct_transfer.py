@@ -101,8 +101,8 @@ class Worker:
 
 def test_queue():
     ray.init()
-    writer = Worker._remote(is_direct_call=True)
-    reader = Worker._remote(is_direct_call=True)
+    writer = Worker._remote()
+    reader = Worker._remote()
     channel_id_str = transfer.ChannelID.gen_random_id()
     inits = [
         writer.init_writer.remote(channel_id_str, pickle.dumps(reader)),

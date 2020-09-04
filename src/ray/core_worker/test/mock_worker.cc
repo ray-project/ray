@@ -50,15 +50,20 @@ class MockWorker {
         "",                  // driver_name
         "",                  // stdout_file
         "",                  // stderr_file
-        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
-                  _7),  // task_execution_callback
+        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7,
+                  _8),  // task_execution_callback
         nullptr,        // check_signals
         nullptr,        // gc_collect
+        nullptr,        // spill_objects
+        nullptr,        // restore_spilled_objects
         nullptr,        // get_lang_stack
         nullptr,        // kill_main
         true,           // ref_counting_enabled
         false,          // is_local_mode
         1,              // num_workers
+        nullptr,        // terminate_asyncio_thread
+        "",             // serialized_job_config
+        -1,             // metrics_agent_port
     };
     CoreWorkerProcess::Initialize(options);
   }
@@ -66,7 +71,8 @@ class MockWorker {
   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
+  Status ExecuteTask(TaskType task_type, const std::string task_name,
+                     const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,

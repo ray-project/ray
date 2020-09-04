@@ -193,11 +193,11 @@ def main(args):
         state_dict = trainer.state_dict()
         state_dict.update(epoch=epoch, args=args)
         torch.save(state_dict,
-                   os.path.join(args.output_dir, "model_{}.pth".format(epoch)))
+                   os.path.join(args.output_dir, f"model_{epoch}.pth"))
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print("Training time {}".format(total_time_str))
+    print(f"Training time {total_time_str}")
 
 
 def parse_args():

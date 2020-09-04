@@ -10,7 +10,7 @@ std::shared_ptr<ProcessHelper> ProcessHelper::ProcessHelper_ = nullptr;
 
 static std::string GetSessionDir(std::string redis_ip, int port, std::string password) {
   redisContext *context = redisConnect(redis_ip.c_str(), port);
-  RAY_CHECK(context != NULL && !context->err);
+  RAY_CHECK(context != nullptr && !context->err);
   if (!password.empty()) {
     auto auth_reply = (redisReply *)redisCommand(context, "AUTH %s", password.c_str());
     RAY_CHECK(auth_reply->type != REDIS_REPLY_ERROR);
@@ -18,7 +18,7 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
   }
   auto reply = (redisReply *)redisCommand(context, "GET session_dir");
   RAY_CHECK(reply->type != REDIS_REPLY_ERROR);
-  auto session_dir = std::string(reply->str);
+  std::string session_dir(reply->str);
   freeReplyObject(reply);
   redisFree(context);
   return session_dir;
@@ -30,7 +30,7 @@ static void StartRayNode(int redis_port, std::string redis_password) {
                                     redis_password});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  sleep(3);
+  sleep(5);
   return;
 }
 
@@ -83,11 +83,16 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
       callback,                   // task_execution_callback
       nullptr,                    // check_signals
       nullptr,                    // gc_collect
+      nullptr,                    // spill_objects
+      nullptr,                    // restore_spilled_objects
       nullptr,                    // get_lang_stack
       nullptr,                    // kill_main
       true,                       // ref_counting_enabled
       false,                      // is_local_mode
       1,                          // num_workers
+      nullptr,                    // terminate_asyncio_thread
+      "",                         // serialized_job_config
+      -1,                         // metrics_agent_port
   };
   CoreWorkerProcess::Initialize(options);
 }

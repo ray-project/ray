@@ -12,6 +12,23 @@ class SearchAlgorithm:
     """
     _finished = False
 
+    def set_search_properties(self, metric, mode, config):
+        """Pass search properties to search algorithm.
+
+        This method acts as an alternative to instantiating search algorithms
+        with their own specific search spaces. Instead they can accept a
+        Tune config through this method.
+
+        The search algorithm will usually pass this method to their
+        ``Searcher`` instance.
+
+        Args:
+            metric (str): Metric to optimize
+            mode (str): One of ["min", "max"]. Direction to optimize.
+            config (dict): Tune config dict.
+        """
+        return True
+
     def add_configurations(self, experiments):
         """Tracks given experiment specifications.
 
@@ -63,8 +80,14 @@ class SearchAlgorithm:
         """Marks the search algorithm as finished."""
         self._finished = True
 
-    def save(self, *args):
+    def has_checkpoint(self, dirpath):
+        """Should return False if not restoring is not implemented."""
+        return False
+
+    def save_to_dir(self, dirpath, **kwargs):
+        """Saves a search algorithm."""
         pass
 
-    def restore(self, *args):
+    def restore_from_dir(self, dirpath):
+        """Restores a search algorithm along with its wrapped state."""
         pass

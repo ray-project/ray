@@ -28,6 +28,7 @@ DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
+DEFINE_int32(metrics_export_port, 1, "Maximum startup concurrency");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
@@ -43,6 +44,7 @@ DEFINE_string(static_resource_list, "", "The static resource list of this node."
 DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
+DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
@@ -82,6 +84,7 @@ int main(int argc, char *argv[]) {
   const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
+  const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
@@ -90,6 +93,7 @@ int main(int argc, char *argv[]) {
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
+  const int metrics_export_port = FLAGS_metrics_export_port;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -112,7 +116,7 @@ int main(int argc, char *argv[]) {
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
-  // The internal_config is only set on the head node--other nodes get it from GCS.
+  // The system_config is only set on the head node--other nodes get it from GCS.
   if (head_node) {
     // Parse the configuration list.
     std::istringstream config_string(config_list);
@@ -189,6 +193,11 @@ int main(int argc, char *argv[]) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
                          << "should be provided";
         }
+        if (!agent_command.empty()) {
+          node_manager_config.agent_command = agent_command;
+        } else {
+          RAY_LOG(DEBUG) << "Agent command is empty.";
+        }
 
         node_manager_config.heartbeat_period_ms =
             RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
@@ -200,7 +209,6 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().fair_queueing_enabled();
         node_manager_config.object_pinning_enabled =
             RayConfig::instance().object_pinning_enabled();
-        node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
@@ -238,7 +246,8 @@ int main(int argc, char *argv[]) {
         // Initialize the node manager.
         server.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
-            redis_password, node_manager_config, object_manager_config, gcs_client));
+            redis_password, node_manager_config, object_manager_config, gcs_client,
+            metrics_export_port));
 
         server->Start();
       }));

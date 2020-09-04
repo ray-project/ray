@@ -15,10 +15,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (
-        5,
-        5,
-    ), dtype=np.float32),
+    # "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
@@ -91,15 +88,19 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             a.stop()
         print(stat)
 
-    frameworks = ("torch", "tf")
+    frameworks = ("tf", "torch")
     if tfe:
         frameworks += ("tfe", )
     for _ in framework_iterator(config, frameworks=frameworks):
         # Check all action spaces (using a discrete obs-space).
-        for a_name, action_space in ACTION_SPACES_TO_TEST.items():
+        for a_name in ACTION_SPACES_TO_TEST.keys():
             _do_check(alg, config, a_name, "discrete")
         # Check all obs spaces (using a supported action-space).
-        for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
+        for o_name in OBSERVATION_SPACES_TO_TEST.keys():
+            # We already tested discrete observation spaces against all action
+            # spaces above -> skip.
+            if o_name == "discrete":
+                continue
             a_name = "discrete" if alg not in ["DDPG", "SAC"] else "vector"
             _do_check(alg, config, a_name, o_name)
 
@@ -203,5 +204,6 @@ if __name__ == "__main__":
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
-    sys.exit(pytest.main(
-        ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))

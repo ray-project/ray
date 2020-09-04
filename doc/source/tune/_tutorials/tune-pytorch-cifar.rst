@@ -148,10 +148,10 @@ to decide which hyperparameter configuration lead to the best results. These met
 can also be used to stop bad performing trials early in order to avoid wasting
 resources on those trials.
 
-The checkpoint saving is optional, however, it is necessary if we wanted to use advanced
+The :ref:`checkpoint saving <tune-checkpoint>` is optional. However, it is necessary if we wanted to use advanced
 schedulers like `Population Based Training <https://docs.ray.io/en/master/tune/tutorials/tune-advanced-tutorial.html>`_.
-Also, by saving the checkpoint we can later load the trained models and validate them
-on a test set.
+After training, we can also restore the checkpointed models and validate them on a test set.
+
 
 Full training function
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -245,7 +245,7 @@ The full main function looks like this:
 
 If you run the code, an example output could look like this:
 
-.. code-block::
+.. code-block:: bash
   :emphasize-lines: 7
 
     Number of trials: 10 (10 TERMINATED)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/core.h"

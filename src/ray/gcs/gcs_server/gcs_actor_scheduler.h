@@ -27,6 +27,7 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -259,10 +260,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
-  /// Get or create CoreWorkerClient to communicate with the remote leased worker.
-  std::shared_ptr<rpc::CoreWorkerClientInterface> GetOrConnectCoreWorkerClient(
-      const rpc::Address &worker_address);
-
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -282,9 +279,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The cached node clients which are used to communicate with raylet to lease workers.
   absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
       remote_lease_clients_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      core_worker_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// A publisher for publishing gcs messages.
@@ -295,10 +289,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<ClientID> nodes_of_releasing_unused_workers_;
+  /// The cached core worker clients which are used to communicate with leased worker.
+  rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
 }  // namespace gcs

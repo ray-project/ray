@@ -46,17 +46,11 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.redis_client is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.redis_clients is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
-
-        if self.global_state_accessor is None:
-            raise RuntimeError("The ray global state API cannot be used "
-                               "before ray.init has been called.")
+        if (self.redis_client is None or self.redis_clients is None
+                or self.global_state_accessor is None):
+            raise ray.exceptions.RaySystemError(
+                "Ray has not been started yet. You can start Ray with "
+                "'ray.init()'.")
 
     def disconnect(self):
         """Disconnect global state from GCS."""
@@ -99,8 +93,8 @@ class GlobalState:
                 continue
             num_redis_shards = int(num_redis_shards)
             assert num_redis_shards >= 1, (
-                "Expected at least one Redis "
-                "shard, found {}.".format(num_redis_shards))
+                f"Expected at least one Redis shard, found {num_redis_shards}."
+            )
 
             # Attempt to get all of the Redis shards.
             redis_shard_addresses = self.redis_client.lrange(
@@ -116,9 +110,10 @@ class GlobalState:
         # Check to see if we timed out.
         if time.time() - start_time >= timeout:
             raise TimeoutError("Timed out while attempting to initialize the "
-                               "global state. num_redis_shards = {}, "
-                               "redis_shard_addresses = {}".format(
-                                   num_redis_shards, redis_shard_addresses))
+                               "global state. "
+                               f"num_redis_shards = {num_redis_shards}, "
+                               "redis_shard_addresses = "
+                               f"{redis_shard_addresses}")
 
         # Get the rest of the information.
         self.redis_clients = []
@@ -256,6 +251,7 @@ class GlobalState:
                     actor_table_data.owner_address.raylet_id),
             },
             "State": actor_table_data.state,
+            "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
         }
         return actor_info
@@ -306,7 +302,8 @@ class GlobalState:
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
                 "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name
+                "RayletSocketName": item.raylet_socket_name,
+                "MetricsExportPort": item.metrics_export_port,
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = self.node_resource_table(
@@ -375,6 +372,56 @@ class GlobalState:
                 result[component_id].append(profile_event)
 
         return dict(result)
+
+    def placement_group_table(self, placement_group_id=None):
+        self._check_connected()
+
+        if placement_group_id is not None:
+            placement_group_id = ray.PlacementGroupID(
+                hex_to_binary(placement_group_id.hex()))
+            placement_group_info = (
+                self.global_state_accessor.get_placement_group_info(
+                    placement_group_id))
+            if placement_group_info is None:
+                return {}
+            else:
+                placement_group_info = (gcs_utils.PlacementGroupTableData.
+                                        FromString(placement_group_info))
+                return self._gen_placement_group_info(placement_group_info)
+        else:
+            raise NotImplementedError(
+                "Get all placement group is not implemented yet.")
+
+    def _gen_placement_group_info(self, placement_group_info):
+        # This should be imported here, otherwise, it will error doc build.
+        from ray.core.generated.common_pb2 import PlacementStrategy
+
+        def get_state(state):
+            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+                return "PENDING"
+            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+                return "CREATED"
+            else:
+                return "REMOVED"
+
+        def get_strategy(strategy):
+            if strategy == PlacementStrategy.PACK:
+                return "PACK"
+            else:
+                return "SPREAD"
+
+        assert placement_group_info is not None
+        return {
+            "placement_group_id": binary_to_hex(
+                placement_group_info.placement_group_id),
+            "name": placement_group_info.name,
+            "bundles": {
+                bundle.bundle_id.bundle_index: bundle.unit_resources
+                for bundle in placement_group_info.bundles
+            },
+            "strategy": get_strategy(placement_group_info.strategy),
+            "state": get_state(placement_group_info.state),
+        }
 
     def _seconds_to_microseconds(self, time_in_seconds):
         """A helper function for converting seconds to microseconds."""
@@ -797,7 +844,7 @@ state = GlobalState()
 
 
 def jobs():
-    """Get a list of the jobs in the cluster.
+    """Get a list of the jobs in the cluster (for debugging only).
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
@@ -811,7 +858,7 @@ def jobs():
 
 
 def nodes():
-    """Get a list of the nodes in the cluster.
+    """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
         Information about the Ray clients in the cluster.
@@ -852,7 +899,7 @@ def node_ids():
 
 
 def actors(actor_id=None):
-    """Fetch and parse the actor info for one or more actor IDs.
+    """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If

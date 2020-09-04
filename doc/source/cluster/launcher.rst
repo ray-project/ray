@@ -188,7 +188,7 @@ logs in ``/tmp/ray/session_*/logs/monitor*``.
 
     $ ray monitor cluster.yaml
 
-The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
+The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go to the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
 .. image:: /images/autoscaler-status.png
 
@@ -212,15 +212,6 @@ This tells ``ray up`` to sync the current git branch SHA from your personal comp
 1. Make local changes to a git branch
 2. Commit the changes with ``git commit`` and ``git push``
 3. Update files on your Ray cluster with ``ray up``
-
-
-Autoscaling
------------
-
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit (in the cluster config). When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
-
-The default idle timeout is 5 minutes, which can be set in the cluster config. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
-
 
 Questions or Issues?
 --------------------

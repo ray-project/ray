@@ -1,9 +1,8 @@
 #pragma once
 
+#include "hiredis/hiredis.h"
 #include "ray/common/test_util.h"
 #include "ray/util/filesystem.h"
-
-#include "hiredis/hiredis.h"
 
 namespace ray {
 namespace streaming {
@@ -88,7 +87,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+    TaskOptions options{"", 0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
@@ -104,7 +103,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+    TaskOptions options{"", 0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", test, "execute_test", "")};
@@ -120,7 +119,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, resources};
+    TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "check_current_test_status", "")};
@@ -224,6 +223,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::DRIVER,             // worker_type
         Language::PYTHON,               // langauge
@@ -243,11 +243,16 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
         nullptr,                        // gc_collect
+        nullptr,                        // spill_objects
+        nullptr,                        // restore_spilled_objects
         nullptr,                        // get_lang_stack
         nullptr,                        // kill_main
         true,                           // ref_counting_enabled
         false,                          // is_local_mode
         1,                              // num_workers
+        nullptr,                        // terminate_asyncio_thread
+        "",                             // serialized_job_config
+        -1,                             // metrics_agent_port
     };
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);

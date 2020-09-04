@@ -70,7 +70,9 @@ const makeGroupedTableContents = (
   rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
-  const sortedGroups = stableSort(nodes, sortGroupComparator);
+  const sortedGroups = sortGroupComparator
+    ? stableSort(nodes, sortGroupComparator)
+    : nodes;
   return sortedGroups.map((node) => {
     const workerFeatureData: WorkerFeatureData[] = node.workers.map(
       (worker) => {
@@ -183,7 +185,6 @@ const NodeInfo: React.FC<{}> = () => {
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
   const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
-
   if (nodeInfo === null || rayletInfo === null) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }

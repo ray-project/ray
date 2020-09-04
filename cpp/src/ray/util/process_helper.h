@@ -12,10 +12,16 @@ class ProcessHelper {
                 CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop(std::shared_ptr<RayConfig> config);
 
-  static std::shared_ptr<ProcessHelper> getInstance() { return ProcessHelper_; }
+  static ProcessHelper &getInstance() {
+    static ProcessHelper processHelper;
+    return processHelper;
+  }
+
+  ProcessHelper(ProcessHelper const &) = delete;
+  void operator=(ProcessHelper const &) = delete;
 
  private:
-  static std::shared_ptr<ProcessHelper> ProcessHelper_;
+  ProcessHelper(){};
 };
 }  // namespace api
 }  // namespace ray

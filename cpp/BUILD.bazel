@@ -43,19 +43,6 @@ cc_library(
     ],
 )
 
-# cc_binary(
-#     name = "default_worker",
-#     srcs = [
-#         "src/ray/worker/default_worker.cc",
-#     ],
-#     copts = COPTS,
-#     linkstatic = False,
-#     deps = [
-#         # "//:core_worker_lib",
-#         "ray_api",
-#     ],
-# )
-
 cc_binary(
     name = "default_worker",
     srcs = [
@@ -64,7 +51,6 @@ cc_binary(
     copts = COPTS,
     linkstatic = True,
     deps = [
-        # "//:core_worker_lib",
         "ray_api",
     ],
 )
@@ -100,6 +86,7 @@ cc_binary(
 )
 
 cc_binary(
+
     name = "example.so",
     # testonly = 1,
     linkshared = 1,
@@ -157,6 +144,7 @@ cc_binary(
         "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
+    linkstatic = False,
     deps = [
         "ray_api",
     ],

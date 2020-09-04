@@ -3,6 +3,7 @@
 
 #include <ray/api/ray_runtime.h>
 #include <msgpack.hpp>
+
 #include "ray/core.h"
 
 namespace ray {
@@ -12,6 +13,7 @@ class InvocationSpec {
  public:
   TaskType task_type;
   TaskID task_id;
+  std::string name;
   ActorID actor_id;
   int actor_counter;
   // /// Remote function offset from base address.
