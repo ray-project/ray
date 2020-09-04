@@ -290,12 +290,12 @@ def test_remove_placement_group(ray_start_cluster):
     random_group_id = PlacementGroupID.from_random()
     random_placement_group = PlacementGroup(random_group_id, [{"CPU": 1}])
     for _ in range(3):
-        ray.experimental.remove_placement_group(random_placement_group)
+        ray.util.remove_placement_group(random_placement_group)
 
     # Creating a placement group as soon as it is
     # created should work.
     placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
-    ray.experimental.remove_placement_group(placement_group)
+    ray.util.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
         table = ray.util.placement_group_table(placement_group)
@@ -330,10 +330,10 @@ def test_remove_placement_group(ray_start_cluster):
     a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
-    ray.experimental.remove_placement_group(placement_group)
+    ray.util.remove_placement_group(placement_group)
     # Subsequent remove request shouldn't do anything.
     for _ in range(3):
-        ray.experimental.remove_placement_group(placement_group)
+        ray.util.remove_placement_group(placement_group)
 
     # Make sure placement group resources are
     # released and we can schedule this task.
@@ -357,7 +357,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     ray.init(address=cluster.address)
     # Create a placement group that cannot be scheduled now.
     placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
-    ray.experimental.remove_placement_group(placement_group)
+    ray.util.remove_placement_group(placement_group)
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
