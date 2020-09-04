@@ -710,10 +710,10 @@ class BOHBSuite(unittest.TestCase):
             self.assertEqual(decision, TrialScheduler.PAUSE)
             runner._pause_trial(trial)
 
-        self.assertSequenceEqual([t.status for t in trials],
-                                 [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
         run_trial = sched.choose_trial_to_run(runner)
         self.assertEqual(run_trial, trials[1])
+        self.assertSequenceEqual([t.status for t in trials],
+                                 [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
 
 
 class _MockTrial(Trial):
