@@ -1,10 +1,8 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/exported/test.h"
 
-namespace ray_exported {
 namespace ray {
-
-using namespace ::ray;
+namespace exported_ {
 
 void SubmitActorTask(const ActorID &peer_actor_id,
                      std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
@@ -32,5 +30,5 @@ void SubmitActorTask(const ActorID &peer_actor_id,
   CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
                                                      options, &return_ids);
 }
+}  // namespace exported_
 }  // namespace ray
-}  // namespace ray_exported

@@ -18,7 +18,6 @@ public class EnvUtil {
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e);
     }
-//    JniUtils.loadLibrary("test_lib");
     JniUtils.loadLibrary("streaming_java");
   }
 
