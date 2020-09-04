@@ -69,9 +69,9 @@ ray.init(address="auto")
 # now we initialize /connect to the Ray service
 
 # listen on 0.0.0.0 to make the HTTP server accessible from other machines.
-serve.init(http_host="0.0.0.0")
-serve.create_backend("lr:v1", BoostingModel)
-serve.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
+client = serve.start(http_host="0.0.0.0")
+client.create_backend("lr:v1", BoostingModel)
+client.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
 # __doc_create_deploy_end__
 
 # __doc_query_begin__
@@ -163,7 +163,7 @@ class BoostingModelv2:
 # now we initialize /connect to the Ray service
 
 
-serve.init()
-serve.create_backend("lr:v2", BoostingModelv2)
-serve.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
+client = serve.connect()
+client.create_backend("lr:v2", BoostingModelv2)
+client.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
 # __doc_create_deploy_2_end__

@@ -18,7 +18,8 @@ pytestmark = pytest.mark.asyncio
 def setup_worker(name,
                  func_or_class,
                  init_args=None,
-                 backend_config=BackendConfig()):
+                 backend_config=BackendConfig(),
+                 controller_name=""):
     if init_args is None:
         init_args = ()
 
@@ -26,7 +27,8 @@ def setup_worker(name,
     class WorkerActor:
         def __init__(self):
             self.worker = create_backend_worker(func_or_class)(
-                name, name + ":tag", init_args, backend_config)
+                name, name + ":tag", init_args, backend_config,
+                controller_name)
 
         def ready(self):
             pass
@@ -63,7 +65,7 @@ def make_request_param(call_method="__call__"):
 @pytest.fixture
 def router(serve_instance):
     q = ray.remote(Router).remote()
-    ray.get(q.setup.remote(name=""))
+    ray.get(q.setup.remote("", serve_instance._controller_name))
     yield q
     ray.kill(q)
 

@@ -102,19 +102,19 @@ class DataMessage : public Message {
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                      const ObjectID &queue_id, uint64_t seq_id)
-      : Message(actor_id, peer_actor_id, queue_id), seq_id_(seq_id) {}
+                      const ObjectID &queue_id, uint64_t msg_id)
+      : Message(actor_id, peer_actor_id, queue_id), msg_id_(msg_id) {}
 
   virtual ~NotificationMessage() {}
 
   static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
 
-  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t MsgId() { return msg_id_; }
   inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
-  uint64_t seq_id_;
+  uint64_t msg_id_;
   const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };

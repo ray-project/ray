@@ -8,7 +8,7 @@ import io.ray.streaming.runtime.worker.JobWorker;
  */
 public class OneInputStreamTask extends InputStreamTask {
 
-  public OneInputStreamTask(int taskId, Processor inputProcessor, JobWorker jobWorker) {
-    super(taskId, inputProcessor, jobWorker);
+  public OneInputStreamTask(Processor inputProcessor, JobWorker jobWorker, long lastCheckpointId) {
+    super(inputProcessor, jobWorker, lastCheckpointId);
   }
 }

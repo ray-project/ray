@@ -1,7 +1,5 @@
 from typing import Optional, Dict, Any, Union
 
-import ray
-from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.router import RequestMetadata
 
@@ -96,11 +94,5 @@ class RayServeHandle:
             http_headers=self.http_headers or http_headers,
         )
 
-    def _get_traffic_policy(self):
-        controller = serve.api._get_controller()
-        return ray.get(
-            controller.get_traffic_policy.remote(self.endpoint_name))
-
     def __repr__(self):
-        return (f"RayServeHandle(Endpoint='{self.endpoint_name}', "
-                f"Traffic={self._get_traffic_policy()})")
+        return f"RayServeHandle(endpoint='{self.endpoint_name}')"
