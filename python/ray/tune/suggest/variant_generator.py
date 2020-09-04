@@ -4,7 +4,7 @@ import numpy
 import random
 
 from ray.tune import TuneError
-from ray.tune.sample import sample_from
+from ray.tune.sample import Categorical, Domain, Function
 
 logger = logging.getLogger(__name__)
 
@@ -115,25 +115,36 @@ def _clean_value(value):
         return str(value).replace("/", "_")
 
 
+def parse_spec_vars(spec):
+    resolved, unresolved = _split_resolved_unresolved_values(spec)
+    resolved_vars = list(resolved.items())
+
+    if not unresolved:
+        return resolved_vars, [], []
+
+    grid_vars = []
+    domain_vars = []
+    for path, value in unresolved.items():
+        if value.is_grid():
+            grid_vars.append((path, value))
+        else:
+            domain_vars.append((path, value))
+    grid_vars.sort()
+
+    return resolved_vars, domain_vars, grid_vars
+
+
 def _generate_variants(spec):
     spec = copy.deepcopy(spec)
-    unresolved = _unresolved_values(spec)
-    if not unresolved:
+    _, domain_vars, grid_vars = parse_spec_vars(spec)
+
+    if not domain_vars and not grid_vars:
         yield {}, spec
         return
 
-    grid_vars = []
-    lambda_vars = []
-    for path, value in unresolved.items():
-        if callable(value):
-            lambda_vars.append((path, value))
-        else:
-            grid_vars.append((path, value))
-    grid_vars.sort()
-
     grid_search = _grid_search_generator(spec, grid_vars)
     for resolved_spec in grid_search:
-        resolved_vars = _resolve_lambda_vars(resolved_spec, lambda_vars)
+        resolved_vars = _resolve_domain_vars(resolved_spec, domain_vars)
         for resolved, spec in _generate_variants(resolved_spec):
             for path, value in grid_vars:
                 resolved_vars[path] = _get_value(spec, path)
@@ -148,7 +159,7 @@ def _generate_variants(spec):
             yield resolved_vars, spec
 
 
-def _assign_value(spec, path, value):
+def assign_value(spec, path, value):
     for k in path[:-1]:
         spec = spec[k]
     spec[path[-1]] = value
@@ -160,23 +171,26 @@ def _get_value(spec, path):
     return spec
 
 
-def _resolve_lambda_vars(spec, lambda_vars):
+def _resolve_domain_vars(spec, domain_vars):
     resolved = {}
     error = True
     num_passes = 0
     while error and num_passes < _MAX_RESOLUTION_PASSES:
         num_passes += 1
         error = False
-        for path, fn in lambda_vars:
+        for path, domain in domain_vars:
+            if path in resolved:
+                continue
             try:
-                value = fn(_UnresolvedAccessGuard(spec))
+                value = domain.sample(_UnresolvedAccessGuard(spec))
             except RecursiveDependencyError as e:
                 error = e
             except Exception:
                 raise ValueError(
-                    "Failed to evaluate expression: {}: {}".format(path, fn))
+                    "Failed to evaluate expression: {}: {}".format(
+                        path, domain))
             else:
-                _assign_value(spec, path, value)
+                assign_value(spec, path, value)
                 resolved[path] = value
     if error:
         raise error
@@ -203,7 +217,7 @@ def _grid_search_generator(unresolved_spec, grid_vars):
     while value_indices[-1] < len(grid_vars[-1][1]):
         spec = copy.deepcopy(unresolved_spec)
         for i, (path, values) in enumerate(grid_vars):
-            _assign_value(spec, path, values[value_indices[i]])
+            assign_value(spec, path, values[value_indices[i]])
         yield spec
         if grid_vars:
             done = increment(0)
@@ -217,13 +231,13 @@ def _is_resolved(v):
 
 
 def _try_resolve(v):
-    if isinstance(v, sample_from):
-        # Function to sample from
-        return False, v.func
+    if isinstance(v, Domain):
+        # Domain to sample from
+        return False, v
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
-        return False, lambda spec: eval(
-            v["eval"], _STANDARD_IMPORTS, {"spec": spec})
+        return False, Function(
+            lambda spec: eval(v["eval"], _STANDARD_IMPORTS, {"spec": spec}))
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
@@ -231,26 +245,45 @@ def _try_resolve(v):
             raise TuneError(
                 "Grid search expected list of values, got: {}".format(
                     grid_values))
-        return False, grid_values
+        return False, Categorical(grid_values).grid()
     return True, v
 
 
-def _unresolved_values(spec):
-    found = {}
+def _split_resolved_unresolved_values(spec):
+    resolved_vars = {}
+    unresolved_vars = {}
     for k, v in spec.items():
         resolved, v = _try_resolve(v)
         if not resolved:
-            found[(k, )] = v
+            unresolved_vars[(k, )] = v
         elif isinstance(v, dict):
             # Recurse into a dict
-            for (path, value) in _unresolved_values(v).items():
-                found[(k, ) + path] = value
+            _resolved_children, _unresolved_children = \
+                _split_resolved_unresolved_values(v)
+            for (path, value) in _resolved_children.items():
+                resolved_vars[(k, ) + path] = value
+            for (path, value) in _unresolved_children.items():
+                unresolved_vars[(k, ) + path] = value
         elif isinstance(v, list):
             # Recurse into a list
             for i, elem in enumerate(v):
-                for (path, value) in _unresolved_values({i: elem}).items():
-                    found[(k, ) + path] = value
-    return found
+                _resolved_children, _unresolved_children = \
+                    _split_resolved_unresolved_values({i: elem})
+                for (path, value) in _resolved_children.items():
+                    resolved_vars[(k, ) + path] = value
+                for (path, value) in _unresolved_children.items():
+                    unresolved_vars[(k, ) + path] = value
+        else:
+            resolved_vars[(k, )] = v
+    return resolved_vars, unresolved_vars
+
+
+def _unresolved_values(spec):
+    return _split_resolved_unresolved_values(spec)[1]
+
+
+def has_unresolved_values(spec):
+    return True if _unresolved_values(spec) else False
 
 
 class _UnresolvedAccessGuard(dict):

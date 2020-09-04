@@ -1,8 +1,16 @@
+from typing import Dict
+
 import numpy as np
 import copy
 import logging
 from functools import partial
 import pickle
+
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Normal, \
+    Quantized, \
+    Uniform
+from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
+
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
@@ -84,7 +92,7 @@ class HyperOptSearch(Searcher):
 
     def __init__(
             self,
-            space,
+            space=None,
             metric="episode_reward_mean",
             mode="max",
             points_to_evaluate=None,
@@ -116,7 +124,6 @@ class HyperOptSearch(Searcher):
                 hpo.tpe.suggest, n_startup_jobs=n_initial_points)
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
-        self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
             self._hpopt_trials = hpo.Trials()
             self._points_to_evaluate = 0
@@ -132,7 +139,35 @@ class HyperOptSearch(Searcher):
         else:
             self.rstate = np.random.RandomState(random_state_seed)
 
+        self.domain = None
+        if space:
+            self.domain = hpo.Domain(lambda spc: spc, space)
+
+    def set_search_properties(self, metric, mode, config):
+        if self.domain:
+            return False
+        space = self.convert_search_space(config)
+        self.domain = hpo.Domain(lambda spc: spc, space)
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self.metric_op = -1.
+        elif self._mode == "min":
+            self.metric_op = 1.
+
+        return True
+
     def suggest(self, trial_id):
+        if not self.domain:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -235,3 +270,75 @@ class HyperOptSearch(Searcher):
             self.rstate.set_state(trials_object[1])
         else:
             self.set_state(trials_object)
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = copy.deepcopy(spec)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if not domain_vars and not grid_vars:
+            return []
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to a HyperOpt search space.")
+
+        def resolve_value(par, domain):
+            quantize = None
+
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                quantize = sampler.q
+                sampler = sampler.sampler
+
+            if isinstance(domain, Float):
+                if isinstance(sampler, LogUniform):
+                    if quantize:
+                        return hpo.hp.qloguniform(par, domain.lower,
+                                                  domain.upper, quantize)
+                    return hpo.hp.loguniform(par, np.log(domain.lower),
+                                             np.log(domain.upper))
+                elif isinstance(sampler, Uniform):
+                    if quantize:
+                        return hpo.hp.quniform(par, domain.lower, domain.upper,
+                                               quantize)
+                    return hpo.hp.uniform(par, domain.lower, domain.upper)
+                elif isinstance(sampler, Normal):
+                    if quantize:
+                        return hpo.hp.qnormal(par, sampler.mean, sampler.sd,
+                                              quantize)
+                    return hpo.hp.normal(par, sampler.mean, sampler.sd)
+
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, Uniform):
+                    if quantize:
+                        logger.warning(
+                            "HyperOpt does not support quantization for "
+                            "integer values. Reverting back to 'randint'.")
+                    if domain.lower != 0:
+                        raise ValueError(
+                            "HyperOpt only allows integer sampling with "
+                            f"lower bound 0. Got: {domain.lower}.")
+                    if domain.upper < 1:
+                        raise ValueError(
+                            "HyperOpt does not support integer sampling "
+                            "of values lower than 0. Set your maximum range "
+                            "to something above 0 (currently {})".format(
+                                domain.upper))
+                    return hpo.hp.randint(par, domain.upper)
+            elif isinstance(domain, Categorical):
+                if isinstance(sampler, Uniform):
+                    return hpo.hp.choice(par, domain.categories)
+
+            raise ValueError("HyperOpt does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
+
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            value = resolve_value(par, domain)
+            assign_value(spec, path, value)
+
+        return spec

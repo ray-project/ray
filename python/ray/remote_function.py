@@ -152,7 +152,8 @@ class RemoteFunction:
                 resources=None,
                 max_retries=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -212,7 +213,7 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language, self._function_descriptor, list_args,
+                self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, placement_group.id,
                 placement_group_bundle_index)
 
