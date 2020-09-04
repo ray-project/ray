@@ -8,8 +8,22 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore,
-    init_error_pubsub, get_error_message)
+    wait_for_children_of_pid_to_exit, wait_for_condition, kill_process_by_name,
+    Semaphore, init_error_pubsub, get_error_message)
+
+
+def test_remote_raylet_cleanup(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    def remote_raylets_dead():
+        return not cluster.remaining_processes_alive()
+
+    cluster.remove_node(cluster.head_node, allow_graceful=False)
+    wait_for_condition(remote_raylets_dead)
 
 
 def test_error_isolation(call_ray_start):
