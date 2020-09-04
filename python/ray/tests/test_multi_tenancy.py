@@ -1,6 +1,7 @@
 # coding: utf-8
 import os
 import sys
+import time
 
 import grpc
 import pytest
@@ -8,7 +9,21 @@ import pytest
 import ray
 import ray.test_utils
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+from ray.test_utils import (wait_for_condition, run_string_as_driver,
+                            run_string_as_driver_nonblocking)
+
+
+def get_num_workers():
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    raylet["NodeManagerPort"])
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    return len([
+        worker for worker in stub.GetNodeStats(
+            node_manager_pb2.GetNodeStatsRequest()).workers_stats
+        if not worker.is_driver
+    ])
 
 
 # Test that when `redis_address` and `job_config` is not set in
@@ -19,17 +34,7 @@ def test_initial_workers(shutdown_only):
         num_cpus=1,
         include_dashboard=True,
         _system_config={"enable_multi_tenancy": True})
-    raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                    raylet["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    wait_for_condition(lambda: len([
-        worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).workers_stats
-        if not worker.is_driver
-    ]) == 1,
-                              timeout=10)
+    wait_for_condition(lambda: get_num_workers() == 1, timeout=10)
 
 
 # This test case starts some driver processes. Each driver process submits
@@ -121,6 +126,35 @@ def test_worker_env(shutdown_only):
 
     assert ray.get(get_env.remote("foo1")) == "bar1"
     assert ray.get(get_env.remote("foo2")) == "bar2"
+
+
+def test_worker_registration_failure_after_driver_exit(shutdown_only):
+    info = ray.init(num_cpus=1, _system_config={"enable_multi_tenancy": True})
+
+    driver_code = """
+import ray
+import time
+
+
+ray.init(address="{}")
+
+@ray.remote
+def foo():
+    pass
+
+[foo.remote() for _ in range(100)]
+
+ray.shutdown()
+    """.format(info["redis_address"])
+
+    before = get_num_workers()
+    assert before == 1
+
+    run_string_as_driver(driver_code)
+
+    # wait for a while to let workers register
+    time.sleep(2)
+    wait_for_condition(lambda: get_num_workers() == before, timeout=10)
 
 
 if __name__ == "__main__":

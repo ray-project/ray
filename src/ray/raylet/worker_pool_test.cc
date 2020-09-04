@@ -135,7 +135,8 @@ class WorkerPoolTest : public ::testing::TestWithParam<bool> {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_id, job_config, nullptr));
+    RAY_CHECK_OK(
+        worker_pool_->RegisterDriver(driver, job_id, job_config, [](Status, int) {}));
     return driver;
   }
 
@@ -246,7 +247,7 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), nullptr));
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -257,6 +258,12 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
+}
+
+TEST_P(WorkerPoolTest, HandleUnknownWorkerRegistration) {
+  auto worker = CreateWorker(Process(), Language::PYTHON);
+  auto status = worker_pool_->RegisterWorker(worker, 1234, [](Status, int) {});
+  ASSERT_FALSE(status.ok());
 }
 
 TEST_P(WorkerPoolTest, StartupPythonWorkerProcessCount) {
