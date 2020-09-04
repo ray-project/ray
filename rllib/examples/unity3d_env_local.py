@@ -111,10 +111,6 @@ if __name__ == "__main__":
         },
         "framework": "tf" if args.env != "Pyramids" else "torch",
         "no_done_at_end": True,
-        # If no executable is provided (use Unity3D editor), do not evaluate,
-        # b/c the editor only allows one connection at a time.
-        "evaluation_interval": 10 if args.file_name else 0,
-        "evaluation_num_episodes": 1,
     }
     # Switch on Curiosity based exploration for Pyramids env
     # (not solvable otherwise).
