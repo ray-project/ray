@@ -102,10 +102,10 @@ load balancing, gang scheduling, and priority-based scheduling.
     :noindex:
 
 
-Resource Constraints
---------------------
+Accelerator Types
+------------------
 
-Ray supports resource constraints. Resource constraints can be used to force to a task to run on a node with specific resources.
+Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator.
 
 .. code-block:: python
     from ray.accelerators import NVIDIA_TESLA_V100
