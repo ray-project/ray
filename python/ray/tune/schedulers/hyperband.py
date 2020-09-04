@@ -282,7 +282,8 @@ class HyperBandScheduler(FIFOScheduler):
         for i, band in enumerate(self._hyperbands):
             out += "\nRound #{}:".format(i)
             for bracket in band:
-                out += "\n  {}".format(bracket)
+                if bracket:
+                    out += "\n  {}".format(bracket)
         return out
 
     def state(self):
