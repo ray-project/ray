@@ -98,7 +98,7 @@ Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
-actors, you can use ``ray.experimental.queue.Queue`` (:ref:`docs <ray-queue-ref>`).
+actors, you can use ``ray.experimental.queue.Queue`` (`source code <https://github.com/ray-project/ray/blob/master/python/ray/experimental/queue.py>`_).
 
 .. code-block:: python
 

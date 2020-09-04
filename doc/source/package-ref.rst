@@ -135,14 +135,6 @@ Experimental APIs
 .. automodule:: ray.experimental
    :members:
 
-.. _ray-queue-ref:
-
-ray.experimental.queue
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.experimental.queue.Queue
-   :members:
-
 
 The Ray Command Line API
 ------------------------
