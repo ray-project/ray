@@ -7,11 +7,11 @@ load("//bazel:ray.bzl", "COPTS", "copy_to_workspace")
 proto_library(
     name = "streaming_proto",
     srcs = ["src/protobuf/streaming.proto"],
+    strip_import_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_protobuf//:any_proto",
     ],
-    strip_import_prefix = "src",
-    visibility = ["//visibility:public"],
 )
 
 proto_library(
@@ -79,8 +79,8 @@ cc_library(
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
-        "ray_util.so",
         "ray_common.so",
+        "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
     ],
@@ -154,56 +154,56 @@ cc_library(
     name = "streaming_channel",
     srcs = glob(["src/channel/*.cc"]),
     hdrs = glob(["src/channel/*.h"]),
-    deps = [
-        ":streaming_util",
-        ":streaming_queue",
-        ":streaming_message",
-        ":streaming_ring_buffer",
-        ":streaming_common",
-    ],
     copts = COPTS,
     visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_common",
+        ":streaming_message",
+        ":streaming_queue",
+        ":streaming_ring_buffer",
+        ":streaming_util",
+    ],
 )
 
 cc_library(
     name = "streaming_reliability",
-    srcs = glob([ "src/reliability/*.cc" ]),
-    hdrs = glob([ "src/reliability/*.h"]),
+    srcs = glob(["src/reliability/*.cc"]),
+    hdrs = glob(["src/reliability/*.h"]),
+    copts = COPTS,
     includes = ["src/"],
+    visibility = ["//visibility:public"],
     deps = [
-        ":streaming_util",
         ":streaming_channel",
         ":streaming_message",
+        ":streaming_util",
     ],
-    copts = COPTS,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "streaming_ring_buffer",
-    srcs = glob([ "src/ring_buffer/*.cc" ]),
-    hdrs = glob([ "src/ring_buffer/*.h"]),
+    srcs = glob(["src/ring_buffer/*.cc"]),
+    hdrs = glob(["src/ring_buffer/*.h"]),
+    copts = COPTS,
     includes = ["src/"],
+    visibility = ["//visibility:public"],
     deps = [
+        "core_worker_lib.so",
         ":ray_common.so",
         ":ray_util.so",
-        "core_worker_lib.so",
+        ":streaming_message",
         "@boost//:circular_buffer",
         "@boost//:thread",
-        ":streaming_message"
     ],
-    copts = COPTS,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "streaming_common",
-    srcs = glob([ "src/common/*.cc" ]),
-    hdrs = glob([ "src/common/*.h"]),
-    includes = ["src/"],
-    deps = [],
+    srcs = glob(["src/common/*.cc"]),
+    hdrs = glob(["src/common/*.h"]),
     copts = COPTS,
+    includes = ["src/"],
     visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -222,13 +222,13 @@ cc_library(
     deps = [
         "ray_common.so",
         "ray_util.so",
+        ":streaming_channel",
+        ":streaming_common",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue",
-        ":streaming_util",
-        ":streaming_channel",
-        ":streaming_common",
         ":streaming_reliability",
+        ":streaming_util",
     ],
 )
 
