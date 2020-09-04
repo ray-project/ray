@@ -1,6 +1,7 @@
 package io.ray.streaming.api.function.internal;
 
 import io.ray.streaming.api.function.impl.SourceFunction;
+import java.util.ArrayList;
 import java.util.Collection;
 
 /**
@@ -11,25 +12,22 @@ import java.util.Collection;
 public class CollectionSourceFunction<T> implements SourceFunction<T> {
 
   private Collection<T> values;
-  private boolean finished = false;
 
   public CollectionSourceFunction(Collection<T> values) {
     this.values = values;
   }
 
   @Override
-  public void init(int totalParallel, int currentIndex) {
+  public void init(int parallel, int index) {
   }
 
   @Override
-  public void fetch(SourceContext<T> ctx) throws Exception {
-    if (finished) {
-      return;
-    }
+  public void run(SourceContext<T> ctx) throws Exception {
     for (T value : values) {
       ctx.collect(value);
     }
-    finished = true;
+    // empty collection
+    values = new ArrayList<>();
   }
 
   @Override

@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.transfer.channel;
+package io.ray.streaming.runtime.transfer;
 
 import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;
@@ -39,6 +39,47 @@ public class ChannelId {
     long nativeIdPtr = 0;
     nativeIdPtr = createNativeId(address);
     this.nativeIdPtr = nativeIdPtr;
+  }
+
+  public byte[] getBytes() {
+    return bytes;
+  }
+
+  public ByteBuffer getBuffer() {
+    return buffer;
+  }
+
+  public long getAddress() {
+    return address;
+  }
+
+  public long getNativeIdPtr() {
+    if (nativeIdPtr == 0) {
+      throw new IllegalStateException("native ID not available");
+    }
+    return nativeIdPtr;
+  }
+
+  @Override
+  public String toString() {
+    return strId;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    ChannelId that = (ChannelId) o;
+    return strId.equals(that.strId);
+  }
+
+  @Override
+  public int hashCode() {
+    return strId.hashCode();
   }
 
   private static native long createNativeId(long idAddress);
@@ -123,7 +164,7 @@ public class ChannelId {
    * @param id hex string representation of channel id
    * @return bytes representation of channel id
    */
-  public static byte[] idStrToBytes(String id) {
+  static byte[] idStrToBytes(String id) {
     byte[] idBytes = BaseEncoding.base16().decode(id.toUpperCase());
     assert idBytes.length == ChannelId.ID_LENGTH;
     return idBytes;
@@ -133,50 +174,9 @@ public class ChannelId {
    * @param id bytes representation of channel id
    * @return hex string representation of channel id
    */
-  public static String idBytesToStr(byte[] id) {
+  static String idBytesToStr(byte[] id) {
     assert id.length == ChannelId.ID_LENGTH;
     return BaseEncoding.base16().encode(id).toLowerCase();
-  }
-
-  public byte[] getBytes() {
-    return bytes;
-  }
-
-  public ByteBuffer getBuffer() {
-    return buffer;
-  }
-
-  public long getAddress() {
-    return address;
-  }
-
-  public long getNativeIdPtr() {
-    if (nativeIdPtr == 0) {
-      throw new IllegalStateException("native ID not available");
-    }
-    return nativeIdPtr;
-  }
-
-  @Override
-  public String toString() {
-    return strId;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    ChannelId that = (ChannelId) o;
-    return strId.equals(that.strId);
-  }
-
-  @Override
-  public int hashCode() {
-    return strId.hashCode();
   }
 
 }
