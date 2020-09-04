@@ -18,7 +18,7 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
-   :figure: /images/param_actor.png
+   :figure: /images/pipeline.png
    :description: :doc:`/auto_examples/tips-for-first-time`
 
 .. customgalleryitem::

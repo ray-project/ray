@@ -61,7 +61,7 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
 
 The output of a program execution is below. As expected, the program takes around 4 secs:
 
-.. code-block:: python
+.. code-block:: bash
 
     duration = 4.0149290561676025
     results =  [0, 1, 2, 3]
@@ -303,7 +303,7 @@ If we use ``ray.get()`` on the results of multiple tasks we will have to wait un
 
 To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 sec. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 sec which is the time it takes to execute ``process_results()``.
 
-.. code-block:: bash
+.. code-block:: python
 
     import time
     import random
@@ -330,7 +330,7 @@ To illustrate this issue, consider the following example where we run four ``do_
 
 The output of the program shows that it takes close to 8 sec to run:
 
-.. code-block:: python
+.. code-block:: bash
 
     duration = 7.82636022567749
     result =  6
