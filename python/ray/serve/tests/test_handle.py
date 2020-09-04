@@ -54,7 +54,7 @@ def test_handle_http_args(serve_instance):
     serve.create_endpoint(
         "endpoint", backend="backend", route="/endpoint", methods=["POST"])
 
-    grond_truth = {
+    ground_truth = {
         "args": {
             "arg1": "1",
             "arg2": "2"
@@ -70,19 +70,19 @@ def test_handle_http_args(serve_instance):
 
     resp_web = requests.post(
         "http://127.0.0.1:8000/endpoint?arg1=1&arg2=2",
-        headers=grond_truth["headers"],
-        json=grond_truth["json"]).json()
+        headers=ground_truth["headers"],
+        json=ground_truth["json"]).json()
 
     handle = serve.get_handle("endpoint")
     resp_handle = ray.get(
         handle.options(
-            http_method=grond_truth["method"],
-            http_headers=grond_truth["headers"]).remote(
-                grond_truth["json"], **grond_truth["args"]))
+            http_method=ground_truth["method"],
+            http_headers=ground_truth["headers"]).remote(
+                ground_truth["json"], **ground_truth["args"]))
 
     for resp in [resp_web, resp_handle]:
         for field in ["args", "method", "json"]:
-            assert resp[field] == grond_truth[field]
+            assert resp[field] == ground_truth[field]
         resp["headers"]["X-Custom-Header"] == "value"
 
 

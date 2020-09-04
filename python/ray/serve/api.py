@@ -43,14 +43,14 @@ def accept_batch(f: Callable) -> Callable:
     Example:
 
     >>> @serve.accept_batch
-        def serving_func(flask_request):
-            assert isinstance(flask_request, list)
+        def serving_func(request):
+            assert isinstance(request, list)
             ...
 
     >>> class ServingActor:
             @serve.accept_batch
-            def __call__(self, *, python_arg=None):
-                assert isinstance(python_arg, list)
+            def __call__(self, request):
+                assert isinstance(request, list)
     """
     f._serve_accept_batch = True
     return f

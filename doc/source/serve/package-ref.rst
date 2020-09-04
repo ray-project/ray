@@ -33,7 +33,13 @@ Advanced APIs
 .. autofunction:: ray.serve.get_handle
 .. autoclass:: ray.serve.handle.RayServeHandle
 
+When calling from Python, Servable will receives ``ServeRequest``
+instead of Flask requests.
+
+.. autoclass:: ray.serve.utils.ServeRequest
+    :members:
 
 ``serve.accept_batch`` marks your backend API does accept list of input instead
 of just single input.
+
 .. autofunction:: ray.serve.accept_batch

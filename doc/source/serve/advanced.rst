@@ -344,3 +344,66 @@ You can follow the same pattern for other Starlette middlewares.
             Middleware(
                 CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
         ])
+
+
+.. _serve-handle-explainer:
+
+How does ``ServeHandle`` and ``ServeRequest`` work?
+---------------------------------------------------
+
+Ray Serve enables you to query models both from HTTP and Python. This feature
+enables seamless :ref:`model composition<serve-model-composition>`. You can
+get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
+reach an endpoint through HTTP via a specific route. When you issue a request
+to an endpoint through ``ServeHandle``, the request go through the same code
+path as the HTTP request would go through: choosing backends through :ref:`traffic
+policies <serve-split-traffic>`, finding the next available replicas, and
+participate in micro-batching.
+
+When the request arrives in the model, you can access the data similar to the way
+you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
+
+.. list-table::
+   :header-rows: 1
+
+   * - HTTP
+     - ServeHandle
+     - | Request
+       | (Flask.Request and ServeRequest)
+   * - ``requests.get(..., headers={...})``
+     - ``handle.options(http_headers={...})``
+     - ``request.headers``
+   * - ``requests.post(...)``
+     - ``handle.options(http_method="POST")``
+     - ``requests.method``
+   * - ``request.get(..., json={...})``
+     - ``handle.remote({...})``
+     - ``request.json``
+   * - ``request.get(..., form={...})``
+     - ``handle.remote({...})``
+     - ``request.form``
+   * - ``request.get(..., params={"a":"b"})``
+     - ``handle.remote(a="b")``
+     - ``request.args``
+   * - ``request.get(..., data="long string")``
+     - ``request.remote("long string")``
+     - ``request.data``
+   * - ``N/A``
+     - ``request.remote(python_object)``
+     - ``request.data``
+
+.. note::
+
+    You might noticed the last row of the table shows that ServeRequest supports
+    Python object pass through the handle. This is not possible in HTTP. If you
+    need to distinguish the origin of the request, you can do an ``isinstance``
+    check:
+
+    .. code-block:: python
+
+        import flask
+
+        if isinstance(request, flask.Request):
+            print("Request coming from web!")
+        else:
+            print("Request coming from Python!")
