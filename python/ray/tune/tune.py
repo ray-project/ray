@@ -28,7 +28,6 @@ _SCHEDULERS = {
 }
 
 
-
 @dataclass
 class SyncConfig:
     """Configuration object for syncing.

@@ -132,7 +132,6 @@ class TrialRunner:
                  resume=False,
                  server_port=None,
                  fail_fast=False,
-                 run_errored_only=False,
                  verbose=True,
                  checkpoint_period=None,
                  trial_executor=None):
@@ -183,8 +182,11 @@ class TrialRunner:
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
+            errored_only = False
+            if isinstance(resume, str):
+                errored_only = resume.upper() == "ERRORED_ONLY"
             try:
-                self.resume(run_errored_only=resume == "ERRORED_ONLY")
+                self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
                 if self._verbose:
@@ -224,6 +226,7 @@ class TrialRunner:
             resume_type: One of True, "REMOTE", "LOCAL",
                 "PROMPT", "ERRORED_ONLY".
         """
+        # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
             return False
         assert resume_type in self.VALID_RESUME_TYPES, (

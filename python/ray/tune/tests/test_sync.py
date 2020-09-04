@@ -169,6 +169,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
         sync_config = tune.SyncConfig(upload_dir="test", sync_to_cloud=counter)
         tune.syncer.CLOUD_SYNC_PERIOD = 1
+        # This was originally set to 0.5
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
         self.addCleanup(
             lambda: os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S", None))

@@ -386,9 +386,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            run_errored_only=False,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
@@ -418,9 +416,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            run_errored_only=True,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
