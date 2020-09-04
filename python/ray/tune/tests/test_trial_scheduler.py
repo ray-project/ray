@@ -702,10 +702,8 @@ class BOHBSuite(unittest.TestCase):
             runner.add_trial(t)
             runner._launch_trial(t)
 
-        for trial, trial_result in zip(
-                trials,
-            [result(1, 5), result(2, 1),
-             result(3, 5)]):
+        all_results = [result(1, 5), result(2, 1), result(3, 5)]
+        for trial, trial_result in zip(trials, all_results):
             decision = sched.on_trial_result(runner, trial, trial_result)
             self.assertEqual(decision, TrialScheduler.PAUSE)
             runner._pause_trial(trial)
