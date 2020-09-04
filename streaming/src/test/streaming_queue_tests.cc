@@ -66,7 +66,6 @@ INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingExactlySameTest,
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  // set_streaming_log_config("streaming_writer_test", StreamingLogLevel::INFO, 0);
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 9);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);

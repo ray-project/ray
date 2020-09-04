@@ -65,7 +65,7 @@ public class GraphPbBuilder {
     return builder.build();
   }
 
-  private RemoteCall.ExecutionVertexContext.ExecutionVertex buildVertex(
+  public RemoteCall.ExecutionVertexContext.ExecutionVertex buildVertex(
       ExecutionVertex executionVertex) {
     // build vertex infos
     RemoteCall.ExecutionVertexContext.ExecutionVertex.Builder executionVertexBuilder =
@@ -79,9 +79,11 @@ public class GraphPbBuilder {
         ByteString.copyFrom(
             serializeOperator(executionVertex.getStreamOperator())));
     executionVertexBuilder.setChained(isPythonChainedOperator(executionVertex.getStreamOperator()));
-    executionVertexBuilder.setWorkerActor(
-        ByteString.copyFrom(
-            ((NativeActorHandle) (executionVertex.getWorkerActor())).toBytes()));
+    if (executionVertex.getWorkerActor() != null) {
+      executionVertexBuilder.setWorkerActor(
+          ByteString.copyFrom(
+              ((NativeActorHandle) (executionVertex.getWorkerActor())).toBytes()));
+    }
     executionVertexBuilder.setContainerId(executionVertex.getContainerId().toString());
     executionVertexBuilder.setBuildTime(executionVertex.getBuildTime());
     executionVertexBuilder.setLanguage(

@@ -36,7 +36,7 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
 }
 
 void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
-  STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
+  STREAMING_LOG(DEBUG) << "Transport::Send buffer size: " << buffer->Size();
   std::vector<ObjectID> return_ids;
   SendInternal(std::move(buffer), async_func_, TASK_OPTION_RETURN_NUM_0, return_ids);
 }

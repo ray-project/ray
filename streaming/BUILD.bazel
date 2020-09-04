@@ -9,6 +9,9 @@ proto_library(
     srcs = ["src/protobuf/streaming.proto"],
     strip_import_prefix = "src",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 proto_library(
@@ -22,7 +25,10 @@ proto_library(
     srcs = ["src/protobuf/remote_call.proto"],
     strip_import_prefix = "src",
     visibility = ["//visibility:public"],
-    deps = ["streaming_proto"],
+    deps = [
+        "streaming_proto",
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 cc_proto_library(
@@ -70,9 +76,10 @@ cc_library(
         "src/util/*.h",
     ]),
     copts = COPTS,
-    strip_include_prefix = "src",
+    includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
+        "ray_common.so",
         "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
@@ -144,6 +151,62 @@ cc_library(
 )
 
 cc_library(
+    name = "streaming_channel",
+    srcs = glob(["src/channel/*.cc"]),
+    hdrs = glob(["src/channel/*.h"]),
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_common",
+        ":streaming_message",
+        ":streaming_queue",
+        ":streaming_ring_buffer",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_reliability",
+    srcs = glob(["src/reliability/*.cc"]),
+    hdrs = glob(["src/reliability/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_channel",
+        ":streaming_message",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_ring_buffer",
+    srcs = glob(["src/ring_buffer/*.cc"]),
+    hdrs = glob(["src/ring_buffer/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "core_worker_lib.so",
+        ":ray_common.so",
+        ":ray_util.so",
+        ":streaming_message",
+        "@boost//:circular_buffer",
+        "@boost//:thread",
+    ],
+)
+
+cc_library(
+    name = "streaming_common",
+    srcs = glob(["src/common/*.cc"]),
+    hdrs = glob(["src/common/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+cc_library(
     name = "streaming_lib",
     srcs = glob([
         "src/*.cc",
@@ -159,11 +222,13 @@ cc_library(
     deps = [
         "ray_common.so",
         "ray_util.so",
+        ":streaming_channel",
+        ":streaming_common",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue",
+        ":streaming_reliability",
         ":streaming_util",
-        "@boost//:circular_buffer",
     ],
 )
 
@@ -284,6 +349,7 @@ genrule(
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
+        sed -i -E 's/from protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
     local = 1,
@@ -298,7 +364,6 @@ cc_binary(
     ]),
     copts = COPTS,
     linkshared = 1,
-    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":streaming_lib",

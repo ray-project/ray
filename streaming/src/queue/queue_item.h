@@ -24,6 +24,7 @@ const uint64_t QUEUE_INITIAL_SEQ_ID = 1;
 /// LocalMemoryBuffer shared_ptr, which will be sent out by Transport.
 class QueueItem {
  public:
+  QueueItem() = default;
   /// Construct a QueueItem object.
   /// \param[in] seq_id the sequential id assigned by DataWriter for a message bundle and
   /// QueueItem.

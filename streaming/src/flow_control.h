@@ -1,6 +1,6 @@
 #pragma once
 
-#include "channel.h"
+#include "channel/channel.h"
 
 namespace ray {
 namespace streaming {
