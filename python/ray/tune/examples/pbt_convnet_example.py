@@ -131,11 +131,11 @@ if __name__ == "__main__":
         })
     # __tune_end__
 
-    best_trial = analysis.get_best_trial("mean_accuracy")
-    best_checkpoint = max(
-        analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy"))
+    best_trial = analysis.get_best_trial("mean_accuracy", "max")
+    best_checkpoint = analysis.get_best_checkpoint(
+        best_trial, metric="mean_accuracy", mode="max")
     restored_trainable = PytorchTrainable()
-    restored_trainable.restore(best_checkpoint[0])
+    restored_trainable.restore(best_checkpoint)
     best_model = restored_trainable.model
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.

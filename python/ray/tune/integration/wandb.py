@@ -7,6 +7,7 @@ from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
+from ray.tune.utils import flatten_dict
 
 try:
     import wandb
@@ -103,10 +104,18 @@ def _set_api_key(wandb_config):
     if api_key:
         os.environ[WANDB_ENV_VAR] = api_key
     elif not os.environ.get(WANDB_ENV_VAR):
+        try:
+            # Check if user is already logged into wandb.
+            wandb.ensure_configured()
+            if wandb.api.api_key:
+                logger.info("Already logged into W&B.")
+                return
+        except AttributeError:
+            pass
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
-            "variable or pass `api_key` or `api_key_file` in the config".
-            format(WANDB_ENV_VAR))
+            "variable, pass `api_key` or `api_key_file` in the config, "
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):
@@ -137,11 +146,16 @@ class _WandbLoggingProcess(Process):
     def _handle_result(self, result):
         config_update = result.get("config", {}).copy()
         log = {}
+        flat_result = flatten_dict(result, delimiter="/")
 
-        for k, v in result.items():
-            if k in self._to_config:
+        for k, v in flat_result.items():
+            if any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._to_config):
                 config_update[k] = v
-            elif k in self._exclude:
+            elif any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._exclude):
                 continue
             elif not isinstance(v, Number):
                 continue
@@ -162,6 +176,10 @@ class WandbLogger(Logger):
 
     Wandb configuration is done by passing a ``wandb`` key to
     the ``config`` parameter of ``tune.run()`` (see example below).
+
+    The ``wandb`` config key can be optionally included in the
+    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    trainables (see second example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which
@@ -205,6 +223,27 @@ class WandbLogger(Logger):
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
 
+    Example for RLLib:
+
+    .. code-block :: python
+
+        from ray import tune
+        from ray.tune.integration.wandb import WandbLogger
+
+        tune.run(
+            "PPO",
+            config={
+                "env": "CartPole-v0",
+                "logger_config": {
+                    "wandb": {
+                        "project": "PPO",
+                        "api_key_file": "~/.wandb_api_key"
+                    }
+                }
+            },
+            loggers=[WandbLogger])
+
+
     """
 
     # Do not log these result keys
@@ -221,8 +260,14 @@ class WandbLogger(Logger):
     def _init(self):
         config = self.config.copy()
 
+        config.pop("callbacks", None)  # Remove callbacks
+
         try:
-            wandb_config = config.pop("wandb").copy()
+            if config.get("logger_config", {}).get("wandb"):
+                logger_config = config.pop("logger_config")
+                wandb_config = logger_config.get("wandb").copy()
+            else:
+                wandb_config = config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb logger specified but no configuration has been passed. "
@@ -296,10 +341,10 @@ class WandbTrainableMixin:
 
         super().__init__(config, *args, **kwargs)
 
-        config = config.copy()
+        _config = config.copy()
 
         try:
-            wandb_config = config.pop("wandb").copy()
+            wandb_config = _config.pop("wandb").copy()
         except KeyError:
             raise ValueError(
                 "Wandb mixin specified but no configuration has been passed. "
@@ -334,7 +379,7 @@ class WandbTrainableMixin:
             allow_val_change=True,
             group=wandb_group,
             project=wandb_project,
-            config=config)
+            config=_config)
         wandb_init_kwargs.update(wandb_config)
 
         self.wandb = self._wandb.init(**wandb_init_kwargs)

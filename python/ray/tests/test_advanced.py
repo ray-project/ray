@@ -49,27 +49,6 @@ def test_internal_free(shutdown_only):
         ray.get(big_id)
 
 
-def test_wait_iterables(ray_start_regular):
-    @ray.remote
-    def f(delay):
-        time.sleep(delay)
-        return 1
-
-    object_refs = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
-    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
-
-    object_refs = np.array(
-        [f.remote(1.0),
-         f.remote(0.5),
-         f.remote(0.5),
-         f.remote(0.5)])
-    ready_ids, remaining_ids = ray.experimental.wait(object_refs)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
-
-
 def test_multiple_waits_and_gets(shutdown_only):
     # It is important to use three workers here, so that the three tasks
     # launched in this experiment can run at the same time.

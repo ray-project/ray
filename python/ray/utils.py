@@ -18,6 +18,10 @@ import ray.gcs_utils
 import ray.ray_constants as ray_constants
 import psutil
 
+pwd = None
+if sys.platform != "win32":
+    import pwd
+
 logger = logging.getLogger(__name__)
 
 # Linux can bind child processes' lifetimes to that of their parents via prctl.
@@ -118,7 +122,7 @@ def push_error_to_driver_through_redis(redis_client,
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
     pubsub_msg = ray.gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.hex()
+    pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
                          pubsub_msg.SerializeAsString())
@@ -213,8 +217,7 @@ def decode(byte_str, allow_none=False):
         return ""
 
     if not isinstance(byte_str, bytes):
-        raise ValueError(
-            "The argument {} must be a bytes object.".format(byte_str))
+        raise ValueError(f"The argument {byte_str} must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -456,7 +459,7 @@ def create_and_init_new_worker_log(path, worker_pid):
         # This should always be the first message to appear in the worker's
         # stdout and stderr log files. The string "Ray worker pid:" is
         # parsed in the log monitor process.
-        print("Ray worker pid: {}".format(worker_pid), file=f)
+        print(f"Ray worker pid: {worker_pid}", file=f)
     return f
 
 
@@ -781,3 +784,12 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_user():
+    if pwd is None:
+        return ""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except Exception:
+        return ""

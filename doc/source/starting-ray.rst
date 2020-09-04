@@ -43,6 +43,8 @@ To check if Ray is initialized, you can call ``ray.is_initialized()``:
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
 
+.. _using-ray-on-a-cluster:
+
 Using Ray on a cluster
 ----------------------
 

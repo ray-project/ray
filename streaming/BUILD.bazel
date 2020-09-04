@@ -239,6 +239,14 @@ cc_test(
     deps = test_common_deps,
 )
 
+cc_test(
+    name = "queue_protobuf_tests",
+    srcs = [
+        "src/test/queue_protobuf_tests.cc",
+    ],
+    deps = test_common_deps,
+)
+
 python_proto_compile(
     name = "streaming_py_proto",
     deps = [":streaming_proto"],

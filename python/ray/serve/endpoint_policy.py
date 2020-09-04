@@ -77,10 +77,10 @@ class RandomEndpointPolicy(EndpointPolicy):
         assigned_backends = set()
         while len(endpoint_queue) > 0:
             query = endpoint_queue.pop()
-            if query.shard_key is None:
+            if query.metadata.shard_key is None:
                 rstate = np.random
             else:
-                sha256_seed = sha256(query.shard_key.encode("utf-8"))
+                sha256_seed = sha256(query.metadata.shard_key.encode("utf-8"))
                 seed = np.frombuffer(sha256_seed.digest(), dtype=np.uint32)
                 # Note(simon): This constructor takes 100+us, maybe cache this?
                 rstate = np.random.RandomState(seed)
@@ -89,13 +89,13 @@ class RandomEndpointPolicy(EndpointPolicy):
                 rstate.random())
 
             assigned_backends.add(chosen_backend)
-            backend_queues[chosen_backend].add(query)
+            backend_queues[chosen_backend].appendleft(query)
             if len(shadow_backends) > 0:
                 shadow_query = copy.copy(query)
                 shadow_query.async_future = None
-                shadow_query.is_shadow_query = True
+                shadow_query.metadata.is_shadow_query = True
                 for shadow_backend in shadow_backends:
                     assigned_backends.add(shadow_backend)
-                    backend_queues[shadow_backend].add(shadow_query)
+                    backend_queues[shadow_backend].appendleft(shadow_query)
 
         return assigned_backends

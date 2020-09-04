@@ -1,4 +1,3 @@
-import json
 import pytest
 try:
     import pytest_timeout
@@ -59,7 +58,7 @@ def test_uses_resources(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(120)
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
     cluster = ray_start_cluster_head
@@ -140,9 +139,9 @@ def test_load_report(shutdown_only, max_shapes):
     cluster = ray.init(
         num_cpus=1,
         resources={resource1: 1},
-        _internal_config=json.dumps({
+        _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
-        }))
+        })
     redis = ray.services.create_redis_client(
         cluster["redis_address"],
         password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)

@@ -5,6 +5,7 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -74,6 +75,7 @@ def run(run_or_experiment,
         local_dir=None,
         upload_dir=None,
         trial_name_creator=None,
+        trial_dirname_creator=None,
         loggers=None,
         log_to_file=False,
         sync_to_cloud=None,
@@ -95,6 +97,7 @@ def run(run_or_experiment,
         verbose=2,
         progress_reporter=None,
         resume=False,
+        run_errored_only=False,
         queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
@@ -102,6 +105,32 @@ def run(run_or_experiment,
         return_trials=False,
         ray_auto_init=True):
     """Executes training.
+
+    Examples:
+
+    .. code-block:: python
+
+        # Run 10 trials (each trial is one instance of a Trainable). Tune runs
+        # in parallel and automatically determines concurrency.
+        tune.run(trainable, num_samples=10)
+
+        # Run 1 trial, stop when trial has reached 10 iterations
+        tune.run(my_trainable, stop={"training_iteration": 10})
+
+        # automatically retry failed trials up to 3 times
+        tune.run(my_trainable, stop={"training_iteration": 10}, max_failures=3)
+
+        # Run 1 trial, search over hyperparameters, stop after 10 iterations.
+        space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
+        tune.run(my_trainable, config=space, stop={"training_iteration": 10})
+
+        # Resumes training if a previous machine crashed
+        tune.run(my_trainable, config=space,
+                 local_dir=<path/to/dir>, resume=True)
+
+        # Rerun ONLY failed trials after an experiment is finished.
+        tune.run(my_trainable, config=space,
+                 local_dir=<path/to/dir>, resume=True, run_errored_only=True)
 
     Args:
         run_or_experiment (function | class | str | :class:`Experiment`): If
@@ -139,8 +168,12 @@ def run(run_or_experiment,
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket`` or ``gs://bucket``).
-        trial_name_creator (func): Optional function for generating
-            the trial string representation.
+        trial_name_creator (Callable[[Trial], str]): Optional function
+            for generating the trial string representation.
+        trial_dirname_creator (Callable[[Trial], str]): Function
+            for generating the trial dirname. This function should take
+            in a Trial object and return a string representing the
+            name of the directory. The return value cannot be a path.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
@@ -217,6 +250,11 @@ def run(run_or_experiment,
             PROMPT provides CLI feedback. False forces a new
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.
+        run_errored_only (bool): Only to be used with `resume` enabled.
+            Resets and reruns ERRORED trials upon resume.
+            Experiment location is determined
+            by `name` and `local_dir`. Previous trial artifacts will
+            be left untouched.
         queue_trials (bool): Whether to queue trials when the cluster does
             not currently have enough resources to launch one. This should
             be set to True when running on an autoscaling cluster to enable
@@ -233,27 +271,11 @@ def run(run_or_experiment,
             if Ray is not initialized. Defaults to True.
 
 
-
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
 
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
-
-    Examples:
-
-    .. code-block:: python
-
-        # Run 10 trials (each trial is one instance of a Trainable). Tune runs
-        # in parallel and automatically determines concurrency.
-        tune.run(trainable, num_samples=10)
-
-        # Run 1 trial, stop when trial has reached 10 iterations
-        tune.run(my_trainable, stop={"training_iteration": 10})
-
-        # Run 1 trial, search over hyperparameters, stop after 10 iterations.
-        space = {"lr": tune.uniform(0, 1), "momentum": tune.uniform(0, 1)}
-        tune.run(my_trainable, config=space, stop={"training_iteration": 10})
     """
     config = config or {}
 
@@ -279,6 +301,7 @@ def run(run_or_experiment,
                 upload_dir=upload_dir,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
+                trial_dirname_creator=trial_dirname_creator,
                 loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
@@ -306,6 +329,16 @@ def run(run_or_experiment,
     if not search_alg:
         search_alg = BasicVariantGenerator()
 
+    # TODO (krfricke): Introduce metric/mode as top level API
+    if config and not search_alg.set_search_properties(None, None, config):
+        if has_unresolved_values(config):
+            raise ValueError(
+                "You passed a `config` parameter to `tune.run()` with "
+                "unresolved parameters, but the search algorithm was already "
+                "instantiated with a search space. Make sure that `config` "
+                "does not contain any more parameter definitions - include "
+                "them in the search algorithm's search space if necessary.")
+
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler or FIFOScheduler(),
@@ -315,6 +348,7 @@ def run(run_or_experiment,
         stopper=experiments[0].stopper,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
+        run_errored_only=run_errored_only,
         launch_web_server=with_server,
         server_port=server_port,
         verbose=bool(verbose > 1),
@@ -358,8 +392,8 @@ def run(run_or_experiment,
 
     try:
         runner.checkpoint(force=True)
-    except Exception:
-        logger.exception("Trial Runner checkpointing failed.")
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
     if verbose:
         _report_progress(runner, progress_reporter, done=True)
@@ -381,7 +415,11 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
-    return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
+    return ExperimentAnalysis(
+        runner.checkpoint_file,
+        trials=trials,
+        default_metric=None,
+        default_mode=None)
 
 
 def run_experiments(experiments,

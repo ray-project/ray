@@ -48,60 +48,16 @@ class MockReconstructionPolicy : public ReconstructionPolicyInterface {
   MOCK_METHOD1(Cancel, void(const ObjectID &object_id));
 };
 
-class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
- public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisTaskInfoAccessor(client) {}
-
-  MOCK_METHOD2(AsyncAddTaskLease,
-               ray::Status(const std::shared_ptr<TaskLeaseData> &data_ptr,
-                           const gcs::StatusCallback &callback));
-};
-
-class MockGcsClient : public gcs::RedisGcsClient {
- public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
-
-  void Init(MockTaskInfoAccessor *task_accessor_mock) {
-    task_accessor_.reset(task_accessor_mock);
-  }
-};
-
 class TaskDependencyManagerTest : public ::testing::Test {
  public:
   TaskDependencyManagerTest()
       : object_manager_mock_(),
         reconstruction_policy_mock_(),
-        io_service_(),
-        options_("", 1, ""),
-        gcs_client_mock_(new MockGcsClient(options_)),
-        task_accessor_mock_(new MockTaskInfoAccessor(gcs_client_mock_.get())),
-        initial_lease_period_ms_(100),
-        task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_,
-                                 io_service_, ClientID::Nil(), initial_lease_period_ms_,
-                                 gcs_client_mock_) {
-    gcs_client_mock_->Init(task_accessor_mock_);
-  }
-
-  void Run(uint64_t timeout_ms) {
-    auto timer_period = boost::posix_time::milliseconds(timeout_ms);
-    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_, timer_period);
-    timer->async_wait([this](const boost::system::error_code &error) {
-      ASSERT_FALSE(error);
-      io_service_.stop();
-    });
-    io_service_.run();
-    io_service_.reset();
-  }
+        task_dependency_manager_(object_manager_mock_, reconstruction_policy_mock_) {}
 
  protected:
   MockObjectManager object_manager_mock_;
   MockReconstructionPolicy reconstruction_policy_mock_;
-  boost::asio::io_service io_service_;
-  gcs::GcsClientOptions options_;
-  std::shared_ptr<MockGcsClient> gcs_client_mock_;
-  MockTaskInfoAccessor *task_accessor_mock_;
-  int64_t initial_lease_period_ms_;
   TaskDependencyManager task_dependency_manager_;
 };
 
@@ -109,10 +65,10 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
   rpc::Address address;
-  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON,
+  builder.SetCommonTaskSpec(RandomTaskId(), "example_task", Language::PYTHON,
                             FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
-                            num_returns, {}, {});
+                            num_returns, {}, {}, PlacementGroupID::Nil());
   builder.SetActorCreationTaskSpec(ActorID::Nil(), 1, {}, 1, false, "", false);
   for (const auto &arg : arguments) {
     builder.AddArg(TaskArgByReference(arg, rpc::Address()));
@@ -270,9 +226,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
       ASSERT_FALSE(ready);
     }
 
-    // Mark each task as pending. A lease entry should be added to the GCS for
-    // each task.
-    EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
+    // Mark each task as pending.
     task_dependency_manager_.TaskPending(task);
 
     i++;
@@ -307,7 +261,8 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
 TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // Create a task with 3 arguments.
   auto task1 = ExampleTask({}, 0);
-  ObjectID put_id = ObjectID::ForPut(task1.GetTaskSpecification().TaskId(), /*index=*/1);
+  ObjectID put_id =
+      ObjectID::FromIndex(task1.GetTaskSpecification().TaskId(), /*index=*/1);
   auto task2 = ExampleTask({put_id}, 0);
 
   // No objects have been registered in the task dependency manager, so the put
@@ -323,7 +278,6 @@ TEST_F(TaskDependencyManagerTest, TestDependentPut) {
   // it is pending execution.
   EXPECT_CALL(object_manager_mock_, CancelPull(put_id));
   EXPECT_CALL(reconstruction_policy_mock_, Cancel(put_id));
-  EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
   task_dependency_manager_.TaskPending(task1);
 }
 
@@ -336,7 +290,6 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
     const auto &arguments = task.GetDependencies();
     static_cast<void>(task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), arguments));
-    EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
     task_dependency_manager_.TaskPending(task);
   }
 
@@ -437,31 +390,6 @@ TEST_F(TaskDependencyManagerTest, TestEviction) {
   }
 }
 
-TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewal) {
-  // Mark a task as pending.
-  auto task = ExampleTask({}, 0);
-  // We expect an initial call to acquire the lease.
-  EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
-
-  task_dependency_manager_.TaskPending(task);
-
-  // Check that while the task is still pending, there is one call to renew the
-  // lease for each lease period that passes. The lease period doubles with
-  // each renewal.
-  int num_expected_calls = 4;
-  int64_t sleep_time = 0;
-  for (int i = 1; i <= num_expected_calls; i++) {
-    sleep_time += i * initial_lease_period_ms_;
-  }
-  // When sleep_time = 10 * initial_lease_period_ms_, test case fails, because the
-  // AsyncAddTaskLease function is expected to be called four times, but only three times.
-  // It's hard to determine the sleep_time value, so let's double it for now.
-  sleep_time = sleep_time * 2;
-  EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _))
-      .Times(testing::AtLeast(num_expected_calls));
-  Run(sleep_time);
-}
-
 TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // Create 3 tasks, each dependent on the previous. The first task has no
   // arguments.
@@ -478,9 +406,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
     const auto &arguments = task.GetDependencies();
     task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), arguments);
-    // Mark each task as pending. A lease entry should be added to the GCS for
-    // each task.
-    EXPECT_CALL(*task_accessor_mock_, AsyncAddTaskLease(_, _));
+    // Mark each task as pending.
     task_dependency_manager_.TaskPending(task);
   }
 

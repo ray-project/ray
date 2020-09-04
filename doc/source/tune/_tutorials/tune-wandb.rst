@@ -29,7 +29,9 @@ Please :doc:`see here for a full example </tune/examples/wandb_example>`.
 .. _tune-wandb-logger:
 
 .. autoclass:: ray.tune.integration.wandb.WandbLogger
+   :noindex:
 
 .. _tune-wandb-mixin:
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
+   :noindex:

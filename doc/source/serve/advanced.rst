@@ -188,6 +188,8 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or `
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 
+.. _serve-shadow-testing:
+
 Shadow Testing
 --------------
 
@@ -220,6 +222,8 @@ This is demonstrated in the example below, where we create an endpoint serviced 
   serve.shadow_traffic("shadowed_endpoint", "new_backend_1", 0)
   serve.shadow_traffic("shadowed_endpoint", "new_backend_2", 0)
 
+.. _serve-model-composition:
+
 Composing Multiple Models
 =========================
 Ray Serve supports composing individually scalable models into a single model
@@ -245,66 +249,10 @@ That's it. Let's take a look at an example:
 Monitoring
 ==========
 
-Ray Serve exposes system metrics like number of requests through Python API
-``serve.stat`` and HTTP ``/-/metrics`` API. By default, it uses a custom
-structured format for easy parsing and debugging.
-
-Via python:
-
-.. code-block:: python
-
-  serve.stat()
-  """
-    [..., {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/-/routes",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 1
-      },
-      {
-          "info": {
-              "name": "num_http_requests",
-              "route": "/echo",
-              "type": "MetricType.COUNTER"
-          },
-          "value": 10
-      }, ...]
-  """
-
-Via HTTP:
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-  # Returns the same output as above in JSON format.
-
-You can also access the result in `Prometheus <https://prometheus.io/>`_ format,
-by setting the ``metric_exporter`` option in :mod:`serve.init <ray.serve.init>`.
-
-.. code-block:: python
-
-  from ray.serve.metric import PrometheusExporter
-  serve.init(metric_exporter=PrometheusExporter)
-
-.. code-block::
-
-  curl http://localhost:8000/-/metrics
-
-  # HELP backend_request_counter_total Number of queries that have been processed in this replica
-  # TYPE backend_request_counter_total counter
-  backend_request_counter_total{backend="echo:v1"} 5.0
-  backend_request_counter_total{backend="echo:v2"} 5.0
-  ...
-
-The metric exporter is extensible and you can customize it for your own metric
-infrastructure. We are gathering feedback and welcome contribution! Feel free
-to submit a github issue to chat with us in #serve channel in `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_.
-
-Here's an simple example of a dummy exporter that writes metrics to file:
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metric_export.py
+Ray Serve exposes important system metrics like the number of successful and
+errored requests through the Ray metrics monitoring infrastructure. By default,
+the metrics are exposed in Prometheus format on each node. See the
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
 
 .. _serve-faq:
 
@@ -342,7 +290,7 @@ How do I call an endpoint from Python code?
 use the following  to get a "handle" to that endpoint.
 
 .. code-block:: python
-    
+
     handle = serve.get_handle("api_endpoint")
 
 
@@ -368,3 +316,31 @@ To call a method via Python, do the following:
 
     handle = serve.get_handle("backend_name")
     handle.options(method_name="other_method").remote(5)
+
+How do I enable CORS and other HTTP features?
+---------------------------------------------
+
+Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
+and custom middlewares in Starlette format. The example below shows how to enable
+`Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
+You can follow the same pattern for other Starlette middlewares.
+
+.. note::
+
+  Serve does not list ``Starlette`` as one of its dependencies. To utilize this feature,
+  you will need to:
+
+  .. code-block:: bash
+
+    pip install starlette
+
+.. code-block:: python
+
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
+
+    serve.init(
+        http_middlewares=[
+            Middleware(
+                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+        ])

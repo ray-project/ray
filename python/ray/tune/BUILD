@@ -7,7 +7,7 @@ py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
-    tags = ["jenkins_only"],
+    tags = ["exclusive"],
     deps = [":tune_lib"],
 )
 
@@ -89,6 +89,22 @@ py_test(
     name = "test_function_api",
     size = "medium",
     srcs = ["tests/test_function_api.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_integration_kubernetes",
+    size = "small",
+    srcs = ["tests/test_integration_kubernetes.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_integration_pytorch_lightning",
+    size = "small",
+    srcs = ["tests/test_integration_pytorch_lightning.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -238,6 +254,14 @@ py_test(
     tags = ["exclusive", "example"],
 )
 
+py_test(
+    name = "ext_pytorch",
+    size = "medium",
+    srcs = ["tests/ext_pytorch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
+
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
@@ -304,6 +328,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod",
+    size = "medium",
+    srcs = ["tests/test_horovod.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
@@ -337,6 +369,15 @@ py_test(
     srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_simple",
+    size = "medium",
+    srcs = ["examples/horovod_simple.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
@@ -420,6 +461,15 @@ py_test(
 )
 
 py_test(
+    name = "mxnet_example",
+    size = "small",
+    srcs = ["examples/mxnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "nevergrad_example",
     size = "medium",
     srcs = ["examples/nevergrad_example.py"],
@@ -429,9 +479,45 @@ py_test(
 )
 
 py_test(
+    name = "optuna_example",
+    size = "medium",
+    srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "pbt_convnet_example",
     size = "medium",
     srcs = ["examples/pbt_convnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_convnet_function_example",
+    size = "medium",
+    srcs = ["examples/pbt_convnet_function_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_func",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_func.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "pbt_dcgan_mnist_trainable",
+    size = "medium",
+    srcs = ["examples/pbt_dcgan_mnist/pbt_dcgan_mnist_trainable.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
     args = ["--smoke-test"]
@@ -479,7 +565,7 @@ py_test(
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["flaky", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -499,6 +585,27 @@ py_test(
 #     name = "sigopt_example",
 #     size = "medium",
 #     srcs = ["examples/sigopt_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_multi_objective_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_multi_objective_example.py"],
+#     deps = [":tune_lib"],                 s
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_prior_beliefs_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_prior_beliefs_example.py"],
 #     deps = [":tune_lib"],
 #     tags = ["exclusive", "example"],
 #     args = ["--smoke-test"]

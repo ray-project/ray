@@ -8,7 +8,7 @@
   <version>0.9.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
-  <description>A fast and simple framework for building and running distributed applications.
+  <description>A simple and universal API for building distributed applications.
   </description>
   <url>https://github.com/ray-project/ray</url>
 
@@ -35,6 +35,17 @@
       <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
     </repository>
   </distributionManagement>
+
+  <repositories>
+    <repository>
+      <id>spring</id>
+      <url>https://repo.spring.io/plugins-release/</url>
+    </repository>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2/</url>
+    </repository>
+  </repositories>
 
   <modules>
     <module>api</module>

@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import os
 import sys
 
@@ -19,9 +18,7 @@ def test_initial_workers(shutdown_only):
     ray.init(
         num_cpus=1,
         include_dashboard=True,
-        _internal_config=json.dumps({
-            "enable_multi_tenancy": True
-        }))
+        _system_config={"enable_multi_tenancy": True})
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     raylet["NodeManagerPort"])
@@ -43,10 +40,7 @@ def test_initial_workers(shutdown_only):
 # different drivers were scheduled to the same worker process, that is, tasks
 # of different jobs were not correctly isolated during execution.
 def test_multi_drivers(shutdown_only):
-    info = ray.init(
-        _internal_config=json.dumps({
-            "enable_multi_tenancy": True
-        }))
+    info = ray.init(num_cpus=10, _system_config={"enable_multi_tenancy": True})
 
     driver_code = """
 import os
@@ -67,9 +61,9 @@ def get_pid():
 
 pid_objs = []
 # Submit some normal tasks and get the PIDs of workers which execute the tasks.
-pid_objs = pid_objs + [get_pid.remote() for _ in range(5)]
+pid_objs = pid_objs + [get_pid.remote() for _ in range(2)]
 # Create some actors and get the PIDs of actors.
-actors = [Actor.remote() for _ in range(5)]
+actors = [Actor.remote() for _ in range(2)]
 pid_objs = pid_objs + [actor.get_pid.remote() for actor in actors]
 
 pids = set([ray.get(obj) for obj in pid_objs])
@@ -79,7 +73,7 @@ print("PID:" + str.join(",", [str(_) for _ in pids]))
 ray.shutdown()
     """.format(info["redis_address"])
 
-    driver_count = 10
+    driver_count = 3
     processes = [
         run_string_as_driver_nonblocking(driver_code)
         for _ in range(driver_count)
@@ -119,9 +113,7 @@ def test_worker_env(shutdown_only):
             "foo1": "bar1",
             "foo2": "bar2"
         }),
-        _internal_config=json.dumps({
-            "enable_multi_tenancy": True
-        }))
+        _system_config={"enable_multi_tenancy": True})
 
     @ray.remote
     def get_env(key):

@@ -22,8 +22,8 @@ namespace gcs {
 GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
                                          const std::string &redis_password,
                                          bool is_test) {
-  RAY_LOG(INFO) << "Redis server address = " << redis_address
-                << ", is test flag = " << is_test;
+  RAY_LOG(DEBUG) << "Redis server address = " << redis_address
+                 << ", is test flag = " << is_test;
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
@@ -230,6 +230,17 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       }));
   promise.get_future().get();
   return true;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
+    const PlacementGroupID &placement_group_id) {
+  std::unique_ptr<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGet(
+      placement_group_id, TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
+                              placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
 }
 
 }  // namespace gcs

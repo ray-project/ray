@@ -42,10 +42,11 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         pid = request.pid
         duration = request.duration
         profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           "{}_profiling.txt".format(pid))
+                                           f"{pid}_profiling.txt")
+        sudo = "sudo" if ray.utils.get_user() != "root" else ""
         process = subprocess.Popen(
-            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
-            .format(profiling_file_path, pid, duration),
+            (f"{sudo} $(which py-spy) record -o {profiling_file_path} -p {pid}"
+             f" -d {duration} -f speedscope"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
@@ -58,23 +59,14 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
-    def ReportMetrics(self, request, context):
-        # NOTE: Exceptions are not propagated properly
-        # when we don't catch them here.
+    def ReportOCMetrics(self, request, context):
         try:
-            metrcs_description_required = (
-                self.metrics_agent.record_metrics_points(
-                    request.metrics_points))
-        except Exception as e:
-            logger.error(e)
+            self.metrics_agent.record_metric_points_from_protobuf(
+                request.metrics)
+        except Exception:
             logger.error(traceback.format_exc())
 
-        # If metrics description is missing, we should notify cpp processes
-        # that we need them. Cpp processes will then report them to here.
-        # We need it when (1) a new metric is reported (application metric)
-        # (2) a reporter goes down and restarted (currently not implemented).
-        return reporter_pb2.ReportMetricsReply(
-            metrcs_description_required=metrcs_description_required)
+        return reporter_pb2.ReportOCMetricsReply()
 
 
 def recursive_asdict(o):
@@ -130,8 +122,7 @@ class Reporter:
 
         _ = psutil.cpu_percent()  # For initialization
 
-        self.redis_key = "{}.{}".format(ray.gcs_utils.REPORTER_CHANNEL,
-                                        self.hostname)
+        self.redis_key = f"{ray.gcs_utils.REPORTER_CHANNEL}.{self.hostname}"
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -150,8 +141,7 @@ class Reporter:
         try:
             gpus = gpustat.new_query().gpus
         except Exception as e:
-            logger.debug(
-                "gpustat failed to retrieve GPU information: {}".format(e))
+            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -252,11 +242,11 @@ class Reporter:
         server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
             self.reporter_grpc_server, server)
-        port = server.add_insecure_port("[::]:{}".format(self.port))
+        port = server.add_insecure_port(f"[::]:{self.port}")
 
         server.start()
         # Publish the port.
-        self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
+        self.redis_client.set(f"REPORTER_PORT:{self.ip}", port)
         """Run the reporter."""
         while True:
             try:

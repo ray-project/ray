@@ -158,12 +158,20 @@ struct GcsServerMocker {
 
   class MockRayletResourceClient : public ResourceReserveInterface {
    public:
-    void RequestResourceReserve(
+    void PrepareBundleResources(
         const BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
+        const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
         override {
       num_lease_requested += 1;
       lease_callbacks.push_back(callback);
+    }
+
+    void CommitBundleResources(
+        const BundleSpecification &bundle_spec,
+        const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
+        override {
+      rpc::CommitBundleResourcesReply reply;
+      callback(Status::OK(), reply);
     }
 
     void CancelResourceReserve(
@@ -175,9 +183,9 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to RequestWorkerLease.
-    bool GrantResourceReserve(bool success = true) {
+    bool GrantPrepareBundleResources(bool success = true) {
       Status status = Status::OK();
-      rpc::RequestResourceReserveReply reply;
+      rpc::PrepareBundleResourcesReply reply;
       reply.set_success(success);
       if (lease_callbacks.size() == 0) {
         return false;
@@ -189,12 +197,26 @@ struct GcsServerMocker {
       }
     }
 
+    // Trigger reply to CancelResourceReserve.
+    bool GrantCancelResourceReserve(bool success = true) {
+      Status status = Status::OK();
+      rpc::CancelResourceReserveReply reply;
+      if (return_callbacks.size() == 0) {
+        return false;
+      } else {
+        auto callback = return_callbacks.front();
+        callback(status, reply);
+        return_callbacks.pop_front();
+        return true;
+      }
+    }
+
     ~MockRayletResourceClient() {}
 
     int num_lease_requested = 0;
     int num_return_requested = 0;
     ClientID node_id = ClientID::FromRandom();
-    std::list<rpc::ClientCallback<rpc::RequestResourceReserveReply>> lease_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {

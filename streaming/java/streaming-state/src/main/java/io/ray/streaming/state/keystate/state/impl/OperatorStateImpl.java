@@ -20,6 +20,7 @@ package io.ray.streaming.state.keystate.state.impl;
 
 import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
 
+
 import com.google.common.base.Preconditions;
 import io.ray.streaming.state.PartitionRecord;
 import io.ray.streaming.state.backend.AbstractKeyStateBackend;
@@ -30,9 +31,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * This class defines the implementation of operator state.
- * When the state is initialized, we must scan the whole table.
- * And if the state type is splitList, all the records must be spitted.
+ * This class defines the implementation of operator state. When the state is initialized, we must
+ * scan the whole table. And if the state type is splitList, all the records must be spitted.
  */
 public class OperatorStateImpl<V> implements ListState<V> {
 

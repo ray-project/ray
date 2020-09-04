@@ -104,6 +104,8 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
+   -  |pytorch| :ref:`Dreamer <dreamer>`
+
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
    -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
@@ -156,7 +158,7 @@ Concepts and Custom Algorithms
    -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Execution Plans <rllib-concepts.html#execution-plans>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples

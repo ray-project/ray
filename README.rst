@@ -1,15 +1,12 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-.. image:: https://travis-ci.com/ray-project/ray.svg?branch=master
-    :target: https://travis-ci.com/ray-project/ray
-
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://docs.ray.io/en/latest/?badge=latest
 
 |
 
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a simple and universal API for building distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -69,7 +66,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/autoscaling.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------
@@ -264,14 +261,21 @@ More Information
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older documents:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `Blog (old)`_
+
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://ray-project.github.io/
+.. _`Blog (old)`: https://ray-project.github.io/
+.. _`Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

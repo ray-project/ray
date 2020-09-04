@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ChannelUtils {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ChannelUtils.class);
 
   static byte[] toNativeConf(StreamingWorkerConfig workerConfig) {

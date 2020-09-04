@@ -106,7 +106,7 @@ if __name__ == "__main__":
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
-    algo = AxSearch(client, max_concurrent=4)
+    algo = AxSearch(ax_client=client, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
     tune.run(
         easy_objective,
