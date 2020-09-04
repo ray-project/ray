@@ -303,10 +303,9 @@ class ModelCatalog:
                     "`model_cls` must be a ModelV2 sub-class, but is"
                     " {}!".format(model_cls))
 
-            logger.info("Wrapping {} as {}".format(model_cls,
-                                                   model_interface))
-            model_cls = ModelCatalog._wrap_if_needed(
-                model_cls, model_interface)
+            logger.info("Wrapping {} as {}".format(model_cls, model_interface))
+            model_cls = ModelCatalog._wrap_if_needed(model_cls,
+                                                     model_interface)
 
             if framework in ["tf", "tfe"]:
                 # Track and warn if vars were created but not registered.
@@ -322,9 +321,9 @@ class ModelCatalog:
                     # accept these as kwargs, not get them from
                     # config["custom_model_config"] anymore).
                     try:
-                        instance = model_cls(
-                            obs_space, action_space, num_outputs,
-                            model_config, name, **customized_model_kwargs)
+                        instance = model_cls(obs_space, action_space,
+                                             num_outputs, model_config, name,
+                                             **customized_model_kwargs)
                     except TypeError as e:
                         # Keyword error: Try old way w/o kwargs.
                         if "__init__() got an unexpected " in e.args[0]:
@@ -358,15 +357,15 @@ class ModelCatalog:
                 # accept these as kwargs, not get them from
                 # config["custom_model_config"] anymore).
                 try:
-                    instance = model_cls(obs_space, action_space,
-                                         num_outputs, model_config, name,
+                    instance = model_cls(obs_space, action_space, num_outputs,
+                                         model_config, name,
                                          **customized_model_kwargs)
                 except TypeError as e:
                     # Keyword error: Try old way w/o kwargs.
                     if "__init__() got an unexpected " in e.args[0]:
                         instance = model_cls(obs_space, action_space,
-                                             num_outputs, model_config,
-                                             name, **model_kwargs)
+                                             num_outputs, model_config, name,
+                                             **model_kwargs)
                         logger.warning(
                             "Custom ModelV2 should accept all custom "
                             "options as **kwargs, instead of expecting"
