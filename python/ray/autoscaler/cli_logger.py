@@ -336,7 +336,8 @@ class _CliLogger():
             return
 
         self._print(
-            cf.skyBlue(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
+            cf.skyBlue(key) + ": " +
+            _format_msg(cf.bold(msg), *args, **kwargs))
 
     def verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message if verbosity is not 0.

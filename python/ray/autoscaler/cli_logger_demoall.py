@@ -5,7 +5,8 @@ cli_logger.old_style = False
 cli_logger.verbosity = 999
 cli_logger.detect_colors()
 
-cli_logger.print(cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
+cli_logger.print(
+    cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
 cli_logger.labeled_value("Label", "value")
 cli_logger.print("List: {}", cli_logger.render_list([1, 2, 3]))
 cli_logger.newline()
@@ -20,11 +21,11 @@ cli_logger.error("Error")
 cli_logger.newline()
 try:
     cli_logger.abort("Abort")
-except:
+except Exception:
     pass
 try:
     cli_logger.doassert(False, "Assert")
-except:
+except Exception:
     pass
 cli_logger.newline()
 cli_logger.confirm(True, "example")

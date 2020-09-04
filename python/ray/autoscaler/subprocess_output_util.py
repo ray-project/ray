@@ -316,7 +316,7 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
                                cf.bold(tmp.name))
             cli_logger.verbose(
                 cf.dimmed("Use --dump-command-output to "
-                        "dump to terminal instead."))
+                          "dump to terminal instead."))
 
             return _run_and_process_output(
                 cmd,
