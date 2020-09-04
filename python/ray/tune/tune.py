@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -27,6 +28,7 @@ _SCHEDULERS = {
 }
 
 
+
 @dataclass
 class SyncConfig:
     """Configuration object for syncing.
@@ -52,8 +54,8 @@ class SyncConfig:
             storage syncing. Defaults to True.
     """
     upload_dir: str = None
-    sync_to_cloud = None
-    sync_to_driver = None
+    sync_to_cloud: Any = None
+    sync_to_driver: Any = None
     sync_on_checkpoint: bool = True
 
 
