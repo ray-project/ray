@@ -31,12 +31,13 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
 };
 
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ plasmaStats }) => {
-  if (!plasmaStats)
-    {return (
+  if (!plasmaStats) {
+    return (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A
       </Typography>
-    );}
+    );
+  }
   const {
     object_store_used_memory,
     object_store_available_memory,
