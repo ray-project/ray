@@ -75,7 +75,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
- * :ref:`_shim`: Allows creation of the search algorithm object given a string.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
