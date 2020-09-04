@@ -9,6 +9,8 @@ import io.ray.api.id.ActorId;
 import io.ray.streaming.api.Language;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import io.ray.streaming.runtime.generated.RemoteCall;
+import io.ray.streaming.runtime.python.GraphPbBuilder;
 import io.ray.streaming.runtime.rpc.RemoteCallWorker;
 import io.ray.streaming.runtime.worker.JobWorker;
 import io.ray.streaming.runtime.worker.context.JobWorkerContext;
@@ -40,20 +42,23 @@ public class WorkerLifecycleController {
    * @return creation result
    */
   private boolean createWorker(ExecutionVertex executionVertex) {
-    LOG.info("Start to create worker actor for vertex: {} with resource: {}.",
-        executionVertex.getExecutionVertexName(), executionVertex.getResource());
+    LOG.info("Start to create worker actor for vertex: {} with resource: {}, workeConfig: {}.",
+        executionVertex.getExecutionVertexName(), executionVertex.getResource(),
+        executionVertex.getWorkerConfig());
 
     Language language = executionVertex.getLanguage();
 
     BaseActorHandle actor;
     if (Language.JAVA == language) {
-      actor = Ray.actor(JobWorker::new)
+      actor = Ray.actor(JobWorker::new, executionVertex)
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();
     } else {
+      RemoteCall.ExecutionVertexContext.ExecutionVertex vertexPb
+          = new GraphPbBuilder().buildVertex(executionVertex);
       actor = Ray.actor(
-          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"))
+          PyActorClass.of("ray.streaming.runtime.worker", "JobWorker"), vertexPb.toByteArray())
           .setResources(executionVertex.getResource())
           .setMaxRestarts(-1)
           .remote();
@@ -111,20 +116,20 @@ public class WorkerLifecycleController {
    * @param timeout timeout for waiting, unit: ms
    * @return starting result
    */
-  public boolean startWorkers(ExecutionGraph executionGraph, int timeout) {
+  public boolean startWorkers(ExecutionGraph executionGraph, long lastCheckpointId, int timeout) {
     LOG.info("Begin starting workers.");
     long startTime = System.currentTimeMillis();
-    List<ObjectRef<Boolean>> objectRefs = new ArrayList<>();
+    List<ObjectRef<Object>> objectRefs = new ArrayList<>();
 
     // start source actors 1st
     executionGraph.getSourceActors()
-        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
     // then start non-source actors
     executionGraph.getNonSourceActors()
-        .forEach(actor -> objectRefs.add(RemoteCallWorker.startWorker(actor)));
+        .forEach(actor -> objectRefs.add(RemoteCallWorker.rollback(actor, lastCheckpointId)));
 
-    WaitResult<Boolean> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
+    WaitResult<Object> result = Ray.wait(objectRefs, objectRefs.size(), timeout);
     if (result.getReady().size() != objectRefs.size()) {
       LOG.error("Starting workers timeout[{} ms].", timeout);
       return false;

@@ -90,7 +90,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
 void NotificationMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueNotificationMsg msg;
   FillMessageCommon(msg.mutable_common());
-  msg.set_seq_id(seq_id_);
+  msg.set_seq_id(msg_id_);
   msg.SerializeToString(output);
 }
 

@@ -1,9 +1,10 @@
 #pragma once
 
+#include "common/status.h"
 #include "config/streaming_config.h"
 #include "queue/queue_handler.h"
-#include "ring_buffer.h"
-#include "status.h"
+#include "ring_buffer/ring_buffer.h"
+#include "util/config.h"
 #include "util/streaming_util.h"
 
 namespace ray {
@@ -19,9 +20,9 @@ enum class TransferCreationStatus : uint32_t {
 
 struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
-  uint64_t last_seq_id = 0;
-  uint64_t target_seq_id = 0;
-  uint64_t consumed_seq_id = 0;
+  uint64_t last_message_id = 0;
+  uint64_t target_message_id = 0;
+  uint64_t consumed_message_id = 0;
 };
 
 struct ChannelCreationParameter {
@@ -36,7 +37,6 @@ struct ProducerChannelInfo {
   ObjectID channel_id;
   StreamingRingBufferPtr writer_ring_buffer;
   uint64_t current_message_id;
-  uint64_t current_seq_id;
   uint64_t message_last_commit_id;
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
@@ -58,7 +58,6 @@ struct ProducerChannelInfo {
 struct ConsumerChannelInfo {
   ObjectID channel_id;
   uint64_t current_message_id;
-  uint64_t current_seq_id;
   uint64_t barrier_id;
   uint64_t partial_barrier_id;
 
@@ -71,6 +70,7 @@ struct ConsumerChannelInfo {
   ChannelCreationParameter parameter;
   // Total count of notify request.
   uint64_t notify_cnt = 0;
+  uint64_t resend_notify_timer;
 };
 
 /// Two types of channel are presented:
@@ -111,8 +111,7 @@ class ConsumerChannel {
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                                 uint32_t &data_size,
+  virtual StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
                                                  uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
@@ -136,8 +135,8 @@ class StreamingQueueProducer : public ProducerChannel {
 
  private:
   StreamingStatus CreateQueue();
-  Status PushQueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size,
-                       uint64_t timestamp, uint64_t msg_id_start, uint64_t msg_id_end);
+  Status PushQueueItem(uint8_t *data, uint32_t data_size, uint64_t timestamp,
+                       uint64_t msg_id_start, uint64_t msg_id_end);
 
  private:
   std::shared_ptr<WriterQueue> queue_;
@@ -153,8 +152,8 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+                                         uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
  private:
@@ -204,8 +203,8 @@ class MockConsumer : public ConsumerChannel {
     return StreamingStatus::OK;
   }
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) override;
+  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+                                         uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 };
 

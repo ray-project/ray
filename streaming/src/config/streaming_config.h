@@ -9,12 +9,20 @@
 namespace ray {
 namespace streaming {
 
+using ReliabilityLevel = proto::ReliabilityLevel;
+using StreamingRole = proto::NodeType;
+
+#define DECL_GET_SET_PROPERTY(TYPE, NAME, VALUE) \
+  TYPE Get##NAME() const { return VALUE; }       \
+  void Set##NAME(TYPE value) { VALUE = value; }
+
 class StreamingConfig {
  public:
   static uint64_t TIME_WAIT_UINT;
   static uint32_t DEFAULT_RING_BUFFER_CAPACITY;
   static uint32_t DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
   static const uint32_t MESSAGE_BUNDLE_MAX_SIZE;
+  static const uint32_t RESEND_NOTIFY_MAX_INTERVAL;
 
  private:
   uint32_t ring_buffer_capacity_ = DEFAULT_RING_BUFFER_CAPACITY;
@@ -40,12 +48,18 @@ class StreamingConfig {
 
   uint32_t event_driven_flow_control_interval_ = 1;
 
+  ReliabilityLevel streaming_strategy_ = ReliabilityLevel::EXACTLY_ONCE;
+  StreamingRole streaming_role = StreamingRole::TRANSFORM;
+
  public:
   void FromProto(const uint8_t *, uint32_t size);
 
-#define DECL_GET_SET_PROPERTY(TYPE, NAME, VALUE) \
-  TYPE Get##NAME() const { return VALUE; }       \
-  void Set##NAME(TYPE value) { VALUE = value; }
+  inline bool IsAtLeastOnce() const {
+    return ReliabilityLevel::AT_LEAST_ONCE == streaming_strategy_;
+  }
+  inline bool IsExactlyOnce() const {
+    return ReliabilityLevel::EXACTLY_ONCE == streaming_strategy_;
+  }
 
   DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
   DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
@@ -58,6 +72,8 @@ class StreamingConfig {
                         flow_control_type_)
   DECL_GET_SET_PROPERTY(uint32_t, EventDrivenFlowControlInterval,
                         event_driven_flow_control_interval_)
+  DECL_GET_SET_PROPERTY(StreamingRole, StreamingRole, streaming_role)
+  DECL_GET_SET_PROPERTY(ReliabilityLevel, ReliabilityLevel, streaming_strategy_)
 
   uint32_t GetRingBufferCapacity() const;
   /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to

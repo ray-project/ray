@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 
 
 import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import io.ray.streaming.runtime.util.EnvUtil;
 import org.testng.annotations.Test;
 
