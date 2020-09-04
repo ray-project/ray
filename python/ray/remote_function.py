@@ -61,9 +61,9 @@ class RemoteFunction:
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
-                 num_gpus, memory, object_store_memory, resources, accelerator_type, num_returns,
-                 max_calls, max_retries, placement_group,
-                 placement_group_bundle_index):
+                 num_gpus, memory, object_store_memory, resources,
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 placement_group, placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -198,8 +198,9 @@ class RemoteFunction:
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, self._accelerator_type, num_cpus, num_gpus,
-            memory, object_store_memory, resources, accelerator_type)
+            self._object_store_memory, self._resources, self._accelerator_type,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

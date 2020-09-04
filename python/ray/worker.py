@@ -1685,8 +1685,9 @@ def make_decorator(num_returns=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, accelerator_type, num_returns, max_calls,
-                max_retries, placement_group, placement_group_bundle_index)
+                memory, object_store_memory, resources, accelerator_type,
+                num_returns, max_calls, max_retries, placement_group,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1706,8 +1707,9 @@ def make_decorator(num_returns=None,
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources, accelerator_type,
-                                        max_restarts, max_task_retries)
+                                        memory, object_store_memory, resources,
+                                        accelerator_type, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1853,10 +1855,13 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
-    if accelerator_type and num_gpus is None:
-        logger.warning(f"Accelerator type {accelerator_type} was specified, but `num_gpus` was not set. This will be scheduled on a node with the accelerator type, but Ray will not reserve the accelerator.")
-
     accelerator_type = kwargs.get("accelerator_type")
+
+    if accelerator_type and num_gpus is None:
+        logger.warning(
+            f"Accelerator type {accelerator_type} was specified, but"
+            "`num_gpus` was not set. This will be scheduled on a node with the"
+            "accelerator type, but Ray will not reserve the accelerator.")
 
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")

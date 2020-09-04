@@ -693,6 +693,7 @@ def test_accelerator_type_api(shutdown_only):
     v100 = ray.accelerators.NVIDIA_TESLA_V100
 
     quantity = 1
+
     @ray.remote(accelerator_type=v100)
     def decorated_func(quantity):
         return ray.available_resources()[v100] < quantity
@@ -702,7 +703,9 @@ def test_accelerator_type_api(shutdown_only):
     def via_options_func(quantity):
         return ray.available_resources()[v100] < quantity
 
-    assert ray.get(ray.remote(via_options_func).options(accelerator_type=v100).remote(quantity))
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
 
     @ray.remote(accelerator_type=v100)
     class DecoratedActor:
@@ -726,10 +729,10 @@ def test_accelerator_type_api(shutdown_only):
     assert ray.available_resources()[v100] < quantity
 
     quantity = ray.available_resources()[v100]
-    with_options = ray.remote(ActorWithOptions).options(accelerator_type=v100).remote()
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
     ray.get(with_options.initialized.remote())
     assert ray.available_resources()[v100] < quantity
-
 
 
 if __name__ == "__main__":
