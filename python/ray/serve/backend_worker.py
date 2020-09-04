@@ -318,7 +318,7 @@ class RayServeWorker:
 
             all_evaluated_futures = []
 
-            if not self.config.accepts_batches:
+            if not self.config.internal_metadata.accepts_batches:
                 query = batch[0]
                 evaluated = asyncio.ensure_future(self.invoke_single(query))
                 all_evaluated_futures = [evaluated]
@@ -336,7 +336,7 @@ class RayServeWorker:
                     chain_future(
                         unpack_future(evaluated, len(group)), result_futures)
 
-            if self.config.is_blocking:
+            if self.config.internal_metadata.is_blocking:
                 # We use asyncio.wait here so if the result is exception,
                 # it will not be raised.
                 await asyncio.wait(all_evaluated_futures)
