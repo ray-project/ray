@@ -29,7 +29,7 @@ class ComposedModel:
     def __init__(self):
         client = serve.connect()
         self.model_one = client.get_handle("model_one")
-        self.model_two = serve.get_handle("model_two")
+        self.model_two = client.get_handle("model_two")
 
     # This method can be called concurrently!
     async def __call__(self, flask_request):

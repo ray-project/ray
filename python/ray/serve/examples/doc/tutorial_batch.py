@@ -59,8 +59,8 @@ print("Result returned:", results)
 @serve.accept_batch
 def batch_adder_v1(flask_requests: List, *, numbers: List = []):
     # Depending on request context, we process the input data differently.
-    print("Current context is", "web" if client.context.web else "python")
-    if client.context.web:
+    print("Current context is", "web" if serve.context.web else "python")
+    if serve.context.web:
         # If the requests come from web request, we parse the flask request
         # to numbers
         numbers = [int(request.args["number"]) for request in flask_requests]
