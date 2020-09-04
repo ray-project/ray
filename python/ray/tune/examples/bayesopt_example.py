@@ -35,16 +35,15 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    space = {"width": (0, 20), "height": (-100, 100)}
-
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 1000,
         "config": {
             "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
         }
     }
     algo = BayesOptSearch(
-        space,
         metric="mean_loss",
         mode="min",
         utility_kwargs={
@@ -58,4 +57,4 @@ if __name__ == "__main__":
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

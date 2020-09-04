@@ -60,7 +60,25 @@ class OptunaSearch(Searcher):
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
 
-    Example:
+    Tune automatically converts search spaces to Optuna's format:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+
+        config = {
+            "a": tune.uniform(6, 8)
+            "b": tune.uniform(10, 20)
+        }
+
+        optuna_search = OptunaSearch(
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, config=config, search_alg=optuna_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
 
     .. code-block:: python
 
@@ -75,6 +93,8 @@ class OptunaSearch(Searcher):
             space,
             metric="loss",
             mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
 
     .. versionadded:: 0.8.8
 
