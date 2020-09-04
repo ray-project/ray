@@ -10,9 +10,9 @@
 #include "channel/channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
+#include "reliability/barrier_helper.h"
 #include "reliability_helper.h"
 #include "runtime_context.h"
-#include "reliability/barrier_helper.h"
 
 namespace ray {
 namespace streaming {

@@ -26,12 +26,9 @@ StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&payload_data,
       message_type_(message_type),
       message_id_(msg_id) {}
 
-StreamingMessage::StreamingMessage(const uint8_t *payload_data,
-                                   uint32_t payload_size, uint64_t msg_id,
-                                   StreamingMessageType message_type)
-    : payload_size_(payload_size),
-      message_type_(message_type),
-      message_id_(msg_id) {
+StreamingMessage::StreamingMessage(const uint8_t *payload_data, uint32_t payload_size,
+                                   uint64_t msg_id, StreamingMessageType message_type)
+    : payload_size_(payload_size), message_type_(message_type), message_id_(msg_id) {
   payload_.reset(new uint8_t[payload_size], std::default_delete<uint8_t[]>());
   std::memcpy(payload_.get(), payload_data, payload_size);
 }
@@ -64,8 +61,8 @@ StreamingMessagePtr StreamingMessage::FromBytes(const uint8_t *bytes,
 
 void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   uint32_t byte_offset = 0;
-  std::memcpy(serlizable_data + byte_offset,
-              reinterpret_cast<char *>(&payload_size_), sizeof(payload_size_));
+  std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&payload_size_),
+              sizeof(payload_size_));
   byte_offset += sizeof(payload_size_);
 
   std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&message_id_),
@@ -76,8 +73,8 @@ void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
               sizeof(message_type_));
   byte_offset += sizeof(message_type_);
 
-  std::memcpy(serlizable_data + byte_offset,
-              reinterpret_cast<char *>(payload_.get()), payload_size_);
+  std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(payload_.get()),
+              payload_size_);
 
   byte_offset += payload_size_;
 

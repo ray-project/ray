@@ -85,8 +85,8 @@ class StreamingMessage {
   /// \param payload_size_ raw data size
   /// \param msg_id message id
   /// \param message_type
-  StreamingMessage(const uint8_t *payload_data, uint32_t payload_size,
-                   uint64_t msg_id, StreamingMessageType message_type);
+  StreamingMessage(const uint8_t *payload_data, uint32_t payload_size, uint64_t msg_id,
+                   StreamingMessageType message_type);
 
   StreamingMessage(const StreamingMessage &);
 
@@ -122,9 +122,7 @@ class StreamingMessage {
   virtual void ToBytes(uint8_t *data);
   static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
 
-  inline virtual uint32_t ClassBytesSize() {
-    return kMessageHeaderSize + payload_size_;
-  }
+  inline virtual uint32_t ClassBytesSize() { return kMessageHeaderSize + payload_size_; }
 
   static inline void GetBarrierIdFromRawData(const uint8_t *data,
                                              StreamingBarrierHeader *barrier_header) {
