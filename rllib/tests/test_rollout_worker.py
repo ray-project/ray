@@ -628,7 +628,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_no_env_seed(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"),
+            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
             policy=MockPolicy,
             seed=1)
         assert not hasattr(ev.env, "seed")
