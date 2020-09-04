@@ -1,15 +1,14 @@
-#include "ray/exported/test.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/exported/test.h"
 
 namespace ray_exported {
 namespace ray {
 
 using namespace ::ray;
 
-void SendInternal(const ActorID& peer_actor_id, std::shared_ptr<LocalMemoryBuffer> buffer,
-                             RayFunction &function, int return_num,
-                             std::vector<ObjectID> &return_ids) {
-
+void SubmitActorTask(const ActorID &peer_actor_id,
+                     std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
+                     int return_num, std::vector<ObjectID> &return_ids) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
@@ -33,5 +32,5 @@ void SendInternal(const ActorID& peer_actor_id, std::shared_ptr<LocalMemoryBuffe
   CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
                                                      options, &return_ids);
 }
-}
-}
+}  // namespace ray
+}  // namespace ray_exported

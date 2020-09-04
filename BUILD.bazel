@@ -368,15 +368,15 @@ cc_library(
 )
 
 cc_library(
-    name = "test_lib",
+    name = "exported_lib",
     srcs = glob(
         [
-            "src/ray/exported/test.cc",
+            "src/ray/exported/exported.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/exported/test.h",
+            "src/ray/exported/exported.h",
         ],
     ),
     copts = COPTS,
@@ -1722,7 +1722,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
-        "//:test_lib",
+        "//:exported_lib",
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:ray_util",
@@ -1777,7 +1777,7 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//:test_lib",
+        "//:exported_lib",
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",

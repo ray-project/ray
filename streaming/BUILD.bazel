@@ -62,10 +62,10 @@ cc_binary(
 )
 
 cc_binary(
-    name = "test_lib.so",
+    name = "exported_lib.so",
     copts = COPTS,
     linkshared = 1,
-    deps = ["//:test_lib"],
+    deps = ["//:exported_lib"],
 )
 
 
@@ -147,7 +147,7 @@ cc_library(
         ],
         "//conditions:default": [
             "core_worker_lib.so",
-            "test_lib.so",
+            "exported_lib.so",
         ],
     }),
 )
