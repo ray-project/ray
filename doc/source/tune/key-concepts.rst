@@ -113,35 +113,27 @@ Tune offers various functions to define search spaces and sampling methods.
 :ref:`You can find the documentation of these search space definitions here <tune-sample-docs>`.
 
 Usually you pass your search space definition in the `config` parameter of
-``tune.run()``. Tune automatically converts these definitions to the search
-spaces the search algorithms expect.
-
-.. note::
-    We are currently in the process of implementing automatic search space
-    conversions for all search algorithms. Currently this works for
-    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
-    will follow shortly, but have to be instantiated with their respective
-    search spaces at the moment.
+``tune.run()``.
 
 Here's an example covering all search space functions. Again,
 :ref:`here is the full explanation of all these functions <tune-sample-docs>`.
 
 
-    .. code-block :: python
+.. code-block :: python
 
-        config = {
-            "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
-            "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
-            "loguniform": tune.loguniform(1e-4, 1e-2),  # Uniform float in log space
-            "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),  # Round to increments of 0.0005
-            "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
-            "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
-            "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
-            "qrandint": tune.qrandint(-21, 12, 3),  # Round to increments of 3 (includes 12)
-            "choice": tune.choice(["a", "b", "c"]),  # Choose one of these options uniformly
-            "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01), # Depends on other value
-            "grid": tune.grid_search([32, 64, 128])  # Search over all these values
-        }
+    config = {
+        "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
+        "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
+        "loguniform": tune.loguniform(1e-4, 1e-2),  # Uniform float in log space
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),  # Round to increments of 0.0005
+        "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
+        "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
+        "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
+        "qrandint": tune.qrandint(-21, 12, 3),  # Round to increments of 3 (includes 12)
+        "choice": tune.choice(["a", "b", "c"]),  # Choose one of these options uniformly
+        "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01), # Depends on other value
+        "grid": tune.grid_search([32, 64, 128])  # Search over all these values
+    }
 
 Search Algorithms
 -----------------
@@ -176,7 +168,15 @@ To optimize the hyperparameters of your training process, you will want to use a
         stop={"training_iteration": 20}
     )
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`.
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
+spaces the search algorithms/underlying library expect.
+
+.. note::
+    We are currently in the process of implementing automatic search space
+    conversions for all search algorithms. Currently this works for
+    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
+    will follow shortly, but have to be instantiated with their respective
+    search spaces at the moment.
 
 See the documentation: :ref:`tune-search-alg`.
 
