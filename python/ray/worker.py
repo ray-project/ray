@@ -1650,6 +1650,7 @@ def make_decorator(num_returns=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   accelerator_type=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1684,7 +1685,7 @@ def make_decorator(num_returns=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_returns, max_calls,
+                memory, object_store_memory, resources, accelerator_type, num_returns, max_calls,
                 max_retries, placement_group, placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
@@ -1705,7 +1706,7 @@ def make_decorator(num_returns=None,
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources,
+                                        memory, object_store_memory, resources, accelerator_type,
                                         max_restarts, max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
@@ -1742,6 +1743,9 @@ def remote(*args, **kwargs):
     * **resources:** The quantity of various custom resources to reserve for
       this task or for the lifetime of the actor. This is a dictionary mapping
       strings (resource names) to numbers.
+    * **accelerator_type:** If specified, requires that the task or actor run
+      on a node with the specified type of accelerator. See `ray.accelerators`
+      for accelerator types.
     * **max_calls:** Only for *remote functions*. This specifies the maximum
       number of times that a given worker can execute the given remote function
       before it must exit (this can be used to address memory leaks in
@@ -1830,6 +1834,7 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "accelerator_type",
             "max_calls",
             "max_restarts",
             "max_task_retries",
@@ -1848,6 +1853,11 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
+    if accelerator_type and num_gpus is None:
+        logger.warning(f"Accelerator type {accelerator_type} was specified, but `num_gpus` was not set. This will be scheduled on a node with the accelerator type, but Ray will not reserve the accelerator.")
+
+    accelerator_type = kwargs.get("accelerator_type")
+
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
@@ -1864,6 +1874,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        accelerator_type=accelerator_type,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,

@@ -102,6 +102,21 @@ load balancing, gang scheduling, and priority-based scheduling.
     :noindex:
 
 
+Resource Constraints
+--------------------
+
+Ray supports resource constraints. Resource constraints can be used to force to a task to run on a node with specific resources.
+
+.. code-block:: python
+    from ray.accelerators import NVIDIA_TESLA_V100
+    ray.init()
+    @ray.remote(num_gpus=1, constraints=NVIDIA_TESLA_V100)
+    def train(data):
+        return "This function was run on a node with a Tesla V100 GPU"
+    print(ray.get(train.remote(None)))
+
+See `ray.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+
 
 Nested Remote Functions
 -----------------------

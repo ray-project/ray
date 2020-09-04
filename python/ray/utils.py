@@ -313,9 +313,9 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
+        default_object_store_memory, default_resources, default_accelerator_type, runtime_num_cpus,
         runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        runtime_resources, runtime_accelerator_type):
     """Determine a task's resource requirements.
 
     Args:
@@ -374,6 +374,11 @@ def resources_from_resource_arguments(
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
+
+    if runtime_accelerator_type is not None:
+        resources[runtime_accelerator_type] = 0.0001
+    elif default_accelerator_type is not None:
+        resources[default_accelerator_type] = 0.0001
 
     return resources
 

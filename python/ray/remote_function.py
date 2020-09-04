@@ -61,7 +61,7 @@ class RemoteFunction:
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
-                 num_gpus, memory, object_store_memory, resources, num_returns,
+                 num_gpus, memory, object_store_memory, resources, accelerator_type, num_returns,
                  max_calls, max_retries, placement_group,
                  placement_group_bundle_index):
         self._language = language
@@ -79,6 +79,7 @@ class RemoteFunction:
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
+        self._accelerator_type = accelerator_type
         self._num_returns = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
                              if num_returns is None else num_returns)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
@@ -149,6 +150,7 @@ class RemoteFunction:
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
+                accelerator_type=None,
                 resources=None,
                 max_retries=None,
                 placement_group=None,
@@ -196,8 +198,8 @@ class RemoteFunction:
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            self._object_store_memory, self._resources, self._accelerator_type, num_cpus, num_gpus,
+            memory, object_store_memory, resources, accelerator_type)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
