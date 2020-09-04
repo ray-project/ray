@@ -622,12 +622,22 @@ class TrainingOperator:
         pass
 
     @staticmethod
-    def from_ptl(lightning_module):
+    def from_ptl(lightning_module_cls, train_dataloader):
         """Creates a TrainingOperator from a Pytorch Lightning Module."""
-        if not isinstance(lightning_module, pytorch_lightning.LightningModule):
-            raise ValueError("Argument must be instance of "
-                             "pytorch_lightning.LightningModule, got object "
-                             "of type {} instead.".format(type(lightning_module)))
+        # if not isinstance(lightning_module, pytorch_lightning.LightningModule):
+        #     raise ValueError("Argument must be instance of "
+        #                      "pytorch_lightning.LightningModule, got object "
+        #                      "of type {} instead.".format(type(lightning_module)))
+        class PTLOperator(TrainingOperator):
+            def setup(self, config):
+                ptl_module = lightning_module_cls()
+                model = ptl_module
+                optimizer = ptl_module.configure_optimizers()
+
+                self.register(models=model, optimizers=optimizer,
+                              train_dataloader=train_dataloader,
+                              validation_loader=None)
+
         
 
     @staticmethod
