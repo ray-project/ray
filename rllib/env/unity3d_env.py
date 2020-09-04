@@ -78,17 +78,18 @@ class Unity3DEnv(MultiAgentEnv):
         # Try connecting to the Unity3D game instance. If a port
         while True:
             time.sleep(1)
+            port = self._BASE_PORT
+            self._BASE_PORT += 1
             try:
-                print("Trying to create unity env on port={}".format(self._BASE_PORT))
+                print("Trying to create unity env on port={}".format(port))
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
                     worker_id=0,
-                    base_port=self._BASE_PORT,
+                    base_port=port,
                     seed=seed,
                     no_graphics=no_graphics,
                     timeout_wait=timeout_wait,
                 )
-                self._BASE_PORT += 1
             except mlagents_envs.exception.UnityWorkerInUseException as e:
                 #worker_id += 1
                 ## Hard limit.
