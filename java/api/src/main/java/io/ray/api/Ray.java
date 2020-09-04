@@ -241,4 +241,16 @@ public final class Ray extends RayCall {
       PlacementStrategy strategy) {
     return runtime.createPlacementGroup(bundles, strategy);
   }
+
+  /**
+   * Intentionally exit the current actor.
+   * <p>
+   * This method is used to disconnect an actor and exit the worker.
+   *
+   * @throws RuntimeException An exception is raised if this is a driver or this  worker is not
+   *                          an actor.
+   */
+  public static void exitActor() {
+    runtime.exitActor();
+  }
 }

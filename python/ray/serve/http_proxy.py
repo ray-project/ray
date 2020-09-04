@@ -133,7 +133,7 @@ class HTTPProxyActor:
             host,
             port,
             controller_name,
-            _http_middlewares: List["starlette.middleware.Middleware"] = []):
+            http_middlewares: List["starlette.middleware.Middleware"] = []):
         self.app = HTTPProxy()
         self.host = host
         self.port = port
@@ -142,7 +142,7 @@ class HTTPProxyActor:
         await self.app.fetch_config_from_controller(name, controller_name)
 
         self.wrapped_app = self.app
-        for middleware in _http_middlewares:
+        for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app,
                                               **middleware.options)
 

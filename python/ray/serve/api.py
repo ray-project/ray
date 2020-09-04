@@ -333,7 +333,7 @@ class Client:
 def start(detached: bool = False,
           http_host: str = DEFAULT_HTTP_HOST,
           http_port: int = DEFAULT_HTTP_PORT,
-          _http_middlewares: List[Any] = []) -> Client:
+          http_middlewares: List[Any] = []) -> Client:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
@@ -350,6 +350,8 @@ def start(detached: bool = False,
             this to "0.0.0.0". One HTTP server will be started on each node in
             the Ray cluster.
         http_port (int): Port for HTTP server. Defaults to 8000.
+        http_middleswares (list): A list of Starlette middlewares that will be
+            applied to the HTTP servers in the cluster.
     """
     # Initialize ray if needed.
     if not ray.is_initialized():
@@ -379,7 +381,7 @@ def start(detached: bool = False,
         controller_name,
         http_host,
         http_port,
-        _http_middlewares,
+        http_middlewares,
         detached=detached)
 
     futures = []

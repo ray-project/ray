@@ -106,7 +106,7 @@ class ServeController:
                        controller_name: str,
                        http_host: str,
                        http_port: str,
-                       _http_middlewares: List[Any],
+                       http_middlewares: List[Any],
                        detached: bool = False):
         self.detached = detached
         # Name of this controller actor.
@@ -149,7 +149,7 @@ class ServeController:
 
         self.http_host = http_host
         self.http_port = http_port
-        self._http_middlewares = _http_middlewares
+        self.http_middlewares = http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
@@ -206,7 +206,7 @@ class ServeController:
                     self.http_host,
                     self.http_port,
                     controller_name=self.controller_name,
-                    _http_middlewares=self._http_middlewares)
+                    http_middlewares=self.http_middlewares)
 
             self.routers[node_id] = router
 
