@@ -150,42 +150,44 @@ message RayException {
 message TaskSpec {
   // Type of this task.
   TaskType type = 1;
+  // Name of this task.
+  string name = 2;
   // Language of this task.
-  Language language = 2;
+  Language language = 3;
   // Function descriptor of this task uniquely describe the function to execute.
-  FunctionDescriptor function_descriptor = 3;
+  FunctionDescriptor function_descriptor = 4;
   // ID of the job that this task belongs to.
-  bytes job_id = 4;
+  bytes job_id = 5;
   // Task ID of the task.
-  bytes task_id = 5;
+  bytes task_id = 6;
   // Task ID of the parent task.
-  bytes parent_task_id = 6;
+  bytes parent_task_id = 7;
   // A count of the number of tasks submitted by the parent task before this one.
-  uint64 parent_counter = 7;
+  uint64 parent_counter = 8;
   // Task ID of the caller. This is the same as parent_task_id for non-actors.
   // This is the actor ID (embedded in a nil task ID) for actors.
-  bytes caller_id = 8;
+  bytes caller_id = 9;
   /// Address of the caller.
-  Address caller_address = 9;
+  Address caller_address = 10;
   // Task arguments.
-  repeated TaskArg args = 10;
+  repeated TaskArg args = 11;
   // Number of return objects.
-  uint64 num_returns = 11;
+  uint64 num_returns = 12;
   // Quantities of the different resources required by this task.
-  map<string, double> required_resources = 12;
+  map<string, double> required_resources = 13;
   // The resources required for placing this task on a node. If this is empty,
   // then the placement resources are equal to the required_resources.
-  map<string, double> required_placement_resources = 13;
+  map<string, double> required_placement_resources = 14;
   // Task specification for an actor creation task.
   // This field is only valid when `type == ACTOR_CREATION_TASK`.
-  ActorCreationTaskSpec actor_creation_task_spec = 14;
+  ActorCreationTaskSpec actor_creation_task_spec = 15;
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
-  ActorTaskSpec actor_task_spec = 15;
+  ActorTaskSpec actor_task_spec = 16;
   // Number of times this task may be retried on worker failure.
-  int32 max_retries = 16;
+  int32 max_retries = 17;
   // Placement group that is associated with this task.
-  bytes placement_group_id = 17;
+  bytes placement_group_id = 18;
 }
 
 message Bundle {
@@ -358,34 +360,36 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
   int32 num_object_refs_in_scope = 3;
+  // Name of the currently executing task.
+  string current_task_name = 4;
   // String representation of the function descriptor of the currently executing task.
-  string current_task_func_desc = 4;
+  string current_task_func_desc = 5;
   // IP address of the core worker.
-  string ip_address = 6;
+  string ip_address = 7;
   // Port of the core worker.
-  int64 port = 7;
+  int64 port = 8;
   // Actor ID.
-  bytes actor_id = 8;
+  bytes actor_id = 9;
   // A map from the resource name (e.g. "CPU") to its allocation.
-  map<string, ResourceAllocations> used_resources = 9;
+  map<string, ResourceAllocations> used_resources = 10;
   // A string displayed on Dashboard.
-  map<string, string> webui_display = 10;
+  map<string, string> webui_display = 11;
   // Number of objects that are IN_PLASMA_ERROR in the local memory store.
-  int32 num_in_plasma = 11;
+  int32 num_in_plasma = 12;
   // Number of objects stored in local memory.
-  int32 num_local_objects = 12;
+  int32 num_local_objects = 13;
   // Used local object store memory.
-  int64 used_object_store_memory = 13;
+  int64 used_object_store_memory = 14;
   // Length of the task queue.
-  int32 task_queue_length = 14;
+  int32 task_queue_length = 15;
   // Number of executed tasks.
-  int32 num_executed_tasks = 15;
+  int32 num_executed_tasks = 16;
   // Actor constructor.
-  string actor_title = 16;
+  string actor_title = 17;
   // Local reference table.
-  repeated ObjectRefInfo object_refs = 17;
+  repeated ObjectRefInfo object_refs = 18;
   // Job ID.
-  bytes job_id = 18;
+  bytes job_id = 19;
 }
 
 message MetricPoint {

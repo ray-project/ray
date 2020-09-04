@@ -11,6 +11,7 @@ opencv-python-headless==4.3.0.36
 pandas
 pickle5
 pillow
+pydantic
 pygments
 pyyaml
 recommonmark
