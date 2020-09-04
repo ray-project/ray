@@ -23,6 +23,13 @@ public interface TransferConfig extends Config {
   long channelSize();
 
   /**
+   * DataRead read timeout.
+   */
+  @DefaultValue(value = "false")
+  @Key(value = io.ray.streaming.util.Config.IS_RECREATE)
+  boolean readerIsRecreate();
+
+  /**
    * Return from DataReader.getBundle if only empty message read in this interval.
    */
   @DefaultValue(value = "-1")

@@ -3,12 +3,11 @@ package io.ray.streaming.runtime.core.graph.executiongraph;
 import com.google.common.base.MoreObjects;
 import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.jobgraph.JobEdge;
-import java.io.Serializable;
 
 /**
  * An edge that connects two execution job vertices.
  */
-public class ExecutionJobEdge implements Serializable {
+public class ExecutionJobEdge {
 
   /**
    * The source(upstream) execution job vertex.

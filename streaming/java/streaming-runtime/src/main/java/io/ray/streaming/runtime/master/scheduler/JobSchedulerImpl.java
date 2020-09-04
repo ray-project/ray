@@ -23,18 +23,20 @@ import org.slf4j.LoggerFactory;
 public class JobSchedulerImpl implements JobScheduler {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobSchedulerImpl.class);
+
+  private StreamingConfig jobConf;
+
   private final JobMaster jobMaster;
   private final ResourceManager resourceManager;
   private final GraphManager graphManager;
   private final WorkerLifecycleController workerLifecycleController;
-  private StreamingConfig jobConfig;
 
   public JobSchedulerImpl(JobMaster jobMaster) {
     this.jobMaster = jobMaster;
     this.graphManager = jobMaster.getGraphManager();
     this.resourceManager = jobMaster.getResourceManager();
     this.workerLifecycleController = new WorkerLifecycleController();
-    this.jobConfig = jobMaster.getRuntimeContext().getConf();
+    this.jobConf = jobMaster.getRuntimeContext().getConf();
 
     LOG.info("Scheduler initiated.");
   }
@@ -44,12 +46,7 @@ public class JobSchedulerImpl implements JobScheduler {
     LOG.info("Begin scheduling. Job: {}.", executionGraph.getJobName());
 
     // Allocate resource then create workers
-    // Actor creation is in this step
     prepareResourceAndCreateWorker(executionGraph);
-
-    // now actor info is available in execution graph
-    // preprocess some handy mappings in execution graph
-    executionGraph.generateActorMappings();
 
     // init worker context and start to run
     initAndStart(executionGraph);
@@ -90,7 +87,7 @@ public class JobSchedulerImpl implements JobScheduler {
     initMaster();
 
     // start workers
-    startWorkers(executionGraph, jobMaster.getRuntimeContext().lastCheckpointId);
+    startWorkers(executionGraph);
   }
 
   /**
@@ -125,7 +122,7 @@ public class JobSchedulerImpl implements JobScheduler {
     boolean result;
     try {
       result = workerLifecycleController.initWorkers(vertexToContextMap,
-          jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
+          jobConf.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to initiate workers.", e);
       return false;
@@ -136,12 +133,11 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Start JobWorkers according to the physical plan.
    */
-  public boolean startWorkers(ExecutionGraph executionGraph, long checkpointId) {
+  public boolean startWorkers(ExecutionGraph executionGraph) {
     boolean result;
     try {
       result = workerLifecycleController.startWorkers(
-          executionGraph, checkpointId,
-          jobConfig.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
+          executionGraph, jobConf.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to start workers.", e);
       return false;
@@ -198,7 +194,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private void initMaster() {
-    jobMaster.init(false);
+    jobMaster.init();
   }
 
 }

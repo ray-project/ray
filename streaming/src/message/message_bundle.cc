@@ -63,14 +63,6 @@ bool StreamingMessageBundleMeta::operator==(StreamingMessageBundleMeta *meta) co
   return operator==(*meta);
 }
 
-std::ostream &operator<<(std::ostream &os, const StreamingMessageBundleMeta &meta) {
-  os << "{"
-     << "last_message_id_: " << meta.last_message_id_
-     << ", message_list_size_: " << meta.message_list_size_
-     << ", bundle_type_: " << static_cast<int>(meta.bundle_type_) << "}";
-  return os;
-}
-
 StreamingMessageBundleMeta::StreamingMessageBundleMeta()
     : bundle_type_(StreamingMessageBundleType::Empty) {}
 
@@ -195,14 +187,6 @@ bool StreamingMessageBundle::operator==(StreamingMessageBundle &bundle) const {
 
 bool StreamingMessageBundle::operator==(StreamingMessageBundle *bundle) const {
   return this->operator==(*bundle);
-}
-
-std::ostream &operator<<(std::ostream &os, const DataBundle &bundle) {
-  os << "{"
-     << "data: " << (void *)bundle.data << ", data_size: " << bundle.data_size
-     << ", channel last_barrier_id: " << bundle.last_barrier_id
-     << ", meta: " << *(bundle.meta) << "}";
-  return os;
 }
 }  // namespace streaming
 }  // namespace ray
