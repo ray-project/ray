@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "learning_starts": 1000,
             "buffer_size": int(1e5),
             "compress_observations": True,
-            "sample_batch_size": 20,
+            "rollout_fragment_length": 20,
             "train_batch_size": 512,
             "gamma": .99,
             "n_step": 3,

@@ -63,7 +63,7 @@ if __name__ == "__main__":
             env=env,
             config=dict(
                 connector_config, **{
-                    "sample_batch_size": 1000,
+                    "rollout_fragment_length": 1000,
                     "train_batch_size": 4000,
                     "framework": args.framework,
                 }))
