@@ -23,7 +23,7 @@ to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance 
 service using ``serve.start(detached=True)``. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the Ray cluster and then
-calls :mode:`serve.connect <ray.serve.connect>`. Note that there can only be one detached Serve instance on each Ray cluster.
+calls :mod:`serve.connect <ray.serve.connect>`. Note that there can only be one detached Serve instance on each Ray cluster.
 
 Deploying a Model with Ray Serve
 ================================
