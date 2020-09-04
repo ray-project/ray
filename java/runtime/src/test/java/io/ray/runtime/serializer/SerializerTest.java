@@ -2,10 +2,7 @@ package io.ray.runtime.serializer;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
-import org.msgpack.value.Value;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -61,18 +58,6 @@ public class SerializerTest {
       newBi = Serializer.decode(serialized.getLeft(), BigInteger.class);
       Assert.assertFalse(serialized.getRight());
       Assert.assertEquals(bi, newBi);
-    }
-    {
-      Map m = new HashMap<>();
-      m.put("123", 123);
-      Pair<byte[], Boolean> serialized = Serializer.encode(m);
-      Map<Value, Value> newM = Serializer.decode(serialized.getLeft(), m.getClass());
-      Assert.assertTrue(serialized.getRight());
-      Assert.assertEquals(newM.size(), m.size());
-      for (Map.Entry<Value, Value> entry : newM.entrySet()) {
-        Assert.assertEquals(entry.getKey().asStringValue().asString(), "123");
-        Assert.assertEquals(entry.getValue().asIntegerValue().asInt(), 123);
-      }
     }
   }
 }

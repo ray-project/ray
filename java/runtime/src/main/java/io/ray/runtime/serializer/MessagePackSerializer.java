@@ -18,11 +18,10 @@ import org.msgpack.core.MessageUnpacker;
 import org.msgpack.value.ArrayValue;
 import org.msgpack.value.ExtensionValue;
 import org.msgpack.value.IntegerValue;
-import org.msgpack.value.MapValue;
 import org.msgpack.value.Value;
 import org.msgpack.value.ValueType;
 
-// We can't pack List by MessagePack, because we don't know the type class when unpacking.
+// We can't pack List / Map by MessagePack, because we don't know the type class when unpacking.
 public class MessagePackSerializer {
 
   private static final byte LANGUAGE_SPECIFIC_TYPE_EXTENSION_ID = 101;
@@ -37,7 +36,6 @@ public class MessagePackSerializer {
   // Null and array don't have a corresponding class, so define them separately.
   private static final TypePacker NULL_PACKER;
   private static final TypePacker ARRAY_PACKER;
-  private static final TypePacker MAP_PACKER;
   private static final TypePacker EXTENSION_PACKER;
 
   static {
@@ -51,16 +49,6 @@ public class MessagePackSerializer {
       packer.packArrayHeader(length);
       for (int i = 0; i < length; ++i) {
         pack(Array.get(object, i), packer, javaSerializer);
-      }
-    });
-
-    // Map packer.
-    MAP_PACKER = ((object, packer, javaSerializer) -> {
-      Map<Object, Object> mapObject = (Map<Object, Object>) object;
-      packer.packMapHeader(mapObject.size());
-      for (Map.Entry<Object, Object> entry : mapObject.entrySet()) {
-        pack(entry.getKey(), packer, javaSerializer);
-        pack(entry.getValue(), packer, javaSerializer);
       }
     });
 
@@ -162,12 +150,6 @@ public class MessagePackSerializer {
       }
       return array;
     }));
-    // Map unpacker.
-    unpackers.put(ValueType.MAP, ((value, targetClass, javaDeserializer) -> {
-      MapValue av = value.asMapValue();
-      // TODO (fyrestone): find a better way to construct a specific map type.
-      return av.map();
-    }));
     // Extension unpacker.
     unpackers.put(ValueType.EXTENSION, ((value, targetClass, javaDeserializer) -> {
       ExtensionValue ev = value.asExtensionValue();
@@ -221,8 +203,6 @@ public class MessagePackSerializer {
       if (typePacker == null) {
         if (type.isArray()) {
           typePacker = ARRAY_PACKER;
-        } else if (object instanceof Map) {
-          typePacker = MAP_PACKER;
         } else {
           typePacker = EXTENSION_PACKER;
         }
