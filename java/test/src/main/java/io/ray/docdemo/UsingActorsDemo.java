@@ -92,7 +92,7 @@ public class UsingActorsDemo {
 
     {
       ActorHandle<Counter> actorHandle = Ray.actor(Counter::new).remote();
-      actorHandle.kill(/*noRestart=*/true);
+      actorHandle.kill();
     }
 
     {
