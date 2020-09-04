@@ -353,9 +353,9 @@ class TorchPolicy(Policy):
 
         # Give Exploration component that chance to modify the loss (or add
         # its own terms).
-        #if hasattr(self, "exploration"):
-        #    loss_out = self.exploration.get_exploration_loss(
-        #        loss_out, train_batch)
+        if hasattr(self, "exploration"):
+            loss_out = self.exploration.get_exploration_loss(
+                loss_out, train_batch)
 
         assert len(loss_out) == len(self._optimizers)
 

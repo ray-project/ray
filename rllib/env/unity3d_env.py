@@ -26,7 +26,6 @@ class Unity3DEnv(MultiAgentEnv):
     inside an RLlib PolicyClient for cloud/distributed training of Unity games.
     """
 
-    #TEST
     _BASE_PORT = 5004
 
     def __init__(self,
@@ -67,7 +66,7 @@ class Unity3DEnv(MultiAgentEnv):
         import mlagents_envs
         from mlagents_envs.environment import UnityEnvironment
 
-        # Try connecting to the Unity3D game instance. If a port
+        # Try connecting to the Unity3D game instance. If a port is blocked
         while True:
             time.sleep(2)
             port_ = port or self._BASE_PORT
@@ -82,7 +81,7 @@ class Unity3DEnv(MultiAgentEnv):
                     timeout_wait=timeout_wait,
                 )
                 print("Created UnityEnvironment for port {}".format(port_))
-            except mlagents_envs.exception.UnityWorkerInUseException as e:
+            except mlagents_envs.exception.UnityWorkerInUseException:
                 pass
             else:
                 break
