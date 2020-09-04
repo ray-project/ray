@@ -148,6 +148,13 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
+  struct timespec return_worker_time_;
+  clock_gettime(CLOCK_REALTIME, &return_worker_time_);
+  long double time_elapsed = (long double)(return_worker_time_.tv_sec -
+  initial_time_.tv_sec) + (long double)((return_worker_time_.tv_nsec -
+  initial_time_.tv_nsec) / (long double) 1000000000.0);
+  RAY_LOG(INFO) << "RETURN_WORKER " << addr.worker_id << " " << time_elapsed;
+
   auto status =
       lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error);
   if (!status.ok()) {
@@ -270,7 +277,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         RAY_CHECK(lease_entry.tasks_in_flight == 0);
         RAY_CHECK(lease_entry.stealable_tasks.size() == 0);
 
-        int number_of_tasks_stolen = reply.number_of_tasks_stolen();
+        size_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
 
         RAY_LOG(DEBUG) << "We stole " << number_of_tasks_stolen << " tasks "
@@ -283,7 +290,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) <<
         "TASK_STOLEN " << number_of_tasks_stolen << " " << time_elapsed;*/
 
-        for (int i = 0; i < reply.tasks_stolen_size(); i++) {
+        for (size_t i = 0; i < reply.tasks_stolen_size(); i++) {
           const TaskSpecification task_spec(reply.tasks_stolen(i));
           RAY_LOG(DEBUG) << "Thief " << thief_addr.worker_id << " Stole task "
                          << task_spec.TaskId() << "from worker: " << victim_wid;
@@ -354,7 +361,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
-    int n_tasks_submitted=0;
+    size_t n_tasks_submitted=0;
     while (!current_queue.empty() &&
            !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
       auto task_spec = current_queue.front();
@@ -417,7 +424,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLease(const SchedulingKey &sched
   }
 
   // Find the position of the pending_lease_request that we need to cancel in the pending_lease_requests queue.
-  int position=0;
+  size_t position=0;
   for (auto plr_it = pending_lease_requests.begin(); plr_it != pending_lease_requests.end(); plr_it++) {
     if (*plr_it == pending_lease_request) {
       break;
@@ -479,15 +486,9 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
-    const SchedulingKey &scheduling_key, int n_requests, const rpc::Address *raylet_address) {
+    const SchedulingKey &scheduling_key, size_t n_requests, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &pending_lease_requests = scheduling_key_entry.pending_lease_requests;
-
-  /*struct timespec rw_time;
-  clock_gettime(CLOCK_REALTIME, &rw_time);
-  long double time_elapsed = (long double)(rw_time.tv_sec - initial_time_.tv_sec) +
-  (long double)((rw_time.tv_nsec - initial_time_.tv_nsec) / (long double) 1000000000.0);
-  RAY_LOG(INFO) << "RW placeholder" << " " << time_elapsed;*/
   
   if (!pending_lease_requests.empty()) {
     // There are already some outstanding lease request for this type of task.
@@ -495,9 +496,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
   }
   
   // Request more than one worker at a time only if work stealing is enabled
-  int N_reqs = work_stealing_enabled_ ? n_requests : 1;
+  size_t N_reqs = work_stealing_enabled_ ? n_requests : 1;
 
-  for (int request_number=0; request_number < N_reqs ; request_number++) {
+  for (size_t request_number=0; request_number < N_reqs ; request_number++) {
     auto &task_queue = scheduling_key_entry.task_queue;
     if (scheduling_key_entry.tasks_to_request_workers.empty()) {
       // We don't have any new task to request an additional worker.
@@ -516,14 +517,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
       // workers.
       return;
     }
-
-    // RAY_LOG(DEBUG) << "Lease requested " << task_id;
-    /*struct timespec lease_requested_time;
-    clock_gettime(CLOCK_REALTIME, &lease_requested_time);
-    long double time_elapsed = (long double)(lease_requested_time.tv_sec -
-    initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
-    initial_time_.tv_nsec) / (long double) 1000000000.0);
-    RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;*/
 
     if (task_queue.empty()) {
       if (!work_stealing_enabled_) {
@@ -564,6 +557,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
     TaskSpecification resource_spec = std::move(scheduling_key_entry.tasks_to_request_workers.front());
     scheduling_key_entry.tasks_to_request_workers.pop_front();
     TaskID task_id = resource_spec.TaskId();
+
+    // RAY_LOG(DEBUG) << "Lease requested " << task_id;
+    struct timespec lease_requested_time;
+    clock_gettime(CLOCK_REALTIME, &lease_requested_time);
+    long double time_elapsed = (long double)(lease_requested_time.tv_sec -
+    initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
+    initial_time_.tv_nsec) / (long double) 1000000000.0);
+    RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;
+
     lease_client->RequestWorkerLease(
         resource_spec, [this, resource_spec, scheduling_key](const Status &status,
                                               const rpc::RequestWorkerLeaseReply &reply) {
@@ -588,14 +590,16 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
               // We got a lease for a worker. Add the lease client state and try to
               // assign work to the worker.
               RAY_LOG(DEBUG) << "Lease granted " << task_id;
-              /*struct timespec lease_granted_time_;
+              rpc::WorkerAddress addr(reply.worker_address());
+
+              struct timespec lease_granted_time_;
               clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
               long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
               initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
               initial_time_.tv_nsec) / (long double) 1000000000.0);
               RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " "
-              << time_elapsed;*/
-              rpc::WorkerAddress addr(reply.worker_address());
+              << time_elapsed;
+
               auto resources_copy = reply.resource_mapping();
 
               AddWorkerLeaseClient(addr, std::move(lease_client), resources_copy,

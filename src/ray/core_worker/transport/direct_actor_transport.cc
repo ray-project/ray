@@ -449,7 +449,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply, rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mu_);
 
-  int half = tasks_available_for_stealing_.size() / 2;
+  size_t half = tasks_available_for_stealing_.size() / 2;
   RAY_CHECK(half >= 0);
 
   if (half == 0) {
@@ -461,7 +461,7 @@ void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &
 
   absl::flat_hash_map<TaskID, TaskSpecification>::iterator it = tasks_available_for_stealing_.begin();
   absl::flat_hash_map<TaskID, TaskSpecification>::iterator it2 = it;
-  int i = 0;
+  size_t i = 0;
   for (; i < half; i++) {
     if (it == tasks_available_for_stealing_.end()) {
       break;

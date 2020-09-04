@@ -70,7 +70,9 @@ class CoreWorkerDirectTaskSubmitter {
         actor_creator_(std::move(actor_creator)),
         client_cache_(core_worker_client_pool),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
-        cancel_retry_timer_(std::move(cancel_timer)) {}
+        cancel_retry_timer_(std::move(cancel_timer)) {
+          clock_gettime(CLOCK_REALTIME, &initial_time_);
+        }
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -118,7 +120,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// the worker should be requested from the raylet at that address. Else, the
   /// worker should be requested from the local raylet.
   void RequestNewWorkersIfNeeded(const SchedulingKey &task_queue_key,
-                                int n_requests=1,
+                                size_t n_requests=1,
                                 const rpc::Address *raylet_address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -315,7 +317,7 @@ class CoreWorkerDirectTaskSubmitter {
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
 
-  // struct timespec initial_time_;
+  struct timespec initial_time_;
 
   bool work_stealing_enabled_ = RayConfig::instance().work_stealing_enabled();
 };
