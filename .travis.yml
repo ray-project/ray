@@ -159,7 +159,7 @@ matrix:
         - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
-        - true  # we still need this block to exist, otherwise it will fall back to the global one
+        - sleep 30  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build MacOS wheels and MacOS jars
     - os: osx
@@ -190,7 +190,7 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
         - bash ./java/build-jar-multiplatform.sh linux
-        - bash ./java/build-jar-multiplatform.sh multiplatform
+        #- bash ./java/build-jar-multiplatform.sh multiplatform
         #- bash ./java/build-jar-multiplatform.sh deploy
       cache: false
 
@@ -376,6 +376,7 @@ matrix:
     - os: linux
       env:
         - PYTHON=3.7 TUNE_TESTING=1
+        - INSTALL_HOROVOD=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.5
@@ -461,6 +462,15 @@ deploy:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
+  - provider: script
+    edge: true # This supposedly opts in to deploy v2.
+    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $LINUX_WHEELS = 1
+
   # Upload jars so that we can debug locally for every commit
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -494,11 +504,3 @@ deploy:
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
 
-  - provider: script
-    edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build_docker_images.sh
-    skip_cleanup: true
-    on:
-      repo: ray-project/ray
-      all_branches: true
-      condition: $LINUX_WHEELS = 1

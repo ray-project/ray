@@ -181,10 +181,12 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    run_env="host")
-                sync_cmd(local_path, remote_path)
+                if not isinstance(self.cmd_runner, DockerCommandRunner):
+                    # The DockerCommandRunner handles this internally
+                    self.cmd_runner.run(
+                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        run_env="host")
+                sync_cmd(local_path, remote_path, file_mount=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -251,7 +253,7 @@ class NodeUpdater:
 
                         cli_logger.print(
                             "SSH still not available {}, "
-                            "retrying in {} seconds.", cf.gray(retry_str),
+                            "retrying in {} seconds.", cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
                         cli_logger.old_debug(logger,
                                              "{}Node not up, retrying: {}",
@@ -413,19 +415,23 @@ class NodeUpdater:
 
                         raise click.ClickException("Start command failed.")
 
-    def rsync_up(self, source, target):
+    def rsync_up(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_up(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_up(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
-    def rsync_down(self, source, target):
+    def rsync_down(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_down(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_down(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))
 

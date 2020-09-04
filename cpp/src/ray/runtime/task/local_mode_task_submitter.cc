@@ -30,8 +30,10 @@ ObjectID LocalModeTaskSubmitter::Submit(const InvocationSpec &invocation, TaskTy
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(invocation.task_id, rpc::Language::CPP, functionDescriptor,
-                            local_mode_ray_tuntime_.GetCurrentJobID(),
+  std::string task_name =
+      invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
+  builder.SetCommonTaskSpec(invocation.task_id, task_name, rpc::Language::CPP,
+                            functionDescriptor, local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,

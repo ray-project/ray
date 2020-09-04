@@ -26,21 +26,22 @@ for i in range(num_nodes):
         dashboard_host="0.0.0.0")
 
 ray.init(
-    address=cluster.address, dashboard_host="0.0.0.0", _log_to_driver=False)
-serve.init()
+    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
+client = serve.start(detached=True)
 
 
 @ray.remote
 class RandomKiller:
-    def __init__(self, kill_period_s=1):
+    def __init__(self, client, kill_period_s=1):
+        self.client = client
         self.kill_period_s = kill_period_s
-        serve.init()
 
     def _get_all_serve_actors(self):
-        master = serve.api._get_controller()
-        routers = ray.get(master.get_router.remote())
-        all_handles = routers + [master]
-        worker_handle_dict = ray.get(master.get_all_worker_handles.remote())
+        controller = self.client._controller
+        routers = list(ray.get(controller.get_routers.remote()).values())
+        all_handles = routers + [controller]
+        worker_handle_dict = ray.get(
+            controller.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
@@ -54,7 +55,8 @@ class RandomKiller:
 
 
 class RandomTest:
-    def __init__(self, max_endpoints=1):
+    def __init__(self, client, max_endpoints=1):
+        self.client = client
         self.max_endpoints = max_endpoints
         self.weighted_actions = [
             (self.create_endpoint, 1),
@@ -67,8 +69,8 @@ class RandomTest:
     def create_endpoint(self):
         if len(self.endpoints) == self.max_endpoints:
             endpoint_to_delete = self.endpoints.pop()
-            serve.delete_endpoint(endpoint_to_delete)
-            serve.delete_backend(endpoint_to_delete)
+            self.client.delete_endpoint(endpoint_to_delete)
+            self.client.delete_backend(endpoint_to_delete)
 
         new_endpoint = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])
@@ -76,8 +78,8 @@ class RandomTest:
         def handler(self, *args):
             return new_endpoint
 
-        serve.create_backend(new_endpoint, handler)
-        serve.create_endpoint(
+        self.client.create_backend(new_endpoint, handler)
+        self.client.create_endpoint(
             new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
 
         self.endpoints.append(new_endpoint)
@@ -112,8 +114,8 @@ class RandomTest:
             iteration += 1
 
 
-random_killer = RandomKiller.remote()
+random_killer = RandomKiller.remote(client)
 random_killer.run.remote()
 # Subtract 4 from the CPUs available for master, router, HTTP proxy,
 # and metric monitor actors.
-RandomTest(max_endpoints=(num_nodes * cpus_per_node) - 4).run()
+RandomTest(client, max_endpoints=(num_nodes * cpus_per_node) - 4).run()

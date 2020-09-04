@@ -46,9 +46,9 @@ class ImageModel:
 # __doc_define_servable_end__
 
 # __doc_deploy_begin__
-serve.init()
-serve.create_backend("resnet18:v0", ImageModel)
-serve.create_endpoint(
+client = serve.start()
+client.create_backend("resnet18:v0", ImageModel)
+client.create_endpoint(
     "predictor",
     backend="resnet18:v0",
     route="/image_predict",
