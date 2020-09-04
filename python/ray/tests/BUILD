@@ -26,14 +26,26 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_dynres.py",
+    "test_error_ray_not_initialized.py",
     "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_iter.py",
     "test_joblib.py",
+    "test_resource_demand_scheduler.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node_2.py",
+    "test_multi_tenancy.py",
     "test_multinode_failures_2.py",
     "test_multinode_failures.py",
     "test_multi_node.py",
@@ -42,7 +54,6 @@ py_test_module_list(
     "test_output.py",
     "test_placement_group.py",
     "test_reconstruction.py",
-    "test_resource_demand_scheduler.py",
     "test_reference_counting_2.py",
     "test_reference_counting.py",
     "test_stress.py",
@@ -53,7 +64,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z"],
   deps = ["//:ray_lib"],
 )
 
@@ -75,10 +86,8 @@ py_test_module_list(
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
     "test_mini.py",
-    "test_multi_tenancy.py",
     "test_node_manager.py",
     "test_numba.py",
-    "test_projects.py",
     "test_ray_init.py",
     "test_serialization.py",
     "test_tempfile.py",
@@ -92,13 +101,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_stress_faiure.py",
+    "test_stress_failure.py",
     "test_failure.py"
   ],
   size = "large",
   extra_srcs = SRCS,
-  # TODO(ekl) enable again once we support direct call reconstruction
-  tags = ["exclusive", "manual"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 

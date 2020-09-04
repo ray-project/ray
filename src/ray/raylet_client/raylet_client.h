@@ -91,13 +91,26 @@ class WorkerLeaseInterface {
 /// Interface for leasing resource.
 class ResourceReserveInterface {
  public:
-  /// Requests a resource from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
+  /// Request a raylet to prepare resources of a given bundle for atomic placement group
+  /// creation. This is used for the first phase of atomic placement group creation. The
+  /// callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be
+  /// allocated for the worker.
   /// \return ray::Status
-  virtual void RequestResourceReserve(
+  virtual void PrepareBundleResources(
       const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply>
+      const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply>
           &callback) = 0;
+
+  /// Request a raylet to commit resources of a given bundle for atomic placement group
+  /// creation. This is used for the first phase of atomic placement group creation. The
+  /// callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be
+  /// allocated for the worker.
+  /// \return ray::Status
+  virtual void CommitBundleResources(
+      const BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) = 0;
 
   virtual void CancelResourceReserve(
       BundleSpecification &bundle_spec,
@@ -169,7 +182,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param raylet_id This will be populated with the local raylet's ClientID.
-  /// \param internal_config This will be populated with internal config parameters
+  /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
   /// 0, the worker should choose a random port.
@@ -178,7 +191,7 @@ class RayletClient : public PinObjectsInterface,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
                const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *internal_config,
+               std::unordered_map<std::string, std::string> *system_config,
                const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
@@ -351,13 +364,19 @@ class RayletClient : public PinObjectsInterface,
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override;
 
-  /// Implements ResourceReserveInterface.
-  void RequestResourceReserve(
+  /// Implements PrepareBundleResourcesInterface.
+  void PrepareBundleResources(
       const BundleSpecification &bundle_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback)
+      const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
       override;
 
-  /// Implements ResourceReserveInterface.
+  /// Implements CommitBundleResourcesInterface.
+  void CommitBundleResources(
+      const BundleSpecification &bundle_spec,
+      const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
+      override;
+
+  /// Implements CancelResourceReserveInterface.
   void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)

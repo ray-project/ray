@@ -67,27 +67,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
   }
 
  private:
-  void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
-                                    std::vector<ray::ObjectID> &q_list) {
-    // const uint8_t temp_data[] = {1, 2, 4, 5};
+  void StreamingWriterExactlyOnceTest() {
+    StreamingConfig config;
+    StreamingWriterStrategyTest(config);
 
-    uint32_t i = 1;
-    while (i <= MESSAGE_BOUND_SIZE) {
-      for (auto &q_id : q_list) {
-        uint64_t buffer_len = (i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE);
-        uint8_t *data = new uint8_t[buffer_len];
-        for (uint32_t j = 0; j < buffer_len; ++j) {
-          data[j] = j % 128;
-        }
-
-        writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
-                                                StreamingMessageType::Message);
-      }
-      ++i;
-    }
-
-    // Wait a while
-    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    STREAMING_LOG(INFO)
+        << "StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest";
+    status_ = true;
   }
 
   void StreamingWriterStrategyTest(StreamingConfig &config) {
@@ -111,6 +97,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
 
+    // Create writer.
     std::shared_ptr<DataWriter> streaming_writer_client(new DataWriter(runtime_context));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
@@ -119,22 +106,35 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
     streaming_writer_client->Run();
+
+    // Write some data.
     std::thread test_loop_thread(
         &StreamingQueueWriterTestSuite::TestWriteMessageToBufferRing, this,
         streaming_writer_client, std::ref(queue_ids_));
-    // test_loop_thread.detach();
     if (test_loop_thread.joinable()) {
       test_loop_thread.join();
     }
   }
 
-  void StreamingWriterExactlyOnceTest() {
-    StreamingConfig config;
-    StreamingWriterStrategyTest(config);
+  void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
+                                    std::vector<ray::ObjectID> &q_list) {
+    uint32_t i = 1;
+    while (i <= MESSAGE_BOUND_SIZE) {
+      for (auto &q_id : q_list) {
+        uint64_t buffer_len = (i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE);
+        uint8_t *data = new uint8_t[buffer_len];
+        for (uint32_t j = 0; j < buffer_len; ++j) {
+          data[j] = j % 128;
+        }
 
-    STREAMING_LOG(INFO)
-        << "StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest";
-    status_ = true;
+        writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
+                                                StreamingMessageType::Message);
+      }
+      ++i;
+    }
+    STREAMING_LOG(INFO) << "Write data done.";
+    // Wait a while.
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
   }
 };
 
@@ -180,7 +180,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 
         for (auto &q_id : queue_id_vec) {
           reader_client->NotifyConsumedItem((*offset_map)[q_id],
-                                            (*offset_map)[q_id].current_seq_id);
+                                            (*offset_map)[q_id].current_message_id);
         }
         // writer_client->ClearCheckpoint(msg->last_barrier_id);
 
@@ -201,7 +201,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 
       recevied_message_cnt += message_list.size();
       for (auto &item : message_list) {
-        uint64_t i = item->GetMessageSeqId();
+        uint64_t i = item->GetMessageId();
 
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;
@@ -260,25 +260,30 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
  public:
   StreamingQueueUpStreamTestSuite(ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
-                                std::vector<ObjectID> rescale_queue_ids)
+                                  std::vector<ObjectID> rescale_queue_ids)
       : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"pull_peer_async_test",
          std::bind(&StreamingQueueUpStreamTestSuite::PullPeerAsyncTest, this)},
-         {"get_queue_test",
+        {"get_queue_test",
          std::bind(&StreamingQueueUpStreamTestSuite::GetQueueTest, this)}};
   }
 
   void GetQueueTest() {
-    // Sleep 2s, queue shoulde not exist when reader pull
+    // Sleep 2s, queue shoulde not exist when reader pull.
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
-    RayFunction async_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
-    RayFunction sync_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
-    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    RayFunction async_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
+    RayFunction sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
+    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func,
+                                     sync_call_func);
     upstream_handler->CreateUpstreamQueue(queue_id, peer_actor_id_, 10240);
     STREAMING_LOG(INFO) << "IsQueueExist: "
                         << upstream_handler->UpstreamQueueExists(queue_id);
@@ -292,15 +297,20 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
   }
 
   void PullPeerAsyncTest() {
-    // Sleep 2s, queue should not exist when reader pull
+    // Sleep 2s, queue should not exist when reader pull.
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
-    RayFunction async_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
-    RayFunction sync_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
-    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    RayFunction async_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "reader_async_call_func", ""})};
+    RayFunction sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "reader_sync_call_func", ""})};
+    upstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func,
+                                     sync_call_func);
     std::shared_ptr<WriterQueue> queue =
         upstream_handler->CreateUpstreamQueue(queue_id, peer_actor_id_, 10240);
     STREAMING_LOG(INFO) << "IsQueueExist: "
@@ -314,7 +324,7 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
       memset(data, msg_id, 100);
       STREAMING_LOG(INFO) << "Writer User Push item msg_id: " << msg_id;
       ASSERT_TRUE(
-          queue->Push(msg_id/*seqid*/, data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
+          queue->Push(data, 100, current_sys_time_ms(), msg_id, msg_id, true).ok());
       queue->Send();
     }
 
@@ -326,25 +336,30 @@ class StreamingQueueUpStreamTestSuite : public StreamingQueueTestSuite {
 
 class StreamingQueueDownStreamTestSuite : public StreamingQueueTestSuite {
  public:
-  StreamingQueueDownStreamTestSuite(ActorID peer_actor_id, std::vector<ObjectID> queue_ids,
-                                std::vector<ObjectID> rescale_queue_ids)
+  StreamingQueueDownStreamTestSuite(ActorID peer_actor_id,
+                                    std::vector<ObjectID> queue_ids,
+                                    std::vector<ObjectID> rescale_queue_ids)
       : StreamingQueueTestSuite(peer_actor_id, queue_ids, rescale_queue_ids) {
     test_func_map_ = {
         {"pull_peer_async_test",
          std::bind(&StreamingQueueDownStreamTestSuite::PullPeerAsyncTest, this)},
-         {"get_queue_test",
+        {"get_queue_test",
          std::bind(&StreamingQueueDownStreamTestSuite::GetQueueTest, this)}};
   };
 
   void GetQueueTest() {
-    auto downstream_handler =
-         ray::streaming::DownstreamQueueMessageHandler::GetService();
+    auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
-    RayFunction async_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
-    RayFunction sync_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
-    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    RayFunction async_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
+    RayFunction sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
+    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func,
+                                       sync_call_func);
     downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
 
     bool is_upstream_first_pull_ = false;
@@ -357,14 +372,18 @@ class StreamingQueueDownStreamTestSuite : public StreamingQueueTestSuite {
   }
 
   void PullPeerAsyncTest() {
-    auto downstream_handler =
-         ray::streaming::DownstreamQueueMessageHandler::GetService();
+    auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
     ObjectID &queue_id = queue_ids_[0];
-    RayFunction async_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
-    RayFunction sync_call_func{ray::Language::PYTHON,
-        ray::FunctionDescriptorBuilder::FromVector(ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
-    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func, sync_call_func);
+    RayFunction async_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "writer_async_call_func", ""})};
+    RayFunction sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::FromVector(
+            ray::Language::PYTHON, {"", "", "writer_sync_call_func", ""})};
+    downstream_handler->SetPeerActorID(queue_id, peer_actor_id_, async_call_func,
+                                       sync_call_func);
     std::shared_ptr<ReaderQueue> queue =
         downstream_handler->CreateDownstreamQueue(queue_id, peer_actor_id_);
 
@@ -458,6 +477,7 @@ class StreamingWorker {
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
                   int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::WORKER,  // worker_type
         Language::PYTHON,    // langauge
@@ -474,10 +494,12 @@ class StreamingWorker {
         "",                  // driver_name
         "",                  // stdout_file
         "",                  // stderr_file
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6,
-                  _7),  // task_execution_callback
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7,
+                  _8),  // task_execution_callback
         nullptr,        // check_signals
         nullptr,        // gc_collect
+        nullptr,        // spill_objects
+        nullptr,        // restore_spilled_objects
         nullptr,        // get_lang_stack
         nullptr,        // kill_main
         true,           // ref_counting_enabled
@@ -497,7 +519,8 @@ class StreamingWorker {
   }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
+  Status ExecuteTask(TaskType task_type, const std::string task_name,
+                     const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
@@ -511,7 +534,7 @@ class StreamingWorker {
               ray::FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
     STREAMING_LOG(DEBUG) << "StreamingWorker::ExecuteTask "
-                        << typed_descriptor->ToString();
+                         << typed_descriptor->ToString();
 
     std::string func_name = typed_descriptor->FunctionName();
     if (func_name == "init") {

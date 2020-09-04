@@ -1,12 +1,13 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.RayIntentionalSystemExitException;
+import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -159,6 +160,12 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       }
       LOGGER.debug("Finished executing task {}", taskId);
     } catch (Throwable e) {
+      if (e instanceof RayIntentionalSystemExitException) {
+        // We don't need to fill the `returnObjects` with an exception metadata
+        // because the node manager or the direct actor task submitter will fill
+        // the return object with the ACTOR_DIED metadata.
+        throw (RayIntentionalSystemExitException) e;
+      }
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();

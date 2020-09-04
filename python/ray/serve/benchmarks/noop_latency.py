@@ -42,7 +42,7 @@ def run_http_benchmark(url, num_queries):
 @click.option("--max-concurrent-queries", type=int, required=False)
 def main(num_replicas: int, num_queries: Optional[int],
          max_concurrent_queries: Optional[int], blocking: bool):
-    serve.init()
+    client = serve.start()
 
     def noop(_):
         return "hello world"
@@ -52,8 +52,8 @@ def main(num_replicas: int, num_queries: Optional[int],
         "max_concurrent_queries": max_concurrent_queries
     }
     print("Using config", config)
-    serve.create_backend("noop", noop, config=config)
-    serve.create_endpoint("noop", backend="noop", route="/noop")
+    client.create_backend("noop", noop, config=config)
+    client.create_endpoint("noop", backend="noop", route="/noop")
 
     url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
     block_until_ready(url)

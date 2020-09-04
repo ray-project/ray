@@ -22,18 +22,57 @@ from custom_directives import CustomGalleryItemDirective
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
+
+
+class ChildClassMock(mock.MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+        return mock.Mock
+
+
 MOCK_MODULES = [
-    "blist", "gym", "gym.spaces", "psutil", "ray._raylet",
-    "ray.core.generated", "ray.core.generated.gcs_pb2",
-    "ray.core.generated.ray.protocol.Task", "scipy.signal", "scipy.stats",
-    "setproctitle", "tensorflow_probability", "tensorflow",
-    "tensorflow.contrib", "tensorflow.contrib.all_reduce", "tree",
-    "tensorflow.contrib.all_reduce.python", "tensorflow.contrib.layers",
-    "tensorflow.contrib.rnn", "tensorflow.contrib.slim", "tensorflow.core",
-    "tensorflow.core.util", "tensorflow.python", "tensorflow.python.client",
-    "tensorflow.python.util", "torch", "torch.distributed", "torch.nn",
-    "torch.nn.parallel", "torch.utils.data", "torch.utils.data.distributed",
-    "zoopt"
+    "ax",
+    "ax.service.ax_client",
+    "blist",
+    "gym",
+    "gym.spaces",
+    "horovod",
+    "horovod.ray",
+    "kubernetes",
+    "mxnet.model",
+    "psutil",
+    "ray._raylet",
+    "ray.core.generated",
+    "ray.core.generated.common_pb2",
+    "ray.core.generated.gcs_pb2",
+    "ray.core.generated.ray.protocol.Task",
+    "scipy.signal",
+    "scipy.stats",
+    "setproctitle",
+    "tensorflow_probability",
+    "tensorflow",
+    "tensorflow.contrib",
+    "tensorflow.contrib.all_reduce",
+    "tree",
+    "tensorflow.contrib.all_reduce.python",
+    "tensorflow.contrib.layers",
+    "tensorflow.contrib.rnn",
+    "tensorflow.contrib.slim",
+    "tensorflow.core",
+    "tensorflow.core.util",
+    "tensorflow.keras",
+    "tensorflow.python",
+    "tensorflow.python.client",
+    "tensorflow.python.util",
+    "torch",
+    "torch.distributed",
+    "torch.nn",
+    "torch.nn.parallel",
+    "torch.utils.data",
+    "torch.utils.data.distributed",
+    "wandb",
+    "xgboost",
+    "zoopt",
 ]
 import scipy.stats
 import scipy.linalg
@@ -43,6 +82,8 @@ for mod_name in MOCK_MODULES:
 # ray.rllib.models.action_dist.py and
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
+sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
+sys.modules["pytorch_lightning"] = ChildClassMock()
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the

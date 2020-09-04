@@ -31,14 +31,18 @@ class Queue {
   /// \param actor_id, the actor id of upstream worker
   /// \param peer_actor_id, the actor id of downstream worker
   /// \param queue_id the unique identification of a pair of queues (upstream and
-  /// downstream). 
-  /// \param size max size of the queue in bytes. 
+  /// downstream).
+  /// \param size max size of the queue in bytes.
   /// \param transport
   /// transport to send items to peer.
-  Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
+  Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
+        uint64_t size, std::shared_ptr<Transport> transport)
       : actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
+        queue_id_(queue_id),
+        max_data_size_(size),
+        data_size_(0),
+        data_size_sent_(0) {
     buffer_queue_.push_back(InvalidQueueItem());
     watershed_iter_ = buffer_queue_.begin();
   }
@@ -90,14 +94,15 @@ class Queue {
   inline size_t Count() { return buffer_queue_.size(); }
 
   /// Return item count in pending state.
-  size_t PendingCount();
+  inline size_t PendingCount();
 
   /// Return item count in processed state.
-  size_t ProcessedCount();
+  inline size_t ProcessedCount();
 
   inline ActorID GetActorID() { return actor_id_; }
   inline ActorID GetPeerActorID() { return peer_actor_id_; }
   inline ObjectID GetQueueID() { return queue_id_; }
+
  protected:
   std::list<QueueItem> buffer_queue_;
   std::list<QueueItem>::iterator watershed_iter_;
@@ -130,21 +135,22 @@ class WriterQueue : public Queue {
         peer_actor_id_(peer_actor_id),
         seq_id_(QUEUE_INITIAL_SEQ_ID),
         eviction_limit_(QUEUE_INVALID_SEQ_ID),
-        min_consumed_id_(QUEUE_INVALID_SEQ_ID),
+        min_consumed_msg_id_(QUEUE_INVALID_SEQ_ID),
         peer_last_msg_id_(0),
         peer_last_seq_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport),
         is_resending_(false),
         is_upstream_first_pull_(true) {}
 
-  /// Push a continuous buffer into queue, the buffer consists of some messages packed by DataWriter.
+  /// Push a continuous buffer into queue, the buffer consists of some messages packed by
+  /// DataWriter.
   /// \param data, the buffer address
   /// \param data_size, buffer size
   /// \param timestamp, the timestamp when the buffer pushed in
   /// \param msg_id_start, the message id of the first message in the buffer
   /// \param msg_id_end, the message id of the last message in the buffer
   /// \param raw, whether this buffer is raw data, be True only in test
-  Status Push(uint64_t seq_id, uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
+  Status Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
               uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies
@@ -163,16 +169,14 @@ class WriterQueue : public Queue {
   void Send();
 
   /// Called when user pushs item into queue. The count of items
-  /// can be evicted, determined by eviction_limit_ and min_consumed_id_.
+  /// can be evicted, determined by eviction_limit_ and min_consumed_msg_id_.
   Status TryEvictItems();
 
-  void SetQueueEvictionLimit(uint64_t eviction_limit) {
-    eviction_limit_ = eviction_limit;
-  }
+  void SetQueueEvictionLimit(uint64_t msg_id) { eviction_limit_ = msg_id; }
 
   uint64_t EvictionLimit() { return eviction_limit_; }
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
+  uint64_t GetMinConsumedMsgID() { return min_consumed_msg_id_; }
 
   void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
     peer_last_msg_id_ = msg_id;
@@ -201,18 +205,17 @@ class WriterQueue : public Queue {
   /// in the queue, the `less_callback` callback will be called; If the `target_msg_id` is
   /// found in the queue, the `found_callback` callback willbe called.
   /// \param target_msg_id, the target message id to be found.
-  void FindItem(
-      uint64_t target_msg_id, 
-      std::function<void()> greater_callback, 
-      std::function<void()> less_callback,
-      std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)> equal_callback);
+  void FindItem(uint64_t target_msg_id, std::function<void()> greater_callback,
+                std::function<void()> less_callback,
+                std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)>
+                    equal_callback);
 
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
   uint64_t seq_id_;
   uint64_t eviction_limit_;
-  uint64_t min_consumed_id_;
+  uint64_t min_consumed_msg_id_;
   uint64_t peer_last_msg_id_;
   uint64_t peer_last_seq_id_;
   std::shared_ptr<Transport> transport_;
@@ -231,11 +234,12 @@ class ReaderQueue : public Queue {
   /// NOTE: we do not restrict queue size of ReaderQueue
   ReaderQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, std::shared_ptr<Transport> transport)
-      : Queue(actor_id, peer_actor_id, queue_id, std::numeric_limits<uint64_t>::max(), transport),
+      : Queue(actor_id, peer_actor_id, queue_id, std::numeric_limits<uint64_t>::max(),
+              transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
+        last_recv_msg_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport) {}
 
   /// Delete processed items whose seq id <= seq_id,
@@ -248,9 +252,8 @@ class ReaderQueue : public Queue {
   /// NOTE: this callback function is called in queue thread.
   void OnResendData(std::shared_ptr<ResendDataMessage> msg);
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
-
-  uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
+  inline uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
+  inline uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
 
  private:
   void Notify(uint64_t seq_id);
@@ -259,8 +262,8 @@ class ReaderQueue : public Queue {
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
-  uint64_t min_consumed_id_;
   uint64_t last_recv_seq_id_;
+  uint64_t last_recv_msg_id_;
   std::shared_ptr<PromiseWrapper> promise_for_pull_;
   std::shared_ptr<Transport> transport_;
 };

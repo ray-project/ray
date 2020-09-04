@@ -248,6 +248,10 @@
             "type": "boolean",
             "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
         },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata field that can be used to store user-defined data in the cluster config. Ray does not interpret these fields."
+        },
         "initialization_commands": {
             "$ref": "#/definitions/commands",
             "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
@@ -291,7 +295,33 @@
                        "resources": {
                            "type": "object",
                            ".*": {"type": "number"}
-                       }
+                       },
+                       "initialization_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
+                       },
+                       "worker_setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
+                       },
+                       "docker": {
+                        "description": "Configuration of Worker nodes.",
+                        "type": "object",
+                        "properties": {
+                            "pull_before_run": {
+                                "type": "boolean",
+                                "description": "run `docker pull` first"
+                            },
+                            "worker_image": {
+                                "type": "string",
+                                "description": "analogous to head_image"
+                            },
+                            "worker_run_options": {
+                                "type": "array",
+                                "description": "analogous to head_run_options, merged with the global docker run_options."
+                            }
+                        }
+                    }
                     },
                     "additionalProperties": false
                 }

@@ -20,7 +20,6 @@ from ray.autoscaler.commands import (
     debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
-from ray.projects.scripts import project_cli, session_cli
 
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
@@ -358,10 +357,10 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--internal-config",
+    "--system-config",
     default=None,
     type=json.loads,
-    help="Do NOT use this. This is for debugging/development purposes ONLY.")
+    help="Override system configuration defaults.")
 @click.option(
     "--load-code-from-local",
     is_flag=True,
@@ -394,9 +393,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config,
-          lru_evict, enable_object_reconstruction, metrics_export_port,
-          log_new_style, log_color, verbose):
+          java_worker_options, load_code_from_local, system_config, lru_evict,
+          enable_object_reconstruction, metrics_export_port, log_new_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.old_style = not log_new_style
     cli_logger.color_mode = log_color
@@ -460,10 +459,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
-    if redis_address is not None or address is not None:
+    if address is not None:
         (redis_address, redis_address_ip,
-         redis_address_port) = services.validate_redis_address(
-             address, redis_address)
+         redis_address_port) = services.validate_redis_address(address)
 
     try:
         resources = json.loads(resources)
@@ -508,7 +506,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        _internal_config=internal_config,
+        _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
@@ -1008,7 +1006,7 @@ def down(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--yes",
@@ -1459,36 +1457,6 @@ def timeline(address):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def statistics(address):
-    """Get the current metrics protobuf from a Ray cluster (developer tool)."""
-    if not address:
-        address = services.find_redis_address_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
-
-    import grpc
-    from ray.core.generated import node_manager_pb2
-    from ray.core.generated import node_manager_pb2_grpc
-
-    for raylet in ray.nodes():
-        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                        ray.nodes()[0]["NodeManagerPort"])
-        logger.info(f"Querying raylet {raylet_address}")
-
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        reply = stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest(include_memory_info=False),
-            timeout=2.0)
-        print(reply)
-
-
-@cli.command()
-@click.option(
-    "--address",
-    required=False,
-    type=str,
-    help="Override the address to connect to.")
 @click.option(
     "--redis_password",
     required=False,
@@ -1519,13 +1487,13 @@ def status(address):
     print(debug_status())
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.option(
     "--address",
     required=False,
     type=str,
     help="Override the address to connect to.")
-def globalgc(address):
+def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
         address = services.find_redis_address_or_die()
@@ -1613,13 +1581,10 @@ add_command_alias(get_head_ip, name="get_head_ip", hidden=True)
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
-cli.add_command(statistics)
 cli.add_command(status)
 cli.add_command(memory)
-cli.add_command(globalgc)
+cli.add_command(global_gc)
 cli.add_command(timeline)
-cli.add_command(project_cli)
-cli.add_command(session_cli)
 cli.add_command(install_nightly)
 
 try:

@@ -13,6 +13,7 @@ import io.ray.streaming.operator.OperatorType;
 import io.ray.streaming.operator.SourceOperator;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.operator.TwoInputOperator;
+import java.io.Serializable;
 import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
  * Abstract base class for chained operators.
  */
 public abstract class ChainedOperator extends StreamOperator<Function> {
+
   protected final List<StreamOperator> operators;
   protected final Operator headOperator;
   protected final Operator tailOperator;
@@ -43,7 +45,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     // Dont' call super.open() as we `open` every operator separately.
     List<ForwardCollector> succeedingCollectors = operators.stream().skip(1)
-        .map(operator -> new ForwardCollector((OneInputOperator) operator))
+        .map(operator -> new ForwardCollector(
+            (OneInputOperator) operator))
         .collect(Collectors.toList());
     for (int i = 0; i < operators.size() - 1; i++) {
       StreamOperator operator = operators.get(i);
@@ -83,6 +86,23 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     return tailOperator;
   }
 
+  @Override
+  public Serializable saveCheckpoint() {
+    Object[] checkpoints = new Object[operators.size()];
+    for (int i = 0; i < operators.size(); ++i) {
+      checkpoints[i] = operators.get(i).saveCheckpoint();
+    }
+    return checkpoints;
+  }
+
+  @Override
+  public void loadCheckpoint(Serializable checkpointObject) {
+    Serializable[] checkpoints = (Serializable[]) checkpointObject;
+    for (int i = 0; i < operators.size(); ++i) {
+      operators.get(i).loadCheckpoint(checkpoints[i]);
+    }
+  }
+
   private RuntimeContext createRuntimeContext(RuntimeContext runtimeContext, int index) {
     return (RuntimeContext) Proxy.newProxyInstance(runtimeContext.getClass().getClassLoader(),
         new Class[] {RuntimeContext.class},
@@ -113,6 +133,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedSourceOperator<T> extends ChainedOperator
       implements SourceOperator<T> {
+
     private final SourceOperator<T> sourceOperator;
 
     @SuppressWarnings("unchecked")
@@ -122,8 +143,8 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
     }
 
     @Override
-    public void run() {
-      sourceOperator.run();
+    public void fetch() {
+      sourceOperator.fetch();
     }
 
     @Override
@@ -135,6 +156,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedOneInputOperator<T> extends ChainedOperator
       implements OneInputOperator<T> {
+
     private final OneInputOperator<T> inputOperator;
 
     @SuppressWarnings("unchecked")
@@ -152,6 +174,7 @@ public abstract class ChainedOperator extends StreamOperator<Function> {
 
   static class ChainedTwoInputOperator<L, R> extends ChainedOperator
       implements TwoInputOperator<L, R> {
+
     private final TwoInputOperator<L, R> inputOperator;
 
     @SuppressWarnings("unchecked")

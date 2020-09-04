@@ -17,7 +17,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class UnionStreamTest {
-  private static final Logger LOG = LoggerFactory.getLogger( UnionStreamTest.class );
+
+  private static final Logger LOG = LoggerFactory.getLogger(UnionStreamTest.class);
 
   @Test(timeOut = 60000)
   public void testUnionStream() throws Exception {
@@ -35,7 +36,7 @@ public class UnionStreamTest {
     streamSource1
         .union(streamSource2, streamSource3)
         .sink((SinkFunction<Integer>) value -> {
-          LOG.info("UnionStreamTest: {}", value);
+          LOG.info("UnionStreamTest, sink: {}", value);
           try {
             if (!Files.exists(Paths.get(sinkFileName))) {
               Files.createFile(Paths.get(sinkFileName));

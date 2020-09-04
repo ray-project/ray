@@ -30,9 +30,9 @@ def batch_adder_v0(flask_requests: List):
 
 # __doc_deploy_begin__
 ray.init(num_cpus=10)
-serve.init()
-serve.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
-serve.create_endpoint(
+client = serve.start()
+client.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
+client.create_endpoint(
     "adder", backend="adder:v0", route="/adder", methods=["GET"])
 # __doc_deploy_end__
 
@@ -80,12 +80,12 @@ def batch_adder_v1(flask_requests: List, *, numbers: List = []):
 # __doc_define_servable_v1_end__
 
 # __doc_deploy_v1_begin__
-serve.create_backend("adder:v1", batch_adder_v1, config={"max_batch_size": 4})
-serve.set_traffic("adder", {"adder:v1": 1})
+client.create_backend("adder:v1", batch_adder_v1, config={"max_batch_size": 4})
+client.set_traffic("adder", {"adder:v1": 1})
 # __doc_deploy_v1_end__
 
 # __doc_query_handle_begin__
-handle = serve.get_handle("adder")
+handle = client.get_handle("adder")
 print(handle)
 # Output
 # RayServeHandle(

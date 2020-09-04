@@ -7,6 +7,7 @@ from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
+from ray.tune.utils import flatten_dict
 
 try:
     import wandb
@@ -103,10 +104,18 @@ def _set_api_key(wandb_config):
     if api_key:
         os.environ[WANDB_ENV_VAR] = api_key
     elif not os.environ.get(WANDB_ENV_VAR):
+        try:
+            # Check if user is already logged into wandb.
+            wandb.ensure_configured()
+            if wandb.api.api_key:
+                logger.info("Already logged into W&B.")
+                return
+        except AttributeError:
+            pass
         raise ValueError(
             "No WandB API key found. Either set the {} environment "
-            "variable or pass `api_key` or `api_key_file` in the config".
-            format(WANDB_ENV_VAR))
+            "variable, pass `api_key` or `api_key_file` in the config, "
+            "or run `wandb login` from the command line".format(WANDB_ENV_VAR))
 
 
 class _WandbLoggingProcess(Process):
@@ -137,11 +146,16 @@ class _WandbLoggingProcess(Process):
     def _handle_result(self, result):
         config_update = result.get("config", {}).copy()
         log = {}
+        flat_result = flatten_dict(result, delimiter="/")
 
-        for k, v in result.items():
-            if k in self._to_config:
+        for k, v in flat_result.items():
+            if any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._to_config):
                 config_update[k] = v
-            elif k in self._exclude:
+            elif any(
+                    k.startswith(item + "/") or k == item
+                    for item in self._exclude):
                 continue
             elif not isinstance(v, Number):
                 continue
@@ -245,6 +259,8 @@ class WandbLogger(Logger):
 
     def _init(self):
         config = self.config.copy()
+
+        config.pop("callbacks", None)  # Remove callbacks
 
         try:
             if config.get("logger_config", {}).get("wandb"):

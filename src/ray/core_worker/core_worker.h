@@ -51,11 +51,13 @@ namespace ray {
 
 class CoreWorker;
 
+// If you change this options's definition, you must change the options used in
+// other files. Please take a global search and modify them !!!
 struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
-      TaskType task_type, const RayFunction &ray_function,
+      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,

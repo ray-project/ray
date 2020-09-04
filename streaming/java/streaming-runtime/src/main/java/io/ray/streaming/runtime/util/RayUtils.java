@@ -34,8 +34,8 @@ public class RayUtils {
    */
   public static Map<UniqueId, NodeInfo> getAliveNodeInfoMap() {
     return getAllNodeInfo().stream()
-      .filter(nodeInfo -> nodeInfo.isAlive)
-      .collect(Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
+        .filter(nodeInfo -> nodeInfo.isAlive)
+        .collect(Collectors.toMap(nodeInfo -> nodeInfo.nodeId, nodeInfo -> nodeInfo));
   }
 
   private static List<NodeInfo> mockContainerResources() {
@@ -51,7 +51,8 @@ public class RayUtils {
         nodeIdBytes[byteIndex] = String.valueOf(i).getBytes()[0];
       }
       NodeInfo nodeInfo = new NodeInfo(new UniqueId(nodeIdBytes),
-          "localhost" + i, "localhost" + i,
+          "localhost" + i, "localhost" + i, -1,
+          "", "",
           true, resources);
       nodeInfos.add(nodeInfo);
     }

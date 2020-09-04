@@ -10,6 +10,7 @@ uint32_t StreamingConfig::DEFAULT_RING_BUFFER_CAPACITY = 500;
 uint32_t StreamingConfig::DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL = 20;
 // Time to force clean if barrier in queue, default 0ms
 const uint32_t StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE = 2048;
+const uint32_t StreamingConfig::RESEND_NOTIFY_MAX_INTERVAL = 1000;  // ms
 
 #define RESET_IF_INT_CONF(KEY, VALUE) \
   if (0 != VALUE) {                   \

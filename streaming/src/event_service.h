@@ -6,9 +6,8 @@
 #include <thread>
 #include <unordered_map>
 
-#include "channel.h"
-#include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
+#include "channel/channel.h"
+#include "ring_buffer/ring_buffer.h"
 #include "util/streaming_util.h"
 
 namespace ray {

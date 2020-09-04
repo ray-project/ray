@@ -12,8 +12,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   int64_t fbs_length = pboutput.length();
 
   queue::protobuf::StreamingQueueMessageType type = Type();
-  size_t total_len =
-      kItemHeaderSize + fbs_length;
+  size_t total_len = kItemHeaderSize + fbs_length;
   if (buffer_ != nullptr) {
     total_len += buffer_->Size();
   }
@@ -44,7 +43,6 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   delete bytes;
   return buffer;
 }
-
 
 void Message::FillMessageCommon(queue::protobuf::MessageCommon *common) {
   common->set_src_actor_id(actor_id_.Binary());
@@ -82,8 +80,9 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   /// Copy data and create a new buffer for streaming queue.
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);
-  std::shared_ptr<DataMessage> data_msg = std::make_shared<DataMessage>(
-      src_actor_id, dst_actor_id, queue_id, seq_id, msg_id_start, msg_id_end, buffer, raw);
+  std::shared_ptr<DataMessage> data_msg =
+      std::make_shared<DataMessage>(src_actor_id, dst_actor_id, queue_id, seq_id,
+                                    msg_id_start, msg_id_end, buffer, raw);
 
   return data_msg;
 }
@@ -91,7 +90,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
 void NotificationMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueNotificationMsg msg;
   FillMessageCommon(msg.mutable_common());
-  msg.set_seq_id(seq_id_);
+  msg.set_seq_id(msg_id_);
   msg.SerializeToString(output);
 }
 
@@ -209,10 +208,10 @@ std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *byt
   bool is_upstream_first_pull = message.is_upstream_first_pull();
 
   STREAMING_LOG(INFO) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
-                       << " seq_id: " << seq_id << " msg_id: " << msg_id << " err_code:"
-                       << queue::protobuf::StreamingQueueError_Name(err_code)
-                       << " is_upstream_first_pull: " << is_upstream_first_pull;
+                      << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
+                      << " seq_id: " << seq_id << " msg_id: " << msg_id << " err_code:"
+                      << queue::protobuf::StreamingQueueError_Name(err_code)
+                      << " is_upstream_first_pull: " << is_upstream_first_pull;
 
   std::shared_ptr<PullResponseMessage> pull_rsp_msg =
       std::make_shared<PullResponseMessage>(src_actor_id, dst_actor_id, queue_id, seq_id,

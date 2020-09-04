@@ -21,7 +21,7 @@ pytorch-lightning
 scikit-optimize
 sigopt
 smart_open
-tensorflow_probability
+tensorflow-probability
 timm
 torch>=1.5.0
 torchvision>=0.6.0
