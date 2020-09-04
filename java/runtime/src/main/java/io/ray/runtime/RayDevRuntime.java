@@ -84,6 +84,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
     super.setAsyncContext(asyncContext);
   }
 
+  @Override
+  public void exitActor() {
+
+  }
+
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
   }
