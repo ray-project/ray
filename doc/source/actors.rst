@@ -258,12 +258,18 @@ This will kill the actor process and release resources associated/assigned to th
 
 .. tabs::
   .. group-tab:: Python
+    .. code-block:: python
+
+      ray.actor.exit_actor()
 
     This approach should generally not be necessary as actors are automatically garbage
     collected. The ``ObjectRef`` resulting from the task can be waited on to wait
     for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 
   .. group-tab:: Java
+    .. code-block:: java
+
+      Ray.exitActor();
 
     Garbage collection for actors haven't been implemented yet, so this is currently the
     only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
