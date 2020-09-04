@@ -79,7 +79,7 @@ class Unity3DEnv(MultiAgentEnv):
         while True:
             time.sleep(1)
             try:
-                print("Trying to create unity env on port={}".format(port))
+                print("Trying to create unity env on port={}".format(self._BASE_PORT))
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
                     worker_id=0,
