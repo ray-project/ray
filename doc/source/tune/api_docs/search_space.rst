@@ -5,7 +5,7 @@ Search Space API
 Overview
 --------
 
-Tune has a native interface for specifying search spaces You can specify the search space via ``tune.run(config=...)``.
+Tune has a native interface for specifying search spaces. You can specify the search space via ``tune.run(config=...)``.
 
 Thereby, you can either use the ``tune.grid_search`` primitive to specify an axis of a grid search...
 
