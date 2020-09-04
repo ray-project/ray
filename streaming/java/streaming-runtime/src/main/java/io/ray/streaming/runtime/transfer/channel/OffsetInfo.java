@@ -3,6 +3,9 @@ package io.ray.streaming.runtime.transfer.channel;
 import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 
+/**
+ * This data structure contains offset used by streaming queue.
+ */
 public class OffsetInfo implements Serializable {
 
   private long streamingMsgId;
