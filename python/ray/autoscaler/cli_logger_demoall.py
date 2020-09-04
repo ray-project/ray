@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+
+# This is an executable script that runs an example of every single CliLogger
+# function for demonstration purposes. Primarily useful for tuning color and
+# other formatting.
+
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
