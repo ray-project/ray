@@ -165,8 +165,8 @@ class StandardAutoscaler:
         nodes_to_terminate = []
         for node_id in managed_workers:
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(managed_workers) - len(nodes_to_terminate) > target_workers:
+            if (node_ip in last_used and last_used[node_ip] < horizon) and \
+                    (len(managed_workers) - len(nodes_to_terminate) > target_workers):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -182,9 +182,6 @@ class StandardAutoscaler:
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        num_to_terminate = max(
-            0,
-            len(managed_workers) - self.config["max_workers"])
         while (len(managed_workers) - len(nodes_to_terminate)
                ) > self.config["max_workers"] and managed_workers:
             to_terminate = managed_workers.pop()
@@ -250,7 +247,7 @@ class StandardAutoscaler:
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id, commands, ray_start, docker_config in (
-                self.should_update(node_id) for node_id in nodes):
+                self.should_update(node_id) for node_id in managed_workers):
             if node_id is not None:
                 resources = self._node_resources(node_id)
                 T.append(
