@@ -410,17 +410,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  // If the job is finished, we will remove the idle worker.
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      !unfinished_jobs_.contains(worker->GetAssignedJobId())) {
-    auto process = Process::FromPid(pid);
-    state.starting_worker_processes.erase(process);
-    Status status =
-        Status::Invalid("The job is not running now. Reject all worker registrations.");
-    send_reply_callback(status, /*port=*/0);
-    return status;
-  }
-
   auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
@@ -459,6 +448,17 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
     RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
     auto job_id = dedicated_workers_it->second;
+
+    // If the job is finished, we don't allow new registrations.
+    if (!unfinished_jobs_.contains(job_id)) {
+      auto process = Process::FromPid(pid);
+      state.starting_worker_processes.erase(process);
+      Status status =
+          Status::Invalid("The job is not running anymore. Reject registration.");
+      send_reply_callback(status, /*port=*/0);
+      return status;
+    }
+
     worker->AssignJobId(job_id);
     // We don't call state.worker_pids_to_assigned_jobs.erase(job_id) here
     // because we allow multi-workers per worker process.
