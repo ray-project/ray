@@ -5,42 +5,42 @@ import ray
 import ray.serve as serve
 import time
 
-# initialize ray serve system.
-serve.init()
+# Initialize ray serve instance.
+client = serve.start()
 
 
-# a backend can be a function or class.
-# it can be made to be invoked from web as well as python.
+# A backend can be a function or class.
+# It can be made to be invoked via HTTP as well as python.
 def echo_v1(_, response="hello from python!"):
     return f"echo_v1({response})"
 
 
-serve.create_backend("echo_v1", echo_v1)
-serve.create_endpoint("echo_v1", backend="echo_v1", route="/echo_v1")
+client.create_backend("echo_v1", echo_v1)
+client.create_endpoint("echo_v1", backend="echo_v1", route="/echo_v1")
 
 
 def echo_v2(_, relay=""):
     return f"echo_v2({relay})"
 
 
-serve.create_backend("echo_v2", echo_v2)
-serve.create_endpoint("echo_v2", backend="echo_v2", route="/echo_v2")
+client.create_backend("echo_v2", echo_v2)
+client.create_endpoint("echo_v2", backend="echo_v2", route="/echo_v2")
 
 
 def echo_v3(_, relay=""):
     return f"echo_v3({relay})"
 
 
-serve.create_backend("echo_v3", echo_v3)
-serve.create_endpoint("echo_v3", backend="echo_v3", route="/echo_v3")
+client.create_backend("echo_v3", echo_v3)
+client.create_endpoint("echo_v3", backend="echo_v3", route="/echo_v3")
 
 
 def echo_v4(_, relay1="", relay2=""):
     return f"echo_v4({relay1} , {relay2})"
 
 
-serve.create_backend("echo_v4", echo_v4)
-serve.create_endpoint("echo_v4", backend="echo_v4", route="/echo_v4")
+client.create_backend("echo_v4", echo_v4)
+client.create_endpoint("echo_v4", backend="echo_v4", route="/echo_v4")
 """
 The pipeline created is as follows -
             "my_endpoint1"
@@ -62,10 +62,10 @@ The pipeline created is as follows -
 """
 
 # get the handle of the endpoints
-handle1 = serve.get_handle("echo_v1")
-handle2 = serve.get_handle("echo_v2")
-handle3 = serve.get_handle("echo_v3")
-handle4 = serve.get_handle("echo_v4")
+handle1 = client.get_handle("echo_v1")
+handle2 = client.get_handle("echo_v2")
+handle3 = client.get_handle("echo_v3")
+handle4 = client.get_handle("echo_v4")
 
 start = time.time()
 print("Start firing to the pipeline: {} s".format(time.time()))

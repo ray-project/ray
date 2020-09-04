@@ -10,7 +10,6 @@ import time
 import ray
 from ray.async_compat import sync_to_async
 
-from ray import serve
 from ray.serve import context as serve_context
 from ray.serve.context import FakeFlaskRequest
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
@@ -102,14 +101,11 @@ def create_backend_worker(func_or_class: Union[Callable, Type[Callable]]):
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedWorker(object):
-        def __init__(self,
-                     backend_tag,
-                     replica_tag,
-                     init_args,
-                     backend_config: BackendConfig,
-                     instance_name=None):
-            serve.init(name=instance_name)
-
+        def __init__(self, backend_tag, replica_tag, init_args,
+                     backend_config: BackendConfig, controller_name: str):
+            # Set the controller name so that serve.connect() will connect to
+            # the instance that this backend is running in.
+            ray.serve.api._set_internal_controller_name(controller_name)
             if is_function:
                 _callable = func_or_class
             else:
