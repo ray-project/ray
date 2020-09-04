@@ -3,8 +3,8 @@ Tips for testing Ray programs
 
 Ray programs can be a little tricky to test due to the nature of parallel programs. We've put together a list of tips and tricks for common testing practices for Ray programs.
 
-Tip 1: Fixing the resource quantity with `ray.init(num_cpus=...)`
------------------------------------------------------------------
+Tip 1: Fixing the resource quantity with ``ray.init(num_cpus=...)``
+-------------------------------------------------------------------
 
 By default, ``ray.init()`` detects the number of CPUs and GPUs on your local machine/cluster.
 
