@@ -211,8 +211,6 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         q_tp1_best_masked = (1.0 - tf.cast(train_batch[SampleBatch.DONES],
                                            tf.float32)) * q_tp1_best
 
-    assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
-
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
         train_batch[SampleBatch.REWARDS] +
