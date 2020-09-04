@@ -117,15 +117,24 @@ class CoreWorkerDirectTaskSubmitter {
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
   /// worker should be requested from the local raylet.
-  void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
+  void RequestNewWorkersIfNeeded(const SchedulingKey &task_queue_key,
+                                int n_requests=1,
                                 const rpc::Address *raylet_address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// If needed, cancel the pending worker leases associated with a given scheduling key.
+  /// The pending leases (if present) are cancelled if there are neither stealable tasks, nor queued tasks with 
+  /// the given scheduling key.
+  void CancelWorkerLeasesIfNeeded(const SchedulingKey &scheduling_key)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Cancel a pending worker lease and retry until the cancellation succeeds
-  /// (i.e., the raylet drops the request). This should be called when there
-  /// are no more tasks queued with the given scheduling key and there is an
-  /// in-flight lease request for that key.
-  void CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key)
+  /// (i.e., the raylet drops the request). This should be called only when there
+  /// are no more tasks queued with the given scheduling key, there is an
+  /// in-flight lease request for that key, and there are no stealable tasks
+  /// with the given scheduling key.
+  void CancelWorkerLease(const SchedulingKey &scheduling_key,
+    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
@@ -248,11 +257,12 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct SchedulingKeyEntry {
     // Keep track of pending worker lease requests to the raylet.
-    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
-        std::make_pair(nullptr, TaskID::Nil());
+    std::deque<std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID>> pending_lease_requests = std::deque<std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID>>();
     // Tasks that are queued for execution. We keep an individual queue per
     // scheduling class to ensure fairness.
     std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
+    // Keep a queue of tasks that have not been used yet to request a new worker from the raylet.
+    std::deque<TaskSpecification> tasks_to_request_workers = std::deque<TaskSpecification>();
     // Keep track of the active workers, so that we can quickly check if one of them has
     // room for more tasks in flight
     absl::flat_hash_set<rpc::WorkerAddress> active_workers =
@@ -263,7 +273,7 @@ class CoreWorkerDirectTaskSubmitter {
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
     bool CanDelete() const {
-      if (!pending_lease_request.first && task_queue.empty() &&
+      if (pending_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
         return true;
       }
@@ -284,6 +294,17 @@ class CoreWorkerDirectTaskSubmitter {
   // fields that are needed to orchestrate the execution of those tasks by the workers.
   absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_
       GUARDED_BY(mu_);
+
+  // Check whether the number of stealable tasks is larger than the number of active workers
+  bool MoreStealableTasksThanActiveWorkers(SchedulingKeyEntry &scheduling_key_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    for (auto worker_addr : scheduling_key_entry.active_workers) {
+      auto &lease_entry = worker_to_lease_entry_[worker_addr];
+      if (lease_entry.stealable_tasks.size() > 1) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   // Tasks that were cancelled while being resolved.
   absl::flat_hash_set<TaskID> cancelled_tasks_ GUARDED_BY(mu_);

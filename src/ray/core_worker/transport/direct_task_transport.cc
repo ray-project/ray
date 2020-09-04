@@ -77,6 +77,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
+        scheduling_key_entry.tasks_to_request_workers.push_back(task_spec);
         if (!scheduling_key_entry.AllPipelinesToWorkersFull(
                 max_tasks_in_flight_per_worker_)) {
           // The pipelines to the current workers are not full yet, so we don't need more
@@ -101,7 +102,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             }
           }
         }
-        RequestNewWorkerIfNeeded(scheduling_key);
+        RequestNewWorkersIfNeeded(scheduling_key);
       }
     }
     if (!keep_executing) {
@@ -348,11 +349,12 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       StealWorkIfNeeded(addr, was_error, scheduling_key, assigned_resources);
     }
 
-    RequestNewWorkerIfNeeded(scheduling_key);
+    RequestNewWorkersIfNeeded(scheduling_key);
 
   } else {
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
+    int n_tasks_submitted=0;
     while (!current_queue.empty() &&
            !lease_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
       auto task_spec = current_queue.front();
@@ -369,19 +371,21 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       executing_tasks_.emplace(task_spec.TaskId(), addr);
       PushNormalTask(addr, client, scheduling_key, task_spec, assigned_resources);
       current_queue.pop_front();
+
+      n_tasks_submitted++;
     }
 
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
     if (current_queue.empty()) {
       RAY_LOG(INFO) << "Task queue empty, canceling lease request";
-      CancelWorkerLeaseIfNeeded(scheduling_key);
+      CancelWorkerLeasesIfNeeded(scheduling_key);
     }
-    RequestNewWorkerIfNeeded(scheduling_key);
+    RequestNewWorkersIfNeeded(scheduling_key, n_tasks_submitted);
   }
 }
 
-void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
+void CoreWorkerDirectTaskSubmitter::CancelWorkerLeasesIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
@@ -390,29 +394,63 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
     return;
   }
 
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
-  if (pending_lease_request.first) {
-    // There is an in-flight lease request. Cancel it.
-    auto &lease_client = pending_lease_request.first;
-    auto &lease_id = pending_lease_request.second;
-    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
-    lease_client->CancelWorkerLease(
-        lease_id, [this, scheduling_key](const Status &status,
-                                         const rpc::CancelWorkerLeaseReply &reply) {
-          absl::MutexLock lock(&mu_);
-          if (status.ok() && !reply.success()) {
-            // The cancellation request can fail if the raylet does not have
-            // the request queued. This can happen if: a) due to message
-            // reordering, the raylet has not yet received the worker lease
-            // request, or b) we have already returned the worker lease
-            // request. In the former case, we should try the cancellation
-            // request again. In the latter case, the in-flight lease request
-            // should already have been removed from our local state, so we no
-            // longer need to cancel.
-            CancelWorkerLeaseIfNeeded(scheduling_key);
-          }
-        });
+  // If there are still stealable tasks, let the lease request succeed
+  if (MoreStealableTasksThanActiveWorkers(scheduling_key_entry)) {
+    return;
   }
+
+  
+  auto &pending_lease_requests = scheduling_key_entry.pending_lease_requests;
+  for (auto plr_it = pending_lease_requests.begin(); plr_it != pending_lease_requests.end(); plr_it++) {
+    CancelWorkerLease(scheduling_key, *plr_it);
+  } 
+}
+
+void CoreWorkerDirectTaskSubmitter::CancelWorkerLease(const SchedulingKey &scheduling_key,
+  std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request) {
+  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto &pending_lease_requests = scheduling_key_entry.pending_lease_requests;
+
+  if (pending_lease_requests.empty()) {
+    // There is no pending lease request to cancel
+    return;
+  }
+
+  // Find the position of the pending_lease_request that we need to cancel in the pending_lease_requests queue.
+  int position=0;
+  for (auto plr_it = pending_lease_requests.begin(); plr_it != pending_lease_requests.end(); plr_it++) {
+    if (*plr_it == pending_lease_request) {
+      break;
+    }
+    position++;
+  }
+
+  auto &pending_lease_request_to_cancel = pending_lease_requests[position];
+  if (pending_lease_request_to_cancel != pending_lease_request) {
+    // We couldn't find the pending lease request in the queue, so return
+    return;
+  }
+
+  
+  auto &lease_client = pending_lease_request_to_cancel.first;
+  auto &lease_id = pending_lease_request_to_cancel.second;
+  RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
+  lease_client->CancelWorkerLease(
+      lease_id, [this, scheduling_key, pending_lease_request](const Status &status,
+                                       const rpc::CancelWorkerLeaseReply &reply) {
+        absl::MutexLock lock(&mu_);
+        if (status.ok() && !reply.success()) {
+          // The cancellation request can fail if the raylet does not have
+          // the request queued. This can happen if: a) due to message
+          // reordering, the raylet has not yet received the worker lease
+          // request, or b) we have already returned the worker lease
+          // request. In the former case, we should try the cancellation
+          // request again. In the latter case, the in-flight lease request
+          // should already have been removed from our local state, so we no
+          // longer need to cancel.
+          CancelWorkerLease(scheduling_key, pending_lease_request);
+        }
+      });
 }
 
 std::shared_ptr<WorkerLeaseInterface>
@@ -439,10 +477,10 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
   return lease_client;
 }
 
-void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
+void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
+    const SchedulingKey &scheduling_key, int n_requests, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
+  auto &pending_lease_requests = scheduling_key_entry.pending_lease_requests;
 
   /*struct timespec rw_time;
   clock_gettime(CLOCK_REALTIME, &rw_time);
@@ -450,99 +488,135 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   (long double)((rw_time.tv_nsec - initial_time_.tv_nsec) / (long double) 1000000000.0);
   RAY_LOG(INFO) << "RW placeholder" << " " << time_elapsed;*/
 
-  if (pending_lease_request.first) {
-    // There's already an outstanding lease request for this type of task.
+  if (!pending_lease_requests.empty()) {
+    // There are already some outstanding lease request for this type of task.
     return;
   }
 
-  auto &task_queue = scheduling_key_entry.task_queue;
-  if (task_queue.empty()) {
-    // We don't have any of this type of task to run.
-    if (scheduling_key_entry.CanDelete()) {
-      // We can safely remove the entry keyed by scheduling_key from the
-      // scheduling_key_entries_ hashmap.
-      scheduling_key_entries_.erase(scheduling_key);
+  // Request more than one worker at a time only if work stealing is enabled
+  int N_reqs = work_stealing_enabled_ ? n_requests : 1;
+
+  for (int request_number=0; request_number < N_reqs ; request_number++) {
+    auto &task_queue = scheduling_key_entry.task_queue;
+    if (scheduling_key_entry.tasks_to_request_workers.empty()) {
+      // We don't have any new task to request an additional worker.
+      if (scheduling_key_entry.CanDelete()) {
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
+        scheduling_key_entries_.erase(scheduling_key);
+      }
+      return;
     }
-    return;
-  }
 
-  // Check whether we really need a new worker or whether we have
-  // enough room in an existing worker's pipeline to send the new tasks
-  if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
-    // The pipelines to the current workers are not full yet, so we don't need more
-    // workers.
+    // Check whether we really need a new worker or whether we have
+    // enough room in an existing worker's pipeline to send the new tasks
+    if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
+      // The pipelines to the current workers are not full yet, so we don't need more
+      // workers.
 
-    return;
-  }
+      return;
+    }
 
-  // RAY_LOG(DEBUG) << "Lease requested " << task_id;
-  /*struct timespec lease_requested_time;
-  clock_gettime(CLOCK_REALTIME, &lease_requested_time);
-  long double time_elapsed = (long double)(lease_requested_time.tv_sec -
-  initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
-  initial_time_.tv_nsec) / (long double) 1000000000.0);
-  RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;*/
+    // RAY_LOG(DEBUG) << "Lease requested " << task_id;
+    /*struct timespec lease_requested_time;
+    clock_gettime(CLOCK_REALTIME, &lease_requested_time);
+    long double time_elapsed = (long double)(lease_requested_time.tv_sec -
+    initial_time_.tv_sec) + (long double)((lease_requested_time.tv_nsec -
+    initial_time_.tv_nsec) / (long double) 1000000000.0);
+    RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;*/
 
-  auto lease_client = GetOrConnectLeaseClient(raylet_address);
-  TaskSpecification &resource_spec = task_queue.front();
-  TaskID task_id = resource_spec.TaskId();
-  lease_client->RequestWorkerLease(
-      resource_spec, [this, scheduling_key](const Status &status,
-                                            const rpc::RequestWorkerLeaseReply &reply) {
-        absl::MutexLock lock(&mu_);
+    if (task_queue.empty()) {
+      // We don't have any of this type of task to run.
+      bool found = false;
 
-        auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
-        RAY_CHECK(pending_lease_request.first);
-        auto lease_client = std::move(pending_lease_request.first);
-        const auto task_id = pending_lease_request.second;
-        pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
+      // Look for a worker (with the current scheduling key) with tasks to steal. If we don't find one, it doesn't make sense to request additional workers.
+      for (auto active_worker_addr = scheduling_key_entry.active_workers.begin();
+        active_worker_addr != scheduling_key_entry.active_workers.end(); active_worker_addr++) {
 
-        if (status.ok()) {
-          if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled " << task_id;
-            RequestNewWorkerIfNeeded(scheduling_key);
-          } else if (!reply.worker_address().raylet_id().empty()) {
-            // We got a lease for a worker. Add the lease client state and try to
-            // assign work to the worker.
-            RAY_LOG(DEBUG) << "Lease granted " << task_id;
-            /*struct timespec lease_granted_time_;
-            clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
-            long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
-            initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
-            initial_time_.tv_nsec) / (long double) 1000000000.0);
-            RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " "
-            << time_elapsed;*/
-            rpc::WorkerAddress addr(reply.worker_address());
-            auto resources_copy = reply.resource_mapping();
-
-            AddWorkerLeaseClient(addr, std::move(lease_client), resources_copy,
-                                 scheduling_key);
-            RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
-            OnWorkerIdle(addr, scheduling_key,
-                         /*error=*/false, resources_copy);
-          } else {
-            // The raylet redirected us to a different raylet to retry at.
-            RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
-          }
-        } else if (lease_client != local_lease_client_) {
-          // A lease request to a remote raylet failed. Retry locally if the lease is
-          // still needed.
-          // TODO(swang): Fail after some number of retries?
-          RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                         << status.ToString();
-          RequestNewWorkerIfNeeded(scheduling_key);
-        } else {
-          // A local request failed. This shouldn't happen if the raylet is still alive
-          // and we don't currently handle raylet failures, so treat it as a fatal
-          // error.
-          RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
-                            "raylet. This is most "
-                            "likely because the local raylet has crahsed.";
-          RAY_LOG(FATAL) << status.ToString();
+        auto &lease_entry = worker_to_lease_entry_[*active_worker_addr];
+        if (lease_entry.stealable_tasks.size() >= 1) {
+          found = true;
+          break;
         }
-      });
-  pending_lease_request = std::make_pair(lease_client, task_id);
+      }
+
+      if (!found) {
+        if (scheduling_key_entry.CanDelete()) {
+          // We can safely remove the entry keyed by scheduling_key from the
+          // scheduling_key_entries_ hashmap.
+          scheduling_key_entries_.erase(scheduling_key);
+        }
+        return;
+      }
+    }
+
+    auto lease_client = GetOrConnectLeaseClient(raylet_address);
+    TaskSpecification resource_spec = std::move(scheduling_key_entry.tasks_to_request_workers.front());
+    scheduling_key_entry.tasks_to_request_workers.pop_front();
+    TaskID task_id = resource_spec.TaskId();
+    lease_client->RequestWorkerLease(
+        resource_spec, [this, scheduling_key](const Status &status,
+                                              const rpc::RequestWorkerLeaseReply &reply) {
+          absl::MutexLock lock(&mu_);
+
+          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          
+          auto &pending_lease_requests = scheduling_key_entry.pending_lease_requests;
+          RAY_CHECK(!pending_lease_requests.empty());
+          auto pending_lease_request = std::move(pending_lease_requests.front());
+          pending_lease_requests.pop_front();
+          
+          RAY_CHECK(pending_lease_request.first);
+          auto lease_client = std::move(pending_lease_request.first);
+          const auto task_id = pending_lease_request.second;
+          
+          if (status.ok()) {
+            if (reply.canceled()) {
+              RAY_LOG(DEBUG) << "Lease canceled " << task_id;
+              RequestNewWorkersIfNeeded(scheduling_key);
+            } else if (!reply.worker_address().raylet_id().empty()) {
+              // We got a lease for a worker. Add the lease client state and try to
+              // assign work to the worker.
+              RAY_LOG(DEBUG) << "Lease granted " << task_id;
+              /*struct timespec lease_granted_time_;
+              clock_gettime(CLOCK_REALTIME, &lease_granted_time_);
+              long double time_elapsed = (long double)(lease_granted_time_.tv_sec -
+              initial_time_.tv_sec) + (long double)((lease_granted_time_.tv_nsec -
+              initial_time_.tv_nsec) / (long double) 1000000000.0);
+              RAY_LOG(INFO) << "LEASE_GRANTED " << addr.worker_id << " " << task_id << " "
+              << time_elapsed;*/
+              rpc::WorkerAddress addr(reply.worker_address());
+              auto resources_copy = reply.resource_mapping();
+
+              AddWorkerLeaseClient(addr, std::move(lease_client), resources_copy,
+                                   scheduling_key);
+              RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+              OnWorkerIdle(addr, scheduling_key,
+                           /*error=*/false, resources_copy);
+            } else {
+              // The raylet redirected us to a different raylet to retry at.
+              RequestNewWorkersIfNeeded(scheduling_key, 1, &reply.retry_at_raylet_address());
+            }
+          } else if (lease_client != local_lease_client_) {
+            // A lease request to a remote raylet failed. Retry locally if the lease is
+            // still needed.
+            // TODO(swang): Fail after some number of retries?
+            RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
+                           << status.ToString();
+            RequestNewWorkersIfNeeded(scheduling_key);
+          } else {
+            // A local request failed. This shouldn't happen if the raylet is still alive
+            // and we don't currently handle raylet failures, so treat it as a fatal
+            // error.
+            RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
+                              "raylet. This is most "
+                              "likely because the local raylet has crahsed.";
+            RAY_LOG(FATAL) << status.ToString();
+          }
+        });
+    auto new_pending_lease_req_entry = std::make_pair(lease_client, task_id);
+    pending_lease_requests.push_back(new_pending_lease_req_entry);
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -657,7 +731,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           scheduled_tasks.erase(spec);
 
           if (scheduled_tasks.empty()) {
-            CancelWorkerLeaseIfNeeded(scheduling_key);
+            CancelWorkerLeasesIfNeeded(scheduling_key);
           }
           RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
                                                        rpc::ErrorType::TASK_CANCELLED));
