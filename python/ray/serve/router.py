@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from ray.exceptions import RayTaskError
 
 import ray
-from ray import serve
 from ray.experimental import metrics
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import RandomEndpointPolicy
@@ -27,6 +26,9 @@ class Query:
 
     metadata: RequestMetadata
     async_future: Optional[asyncio.Future] = None
+
+    tick_enter_router: Optional[float] = None
+    tick_enter_replica: Optional[float] = None
 
     def __reduce__(self):
         return type(self).ray_deserialize, (self.ray_serialize(), )
@@ -50,7 +52,7 @@ class Query:
 class Router:
     """A router that routes request to available workers."""
 
-    async def setup(self, name, instance_name=None):
+    async def setup(self, name, controller_name):
         # Note: Several queues are used in the router
         # - When a request come in, it's placed inside its corresponding
         #   endpoint_queue.
@@ -101,8 +103,7 @@ class Router:
         # the controller. We use a "pull-based" approach instead of pushing
         # them from the controller so that the router can transparently recover
         # from failure.
-        serve.init(name=instance_name)
-        self.controller = serve.api._get_controller()
+        self.controller = ray.get_actor(controller_name)
 
         traffic_policies = ray.get(
             self.controller.get_traffic_policies.remote())
@@ -131,6 +132,11 @@ class Router:
             "num_error_backend_requests",
             ("Number of requests that errored when getting result "
              "from the backend."), "requests", ["backend"])
+
+        self.backend_queue_size = metrics.Gauge(
+            "backend_queued_queries",
+            "Current number of queries queued in the router for a backend",
+            "requests", ["backend"])
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
@@ -327,9 +333,14 @@ class Router:
 
     async def report_queue_lengths(self):
         while True:
+            queue_lengths = {
+                backend: len(q)
+                for backend, q in self.backend_queues.items()
+            }
             self.controller.report_queue_lengths.remote(
-                self.name, {
-                    backend: len(q)
-                    for backend, q in self.backend_queues.items()
-                })
+                self.name, queue_lengths)
+
+            for backend, length in queue_lengths.items():
+                self.backend_queue_size.record(length, {"backend": backend})
+
             await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)
