@@ -8,8 +8,7 @@ from ray import serve
 import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
-from ray.serve.request_params import RequestMetadata
-from ray.serve.router import Router
+from ray.serve.router import Router, RequestMetadata
 from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
 
@@ -45,85 +44,66 @@ def setup_worker(name,
     return worker
 
 
+async def add_servable_to_router(servable, router, **kwargs):
+    worker = setup_worker("backend", servable, **kwargs)
+    await router.add_new_worker.remote("backend", "replica", worker)
+    await router.set_traffic.remote("endpoint", TrafficPolicy({
+        "backend": 1.0
+    }))
+
+    if "backend_config" in kwargs:
+        await router.set_backend_config.remote("backend",
+                                               kwargs["backend_config"])
+    return worker
+
+
+def make_request_param(call_method="__call__"):
+    return RequestMetadata(
+        "endpoint", context.TaskContext.Python, call_method=call_method)
+
+
+@pytest.fixture
+def router(serve_instance):
+    q = ray.remote(Router).remote()
+    ray.get(q.setup.remote("", serve_instance._controller_name))
+    yield q
+    ray.kill(q)
+
+
 async def test_runner_wraps_error():
     wrapped = wrap_to_ray_error(Exception())
     assert isinstance(wrapped, ray.exceptions.RayTaskError)
 
 
-async def test_runner_actor(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
+async def test_servable_function(serve_instance, router):
+    def echo(request):
+        return request.args["i"]
 
-    def echo(flask_request, i=None):
-        return i
-
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "prod"
-
-    worker = setup_worker(CONSUMER_NAME, echo)
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-
-    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
+    _ = await add_servable_to_router(echo, router)
 
     for query in [333, 444, 555]:
-        query_param = RequestMetadata(PRODUCER_NAME,
-                                      context.TaskContext.Python)
-        result = await q.enqueue_request.remote(query_param, i=query)
+        query_param = make_request_param()
+        result = await router.enqueue_request.remote(query_param, i=query)
         assert result == query
 
 
-async def test_ray_serve_mixin(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
-    CONSUMER_NAME = "runner-cls"
-    PRODUCER_NAME = "prod-cls"
-
+async def test_servable_class(serve_instance, router):
     class MyAdder:
         def __init__(self, inc):
             self.increment = inc
 
-        def __call__(self, flask_request, i=None):
-            return i + self.increment
+        def __call__(self, request):
+            return request.args["i"] + self.increment
 
-    worker = setup_worker(CONSUMER_NAME, MyAdder, init_args=(3, ))
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-
-    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
+    _ = await add_servable_to_router(MyAdder, router, init_args=(3, ))
 
     for query in [333, 444, 555]:
-        query_param = RequestMetadata(PRODUCER_NAME,
-                                      context.TaskContext.Python)
-        result = await q.enqueue_request.remote(query_param, i=query)
+        query_param = make_request_param()
+        result = await router.enqueue_request.remote(query_param, i=query)
         assert result == query + 3
 
 
-async def test_task_runner_check_context(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
-    def echo(flask_request, i=None):
-        # Accessing the flask_request without web context should throw.
-        return flask_request.args["i"]
-
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "producer"
-
-    worker = setup_worker(CONSUMER_NAME, echo)
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-
-    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
-    query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
-    result_oid = q.enqueue_request.remote(query_param, i=42)
-
-    with pytest.raises(ray.exceptions.RayTaskError):
-        await result_oid
-
-
-async def test_task_runner_custom_method_single(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
+async def test_task_runner_custom_method_single(serve_instance, router):
     class NonBatcher:
         def a(self, _):
             return "a"
@@ -131,129 +111,97 @@ async def test_task_runner_custom_method_single(serve_instance):
         def b(self, _):
             return "b"
 
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "producer"
+    _ = await add_servable_to_router(NonBatcher, router)
 
-    worker = setup_worker(CONSUMER_NAME, NonBatcher)
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-
-    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
-
-    query_param = RequestMetadata(
-        PRODUCER_NAME, context.TaskContext.Python, call_method="a")
-    a_result = await q.enqueue_request.remote(query_param)
+    query_param = make_request_param("a")
+    a_result = await router.enqueue_request.remote(query_param)
     assert a_result == "a"
 
-    query_param = RequestMetadata(
-        PRODUCER_NAME, context.TaskContext.Python, call_method="b")
-    b_result = await q.enqueue_request.remote(query_param)
+    query_param = make_request_param("b")
+    b_result = await router.enqueue_request.remote(query_param)
     assert b_result == "b"
 
-    query_param = RequestMetadata(
-        PRODUCER_NAME, context.TaskContext.Python, call_method="non_exist")
+    query_param = make_request_param("non_exist")
     with pytest.raises(ray.exceptions.RayTaskError):
-        await q.enqueue_request.remote(query_param)
+        await router.enqueue_request.remote(query_param)
 
 
-async def test_task_runner_custom_method_batch(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
+async def test_task_runner_custom_method_batch(serve_instance, router):
     @serve.accept_batch
     class Batcher:
-        def a(self, _):
-            return ["a-{}".format(i) for i in range(serve.context.batch_size)]
+        def a(self, requests):
+            return ["a-{}".format(i) for i in range(len(requests))]
 
-        def b(self, _):
-            return ["b-{}".format(i) for i in range(serve.context.batch_size)]
-
-        def error_different_size(self, _):
-            return [""] * (serve.context.batch_size * 2)
-
-        def error_non_iterable(self, _):
-            return 42
-
-        def return_np_array(self, _):
-            return np.array([1] * serve.context.batch_size).astype(np.int32)
-
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "producer"
+        def b(self, requests):
+            return ["b-{}".format(i) for i in range(len(requests))]
 
     backend_config = BackendConfig(
         max_batch_size=4,
-        batch_wait_timeout=2,
+        batch_wait_timeout=10,
         internal_metadata=BackendMetadata(accepts_batches=True))
-    worker = setup_worker(
-        CONSUMER_NAME, Batcher, backend_config=backend_config)
-
-    await q.set_traffic.remote(PRODUCER_NAME,
-                               TrafficPolicy({
-                                   CONSUMER_NAME: 1.0
-                               }))
-    await q.set_backend_config.remote(CONSUMER_NAME, backend_config)
-
-    def make_request_param(call_method):
-        return RequestMetadata(
-            PRODUCER_NAME, context.TaskContext.Python, call_method=call_method)
+    _ = await add_servable_to_router(
+        Batcher, router, backend_config=backend_config)
 
     a_query_param = make_request_param("a")
     b_query_param = make_request_param("b")
 
-    futures = [q.enqueue_request.remote(a_query_param) for _ in range(2)]
-    futures += [q.enqueue_request.remote(b_query_param) for _ in range(2)]
-
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
+    futures = [router.enqueue_request.remote(a_query_param) for _ in range(2)]
+    futures += [router.enqueue_request.remote(b_query_param) for _ in range(2)]
 
     gathered = await asyncio.gather(*futures)
     assert set(gathered) == {"a-0", "a-1", "b-0", "b-1"}
 
+
+async def test_servable_batch_error(serve_instance, router):
+    @serve.accept_batch
+    class ErrorBatcher:
+        def error_different_size(self, requests):
+            return [""] * (len(requests) + 10)
+
+        def error_non_iterable(self, _):
+            return 42
+
+        def return_np_array(self, requests):
+            return np.array([1] * len(requests)).astype(np.int32)
+
+    backend_config = BackendConfig(
+        max_batch_size=4,
+        internal_metadata=BackendMetadata(accepts_batches=True))
+    _ = await add_servable_to_router(
+        ErrorBatcher, router, backend_config=backend_config)
+
     with pytest.raises(RayServeException, match="doesn't preserve batch size"):
         different_size = make_request_param("error_different_size")
-        await q.enqueue_request.remote(different_size)
+        await router.enqueue_request.remote(different_size)
 
     with pytest.raises(RayServeException, match="iterable"):
         non_iterable = make_request_param("error_non_iterable")
-        await q.enqueue_request.remote(non_iterable)
+        await router.enqueue_request.remote(non_iterable)
 
     np_array = make_request_param("return_np_array")
-    result_np_value = await q.enqueue_request.remote(np_array)
+    result_np_value = await router.enqueue_request.remote(np_array)
     assert isinstance(result_np_value, np.int32)
 
 
-async def test_task_runner_perform_batch(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
-    def batcher(*args, **kwargs):
-        return [serve.context.batch_size] * serve.context.batch_size
-
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "producer"
+async def test_task_runner_perform_batch(serve_instance, router):
+    def batcher(requests):
+        batch_size = len(requests)
+        return [batch_size] * batch_size
 
     config = BackendConfig(
         max_batch_size=2,
         batch_wait_timeout=10,
         internal_metadata=BackendMetadata(accepts_batches=True))
 
-    worker = setup_worker(CONSUMER_NAME, batcher, backend_config=config)
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-    await q.set_backend_config.remote(CONSUMER_NAME, config)
-    await q.set_traffic.remote(PRODUCER_NAME,
-                               TrafficPolicy({
-                                   CONSUMER_NAME: 1.0
-                               }))
+    _ = await add_servable_to_router(batcher, router, backend_config=config)
 
-    query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
-
+    query_param = make_request_param()
     my_batch_sizes = await asyncio.gather(
-        *[q.enqueue_request.remote(query_param) for _ in range(3)])
+        *[router.enqueue_request.remote(query_param) for _ in range(3)])
     assert my_batch_sizes == [2, 2, 1]
 
 
-async def test_task_runner_perform_async(serve_instance):
-    q = ray.remote(Router).remote()
-    await q.setup.remote("", serve_instance._controller_name)
-
+async def test_task_runner_perform_async(serve_instance, router):
     @ray.remote
     class Barrier:
         def __init__(self, release_on):
@@ -274,22 +222,18 @@ async def test_task_runner_perform_async(serve_instance):
         await barrier.wait.remote()
         return "done!"
 
-    CONSUMER_NAME = "runner"
-    PRODUCER_NAME = "producer"
-
     config = BackendConfig(
         max_concurrent_queries=10,
         internal_metadata=BackendMetadata(is_blocking=False))
 
-    worker = setup_worker(CONSUMER_NAME, wait_and_go, backend_config=config)
-    await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
-    await q.set_backend_config.remote(CONSUMER_NAME, config)
-    q.set_traffic.remote(PRODUCER_NAME, TrafficPolicy({CONSUMER_NAME: 1.0}))
+    _ = await add_servable_to_router(
+        wait_and_go, router, backend_config=config)
 
-    query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
+    query_param = make_request_param()
 
     done, not_done = await asyncio.wait(
-        [q.enqueue_request.remote(query_param) for _ in range(10)], timeout=10)
+        [router.enqueue_request.remote(query_param) for _ in range(10)],
+        timeout=10)
     assert len(done) == 10
     for item in done:
         await item == "done!"

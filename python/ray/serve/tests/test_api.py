@@ -242,9 +242,9 @@ def test_batching(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
+        def __call__(self, requests):
             self.count += 1
-            batch_size = serve.context.batch_size
+            batch_size = len(requests)
             return [self.count] * batch_size
 
     # set the max batch size
@@ -281,10 +281,9 @@ def test_batching_legacy(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
+        def __call__(self, request):
             self.count += 1
-            batch_size = serve.context.batch_size
-            return [self.count] * batch_size
+            return [self.count] * len(request)
 
     # set the max batch size
     client.create_backend(
@@ -305,7 +304,7 @@ def test_batching_legacy(serve_instance):
     future_list = []
     handle = client.get_handle("counter1")
     for _ in range(20):
-        f = handle.remote(temp=1)
+        f = handle.remote()
         future_list.append(f)
 
     counter_result = ray.get(future_list)
@@ -323,9 +322,8 @@ def test_batching_exception(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return batch_size
+        def __call__(self, requests):
+            return len(requests)
 
     # set the max batch size
     client.create_backend(
@@ -369,9 +367,8 @@ def test_updating_config(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return [1] * batch_size
+        def __call__(self, request):
+            return [1] * len(request)
 
     client.create_backend(
         "bsimple:v1",
@@ -405,9 +402,8 @@ def test_updating_config_legacy(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return [1] * batch_size
+        def __call__(self, request):
+            return [1] * len(request)
 
     client.create_backend(
         "bsimple:v1",
@@ -439,7 +435,7 @@ def test_updating_config_legacy(serve_instance):
 def test_delete_backend(serve_instance):
     client = serve_instance
 
-    def function():
+    def function(_):
         return "hello"
 
     client.create_backend("delete:v1", function)
@@ -466,7 +462,7 @@ def test_delete_backend(serve_instance):
     with pytest.raises(ValueError):
         client.set_traffic("delete_backend", {"delete:v1": 1.0})
 
-    def function2():
+    def function2(_):
         return "olleh"
 
     # Check that we can now reuse the previously delete backend's tag.
@@ -480,7 +476,7 @@ def test_delete_backend(serve_instance):
 def test_delete_endpoint(serve_instance, route):
     client = serve_instance
 
-    def function():
+    def function(_):
         return "hello"
 
     backend_name = "delete-endpoint:v1"
@@ -521,7 +517,7 @@ def test_shard_key(serve_instance, route):
     traffic_dict = {}
     for i in range(num_backends):
 
-        def function():
+        def function(_):
             return i
 
         backend_name = "backend-split-" + str(i)
@@ -560,7 +556,7 @@ def test_multiple_instances():
 
     client1 = serve.start(http_port=8001)
 
-    def function():
+    def function(_):
         return "hello1"
 
     client1.create_backend(backend, function)
@@ -572,7 +568,7 @@ def test_multiple_instances():
     # the same names and check that they don't collide.
     client2 = serve.start(http_port=8002)
 
-    def function():
+    def function(_):
         return "hello2"
 
     client2.create_backend(backend, function)
@@ -889,19 +885,19 @@ def test_shadow_traffic(serve_instance):
 
     counter = RequestCounter.remote()
 
-    def f():
+    def f(_):
         ray.get(counter.record.remote("backend1"))
         return "hello"
 
-    def f_shadow_1():
+    def f_shadow_1(_):
         ray.get(counter.record.remote("backend2"))
         return "oops"
 
-    def f_shadow_2():
+    def f_shadow_2(_):
         ray.get(counter.record.remote("backend3"))
         return "oops"
 
-    def f_shadow_3():
+    def f_shadow_3(_):
         ray.get(counter.record.remote("backend4"))
         return "oops"
 
@@ -950,7 +946,7 @@ def test_connect(serve_instance):
     # Check that you can call serve.connect() from within a backend for both
     # detached and non-detached instances.
 
-    def connect_in_backend():
+    def connect_in_backend(_):
         client = serve.connect()
         client.create_backend("backend-ception", connect_in_backend)
         return client._controller_name
