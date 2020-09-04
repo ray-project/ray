@@ -17,8 +17,8 @@ This may easily result in tests exhibiting unexpected, flaky, or faulty behavior
 To overcome this, you should override the detected resources by setting them in ``ray.init`` like: ``ray.init(num_cpus=2)``
 
 
-Tip 2: Use Local Mode if possible
----------------------------------
+Tip 2: Use ``ray.init(local_mode=True)`` if possible
+----------------------------------------------------
 
 A test suite for a Ray program may take longer to run than other test suites. One common culprit for long test durations is the overheads from inter-process communication.
 
@@ -31,10 +31,10 @@ However, there are some caveats with using this. You should not do this if:
 3. If your remote actor/task sets any sort of process-level global variables
 
 
-Tip 3: Sharing the ray instance across tests if possible
+Tip 3: Sharing the ray cluster across tests if possible
 --------------------------------------------------------
 
-It is safest to start a new ray instance for each test.
+It is safest to start a new ray cluster for each test.
 
 .. code-block:: python
 
@@ -82,58 +82,53 @@ If writing an application for a cluster setting, you may want to mock a multi-no
 
     from ray.cluster_utils import Cluster
 
+    # Starts a head-node for the cluster.
     cluster = Cluster(
         initialize_head=True,
         head_node_args={
             "num_cpus": 10,
         })
-            for i in range(num_nodes - 1):
-                cluster.add_node(num_cpus=10)
-            ray.init(address=cluster.address)
 
-
+After starting a cluster, you can execute a typical ray script in the same process:
 
 .. code-block:: python
 
-    from ray.cluster_utils import Cluster
+    ray.init(address=cluster.address)
 
-    @pytest.fixture
-    def ray_start_combination(request):
-        # Start the Ray processes.
-        cluster = Cluster(
-            initialize_head=True,
-            head_node_args={
-                "num_cpus": 10,
-                "redis_max_memory": 10**7
-            })
-        for i in range(num_nodes - 1):
-            cluster.add_node(num_cpus=10)
-        ray.init(address=cluster.address)
+    @ray.remote
+    def f(x):
+        return x
 
-        yield cluster
-        # The code after the yield will run as teardown code.
-        ray.shutdown()
-        cluster.shutdown()
+    for _ in range(1):
+        ray.get([f.remote(1) for _ in range(1000)])
+
+    for _ in range(10):
+        ray.get([f.remote(1) for _ in range(100)])
+
+    for _ in range(100):
+        ray.get([f.remote(1) for _ in range(10)])
+
+    for _ in range(1000):
+        ray.get([f.remote(1) for _ in range(1)])
 
 
-    def test_submitting_tasks(ray_start_combination):
-        cluster = ray_start_combination
+You can also add multiple nodes, each with different resource quantities:
 
-        @ray.remote
-        def f(x):
-            return x
+.. code-block:: python
 
-        for _ in range(1):
-            ray.get([f.remote(1) for _ in range(1000)])
+    mock_node = cluster.add_node(num_cpus=10)
 
-        for _ in range(10):
-            ray.get([f.remote(1) for _ in range(100)])
+    assert ray.cluster_resources()["CPU"] == 20
 
-        for _ in range(100):
-            ray.get([f.remote(1) for _ in range(10)])
+You can also remove nodes, which is useful when testing failure-handling logic:
 
-        for _ in range(1000):
-            ray.get([f.remote(1) for _ in range(1)])
+.. code-block:: python
+
+    cluster.remove_node(mock_node)
+
+    assert ray.cluster_resources()["CPU"] == 10
+
+See the `Cluster Util for more details <https://github.com/ray-project/ray/blob/master/python/ray/cluster_utils.py>`_.
 
 
 Tip 5: Be careful when running tests in parallel
