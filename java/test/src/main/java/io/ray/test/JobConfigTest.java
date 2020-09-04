@@ -13,7 +13,6 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    System.setProperty("ray.raylet.config.enable_multi_tenancy", "true");
     System.setProperty("ray.job.num-java-workers-per-process", "3");
     System.setProperty("ray.job.jvm-options.0", "-DX=999");
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
@@ -23,7 +22,6 @@ public class JobConfigTest extends BaseTest {
 
   @AfterClass
   public void tearDownJobConfig() {
-    System.clearProperty("ray.raylet.config.enable_multi_tenancy");
     System.clearProperty("ray.job.num-java-workers-per-process");
     System.clearProperty("ray.job.jvm-options.0");
     System.clearProperty("ray.job.jvm-options.1");

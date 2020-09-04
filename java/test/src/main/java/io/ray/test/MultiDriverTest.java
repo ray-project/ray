@@ -27,16 +27,6 @@ public class MultiDriverTest extends BaseTest {
   private static final int ACTOR_COUNT_PER_DRIVER = 10;
   private static final String PID_LIST_PREFIX = "PID: ";
 
-  @BeforeClass
-  public void setUpClass() {
-    System.setProperty("ray.raylet.config.enable_multi_tenancy", "true");
-  }
-
-  @AfterClass
-  public void tearDownClass() {
-    System.clearProperty("ray.raylet.config.enable_multi_tenancy");
-  }
-
   static int getPid() {
     return SystemUtil.pid();
   }

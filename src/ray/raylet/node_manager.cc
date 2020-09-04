@@ -336,12 +336,10 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    // Tasks of this job may already arrived but failed to pop a worker because the job
-    // config is not local yet. So we trigger dispatching again here to try to
-    // reschedule these tasks.
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  // Tasks of this job may already arrived but failed to pop a worker because the job
+  // config is not local yet. So we trigger dispatching again here to try to
+  // reschedule these tasks.
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
@@ -1362,11 +1360,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    // If the worker remains idle after scheduling, we may kill it to ensure the
-    // registered workers are in a reasonable size.
-    worker_pool_.TryKillingIdleWorker(worker);
-  }
+  // If the worker remains idle after scheduling, we may kill it to ensure the
+  // registered workers are in a reasonable size.
+  worker_pool_.TryKillingIdleWorker(worker);
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -2592,12 +2588,6 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
   task_dependency_manager_.TaskCanceled(task_id);
 
-  if (!RayConfig::instance().enable_multi_tenancy()) {
-    // Unset the worker's assigned job Id if this is not an actor.
-    if (!spec.IsActorCreationTask()) {
-      worker.AssignJobId(JobID::Nil());
-    }
-  }
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // direct actor creation calls because this ID is used later if the actor
@@ -2904,7 +2894,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     worker->SetOwnerAddress(spec.CallerAddress());
-    worker->AssignJobId(spec.JobId());
+    RAY_CHECK(worker->GetAssignedJobId() == spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a
     // failure, we must update the task's execution dependency to be

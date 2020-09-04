@@ -193,15 +193,6 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
 /// chunks exceeds the number of available sending threads.
 RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 
-/// Number of workers per Python worker process
-RAY_CONFIG(int, num_workers_per_process_python, 1)
-
-/// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
-
-/// Number of workers per CPP worker process
-RAY_CONFIG(int, num_workers_per_process_cpp, 1)
-
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
@@ -282,11 +273,6 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
-
-/// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy,
-           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
-               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)

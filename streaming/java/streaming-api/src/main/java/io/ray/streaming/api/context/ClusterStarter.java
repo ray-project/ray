@@ -26,10 +26,10 @@ class ClusterStarter {
     Preconditions.checkArgument(Ray.internal() == null);
     RayConfig.reset();
     if (!isLocal) {
-      System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+      System.setProperty("ray.job.num-java-workers-per-process", "1");
       System.setProperty("ray.run-mode", "CLUSTER");
     } else {
-      System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+      System.clearProperty("ray.job.num-java-workers-per-process");
       System.setProperty("ray.run-mode", "SINGLE_PROCESS");
     }
 
@@ -57,7 +57,6 @@ class ClusterStarter {
         .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
     Map<String, String> config = new HashMap<>(RayConfig.create().rayletConfigParameters);
-    config.put("num_workers_per_process_java", "1");
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -91,7 +90,7 @@ class ClusterStarter {
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+    System.clearProperty("ray.job.num-java-workers-per-process");
     System.clearProperty("ray.run-mode");
 
     if (isCrossLanguage) {

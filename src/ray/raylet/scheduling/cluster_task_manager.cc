@@ -130,9 +130,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(spec.JobId());
-    }
     worker->SetAssignedTask(task);
     Dispatch(worker, leased_workers, spec, reply, callback);
   }

@@ -72,7 +72,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
-  /// \param num_workers The number of workers to start, per language.
   /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_initial_python_workers_for_first_job The number of initial Python
   /// workers for the first job.
@@ -88,7 +87,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+  WorkerPool(boost::asio::io_service &io_service,
              int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -242,7 +241,7 @@ class WorkerPool : public WorkerPoolInterface {
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register num_workers_per_process workers, then add them to the pool.
+  /// register N workers, then add them to the pool.
   /// Failure to start the worker process is a fatal error. If too many workers
   /// are already being started, then this function will return without starting
   /// any workers.
@@ -275,8 +274,6 @@ class WorkerPool : public WorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The number of workers per process.
-    int num_workers_per_process;
     /// The pool of dedicated workers for actor creation tasks
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
@@ -324,12 +321,6 @@ class WorkerPool : public WorkerPoolInterface {
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
-  /// Force-start at least num_workers workers for this language. Used for internal and
-  /// test purpose only.
-  ///
-  /// \param num_workers The number of workers to start, per language.
-  void Start(int num_workers);
-
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
