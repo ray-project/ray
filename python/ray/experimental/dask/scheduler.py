@@ -196,7 +196,8 @@ def _rayify_task(task, key, deps):
         # Ray properly tracks the object dependencies between Ray tasks.
         object_refs, repack = unpack_object_refs(args, deps)
         # Submit the task using a wrapper function.
-        return dask_task_wrapper.remote(func, repack, *object_refs)
+        return dask_task_wrapper.options(name=f"dask:{key!s}").remote(
+            func, repack, *object_refs)
     elif not ishashable(task):
         return task
     elif task in deps:

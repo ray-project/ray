@@ -1,7 +1,12 @@
+"""
+The test file for all standalone tests that doesn't
+requires a shared Serve instance.
+"""
 import sys
 import socket
 
 import pytest
+import requests
 
 import ray
 from ray import serve
@@ -9,6 +14,7 @@ from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.utils import block_until_http_ready
 from ray.test_utils import wait_for_condition
+from ray.services import new_port
 
 
 @pytest.mark.skipif(
@@ -77,6 +83,34 @@ def test_multiple_routers():
     # Clean up the nodes (otherwise Ray will segfault).
     ray.shutdown()
     cluster.shutdown()
+
+
+def test_middleware():
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
+
+    port = new_port()
+    serve.init(
+        http_port=port,
+        http_middlewares=[
+            Middleware(
+                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+        ])
+    ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
+
+    # Snatched several test cases from Starlette
+    # https://github.com/encode/starlette/blob/master/tests/
+    # middleware/test_cors.py
+    headers = {
+        "Origin": "https://example.org",
+        "Access-Control-Request-Method": "GET",
+    }
+    root = f"http://localhost:{port}"
+    resp = requests.options(root, headers=headers)
+    assert resp.headers["access-control-allow-origin"] == "*"
+
+    resp = requests.get(f"{root}/-/routes", headers=headers)
+    assert resp.headers["access-control-allow-origin"] == "*"
 
 
 if __name__ == "__main__":

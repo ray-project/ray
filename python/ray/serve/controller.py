@@ -103,7 +103,7 @@ class ServeController:
     """
 
     async def __init__(self, instance_name: str, http_host: str,
-                       http_port: str, _http_middlewares: List[Any]) -> None:
+                       http_port: str, http_middlewares: List[Any]) -> None:
         # Unique name of the serve instance managed by this actor. Used to
         # namespace child actors and checkpoints.
         self.instance_name = instance_name
@@ -145,7 +145,7 @@ class ServeController:
 
         self.http_host = http_host
         self.http_port = http_port
-        self._http_middlewares = _http_middlewares
+        self.http_middlewares = http_middlewares
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
@@ -202,7 +202,7 @@ class ServeController:
                     self.http_host,
                     self.http_port,
                     instance_name=self.instance_name,
-                    _http_middlewares=self._http_middlewares)
+                    http_middlewares=self.http_middlewares)
 
             self.routers[node_id] = router
 
