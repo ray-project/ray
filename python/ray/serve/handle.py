@@ -1,7 +1,5 @@
 from typing import Optional
 
-import ray
-from ray import serve
 from ray.serve.context import TaskContext
 from ray.serve.request_params import RequestMetadata
 
@@ -42,6 +40,14 @@ class RayServeHandle:
         self.shard_key = shard_key
 
     def remote(self, *args, **kwargs):
+        """Invoke a request on the endpoint.
+
+        Returns a Ray ObjectRef whose result can be waited for or retrieved
+        using `ray.wait` or `ray.get`, respectively.
+
+        Returns:
+            ray.ObjectRef
+        """
         if len(args) > 0:
             raise ValueError(
                 "handle.remote must be invoked with keyword arguments.")
@@ -59,6 +65,14 @@ class RayServeHandle:
                 method_name: Optional[str] = None,
                 http_method: Optional[str] = None,
                 shard_key: Optional[str] = None):
+        """Set options for this handle.
+
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,
@@ -68,11 +82,5 @@ class RayServeHandle:
             shard_key=self.shard_key or shard_key,
         )
 
-    def _get_traffic_policy(self):
-        controller = serve.api._get_controller()
-        return ray.get(
-            controller.get_traffic_policy.remote(self.endpoint_name))
-
     def __repr__(self):
-        return (f"RayServeHandle(Endpoint='{self.endpoint_name}', "
-                f"Traffic={self._get_traffic_policy()})")
+        return f"RayServeHandle(endpoint='{self.endpoint_name}')"

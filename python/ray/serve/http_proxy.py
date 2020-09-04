@@ -6,7 +6,6 @@ import uvicorn
 
 import ray
 from ray.exceptions import RayTaskError
-from ray import serve
 from ray.serve.context import TaskContext
 from ray.experimental import metrics
 from ray.serve.request_params import RequestMetadata
@@ -27,9 +26,9 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_controller(self, name, instance_name=None):
+    async def fetch_config_from_controller(self, name, controller_name):
         assert ray.is_initialized()
-        controller = serve.api._get_controller()
+        controller = ray.get_actor(controller_name)
 
         self.route_table = await controller.get_router_config.remote()
 
@@ -38,7 +37,7 @@ class HTTPProxy:
             "requests", ["route"])
 
         self.router = Router()
-        await self.router.setup(name, instance_name)
+        await self.router.setup(name, controller_name)
 
     def set_route_table(self, route_table):
         self.route_table = route_table
@@ -133,18 +132,17 @@ class HTTPProxyActor:
             name,
             host,
             port,
-            instance_name=None,
-            _http_middlewares: List["starlette.middleware.Middleware"] = []):
-        serve.init(name=instance_name)
+            controller_name,
+            http_middlewares: List["starlette.middleware.Middleware"] = []):
         self.app = HTTPProxy()
         self.host = host
         self.port = port
 
         self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(name, instance_name)
+        await self.app.fetch_config_from_controller(name, controller_name)
 
         self.wrapped_app = self.app
-        for middleware in _http_middlewares:
+        for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app,
                                               **middleware.options)
 

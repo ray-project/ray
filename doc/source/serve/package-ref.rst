@@ -1,38 +1,25 @@
-Package Reference
-=================
+Serve API Reference
+===================
 
-Basic APIs
+Start or Connect to a Cluster
+-----------------------------
+.. autofunction:: ray.serve.start
+.. autofunction:: ray.serve.connect
+
+Client API
 ----------
-.. autofunction:: ray.serve.init
-.. autofunction:: ray.serve.shutdown
-.. autofunction:: ray.serve.create_backend
-.. autofunction:: ray.serve.create_endpoint
+.. autoclass:: ray.serve.api.Client
+    :members: create_backend, list_backends, delete_backend, get_backend_config, update_backend_config, create_endpoint, list_endpoints, delete_endpoint, set_traffic, shadow_traffic, get_handle, shutdown
 
+Backend Configuration
+---------------------
+.. autoclass:: ray.serve.BackendConfig
 
-APIs for Managing Endpoints
----------------------------
-.. autofunction:: ray.serve.list_endpoints
-.. autofunction:: ray.serve.delete_endpoint
-.. autofunction:: ray.serve.set_traffic
-.. autofunction:: ray.serve.shadow_traffic
-
-
-APIs for Managing Backends
---------------------------
-.. autofunction:: ray.serve.list_backends
-.. autofunction:: ray.serve.delete_backend
-.. autofunction:: ray.serve.get_backend_config
-.. autofunction:: ray.serve.update_backend_config
-
-Advanced APIs
--------------
-
-``serve.get_handle`` enables calling endpoints from Python.
-
-.. autofunction:: ray.serve.get_handle
+Handle API
+----------
 .. autoclass:: ray.serve.handle.RayServeHandle
+    :members: remote, options
 
-
-``serve.accept_batch`` marks your backend API does accept list of input instead
-of just single input.
+Batching Requests
+-----------------
 .. autofunction:: ray.serve.accept_batch

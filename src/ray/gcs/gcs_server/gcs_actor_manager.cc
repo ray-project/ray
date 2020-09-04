@@ -569,6 +569,15 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     RemoveActorFromOwner(actor);
   }
 
+  // Remove actor from `named_actors_` if its name is not empty.
+  if (!actor->GetName().empty()) {
+    auto it = named_actors_.find(actor->GetName());
+    if (it != named_actors_.end()) {
+      RAY_CHECK(it->second == actor->GetActorID());
+      named_actors_.erase(it);
+    }
+  }
+
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
     return;

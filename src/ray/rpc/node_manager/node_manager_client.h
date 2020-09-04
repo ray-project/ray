@@ -82,8 +82,11 @@ class NodeManagerWorkerClient
   /// Cancel a pending worker lease request.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
 
-  /// Request resource lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReserve, grpc_client_, )
+  /// Request prepare resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_, )
+
+  /// Request commit resources for an atomic placement group creation.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CommitBundleResources, grpc_client_, )
 
   /// Return resource lease.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )

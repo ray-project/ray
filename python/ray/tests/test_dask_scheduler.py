@@ -2,7 +2,7 @@ import dask
 import pytest
 
 import ray
-from ray.experimental.dask import ray_dask_get
+from ray.util.dask import ray_dask_get
 
 
 def test_ray_dask_basic(ray_start_regular_shared):

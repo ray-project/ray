@@ -159,7 +159,7 @@ matrix:
         - . ./ci/travis/ci.sh lint
         - . ./ci/travis/ci.sh build
       script:
-        - true  # we still need this block to exist, otherwise it will fall back to the global one
+        - sleep 30  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build MacOS wheels and MacOS jars
     - os: osx
@@ -376,6 +376,7 @@ matrix:
     - os: linux
       env:
         - PYTHON=3.7 TUNE_TESTING=1
+        - INSTALL_HOROVOD=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.5
@@ -463,7 +464,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build_docker_images.sh
+    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
     skip_cleanup: true
     on:
       repo: ray-project/ray
