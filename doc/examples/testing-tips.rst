@@ -38,28 +38,60 @@ It is safest to start a new ray instance for each test.
 
 .. code-block:: python
 
-    class Ray Test(unittest.TestCase):
+    class RayTest(unittest.TestCase):
         def setUp(self):
             ray.init(num_cpus=4, num_gpus=0)
 
         def tearDown(self):
             ray.shutdown()
 
-However, depending on your application, there are certain cases where it may be safe to reuse a Ray cluster across tests.
-
-Reusing a Ray cluster across tests can provide significant speedups to your test suite. For example, on a typical Macbook Pro laptop, starting and stopping a Ray cluster can take nearly 5 seconds:
+However, starting and stopping a Ray cluster can actually incur a non-trivial amount of latency. For example, on a typical Macbook Pro laptop, starting and stopping can take nearly 5 seconds:
 
 .. code-block:: bash
 
     python -c 'import ray; ray.init(); ray.shutdown()'  3.93s user 1.23s system 116% cpu 4.420 total
 
+Across 20 tests, this ends up being 90 seconds of added overhead.
+
+Reusing a Ray cluster across tests can provide significant speedups to your test suite. This reduces the overhead to a constant, amortized quantity:
+
+.. code-block:: python
+
+    class RayClassTest(unittest.TestCase):
+        @classmethod
+        def setUpClass(cls):
+            # Start it once for the entire test suite/module
+            ray.init(num_cpus=4, num_gpus=0)
+
+        @classmethod
+        def tearDownClass(cls):
+            ray.shutdown()
+
+Depending on your application, there are certain cases where it may be unsafe to reuse a Ray cluster across tests. For example:
+
+1. If your application depends on setting environment variables per process.
+2. If your remote actor/task sets any sort of process-level global variables.
 
 
+Tip 4: Create a mini-cluster with `ray.cluster_utils`
+-----------------------------------------------------
 
-Tip 4: Create a mini-cluster on 1 machine with `ray.cluster_util`.
------------------------------------------------------------------
+If writing an application for a cluster setting, you may want to mock a multi-node Ray cluster. This can be done with the ``ray.cluster_utils.Cluster`` utility.
 
-You can also remove
+.. code-block:: python
+
+    from ray.cluster_utils import Cluster
+
+    cluster = Cluster(
+        initialize_head=True,
+        head_node_args={
+            "num_cpus": 10,
+        })
+            for i in range(num_nodes - 1):
+                cluster.add_node(num_cpus=10)
+            ray.init(address=cluster.address)
+
+
 
 .. code-block:: python
 
@@ -106,3 +138,5 @@ You can also remove
 
 Tip 5: Be careful when running tests in parallel
 ------------------------------------------------
+
+Since Ray starts a variety of services, it is easy to trigger timeouts if too many services are started at once. Therefore, when using tools such as `pytest xdist <https://pypi.org/project/pytest-xdist/>`_ that run multiple tests in parallel, one should keep in mind that this may introduce flakiness into the test environment.
