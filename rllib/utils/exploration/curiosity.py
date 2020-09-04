@@ -101,6 +101,11 @@ class Curiosity(Exploration):
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
+        if self.policy_config["num_workers"] != 0:
+            raise ValueError(
+                "Curiosity exploration currently does not support parallelism."
+                " `num_workers` must be 0!")
+
         self.feature_dim = feature_dim
         if feature_net_config is None:
             feature_net_config = self.policy_config["model"].copy()
