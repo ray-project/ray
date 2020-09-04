@@ -127,14 +127,6 @@ py_test(
     deps = [":serve_lib"]
 )
 
-py_test(
-    name = "test_nonblocking",
-    size = "small",
-    srcs = glob(["tests/test_nonblocking.py"]),
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
 # Make sure the example showing in doc is tested
 py_test(
     name = "quickstart_class",
