@@ -12,7 +12,7 @@ def gen_java_deps():
             "com.sun.xml.bind:jaxb-impl:2.3.0",
             "com.typesafe:config:1.3.2",
             "commons-io:commons-io:2.5",
-            "de.ruedigermoeller:fst:2.57",
+            "de.ruedigermoeller:fst:2.57.2-SNAPSHOT",
             "javax.xml.bind:jaxb-api:2.3.0",
             "org.apache.commons:commons-lang3:3.4",
             "org.msgpack:msgpack-core:0.8.20",

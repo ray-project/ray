@@ -63,7 +63,7 @@
     <testng.version>7.1.0</testng.version>
     <mockito.version>1.10.19</mockito.version>
     <guava.version>27.0.1-jre</guava.version>
-    <fst.version>2.57</fst.version>
+    <fst.version>2.57.2-SNAPSHOT</fst.version>
   </properties>
 
   <profiles>
