@@ -48,10 +48,10 @@ class RayServeHandle:
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchrounous request to the endpoint.
-        
+
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
-        
+
         Returns:
             ray.ObjectRef
         Input:
