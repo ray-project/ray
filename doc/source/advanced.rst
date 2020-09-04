@@ -109,11 +109,11 @@ actors, you can use ``ray.experimental.queue.Queue`` (:ref:`docs <ray-queue-ref>
     queue = Queue(maxsize=100)
 
     @ray.remote
-    def consumer():
+    def consumer(queue):
         next_item = queue.get(block=True)
         print(f"got work {next_item}")
 
-    consumers = [consumer.remote() for _ in range(2)]
+    consumers = [consumer.remote(queue) for _ in range(2)]
 
     [queue.put(i) for i in range(10)]
 
@@ -376,5 +376,3 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
-
-
