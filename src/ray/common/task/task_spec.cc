@@ -192,6 +192,8 @@ bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
 
+const std::string TaskSpecification::GetName() const { return message_->name(); }
+
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
 
 bool TaskSpecification::IsNormalTask() const {
@@ -299,8 +301,9 @@ std::string TaskSpecification::DebugString() const {
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();
 
-  stream << ", task_id=" << TaskId() << ", job_id=" << JobId()
-         << ", num_args=" << NumArgs() << ", num_returns=" << NumReturns();
+  stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
+         << ", job_id=" << JobId() << ", num_args=" << NumArgs()
+         << ", num_returns=" << NumReturns();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.

@@ -10,7 +10,7 @@ from ray.serve.backend_worker import create_backend_worker, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.request_params import RequestMetadata
 from ray.serve.router import Router
-from ray.serve.config import BackendConfig
+from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
 
 pytestmark = pytest.mark.asyncio
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 def setup_worker(name,
                  func_or_class,
                  init_args=None,
-                 backend_config=BackendConfig({})):
+                 backend_config=BackendConfig()):
     if init_args is None:
         init_args = ()
 
@@ -178,10 +178,9 @@ async def test_task_runner_custom_method_batch(serve_instance):
     PRODUCER_NAME = "producer"
 
     backend_config = BackendConfig(
-        {
-            "max_batch_size": 4,
-            "batch_wait_timeout": 2
-        }, accepts_batches=True)
+        max_batch_size=4,
+        batch_wait_timeout=2,
+        internal_metadata=BackendMetadata(accepts_batches=True))
     worker = setup_worker(
         CONSUMER_NAME, Batcher, backend_config=backend_config)
 
@@ -230,10 +229,9 @@ async def test_task_runner_perform_batch(serve_instance):
     PRODUCER_NAME = "producer"
 
     config = BackendConfig(
-        {
-            "max_batch_size": 2,
-            "batch_wait_timeout": 10
-        }, accepts_batches=True)
+        max_batch_size=2,
+        batch_wait_timeout=10,
+        internal_metadata=BackendMetadata(accepts_batches=True))
 
     worker = setup_worker(CONSUMER_NAME, batcher, backend_config=config)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)
@@ -277,7 +275,9 @@ async def test_task_runner_perform_async(serve_instance):
     CONSUMER_NAME = "runner"
     PRODUCER_NAME = "producer"
 
-    config = BackendConfig({"max_concurrent_queries": 10}, is_blocking=False)
+    config = BackendConfig(
+        max_concurrent_queries=10,
+        internal_metadata=BackendMetadata(is_blocking=False))
 
     worker = setup_worker(CONSUMER_NAME, wait_and_go, backend_config=config)
     await q.add_new_worker.remote(CONSUMER_NAME, "replica1", worker)

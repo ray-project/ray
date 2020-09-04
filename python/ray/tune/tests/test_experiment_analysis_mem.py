@@ -156,7 +156,7 @@ class AnalysisSuite(unittest.TestCase):
 
     def testBestLogdir(self):
         analysis = Analysis(self.test_dir)
-        logdir = analysis.get_best_logdir(self.metric)
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_dir))
