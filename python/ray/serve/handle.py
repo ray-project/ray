@@ -56,7 +56,7 @@ class RayServeHandle:
             request_data(dict, Any): If it's a dictionary, the data will be
               available in ``request.json()`` or ``request.form()``. Otherwise,
               it will be available in ``request.data``.
-            **kwargs: All keyword arguments will be available in
+            ``**kwargs``: All keyword arguments will be available in
               ``request.args``.
         """
         request_metadata = RequestMetadata(

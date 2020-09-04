@@ -37,12 +37,9 @@ def test_handle_in_endpoint(serve_instance):
 
 
 def test_handle_http_args(serve_instance):
-    serve.init()
+    client = serve_instance
 
     class Endpoint:
-        def __init__(self):
-            self.handle = serve.get_handle("endpoint1", missing_ok=True)
-
         def __call__(self, request):
             return {
                 "args": dict(request.args),
@@ -51,8 +48,8 @@ def test_handle_http_args(serve_instance):
                 "json": request.json
             }
 
-    serve.create_backend("backend", Endpoint)
-    serve.create_endpoint(
+    client.create_backend("backend", Endpoint)
+    client.create_endpoint(
         "endpoint", backend="backend", route="/endpoint", methods=["POST"])
 
     ground_truth = {
@@ -74,7 +71,7 @@ def test_handle_http_args(serve_instance):
         headers=ground_truth["headers"],
         json=ground_truth["json"]).json()
 
-    handle = serve.get_handle("endpoint")
+    handle = client.get_handle("endpoint")
     resp_handle = ray.get(
         handle.options(
             http_method=ground_truth["method"],

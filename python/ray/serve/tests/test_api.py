@@ -946,7 +946,7 @@ def test_connect(serve_instance):
     # Check that you can call serve.connect() from within a backend for both
     # detached and non-detached instances.
 
-    def connect_in_backend():
+    def connect_in_backend(_):
         client = serve.connect()
         client.create_backend("backend-ception", connect_in_backend)
         return client._controller_name
