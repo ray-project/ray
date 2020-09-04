@@ -28,3 +28,4 @@
 *init_raylet*
 *Java*
 *JNI_*
+*ray_exported*
