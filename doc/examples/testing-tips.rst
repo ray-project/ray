@@ -76,8 +76,8 @@ Depending on your application, there are certain cases where it may be unsafe to
 2. If your remote actor/task sets any sort of process-level global variables.
 
 
-Tip 4: Create a mini-cluster with `ray.cluster_utils`
------------------------------------------------------
+Tip 4: Create a mini-cluster with ``ray.cluster_utils.Cluster``
+---------------------------------------------------------------
 
 If writing an application for a cluster setting, you may want to mock a multi-node Ray cluster. This can be done with the ``ray.cluster_utils.Cluster`` utility.
 
