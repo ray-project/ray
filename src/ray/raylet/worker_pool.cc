@@ -382,7 +382,6 @@ Status WorkerPool::GetNextFreePort(int *port) {
     // Return to pool to check later.
     free_ports_->push(*port);
   }
-  *port = -1;
   return Status::Invalid(
       "No available ports. Please specify a wider port range using --min-worker-port and "
       "--max-worker-port.");
