@@ -54,7 +54,7 @@ def test_node_info(ray_start_with_dashboard):
             assert detail["result"] is True, detail["msg"]
             detail = detail["data"]["detail"]
             assert detail["hostname"] == hostname
-            assert detail["state"] == "ALIVE"
+            assert detail["raylet"]["state"] == "ALIVE"
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
             assert len(detail["actors"]) == 2, detail["actors"]
@@ -73,7 +73,7 @@ def test_node_info(ray_start_with_dashboard):
             assert len(summary["data"]["summary"]) == 1
             summary = summary["data"]["summary"][0]
             assert summary["hostname"] == hostname
-            assert summary["state"] == "ALIVE"
+            assert summary["raylet"]["state"] == "ALIVE"
             assert "raylet" in summary["cmdline"][0]
             assert "workers" not in summary
             assert "actors" not in summary
