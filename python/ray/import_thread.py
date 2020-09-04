@@ -90,7 +90,7 @@ class ImportThread:
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
         except (OSError, redis.exceptions.ConnectionError) as e:
-            logger.error("ImportThread: {}".format(e))
+            logger.error(f"ImportThread: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()

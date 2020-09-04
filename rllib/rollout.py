@@ -3,13 +3,13 @@
 import argparse
 import collections
 import copy
+import gym
 import json
 import os
 from pathlib import Path
 import pickle
 import shelve
 
-import gym
 import ray
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID

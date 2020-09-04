@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def setup_address():
     ip = ray.services.get_node_ip_address()
     port = find_free_port()
-    return "tcp://{ip}:{port}".format(ip=ip, port=port)
+    return f"tcp://{ip}:{port}"
 
 
 def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
@@ -28,7 +28,7 @@ def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
     """
     logger.debug("Connecting to {} world_rank: {} world_size: {}".format(
         url, world_rank, world_size))
-    logger.debug("using {}".format(backend))
+    logger.debug(f"using {backend}")
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
         logger.debug(
             "Setting NCCL_BLOCKING_WAIT for detecting node failure. "

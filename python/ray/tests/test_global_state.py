@@ -59,7 +59,7 @@ def test_uses_resources(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
+@pytest.mark.timeout(120)
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
     cluster = ray_start_cluster_head

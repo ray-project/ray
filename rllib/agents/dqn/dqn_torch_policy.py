@@ -215,7 +215,8 @@ def build_q_losses(policy, model, _, train_batch):
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
                                   policy.action_space.n)
     q_t_selected = torch.sum(
-        torch.where(q_t > -float("inf"), q_t, torch.tensor(0.0)) *
+        torch.where(q_t > -float("inf"), q_t,
+                    torch.tensor(0.0, device=policy.device)) *
         one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
@@ -233,7 +234,8 @@ def build_q_losses(policy, model, _, train_batch):
         q_tp1_best_one_hot_selection = F.one_hot(q_tp1_best_using_online_net,
                                                  policy.action_space.n)
         q_tp1_best = torch.sum(
-            torch.where(q_tp1 > -float("inf"), q_tp1, torch.tensor(0.0)) *
+            torch.where(q_tp1 > -float("inf"), q_tp1,
+                        torch.tensor(0.0, device=policy.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)

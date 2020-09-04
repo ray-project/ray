@@ -176,9 +176,10 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   // attempted asynchronously.
   for (const auto &created_object_id : it->second.created_objects) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        created_object_id, [this, task_id, reconstruction_attempt](
-                               const ray::ObjectID &object_id,
-                               const std::unordered_set<ray::ClientID> &clients) {
+        created_object_id, it->second.owner_addresses[created_object_id],
+        [this, task_id, reconstruction_attempt](
+            const ray::ObjectID &object_id,
+            const std::unordered_set<ray::ClientID> &clients) {
           if (clients.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
@@ -207,7 +208,8 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
   }
 }
 
-void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
+void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id,
+                                                     const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
@@ -220,6 +222,7 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
     SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
   }
   it->second.created_objects.insert(object_id);
+  it->second.owner_addresses.emplace(object_id, owner_address);
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {

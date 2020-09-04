@@ -80,8 +80,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     # class ID for this custom class on each worker, which could lead to the
     # same class definition being exported many many times.
     logger.warning(
-        "WARNING: Could not produce a deterministic class ID for class "
-        "{}".format(cls))
+        f"WARNING: Could not produce a deterministic class ID for class {cls}")
     return hashlib.sha1(new_class_id).digest()
 
 
@@ -255,9 +254,8 @@ class SerializationContext:
             try:
                 error_type = int(metadata)
             except Exception:
-                raise Exception(
-                    "Can't deserialize object: {}, metadata: {}".format(
-                        object_ref, metadata))
+                raise Exception(f"Can't deserialize object: {object_ref}, "
+                                f"metadata: {metadata}")
 
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
