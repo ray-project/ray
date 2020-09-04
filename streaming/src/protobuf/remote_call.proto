@@ -72,7 +72,7 @@ message CheckpointId {
 }
 
 message BaseWorkerCmd {
-  bytes actor_id = 1; // actor id
+  bytes actor_id = 1;  // actor id
   int64 timestamp = 2;
   google.protobuf.Any detail = 3;
 }
@@ -96,10 +96,10 @@ message CallResult {
 
 message QueueRecoverInfo {
   enum QueueCreationStatus {
-      FreshStarted = 0;
-      PullOk = 1;
-      Timeout = 2;
-      DataLost = 3;
+    FreshStarted = 0;
+    PullOk = 1;
+    Timeout = 2;
+    DataLost = 3;
   }
   map<string, QueueCreationStatus> creation_status = 3;
 }
