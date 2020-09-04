@@ -118,7 +118,7 @@ public class FunctionManager {
     if (Strings.isNullOrEmpty(jobResourcePath)) {
       classLoader = getClass().getClassLoader();
     } else {
-      File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
+      File resourceDir = new File(jobResourcePath);
       Collection<File> files = FileUtils.listFiles(resourceDir,
           new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
       files.add(resourceDir);

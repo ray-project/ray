@@ -209,11 +209,13 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                  << " non-actor workers";
 
   int workers_to_start = 1;
+  std::string job_resource_path;
   if (dynamic_options.empty()) {
     if (!RayConfig::instance().enable_multi_tenancy()) {
       workers_to_start = state.num_workers_per_process;
     } else if (language == Language::JAVA) {
       workers_to_start = job_config->num_java_workers_per_process();
+      job_resource_path = job_config->job_resource_path();
     }
   }
 
@@ -263,6 +265,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         } else {
           worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
                                         std::to_string(workers_to_start));
+          worker_command_args.push_back("-Dray.job.resource-path=" + job_resource_path);
         }
         break;
       default:
