@@ -395,7 +395,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeasesIfNeeded(
   }
 
   // If there are still stealable tasks, let the lease request succeed
-  if (MoreStealableTasksThanActiveWorkers(scheduling_key_entry)) {
+  if (work_stealing_enabled_ && CanSteal(scheduling_key_entry)) {
     return;
   }
 
@@ -457,6 +457,7 @@ std::shared_ptr<WorkerLeaseInterface>
 CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
+  
   if (raylet_address &&
       ClientID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
@@ -487,12 +488,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
   long double time_elapsed = (long double)(rw_time.tv_sec - initial_time_.tv_sec) +
   (long double)((rw_time.tv_nsec - initial_time_.tv_nsec) / (long double) 1000000000.0);
   RAY_LOG(INFO) << "RW placeholder" << " " << time_elapsed;*/
-
+  
   if (!pending_lease_requests.empty()) {
     // There are already some outstanding lease request for this type of task.
     return;
   }
-
+  
   // Request more than one worker at a time only if work stealing is enabled
   int N_reqs = work_stealing_enabled_ ? n_requests : 1;
 
@@ -513,7 +514,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
     if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
       // The pipelines to the current workers are not full yet, so we don't need more
       // workers.
-
       return;
     }
 
@@ -526,6 +526,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
     RAY_LOG(INFO) << "LEASE_REQUESTED " << task_id << " " << time_elapsed;*/
 
     if (task_queue.empty()) {
+      if (!work_stealing_enabled_) {
+        if (scheduling_key_entry.CanDelete()) {
+          // We can safely remove the entry keyed by scheduling_key from the
+          // scheduling_key_entries_ hashmap.
+          scheduling_key_entries_.erase(scheduling_key);
+        }
+        return;
+      }
+      
       // We don't have any of this type of task to run.
       bool found = false;
 
@@ -534,7 +543,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
         active_worker_addr != scheduling_key_entry.active_workers.end(); active_worker_addr++) {
 
         auto &lease_entry = worker_to_lease_entry_[*active_worker_addr];
-        if (lease_entry.stealable_tasks.size() >= 1) {
+        if (lease_entry.stealable_tasks.size() > 1) {
           found = true;
           break;
         }
@@ -548,14 +557,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
         }
         return;
       }
+      
     }
-
+    
     auto lease_client = GetOrConnectLeaseClient(raylet_address);
     TaskSpecification resource_spec = std::move(scheduling_key_entry.tasks_to_request_workers.front());
     scheduling_key_entry.tasks_to_request_workers.pop_front();
     TaskID task_id = resource_spec.TaskId();
     lease_client->RequestWorkerLease(
-        resource_spec, [this, scheduling_key](const Status &status,
+        resource_spec, [this, resource_spec, scheduling_key](const Status &status,
                                               const rpc::RequestWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
 
@@ -595,6 +605,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
                            /*error=*/false, resources_copy);
             } else {
               // The raylet redirected us to a different raylet to retry at.
+              // Add the task back to the tasks_to_request_workers queue, so that we can use it for our next RequestWorkerLease RPC to the new raylet.
+              scheduling_key_entry.tasks_to_request_workers.push_back(resource_spec);
               RequestNewWorkersIfNeeded(scheduling_key, 1, &reply.retry_at_raylet_address());
             }
           } else if (lease_client != local_lease_client_) {
@@ -603,6 +615,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
             // TODO(swang): Fail after some number of retries?
             RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
                            << status.ToString();
+            // Add the task back to the tasks_to_request_workers queue, so that we can use it for our next RequestWorkerLease RPC to the new raylet.
+            scheduling_key_entry.tasks_to_request_workers.push_back(resource_spec);
             RequestNewWorkersIfNeeded(scheduling_key);
           } else {
             // A local request failed. This shouldn't happen if the raylet is still alive

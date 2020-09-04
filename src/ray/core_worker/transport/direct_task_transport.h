@@ -296,7 +296,7 @@ class CoreWorkerDirectTaskSubmitter {
       GUARDED_BY(mu_);
 
   // Check whether the number of stealable tasks is larger than the number of active workers
-  bool MoreStealableTasksThanActiveWorkers(SchedulingKeyEntry &scheduling_key_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool CanSteal(SchedulingKeyEntry &scheduling_key_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     for (auto worker_addr : scheduling_key_entry.active_workers) {
       auto &lease_entry = worker_to_lease_entry_[worker_addr];
       if (lease_entry.stealable_tasks.size() > 1) {
