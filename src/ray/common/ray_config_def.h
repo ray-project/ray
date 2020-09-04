@@ -197,7 +197,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 RAY_CONFIG(int, num_workers_per_process_python, 1)
 
 /// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
+RAY_CONFIG(int, num_workers_per_process_java, 1)
 
 /// Number of workers per CPP worker process
 RAY_CONFIG(int, num_workers_per_process_cpp, 1)

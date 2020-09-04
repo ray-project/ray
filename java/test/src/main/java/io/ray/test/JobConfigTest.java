@@ -68,7 +68,7 @@ public class JobConfigTest extends BaseTest {
     Assert.assertEquals("bar2", Ray.task(JobConfigTest::getEnvVariable, "foo2").remote().get());
   }
 
-  public void testNumJavaWorkerPerProcess() {
+  public void testNumJavaWorkersPerProcess() {
     ObjectRef<Integer> obj = Ray.task(JobConfigTest::getWorkersNum).remote();
     Assert.assertEquals(3, (int) obj.get());
   }
