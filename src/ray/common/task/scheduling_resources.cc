@@ -699,6 +699,7 @@ void ResourceIdSet::AddBundleResourceIds(const PlacementGroupID &group_id,
 void ResourceIdSet::ReturnBundleResources(const PlacementGroupID &group_id,
                                           const int bundle_index,
                                           const std::string &original_resource_name) {
+  // SANG-TODO This method should know if resources are committed or prepared.
   auto index_resource_name =
       FormatPlacementGroupResource(original_resource_name, group_id, bundle_index);
   auto iter_index = available_resources_.find(index_resource_name);
@@ -875,14 +876,19 @@ void SchedulingResources::UpdateResourceCapacity(const std::string &resource_nam
 void SchedulingResources::TransferToBundleResources(const PlacementGroupID &group,
                                                     const int bundle_index,
                                                     const ResourceSet &resource_set) {
+  // SANG-TODO Prepare
   resources_available_.SubtractResourcesStrict(resource_set);
+  // SANG-TODO Commit
   resources_available_.AddBundleResources(group, bundle_index, resource_set);
+  // SANG-TODO Prepare
   resources_total_.SubtractResourcesStrict(resource_set);
+  // SANG-TODO Commit
   resources_total_.AddBundleResources(group, bundle_index, resource_set);
 }
 
 void SchedulingResources::ReturnBundleResources(const PlacementGroupID &group_id,
                                                 const int bundle_index) {
+  // SANG-TODO This method should know if resources are committed or prepared.
   resources_available_.ReturnBundleResources(group_id, bundle_index);
   resources_total_.ReturnBundleResources(group_id, bundle_index);
 }

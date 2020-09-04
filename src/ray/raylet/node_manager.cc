@@ -1820,7 +1820,7 @@ void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  // TODO(sang): Implement this in the next PR.
+  // SANG-TODO Implement it.
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -2023,11 +2023,13 @@ ResourceIdSet NodeManager::ScheduleBundle(
   if (reserve_resource_success) {
     acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
+    // SANG-TODO Should be done after commit.
     for (auto resource : acquired_resources.AvailableResources()) {
       local_available_resources_.AddBundleResourceIds(bundle_spec.PlacementGroupId(),
                                                       bundle_spec.Index(), resource.first,
                                                       resource.second);
     }
+    // SANG-TODO Should be broken into two methods.
     resource_map[self_node_id_].TransferToBundleResources(
         bundle_spec.PlacementGroupId(), bundle_spec.Index(),
         bundle_spec.GetRequiredResources());

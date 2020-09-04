@@ -689,10 +689,7 @@ def test_atomic_creation(ray_start_cluster):
     # Confirm that the placement group actor is created. It will
     # raise an exception if actor was scheduled before placement group was
     # created.
-    # TODO(sang): This with statement should be removed after atomic creation
-    # is implemented. It will be done in the next PR.
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(pg_actor.ping.remote(), timeout=3.0)
+    ray.get(pg_actor.ping.remote(), timeout=3.0)
 
 
 if __name__ == "__main__":
