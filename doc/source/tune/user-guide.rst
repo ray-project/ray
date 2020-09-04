@@ -472,8 +472,7 @@ decide between the two options.
 Redirecting stdout and stderr to files
 --------------------------------------
 The stdout and stderr streams are usually printed to the console. For remote actors,
-Ray collects these logs and prints them to the head process, as long as it
-has been initialized with ``log_to_driver=True``, which is the default.
+Ray collects these logs and prints them to the head process.
 
 However, if you would like to collect the stream outputs in files for later
 analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
@@ -507,17 +506,6 @@ too.
 
 If ``log_to_file`` is set, Tune will automatically register a new logging handler
 for Ray's base logger and log the output to the specified stderr output file.
-
-Setting ``log_to_file`` does not disable logging to the driver. If you would
-like to disable the logs showing up in the driver output (i.e. they should only
-show up in the logfiles), initialize Ray accordingly:
-
-.. code-block:: python
-
-    ray.init(log_to_driver=False)
-    tune.run(
-        trainable,
-        log_to_file=True)
 
 .. _tune-debugging:
 

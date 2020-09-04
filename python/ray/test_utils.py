@@ -1,7 +1,6 @@
 import asyncio
 import errno
 import io
-import json
 import fnmatch
 import os
 import subprocess
@@ -282,10 +281,9 @@ def recursive_fnmatch(dirpath, pattern):
     return matches
 
 
-def generate_internal_config_map(**kwargs):
-    internal_config = json.dumps(kwargs)
+def generate_system_config_map(**kwargs):
     ray_kwargs = {
-        "_internal_config": internal_config,
+        "_system_config": kwargs,
     }
     return ray_kwargs
 
@@ -333,6 +331,25 @@ def dicts_equal(dict1, dict2, abs_tol=1e-4):
             continue
         if v != dict2[k]:
             return False
+    return True
+
+
+def same_elements(elems_a, elems_b):
+    """Checks if two iterables (such as lists) contain the same elements. Elements
+        do not have to be hashable (this allows us to compare sets of dicts for
+        example). This comparison is not necessarily efficient.
+    """
+    a = list(elems_a)
+    b = list(elems_b)
+
+    for x in a:
+        if x not in b:
+            return False
+
+    for x in b:
+        if x not in a:
+            return False
+
     return True
 
 
@@ -411,3 +428,11 @@ def get_error_message(pub_sub, num, error_type=None, timeout=5):
             time.sleep(0.01)
 
     return msgs
+
+
+def format_web_url(url):
+    """Format web url."""
+    url = url.replace("localhost", "http://127.0.0.1")
+    if not url.startswith("http://"):
+        return "http://" + url
+    return url

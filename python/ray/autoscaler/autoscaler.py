@@ -1,5 +1,5 @@
-from collections import defaultdict
-from typing import Optional
+from collections import defaultdict, namedtuple
+from typing import Any, Optional
 import copy
 import logging
 import math
@@ -30,6 +30,12 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
+# Tuple of modified fields for the given node_id returned by should_update
+# that will be passed into a NodeUpdaterThread.
+UpdateInstructions = namedtuple(
+    "UpdateInstructions",
+    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -58,20 +64,8 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
-        self.reload_config(errors_fatal=True)
+        self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
-        self.provider = get_node_provider(self.config["provider"],
-                                          self.config["cluster_name"])
-
-        # Check whether we can enable the resource demand scheduler.
-        if "available_node_types" in self.config:
-            self.available_node_types = self.config["available_node_types"]
-            self.resource_demand_scheduler = ResourceDemandScheduler(
-                self.provider, self.available_node_types,
-                self.config["max_workers"])
-        else:
-            self.available_node_types = None
-            self.resource_demand_scheduler = None
 
         self.max_failures = max_failures
         self.max_launch_batch = max_launch_batch
@@ -117,13 +111,13 @@ class StandardAutoscaler:
         # Aggregate resources the user is requesting of the cluster.
         self.resource_requests = defaultdict(int)
         # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = None
+        self.resource_demand_vector = []
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
         try:
-            self.reload_config(errors_fatal=False)
+            self.reset(errors_fatal=False)
             self._update()
         except Exception as e:
             logger.exception("StandardAutoscaler: "
@@ -197,14 +191,18 @@ class StandardAutoscaler:
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
-        if self.resource_demand_scheduler and self.resource_demand_vector:
-            # TODO(ekl) include head node in the node list
-            instances = (self.resource_demand_scheduler.get_nodes_to_launch(
-                nodes, self.pending_launches.breakdown(),
-                self.resource_demand_vector))
-            # TODO(ekl) also enforce max launch concurrency here?
-            for node_type, count in instances:
-                self.launch_new_node(count, node_type=node_type)
+        if self.resource_demand_scheduler:
+            resource_demand_vector = self.resource_demand_vector + \
+                self.load_metrics.get_resource_demand_vector()
+            if resource_demand_vector:
+                to_launch = (
+                    self.resource_demand_scheduler.get_nodes_to_launch(
+                        self.provider.non_terminated_nodes(tag_filters={}),
+                        self.pending_launches.breakdown(),
+                        resource_demand_vector))
+                # TODO(ekl) also enforce max launch concurrency here?
+                for node_type, count in to_launch:
+                    self.launch_new_node(count, node_type=node_type)
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -244,14 +242,15 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start in (self.should_update(node_id)
-                                             for node_id in nodes):
+        for node_id, commands, ray_start, docker_config in (
+                self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, resources)))
+                        args=(node_id, commands, ray_start, resources,
+                              docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -270,7 +269,7 @@ class StandardAutoscaler:
         else:
             return {}
 
-    def reload_config(self, errors_fatal=False):
+    def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
             sync_continuously = self.config.get(
@@ -279,8 +278,6 @@ class StandardAutoscaler:
             with open(self.config_path) as f:
                 new_config = yaml.safe_load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
-                                               new_config["auth"])
             (new_runtime_hash,
              new_file_mounts_contents_hash) = hash_runtime_conf(
                  new_config["file_mounts"],
@@ -292,9 +289,21 @@ class StandardAutoscaler:
                  generate_file_mounts_contents_hash=sync_continuously,
              )
             self.config = new_config
-            self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
+
+            self.provider = get_node_provider(self.config["provider"],
+                                              self.config["cluster_name"])
+            # Check whether we can enable the resource demand scheduler.
+            if "available_node_types" in self.config:
+                self.available_node_types = self.config["available_node_types"]
+                self.resource_demand_scheduler = ResourceDemandScheduler(
+                    self.provider, self.available_node_types,
+                    self.config["max_workers"])
+            else:
+                self.available_node_types = None
+                self.resource_demand_scheduler = None
+
         except Exception as e:
             if errors_fatal:
                 raise e
@@ -334,9 +343,18 @@ class StandardAutoscaler:
                    max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
-        launch_conf = self.provider.node_tags(node_id).get(
-            TAG_RAY_LAUNCH_CONFIG)
-        if self.launch_hash != launch_conf:
+        node_tags = self.provider.node_tags(node_id)
+        tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
+        node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
+
+        launch_config = copy.deepcopy(self.config["worker_nodes"])
+        if node_type:
+            launch_config.update(
+                self.config["available_node_types"][node_type]["node_config"])
+        calculated_launch_hash = hash_launch_conf(launch_config,
+                                                  self.config["auth"])
+
+        if calculated_launch_hash != tag_launch_conf:
             return False
         return True
 
@@ -385,33 +403,61 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             process_runner=self.process_runner,
             use_internal_ip=True,
+            is_head_node=False,
             docker_config=self.config.get("docker"))
         updater.start()
         self.updaters[node_id] = updater
 
+    def _get_node_type_specific_fields(self, node_id: str,
+                                       fields_key: str) -> Any:
+        fields = self.config[fields_key]
+        node_tags = self.provider.node_tags(node_id)
+        if TAG_RAY_USER_NODE_TYPE in node_tags:
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+            if node_type not in self.available_node_types:
+                raise ValueError(f"Unknown node type tag: {node_type}.")
+            node_specific_config = self.available_node_types[node_type]
+            if fields_key in node_specific_config:
+                fields = node_specific_config[fields_key]
+        return fields
+
+    def _get_node_specific_docker_config(self, node_id):
+        docker_config = copy.deepcopy(self.config.get("docker", {}))
+        node_specific_docker = self._get_node_type_specific_fields(
+            node_id, "docker")
+        docker_config.update(node_specific_docker)
+        return docker_config
+
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return None, None, None  # no update
+            return UpdateInstructions(None, None, None, None)  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return None, None, None  # no update
+            return UpdateInstructions(None, None, None, None)  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
             init_commands = []
             ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_fields(
+                node_id, "worker_setup_commands")
             ray_commands = []
         else:
-            init_commands = self.config["worker_setup_commands"]
+            init_commands = self._get_node_type_specific_fields(
+                node_id, "worker_setup_commands")
             ray_commands = self.config["worker_start_ray_commands"]
 
-        return (node_id, init_commands, ray_commands)
+        docker_config = self._get_node_specific_docker_config(node_id)
+        return UpdateInstructions(
+            node_id=node_id,
+            init_commands=init_commands,
+            start_ray_commands=ray_commands,
+            docker_config=docker_config)
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
-                      node_resources):
+                      node_resources, docker_config):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -420,15 +466,17 @@ class StandardAutoscaler:
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
+                self._get_node_type_specific_fields(
+                    node_id, "initialization_commands")),
             setup_commands=with_head_node_ip(init_commands),
             ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             file_mounts_contents_hash=self.file_mounts_contents_hash,
+            is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
             process_runner=self.process_runner,
             use_internal_ip=True,
-            docker_config=self.config.get("docker"),
+            docker_config=docker_config,
             node_resources=node_resources)
         updater.start()
         self.updaters[node_id] = updater
@@ -487,8 +535,9 @@ class StandardAutoscaler:
             resources: Either a list of resource bundles or a single resource
                 demand dictionary.
         """
-        logger.info(
-            "StandardAutoscaler: resource_requests={}".format(resources))
+        if resources:
+            logger.info(
+                "StandardAutoscaler: resource_requests={}".format(resources))
         if isinstance(resources, list):
             self.resource_demand_vector = resources
         else:

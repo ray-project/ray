@@ -8,7 +8,7 @@ from ray.tune.error import TuneError
 from ray.tune.function_runner import detect_checkpoint_function
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.sample import sample_from
+from ray.tune.sample import Domain
 from ray.tune.stopper import FunctionStopper, Stopper
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,7 @@ class Experiment:
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
+                 trial_dirname_creator=None,
                  loggers=None,
                  log_to_file=False,
                  sync_to_driver=None,
@@ -173,6 +174,7 @@ class Experiment:
             "upload_dir": upload_dir,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
+            "trial_dirname_creator": trial_dirname_creator,
             "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
             "sync_to_driver": sync_to_driver,
@@ -233,7 +235,7 @@ class Experiment:
 
         if isinstance(run_object, str):
             return run_object
-        elif isinstance(run_object, sample_from):
+        elif isinstance(run_object, Domain):
             logger.warning("Not registering trainable. Resolving as variant.")
             return run_object
         elif isinstance(run_object, type) or callable(run_object):

@@ -5,6 +5,7 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator, SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -74,6 +75,7 @@ def run(run_or_experiment,
         local_dir=None,
         upload_dir=None,
         trial_name_creator=None,
+        trial_dirname_creator=None,
         loggers=None,
         log_to_file=False,
         sync_to_cloud=None,
@@ -166,8 +168,12 @@ def run(run_or_experiment,
             Defaults to ``~/ray_results``.
         upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket`` or ``gs://bucket``).
-        trial_name_creator (func): Optional function for generating
-            the trial string representation.
+        trial_name_creator (Callable[[Trial], str]): Optional function
+            for generating the trial string representation.
+        trial_dirname_creator (Callable[[Trial], str]): Function
+            for generating the trial dirname. This function should take
+            in a Trial object and return a string representing the
+            name of the directory. The return value cannot be a path.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
@@ -295,6 +301,7 @@ def run(run_or_experiment,
                 upload_dir=upload_dir,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
+                trial_dirname_creator=trial_dirname_creator,
                 loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
@@ -321,6 +328,16 @@ def run(run_or_experiment,
 
     if not search_alg:
         search_alg = BasicVariantGenerator()
+
+    # TODO (krfricke): Introduce metric/mode as top level API
+    if config and not search_alg.set_search_properties(None, None, config):
+        if has_unresolved_values(config):
+            raise ValueError(
+                "You passed a `config` parameter to `tune.run()` with "
+                "unresolved parameters, but the search algorithm was already "
+                "instantiated with a search space. Make sure that `config` "
+                "does not contain any more parameter definitions - include "
+                "them in the search algorithm's search space if necessary.")
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -375,8 +392,8 @@ def run(run_or_experiment,
 
     try:
         runner.checkpoint(force=True)
-    except Exception:
-        logger.exception("Trial Runner checkpointing failed.")
+    except Exception as e:
+        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
     if verbose:
         _report_progress(runner, progress_reporter, done=True)
@@ -398,7 +415,11 @@ def run(run_or_experiment,
     trials = runner.get_trials()
     if return_trials:
         return trials
-    return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
+    return ExperimentAnalysis(
+        runner.checkpoint_file,
+        trials=trials,
+        default_metric=None,
+        default_mode=None)
 
 
 def run_experiments(experiments,

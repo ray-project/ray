@@ -66,7 +66,7 @@ class Actor:
     def value(self):
         return 1
 
-_ = Actor.options(name="DetachedActor").remote()
+_ = Actor.options(lifetime="detached", name="DetachedActor").remote()
 # Make sure the actor is created before the driver exits.
 ray.get(_.value.remote())
 """.format(address)

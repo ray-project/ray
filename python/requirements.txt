@@ -37,6 +37,8 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
+pydantic
+dataclasses
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -67,3 +69,4 @@ tensorflow
 testfixtures
 werkzeug
 xlrd
+starlette

@@ -35,8 +35,8 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 def build_trainer(
         name: str,
         *,
-        default_config: TrainerConfigDict = None,
-        validate_config: Callable[[TrainerConfigDict], None] = None,
+        default_config: Optional[TrainerConfigDict] = None,
+        validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = None,
@@ -46,7 +46,7 @@ def build_trainer(
         mixins: Optional[List[type]] = None,
         execution_plan: Optional[Callable[[
             WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan):
+        ], Iterable[ResultDict]]] = default_execution_plan) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -56,11 +56,11 @@ def build_trainer(
 
     Args:
         name (str): name of the trainer (e.g., "PPO")
-        default_config (TrainerConfigDict): The default config dict
+        default_config (Optional[TrainerConfigDict]): The default config dict
             of the algorithm, otherwise uses the Trainer default config.
-        validate_config (Optional[callable]): Optional callable that takes the
-            config to check for correctness. It may mutate the config as
-            needed.
+        validate_config (Optional[Callable[[TrainerConfigDict], None]]):
+            Optional callable that takes the config to check for correctness.
+            It may mutate the config as needed.
         default_policy (Optional[Type[Policy]]): The default Policy class to
             use.
         get_policy_class (Optional[Callable[
@@ -81,10 +81,12 @@ def build_trainer(
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class.
-        execution_plan (func): Setup the distributed execution workflow.
+        execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
+            Iterable[ResultDict]]]): Optional callable that sets up the
+            distributed execution workflow.
 
     Returns:
-        a Trainer instance that uses the specified args.
+        Type[Trainer]: A Trainer sub-class configured by the specified args.
     """
 
     original_kwargs = locals().copy()

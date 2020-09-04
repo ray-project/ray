@@ -2,6 +2,7 @@ import os
 
 import ray
 from ray.tune import CLIReporter
+from ray.tune.integration.wandb import wandb_mixin  # noqa: F401
 from ray.tune.schedulers import PopulationBasedTraining
 
 from ray import tune
@@ -15,22 +16,15 @@ from transformers import (AutoConfig, AutoModelForSequenceClassification,
                           Trainer, TrainingArguments)
 
 
-def get_trainer(model_name_or_path,
-                train_dataset,
-                eval_dataset,
-                task_name,
-                training_args,
-                wandb_args=None):
+def get_trainer(model_name_or_path, train_dataset, eval_dataset, task_name,
+                training_args):
     try:
         num_labels = glue_tasks_num_labels[task_name]
     except KeyError:
         raise ValueError("Task not found: %s" % (task_name))
 
     config = AutoConfig.from_pretrained(
-        model_name_or_path,
-        num_labels=num_labels,
-        finetuning_task=task_name,
-    )
+        model_name_or_path, num_labels=num_labels, finetuning_task=task_name)
 
     model = AutoModelForSequenceClassification.from_pretrained(
         model_name_or_path,
@@ -41,8 +35,7 @@ def get_trainer(model_name_or_path,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=build_compute_metrics_fn(task_name),
-        wandb_args=wandb_args)
+        compute_metrics=build_compute_metrics_fn(task_name))
 
     return tune_trainer
 
@@ -62,6 +55,8 @@ def recover_checkpoint(tune_checkpoint_dir, model_name=None):
 
 
 # __train_begin__
+# Uncomment this line to use W&B!
+# @wandb_mixin
 def train_transformer(config, checkpoint_dir=None):
     data_args = DataTrainingArguments(
         task_name=config["task_name"], data_dir=config["data_dir"])
@@ -96,21 +91,9 @@ def train_transformer(config, checkpoint_dir=None):
         logging_dir="./logs",
     )
 
-    # Arguments for W&B.
-    name = tune.get_trial_name()
-    wandb_args = {
-        "project_name": "transformers_pbt",
-        "watch": "false",  # Either set to gradient, false, or all
-        "run_name": name,
-    }
-
     tune_trainer = get_trainer(
         recover_checkpoint(checkpoint_dir, config["model_name"]),
-        train_dataset,
-        eval_dataset,
-        config["task_name"],
-        training_args,
-        wandb_args=wandb_args)
+        train_dataset, eval_dataset, config["task_name"], training_args)
     tune_trainer.train(
         recover_checkpoint(checkpoint_dir, config["model_name"]))
 
@@ -159,6 +142,11 @@ def tune_transformer(num_samples=8,
         "weight_decay": tune.uniform(0.0, 0.3),
         "num_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
+        "wandb": {
+            "project": "pbt_transformers",
+            "reinit": True,
+            "allow_val_change": True
+        }
     }
 
     scheduler = PopulationBasedTraining(
@@ -167,8 +155,8 @@ def tune_transformer(num_samples=8,
         mode="max",
         perturbation_interval=1,
         hyperparam_mutations={
-            "weight_decay": lambda: tune.uniform(0.0, 0.3).func(None),
-            "learning_rate": lambda: tune.uniform(1e-5, 5e-5).func(None),
+            "weight_decay": tune.uniform(0.0, 0.3),
+            "learning_rate": tune.uniform(1e-5, 5e-5),
             "per_gpu_train_batch_size": [16, 32, 64],
         })
 
