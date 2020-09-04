@@ -217,29 +217,4 @@ public class ResourceUtil {
         .filter(container -> container.getId().equals(containerID))
         .findFirst();
   }
-
-  /**
-   * Get container by node unique id
-   *
-   * @param nodeId node unique id
-   * @return container
-   */
-  public static Optional<Container> getContainerByNodeId(
-      List<Container> containers,
-      UniqueId nodeId) {
-    return containers.stream()
-        .filter(container -> container.getNodeId().equals(nodeId))
-        .findFirst();
-  }
-
-  /**
-   * Get container hostname and ip in string.
-   *
-   * @param container container
-   * @return hostname/ip e.g. localhost1/1.2.3.4
-   */
-  public static String getContainerHostnameAndIp(Container container) {
-    return container.getHostname() + "/" + container.getAddress();
-  }
-
 }
