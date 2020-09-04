@@ -202,7 +202,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         .sort()
         .map((key, _, __) => {
           // Construct the value from actor.
-          // Please refer to worker.py::show_in_webui for schema.
+          // Please refer to worker.py::show_in_dashboard for schema.
           const valueEncoded = actor.webuiDisplay![key];
           const valueParsed = JSON.parse(valueEncoded);
           let valueRendered = valueParsed["message"];

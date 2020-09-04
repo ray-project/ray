@@ -28,11 +28,21 @@ enum QueueType { UPSTREAM = 0, DOWNSTREAM };
 /// using a watershed iterator to divided.
 class Queue {
  public:
-  /// \param[in] queue_id the unique identification of a pair of queues (upstream and
-  /// downstream). \param[in] size max size of the queue in bytes. \param[in] transport
+  /// \param actor_id, the actor id of upstream worker
+  /// \param peer_actor_id, the actor id of downstream worker
+  /// \param queue_id the unique identification of a pair of queues (upstream and
+  /// downstream).
+  /// \param size max size of the queue in bytes.
+  /// \param transport
   /// transport to send items to peer.
-  Queue(ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
-      : queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
+  Queue(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
+        uint64_t size, std::shared_ptr<Transport> transport)
+      : actor_id_(actor_id),
+        peer_actor_id_(peer_actor_id),
+        queue_id_(queue_id),
+        max_data_size_(size),
+        data_size_(0),
+        data_size_sent_(0) {
     buffer_queue_.push_back(InvalidQueueItem());
     watershed_iter_ = buffer_queue_.begin();
   }
@@ -61,32 +71,45 @@ class Queue {
   /// Return the last item in pending state.
   QueueItem BackPending();
 
-  bool IsPendingEmpty();
-  bool IsPendingFull(uint64_t data_size = 0);
+  inline bool IsPendingEmpty() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return std::next(watershed_iter_) == buffer_queue_.end();
+  };
+
+  inline bool IsPendingFull(uint64_t data_size = 0) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return max_data_size_ < data_size + data_size_;
+  }
 
   /// Return the size in bytes of all items in queue.
-  uint64_t QueueSize() { return data_size_; }
+  inline uint64_t QueueSize() { return data_size_; }
 
   /// Return the size in bytes of all items in pending state.
-  uint64_t PendingDataSize() { return data_size_ - data_size_sent_; }
+  inline uint64_t PendingDataSize() { return data_size_ - data_size_sent_; }
 
   /// Return the size in bytes of all items in processed state.
-  uint64_t ProcessedDataSize() { return data_size_sent_; }
+  inline uint64_t ProcessedDataSize() { return data_size_sent_; }
 
   /// Return item count of the queue.
-  size_t Count() { return buffer_queue_.size(); }
+  inline size_t Count() { return buffer_queue_.size(); }
 
   /// Return item count in pending state.
-  size_t PendingCount();
+  inline size_t PendingCount();
 
   /// Return item count in processed state.
-  size_t ProcessedCount();
+  inline size_t ProcessedCount();
+
+  inline ActorID GetActorID() { return actor_id_; }
+  inline ActorID GetPeerActorID() { return peer_actor_id_; }
+  inline ObjectID GetQueueID() { return queue_id_; }
 
  protected:
-  ObjectID queue_id_;
   std::list<QueueItem> buffer_queue_;
   std::list<QueueItem>::iterator watershed_iter_;
 
+  ActorID actor_id_;
+  ActorID peer_actor_id_;
+  ObjectID queue_id_;
   /// max data size in bytes
   uint64_t max_data_size_;
   uint64_t data_size_;
@@ -107,40 +130,53 @@ class WriterQueue : public Queue {
   WriterQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, uint64_t size,
               std::shared_ptr<Transport> transport)
-      : Queue(queue_id, size, transport),
+      : Queue(actor_id, peer_actor_id, queue_id, size, transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
+        seq_id_(QUEUE_INITIAL_SEQ_ID),
         eviction_limit_(QUEUE_INVALID_SEQ_ID),
-        min_consumed_id_(QUEUE_INVALID_SEQ_ID),
+        min_consumed_msg_id_(QUEUE_INVALID_SEQ_ID),
         peer_last_msg_id_(0),
         peer_last_seq_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport),
-        is_pulling_(false) {}
+        is_resending_(false),
+        is_upstream_first_pull_(true) {}
 
-  /// Push a continuous buffer into queue.
-  /// NOTE: the buffer should be copied.
-  Status Push(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
-              bool raw = false);
+  /// Push a continuous buffer into queue, the buffer consists of some messages packed by
+  /// DataWriter.
+  /// \param data, the buffer address
+  /// \param data_size, buffer size
+  /// \param timestamp, the timestamp when the buffer pushed in
+  /// \param msg_id_start, the message id of the first message in the buffer
+  /// \param msg_id_end, the message id of the last message in the buffer
+  /// \param raw, whether this buffer is raw data, be True only in test
+  Status Push(uint8_t *buffer, uint32_t buffer_size, uint64_t timestamp,
+              uint64_t msg_id_start, uint64_t msg_id_end, bool raw = false);
 
   /// Callback function, will be called when downstream queue notifies
   /// it has consumed some items.
   /// NOTE: this callback function is called in queue thread.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
 
+  /// Callback function, will be called when downstream queue receives
+  /// resend items form upstream queue.
+  /// NOTE: this callback function is called in queue thread.
+  void OnPull(std::shared_ptr<PullRequestMessage> pull_msg,
+              boost::asio::io_service &service,
+              std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
+
   /// Send items through direct call.
   void Send();
 
   /// Called when user pushs item into queue. The count of items
-  /// can be evicted, determined by eviction_limit_ and min_consumed_id_.
+  /// can be evicted, determined by eviction_limit_ and min_consumed_msg_id_.
   Status TryEvictItems();
 
-  void SetQueueEvictionLimit(uint64_t eviction_limit) {
-    eviction_limit_ = eviction_limit;
-  }
+  void SetQueueEvictionLimit(uint64_t msg_id) { eviction_limit_ = msg_id; }
 
   uint64_t EvictionLimit() { return eviction_limit_; }
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
+  uint64_t GetMinConsumedMsgID() { return min_consumed_msg_id_; }
 
   void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
     peer_last_msg_id_ = msg_id;
@@ -152,15 +188,40 @@ class WriterQueue : public Queue {
   uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
 
  private:
+  /// Resend an item to peer.
+  /// \param item, the item object reference to ben resend.
+  /// \param first_seq_id, the seq id of the first item in this resend sequence.
+  /// \param last_seq_id, the seq id of the last item in this resend sequence.
+  void ResendItem(QueueItem &item, uint64_t first_seq_id, uint64_t last_seq_id);
+  /// Resend items to peer from start_iter iterator to watershed_iter_.
+  /// \param start_iter, the starting list iterator.
+  /// \param first_seq_id, the seq id of the first item in this resend sequence.
+  /// \param last_seq_id, the seq id of the last item in this resend sequence.
+  int ResendItems(std::list<QueueItem>::iterator start_iter, uint64_t first_seq_id,
+                  uint64_t last_seq_id);
+  /// Find the item which the message with `target_msg_id` in. If the `target_msg_id`
+  /// is larger than the largest message id in the queue, the `greater_callback` callback
+  /// will be called; If the `target_message_id` is smaller than the smallest message id
+  /// in the queue, the `less_callback` callback will be called; If the `target_msg_id` is
+  /// found in the queue, the `found_callback` callback willbe called.
+  /// \param target_msg_id, the target message id to be found.
+  void FindItem(uint64_t target_msg_id, std::function<void()> greater_callback,
+                std::function<void()> less_callback,
+                std::function<void(std::list<QueueItem>::iterator, uint64_t, uint64_t)>
+                    equal_callback);
+
+ private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
+  uint64_t seq_id_;
   uint64_t eviction_limit_;
-  uint64_t min_consumed_id_;
+  uint64_t min_consumed_msg_id_;
   uint64_t peer_last_msg_id_;
   uint64_t peer_last_seq_id_;
   std::shared_ptr<Transport> transport_;
 
-  std::atomic<bool> is_pulling_;
+  std::atomic<bool> is_resending_;
+  bool is_upstream_first_pull_;
 };
 
 /// Queue in downstream.
@@ -173,12 +234,12 @@ class ReaderQueue : public Queue {
   /// NOTE: we do not restrict queue size of ReaderQueue
   ReaderQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, std::shared_ptr<Transport> transport)
-      : Queue(queue_id, std::numeric_limits<uint64_t>::max(), transport),
+      : Queue(actor_id, peer_actor_id, queue_id, std::numeric_limits<uint64_t>::max(),
+              transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
-        expect_seq_id_(1),
+        last_recv_msg_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport) {}
 
   /// Delete processed items whose seq id <= seq_id,
@@ -186,12 +247,13 @@ class ReaderQueue : public Queue {
   void OnConsumed(uint64_t seq_id);
 
   void OnData(QueueItem &item);
+  /// Callback function, will be called when PullPeer DATA comes.
+  /// TODO: can be combined with OnData
+  /// NOTE: this callback function is called in queue thread.
+  void OnResendData(std::shared_ptr<ResendDataMessage> msg);
 
-  uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
-
-  uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
-
-  void SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
+  inline uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
+  inline uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
 
  private:
   void Notify(uint64_t seq_id);
@@ -200,9 +262,8 @@ class ReaderQueue : public Queue {
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
-  uint64_t min_consumed_id_;
   uint64_t last_recv_seq_id_;
-  uint64_t expect_seq_id_;
+  uint64_t last_recv_msg_id_;
   std::shared_ptr<PromiseWrapper> promise_for_pull_;
   std::shared_ptr<Transport> transport_;
 };

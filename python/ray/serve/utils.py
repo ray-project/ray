@@ -27,9 +27,9 @@ ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 def parse_request_item(request_item):
-    if request_item.request_context == TaskContext.Web:
+    if request_item.metadata.request_context == TaskContext.Web:
         is_web_context = True
-        asgi_scope, body_bytes = request_item.request_args
+        asgi_scope, body_bytes = request_item.args
 
         flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
         args = (flask_request, )
@@ -37,7 +37,7 @@ def parse_request_item(request_item):
     else:
         is_web_context = False
         args = (FakeFlaskRequest(), )
-        kwargs = request_item.request_kwargs
+        kwargs = request_item.kwargs
 
     return args, kwargs, is_web_context
 
@@ -105,11 +105,11 @@ def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
 
 
-def format_actor_name(actor_name, instance_name=None, *modifiers):
-    if instance_name is None:
+def format_actor_name(actor_name, controller_name=None, *modifiers):
+    if controller_name is None:
         name = actor_name
     else:
-        name = "{}:{}".format(instance_name, actor_name)
+        name = "{}:{}".format(controller_name, actor_name)
 
     for modifier in modifiers:
         name += "-{}".format(modifier)

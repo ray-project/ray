@@ -11,7 +11,7 @@ import io.ray.streaming.runtime.config.types.ResourceAssignStrategyType;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.Resources;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategy;
 import io.ray.streaming.runtime.master.resourcemanager.strategy.ResourceAssignStrategyFactory;
 import io.ray.streaming.runtime.util.RayUtils;
@@ -30,39 +30,33 @@ public class ResourceManagerImpl implements ResourceManager {
 
   //Container used tag
   private static final String CONTAINER_ENGAGED_KEY = "CONTAINER_ENGAGED_KEY";
-
-  /**
-   * Job runtime context.
-   */
-  private JobRuntimeContext runtimeContext;
-
-  /**
-   * Resource related configuration.
-   */
-  private ResourceConfig resourceConfig;
-
-  /**
-   * Slot assign strategy.
-   */
-  private ResourceAssignStrategy resourceAssignStrategy;
-
   /**
    * Resource description information.
    */
   private final Resources resources;
-
-  /**
-   * Customized actor number for each container
-   */
-  private int actorNumPerContainer;
-
   /**
    * Timing resource updating thread
    */
   private final ScheduledExecutorService resourceUpdater = new ScheduledThreadPoolExecutor(1,
       new ThreadFactoryBuilder().setNameFormat("resource-update-thread").build());
+  /**
+   * Job runtime context.
+   */
+  private JobMasterRuntimeContext runtimeContext;
+  /**
+   * Resource related configuration.
+   */
+  private ResourceConfig resourceConfig;
+  /**
+   * Slot assign strategy.
+   */
+  private ResourceAssignStrategy resourceAssignStrategy;
+  /**
+   * Customized actor number for each container
+   */
+  private int actorNumPerContainer;
 
-  public ResourceManagerImpl(JobRuntimeContext runtimeContext) {
+  public ResourceManagerImpl(JobMasterRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
     StreamingMasterConfig masterConfig = runtimeContext.getConf().masterConfig;
 
@@ -77,7 +71,7 @@ public class ResourceManagerImpl implements ResourceManager {
     ResourceAssignStrategyType resourceAssignStrategyType =
         ResourceAssignStrategyType.PIPELINE_FIRST_STRATEGY;
     this.resourceAssignStrategy = ResourceAssignStrategyFactory.getStrategy(
-      resourceAssignStrategyType);
+        resourceAssignStrategyType);
     LOG.info("Slot assign strategy: {}.", resourceAssignStrategy.getName());
 
     //Init resource
@@ -89,7 +83,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   @Override
-  public ResourceAssignmentView assignResource(List<Container> containers,
+  public ResourceAssignmentView assignResource(
+      List<Container> containers,
       ExecutionGraph executionGraph) {
     return resourceAssignStrategy.assignResource(containers, executionGraph);
   }
@@ -106,8 +101,8 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   /**
-   * Check the status of ray cluster node and update the internal resource information of
-   * streaming system.
+   * Check the status of ray cluster node and update the internal resource information of streaming
+   * system.
    */
   private void checkAndUpdateResource() {
     //Get add&del nodes(node -> container)
@@ -117,7 +112,8 @@ public class ResourceManagerImpl implements ResourceManager {
         .filter(this::isAddedNode).collect(Collectors.toList());
 
     List<UniqueId> deleteNodes = resources.getRegisteredContainerMap().keySet().stream()
-        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId)).collect(Collectors.toList());
+        .filter(nodeId -> !latestNodeInfos.containsKey(nodeId))
+        .collect(Collectors.toList());
     LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisteredContainers(), addNodes, deleteNodes);
 
@@ -156,7 +152,6 @@ public class ResourceManagerImpl implements ResourceManager {
     // failover case: container has already allocated actors
     double availableCapacity = actorNumPerContainer - container.getAllocatedActorNum();
 
-
     //Create ray resource.
     Ray.setResource(container.getNodeId(), container.getName(), availableCapacity);
     //Mark container is already registered.
@@ -164,7 +159,7 @@ public class ResourceManagerImpl implements ResourceManager {
 
     // update container's available dynamic resources
     container.getAvailableResources()
-      .put(container.getName(), availableCapacity);
+        .put(container.getName(), availableCapacity);
 
     // update register container list
     resources.registerContainer(container);

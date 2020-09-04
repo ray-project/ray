@@ -199,9 +199,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  void ClearAllocatedInstances() {
-    allocated_instances_ = nullptr;
-  }
+  void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
 
   void ClearLifetimeAllocatedInstances() { RAY_CHECK(false) << "Method unused"; }
 
@@ -218,9 +216,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  std::vector<double> &GetBorrowedCPUInstances() {
-    return borrowed_cpu_instances_;
-  }
+  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
 
   void ClearBorrowedCPUInstances() { RAY_CHECK(false) << "Method unused"; }
 
@@ -268,13 +264,13 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(id, Language::PYTHON,
+  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {}, PlacementGroupID::Nil());
 
   for (int i = 0; i < num_args; i++) {
-    ObjectID put_id = ObjectID::ForPut(TaskID::Nil(), /*index=*/i + 1);
+    ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
     spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
   }
 
@@ -442,7 +438,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
@@ -483,15 +479,14 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
   ASSERT_TRUE(callback_called);
-  ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1);
 }
-
-}  // namespace raylet
-
-}  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+}  // namespace raylet
+}  // namespace ray

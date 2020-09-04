@@ -8,6 +8,7 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
+from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
@@ -21,6 +22,7 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.web_server import TuneServer
 from ray.utils import binary_to_hex, hex_to_binary
+from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
 
@@ -108,6 +110,10 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
+        run_errored_only (bool): Resets and reruns failed trials, assuming
+            the provided Trainable is the same. Previous trial artifacts
+            will be left untouched. Only to be used with
+            `resume` enabled. Raises ValueError otherwise.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -130,6 +136,7 @@ class TrialRunner:
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  fail_fast=False,
+                 run_errored_only=False,
                  verbose=True,
                  checkpoint_period=10,
                  trial_executor=None):
@@ -181,8 +188,7 @@ class TrialRunner:
 
         if self._validate_resume(resume_type=resume):
             try:
-                self.resume()
-                logger.info("Resuming trial.")
+                self.resume(run_errored_only=run_errored_only)
                 self._resumed = True
             except Exception as e:
                 if self._verbose:
@@ -192,6 +198,11 @@ class TrialRunner:
                     raise
                 logger.info("Restarting experiment.")
         else:
+            if run_errored_only:
+                raise ValueError(
+                    "'run_errored_only' should only be used with 'resume'. "
+                    f"Got: resume={resume}, "
+                    f"run_errored_only={run_errored_only}")
             logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
@@ -307,7 +318,7 @@ class TrialRunner:
             self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
-    def resume(self):
+    def resume(self, run_errored_only=False):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -335,7 +346,11 @@ class TrialRunner:
             trials += [new_trial]
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
-            self.add_trial(trial)
+            if run_errored_only and trial.status == Trial.ERROR:
+                new_trial = trial.reset()
+                self.add_trial(new_trial)
+            else:
+                self.add_trial(trial)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -371,8 +386,8 @@ class TrialRunner:
         try:
             with warn_if_slow("experiment_checkpoint"):
                 self.checkpoint()
-        except Exception:
-            logger.exception("Trial Runner checkpointing failed.")
+        except Exception as e:
+            logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
         self._iteration += 1
 
         if self._server:
@@ -447,6 +462,7 @@ class TrialRunner:
         self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
+            logger.debug("Running trial {}".format(trial))
         return trial
 
     def _process_events(self):
@@ -471,12 +487,19 @@ class TrialRunner:
                 if profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
-                    logger.warning(
+
+                    msg = (
                         "Consider turning off forced head-worker trial "
                         "checkpoint syncs by setting sync_on_checkpoint=False"
                         ". Note that this may result in faulty trial "
                         "restoration if a failure occurs while the checkpoint "
                         "is being synced from the worker to the head node.")
+
+                    if trial.location.hostname and (trial.location.hostname !=
+                                                    get_node_ip_address()):
+                        if log_once("tune_head_worker_checkpoint"):
+                            logger.warning(msg)
+
             else:
                 with warn_if_slow("process_trial"):
                     self._process_trial(trial)

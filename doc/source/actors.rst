@@ -54,7 +54,7 @@ Any method of the actor can return multiple object refs with the ``ray.method`` 
     @ray.remote
     class Foo(object):
 
-        @ray.method(num_return_vals=2)
+        @ray.method(num_returns=2)
         def bar(self):
             return 1, 2
 
@@ -72,7 +72,7 @@ Resources with Actors
 You can specify that an actor requires CPUs or GPUs in the decorator. While Ray has built-in support for CPUs and GPUs, Ray can also handle custom resources.
 
 When using GPUs, Ray will automatically set the environment variable ``CUDA_VISIBLE_DEVICES`` for the actor after instantiated. The actor will have access to a list of the IDs of the GPUs
-that it is allowed to use via ``ray.get_gpu_ids(as_str=True)``. This is a list of strings,
+that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of strings,
 like ``[]``, or ``['1']``, or ``['2', '5', '6']``. Under some circumstances, the IDs of GPUs could be given as UUID strings instead of indices (see the `CUDA programming guide <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#env-vars>`__).
 
 .. code-block:: python
@@ -149,10 +149,12 @@ approach should generally not be necessary as actors are automatically garbage
 collected. The ``ObjectRef`` resulting from the task can be waited on to wait
 for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError``).
 Note that this method of termination will wait until any previously submitted
-tasks finish executing. If you want to terminate an actor immediately, you can
-call ``ray.kill(actor_handle)``. This will cause the actor to exit immediately
-and any pending tasks to fail. Any exit handlers installed in the actor using
-``atexit`` will be called.
+tasks finish executing and then exit the process gracefully with sys.exit. If you
+want to terminate an actor forcefully, you can call ``ray.kill(actor_handle)``.
+This will call the exit syscall from within the actor, causing it to exit
+immediately and any pending tasks to fail. This will not go through the normal
+Python sys.exit teardown logic, so any exit handlers installed in the actor using
+``atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
@@ -199,6 +201,37 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
 
+Named Actors
+------------
+
+An actor can be given a globally unique name via ``.options(name="some_name")``,
+which allows you to retrieve the actor from any job in the Ray cluster via
+``ray.get_actor("some_name")``. This can be useful if you cannot directly
+pass the actor handle to the task that needs it, or if you are trying to
+access an actor launched by another driver.
+
+Actor Lifetimes
+---------------
+
+Separately, actor lifetimes can be decoupled from the job, allowing an actor to
+persist even after the driver process of the job exits.
+
+.. code-block:: python
+
+  counter = Counter.options(name="CounterActor", lifetime="detached").remote()
+
+The CounterActor will be kept alive even after the driver running above script
+exits. Therefore it is possible to run the following script in a different
+driver:
+
+.. code-block:: python
+
+  counter = ray.get_actor("CounterActor")
+  print(ray.get(counter.get_counter.remote()))
+
+Note that the lifetime option is decoupled from the name. If we only specified
+the name without specifying ``lifetime="detached"``, then the CounterActor can
+only be retrieved as long as the original driver is still running.
 
 Actor Pool
 ----------
@@ -206,7 +239,7 @@ Actor Pool
 The ``ray.util`` module contains a utility class, ``ActorPool``.
 This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
-.. code-block::
+.. code-block:: python
 
   from ray.util import ActorPool
 

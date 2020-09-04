@@ -21,7 +21,7 @@ import click
 import colorama
 from colorful.core import ColorfulString
 import colorful as cf
-colorama.init()
+colorama.init(strip=False)
 
 
 def _patched_makeRecord(self,
@@ -139,13 +139,13 @@ def _format_msg(msg: str,
                 tags_list += [k + "=" + v]
             if tags_list:
                 tags_str = cf.reset(
-                    cf.gray(" [{}]".format(", ".join(tags_list))))
+                    cf.dimmed(" [{}]".format(", ".join(tags_list))))
 
         numbering_str = ""
         if _numbered is not None:
             chars, i, n = _numbered
-            numbering_str = cf.gray(chars[0] + str(i) + "/" + str(n) +
-                                    chars[1]) + " "
+            numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) +
+                                      chars[1]) + " "
 
         if _no_format:
             # todo: throw if given args/kwargs?
@@ -170,22 +170,12 @@ class _CliLogger():
     """Singleton class for CLI logging.
 
     Attributes:
-        strip (bool):
-            If `strip` is `True`, all TTY control sequences will be
-            removed from the output.
-        old_style (bool):
-            If `old_style` is `True`, the old logging calls are used instead
-            of the new CLI UX. This is enabled by default and remains for
-            backwards compatibility.
         color_mode (str):
             Can be "true", "false", or "auto".
 
-            Determines the value of `strip` using a human-readable string
-            that can be set from command line arguments.
+            Enables or disables `colorful`.
 
-            Also affects the `colorful` settings.
-
-            If `color_mode` is "auto", `strip` is set to `not stdout.isatty()`
+            If `color_mode` is "auto", is set to `not stdout.isatty()`
         indent_level (int):
             The current indentation level.
 
@@ -194,21 +184,12 @@ class _CliLogger():
             Output verbosity.
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
-        dump_command_output (bool):
-            Determines whether the old behavior of dumping command output
-            to console will be used, or the new behavior of redirecting to
-            a file.
-
-            ! Currently unused.
     """
-    strip: bool
-    old_style: bool
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
     verbosity: int
 
-    dump_command_output: bool
     _autodetected_cf_colormode: int
 
     def __init__(self):
@@ -220,12 +201,10 @@ class _CliLogger():
 
         self._verbosity = 0
 
-        self.dump_command_output = False
-
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
-        self._autodetected_cf_colormode = cf.colormode
+        self._autodetected_cf_colormode = cf.colorful.colormode
 
     @property
     def non_interactive_mode(self):
@@ -278,7 +257,7 @@ class _CliLogger():
         color output
         (8-color ANSI if no terminal detected to be safe) in colorful.
         """
-
+        self.color_mode = self.color_mode.lower()
         if self.color_mode == "true":
             if self._autodetected_cf_colormode != cf.NO_COLORS:
                 cf.colormode = self._autodetected_cf_colormode
@@ -289,7 +268,6 @@ class _CliLogger():
             cf.disable()
             return
         if self.color_mode == "auto":
-            self.strip = not sys.stdout.isatty()
             # colorful autodetects tty settings
             return
 
@@ -370,7 +348,7 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.cornflowerBlue(msg), *args, **kwargs)
+        self.print(cf.dodgerBlue(msg), *args, **kwargs)
 
         return self.indented()
 
@@ -404,7 +382,8 @@ class _CliLogger():
         For other arguments, see `_format_msg`.
         """
         self._print(
-            cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
+            cf.skyBlue(key) + ": " +
+            _format_msg(cf.bold(msg), *args, **kwargs))
 
     def verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message if verbosity is not 0.
@@ -443,7 +422,7 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.green(msg), *args, _level_str="SUCC", **kwargs)
+        self.print(cf.limeGreen(msg), *args, _level_str="SUCC", **kwargs)
 
     def _warning(self, msg: str, *args: Any, _level_str: str = None, **kwargs: Any):
         """Prints a formatted warning message.
@@ -452,7 +431,7 @@ class _CliLogger():
         """
         if _level_str is None:
             raise ValueError("Log level not set.")
-        self.print(cf.yellow(msg), *args, _level_str=_level_str, **kwargs)
+        self.print(cf.orange(msg), *args, _level_str=_level_str, **kwargs)
 
     def warning(self, *args, **kwargs):
         self._warning(*args, _level_str="WARN", **kwargs)
@@ -577,14 +556,15 @@ class _CliLogger():
             raise ValueError("Non-interactive confirm without --yes.")
 
         if default:
-            yn_str = cf.green("Y") + "/" + cf.red("n")
+            yn_str = cf.limeGreen("Y") + "/" + cf.red("n")
         else:
-            yn_str = cf.green("y") + "/" + cf.red("N")
+            yn_str = cf.limeGreen("y") + "/" + cf.red("N")
 
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 
         rendered_message = _format_msg(msg, *args, **kwargs)
-        if rendered_message and rendered_message[-1] != "\n":
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
             rendered_message += " "
 
         msg_len = len(rendered_message.split("\n")[-1])
@@ -592,7 +572,7 @@ class _CliLogger():
 
         if yes:
             self._print(complete_str + "y " +
-                        cf.gray("[automatic, due to --yes]"))
+                        cf.dimmed("[automatic, due to --yes]"))
             return True
 
         self._print(complete_str, _linefeed=False)
@@ -633,6 +613,32 @@ class _CliLogger():
             self._print("Exiting...")
             raise SilentClickException(
                 "Exiting due to the response to confirm(should_abort=True).")
+
+        return res
+
+    def prompt(self, msg: str, *args, **kwargs):
+        """Prompt the user for some text input.
+
+        Args:
+            msg (str): The mesage to display to the user before the prompt.
+
+        Returns:
+            The string entered by the user.
+        """
+        complete_str = cf.underlined(msg)
+        rendered_message = _format_msg(complete_str, *args, **kwargs)
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
+            rendered_message += " "
+        self._print(rendered_message, linefeed=False)
+
+        res = ""
+        try:
+            ans = sys.stdin.readline()
+            ans = ans.lower()
+            res = ans.strip()
+        except KeyboardInterrupt:
+            self.newline()
 
         return res
 

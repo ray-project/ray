@@ -47,9 +47,29 @@ And vary the number of return values for tasks (and actor methods too):
     def f(n):
         return list(range(n))
 
-    id1, id2 = f.options(num_return_vals=2).remote(2)
+    id1, id2 = f.options(num_returns=2).remote(2)
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
+
+And specify a name for tasks (and actor methods too) at task submission time:
+
+.. code-block:: python
+
+   import setproctitle
+
+   @ray.remote
+   def f(x):
+      assert setproctitle.getproctitle() == "ray::special_f"
+      return x + 1
+
+   obj = f.options(name="special_f").remote(3)
+   assert ray.get(obj) == 4
+
+This name will appear as the task name in the machine view of the dashboard, will appear
+as the worker process name when this task is executing (if a Python task), and will
+appear as the task name in the logs.
+
+.. image:: images/task_name_dashboard.png
 
 
 Dynamic Custom Resources
@@ -239,28 +259,3 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
-
-Detached Actors
------------------------------------
-
-When original actor handles goes out of scope or the driver that originally
-created the actor exits, ray will clean up the actor by default. If you want
-to make sure the actor is kept alive, you can use
-``_remote(name="some_name")`` to keep the actor alive after
-the driver exits. The actor will have a globally unique name and can be
-accessed across different drivers.
-
-For example, you can instantiate and register a persistent actor as follows:
-
-.. code-block:: python
-
-  counter = Counter.options(name="CounterActor").remote()
-
-The CounterActor will be kept alive even after the driver running above script
-exits. Therefore it is possible to run the following script in a different
-driver:
-
-.. code-block:: python
-
-  counter = ray.get_actor("CounterActor")
-  print(ray.get(counter.get_counter.remote()))

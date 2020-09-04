@@ -330,21 +330,32 @@ class AWSNodeProvider(NodeProvider):
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launching {} nodes",
+                        "Launched {} nodes",
                         count,
                         _tags=dict(subnet_id=subnet_id)):
                     for instance in created:
+                        # NOTE(maximsmol): This is needed for mocking
+                        # boto3 for tests. This is likely a bug in moto
+                        # but AWS docs don't seem to say.
+                        # You can patch moto/ec2/responses/instances.py
+                        # to fix this (add <stateReason> to EC2_RUN_INSTANCES)
+
+                        # The correct value is technically
+                        # {"code": "0", "Message": "pending"}
+                        state_reason = instance.state_reason or {
+                            "Message": "pending"
+                        }
+
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=instance.state_reason["Message"]))
+                                info=state_reason["Message"]))
                         cli_logger.old_info(
                             logger, "NodeProvider: Created instance "
                             "[id={}, name={}, info={}]", instance.instance_id,
-                            instance.state["Name"],
-                            instance.state_reason["Message"])
+                            instance.state["Name"], state_reason["Message"])
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
@@ -357,8 +368,9 @@ class AWSNodeProvider(NodeProvider):
                         BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
-                    # todo: err msg
-                    cli_logger.abort(exc)
+                    cli_logger.print(
+                        "create_instances: Attempt failed with {}, retrying.",
+                        exc)
                     cli_logger.old_error(logger, exc)
 
     def terminate_node(self, node_id):
@@ -367,7 +379,7 @@ class AWSNodeProvider(NodeProvider):
             if node.spot_instance_request_id:
                 cli_logger.print(
                     "Terminating instance {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     node_id)  # todo: show node name?
 
                 cli_logger.old_info(
@@ -376,7 +388,7 @@ class AWSNodeProvider(NodeProvider):
                     "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
-                cli_logger.print("Stopping instance {} " + cf.gray(
+                cli_logger.print("Stopping instance {} " + cf.dimmed(
                     "(to terminate instead, "
                     "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration)"),
@@ -410,7 +422,7 @@ class AWSNodeProvider(NodeProvider):
             if on_demand_ids:
                 # todo: show node names?
                 cli_logger.print(
-                    "Stopping instances {} " + cf.gray(
+                    "Stopping instances {} " + cf.dimmed(
                         "(to terminate instead, "
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),
@@ -425,7 +437,7 @@ class AWSNodeProvider(NodeProvider):
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
                 cli_logger.old_info(
                     logger,
