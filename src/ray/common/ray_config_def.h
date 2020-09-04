@@ -298,3 +298,14 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
+
+/// Whether to enable gcs service restart detector.
+/// RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED is an env variable which only set in ci job
+/// and test case. If the value of RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED is false, we
+/// will disable gcs service restart detector, otherwise gcs service restart detector is
+/// enabled.
+/// TODO(ffbin): we will remove it after
+/// https://github.com/ray-project/ray/issues/10343#issuecomment-686828226 is fixed.
+RAY_CONFIG(bool, gcs_service_restart_detector_enabled,
+           getenv("RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED") != nullptr &&
+               getenv("RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED") == std::string("true"))

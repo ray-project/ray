@@ -147,6 +147,14 @@ void ServiceBasedGcsClient::PeriodicallyCheckGcsServerAddress() {
     }
   }
 
+  // If gcs service restart detector is not enabled, we will stop periodic check after
+  // the connection with gcs service is established.
+  if (!current_gcs_server_address_.first.empty() &&
+      !RayConfig::instance().gcs_service_restart_detector_enabled()) {
+    RAY_LOG(INFO) << "GCS service restart detector is not enabled, return directly.";
+    return;
+  }
+
   auto check_period = boost::posix_time::milliseconds(
       RayConfig::instance().gcs_service_address_check_interval_milliseconds());
   detect_timer_->expires_from_now(check_period);

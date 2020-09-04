@@ -31,6 +31,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
+    setenv("RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED", "true", 1);
     config_.grpc_server_port = 0;
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;

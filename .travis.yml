@@ -39,6 +39,7 @@ matrix:
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
@@ -54,6 +55,7 @@ matrix:
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
@@ -96,6 +98,7 @@ matrix:
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
@@ -112,6 +115,7 @@ matrix:
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_GCS_SERVICE_RESTART_DETECTOR_ENABLED=true
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
       before_script:
