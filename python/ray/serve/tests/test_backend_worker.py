@@ -25,7 +25,7 @@ def setup_worker(name,
     @ray.remote
     class WorkerActor:
         def __init__(self):
-            self._ = create_backend_worker(func_or_class)(
+            self.worker = create_backend_worker(func_or_class)(
                 name, name + ":tag", init_args, backend_config)
 
         def ready(self):
@@ -163,9 +163,8 @@ async def test_servable_batch_error(serve_instance, router):
             return np.array([1] * len(requests)).astype(np.int32)
 
     backend_config = BackendConfig(
-        {
-            "max_batch_size": 4,
-        }, accepts_batches=True)
+        max_batch_size=4,
+        internal_metadata=BackendMetadata(accepts_batches=True))
     _ = await add_servable_to_router(
         ErrorBatcher, router, backend_config=backend_config)
 

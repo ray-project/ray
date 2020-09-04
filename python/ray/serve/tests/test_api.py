@@ -259,10 +259,9 @@ def test_batching_legacy(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
+        def __call__(self, request):
             self.count += 1
-            batch_size = serve.context.batch_size
-            return [self.count] * batch_size
+            return [self.count] * len(request)
 
     # set the max batch size
     serve.create_backend(
@@ -340,9 +339,8 @@ def test_updating_config(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return [1] * batch_size
+        def __call__(self, request):
+            return [1] * len(request)
 
     serve.create_backend(
         "bsimple:v1",
@@ -374,9 +372,8 @@ def test_updating_config_legacy(serve_instance):
             self.count = 0
 
         @serve.accept_batch
-        def __call__(self, flask_request, temp=None):
-            batch_size = serve.context.batch_size
-            return [1] * batch_size
+        def __call__(self, request):
+            return [1] * len(request)
 
     serve.create_backend(
         "bsimple:v1",

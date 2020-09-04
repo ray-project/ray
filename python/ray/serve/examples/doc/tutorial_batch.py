@@ -88,7 +88,7 @@ input_batch = list(range(9))
 print("Input batch is", input_batch)
 # Input batch is [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
-result_batch = ray.get([handle.remote(numbers=i) for i in input_batch])
+result_batch = ray.get([handle.remote(number=i) for i in input_batch])
 # Output
 # (pid=...) Current context is python
 # (pid=...) Our input array has shape: (1,)
