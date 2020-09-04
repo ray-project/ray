@@ -20,7 +20,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    #TODO
     ray.init(num_cpus=args.num_cpus or None)
 
     configs = {

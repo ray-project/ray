@@ -25,7 +25,8 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.env.unity3d_env import Unity3DEnv
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

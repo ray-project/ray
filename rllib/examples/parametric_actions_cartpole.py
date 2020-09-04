@@ -23,7 +23,8 @@ from ray.rllib.examples.env.parametric_actions_cartpole import \
 from ray.rllib.examples.models.parametric_actions_model import \
     ParametricActionsModel, TorchParametricActionsModel
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()

@@ -95,7 +95,6 @@ class VTraceLoss:
         self.value_targets = self.vtrace_returns.vs.to(device)
 
         # The policy gradients loss.
-        print("logp.device={} pg_ad.device={} valid_mask.device={}".format(actions_logp.device, self.vtrace_returns.pg_advantages.device, valid_mask.device))
         self.pi_loss = -torch.sum(
             actions_logp * self.vtrace_returns.pg_advantages.to(device) *
             valid_mask)
@@ -114,7 +113,6 @@ class VTraceLoss:
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
-    print("policy.device={} model out device={}".format(policy.device, model_out.device))
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -160,7 +158,6 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    print("action-dist.inputs.device={} actions.device={}".format(action_dist.inputs.device, actions.device))
     policy.loss = VTraceLoss(
         actions=_make_time_major(loss_actions, drop_last=True),
         actions_logp=_make_time_major(

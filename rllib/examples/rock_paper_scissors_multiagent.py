@@ -18,7 +18,8 @@ from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()

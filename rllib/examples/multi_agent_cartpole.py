@@ -20,7 +20,8 @@ from ray.rllib.examples.models.shared_weights_model import \
     SharedWeightsModel1, SharedWeightsModel2, TorchSharedWeightsModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 tf1, tf, tfv = try_import_tf()
 

@@ -16,7 +16,8 @@ from ray import tune
 from ray.tune import register_env, grid_search
 from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PG")

@@ -6,7 +6,8 @@ import ray.tune as tune
 from ray.tune.registry import register_env
 from ray.rllib.examples.env.nested_space_repeat_after_me_env import \
     NestedSpaceRepeatAfterMeEnv
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")

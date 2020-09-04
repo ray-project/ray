@@ -418,8 +418,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
-        if (ray.is_initialized()):
-                #and ray.worker._mode() != ray.worker.LOCAL_MODE):
+        if ray.is_initialized():
             # Check available number of GPUs.
             if not ray.get_gpu_ids():
                 logger.debug("Creating policy evaluation worker {}".format(
@@ -982,7 +981,7 @@ class RolloutWorker(ParallelIteratorWorker):
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
 
-            self._validate_policy_config(merged_conf)
+            self._validate_framework_config(merged_conf)
 
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
@@ -991,11 +990,17 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_space = preprocessor.observation_space
             else:
                 preprocessors[name] = NoPreprocessor(obs_space)
+
+            # Tuple/Dict obs spaces not supported. Must be wrapped by
+            # flattening preprocessor.
             if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
+
+            # TF: Handle possible hardware placement here (around call to
+            # Policy constructor).
             if merged_conf.get("framework") in ["tf2", "tf", "tfe"]:
                 if tf1.executing_eagerly():
                     if hasattr(cls, "as_eager"):
@@ -1008,15 +1013,19 @@ class RolloutWorker(ParallelIteratorWorker):
                         raise ValueError("This policy does not support eager "
                                          "execution: {}".format(cls))
                 with tf1.variable_scope(name):
-                    if ray.get_gpu_ids():
+                    # GPUs are available and config does not specifically
+                    # say: "no GPUs".
+                    if ray.get_gpu_ids() and merged_conf["num_gpus"] != 0:
                         logger.info("TFPolicy running on default device.")
                         policy_map[name] = cls(
                             obs_space, act_space, merged_conf)
+                    # No GPUs or config says: "no GPUs" -> Force run on CPU.
                     else:
                         logger.info("TFPolicy running on CPU.")
                         with tf.device("cpu"):
                             policy_map[name] = cls(obs_space, act_space,
                                 merged_conf)
+            # PyTorch: Policy class handles GPU placement.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
 
@@ -1053,21 +1062,15 @@ class RolloutWorker(ParallelIteratorWorker):
         from ray.util.sgd import utils
         return utils.find_free_port()
 
-    def _validate_policy_config(self, config):
-        # Check and resolve DL framework settings.
-        if "use_pytorch" in config and \
-                config["use_pytorch"] != DEPRECATED_VALUE:
-            deprecation_warning("use_pytorch", "framework=torch",
-                error=False)
-            if config["use_pytorch"]:
-                config["framework"] = "torch"
-            config.pop("use_pytorch")
-        if "eager" in config and config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning("eager", "framework=tfe", error=False)
-            if config["eager"]:
-                config["framework"] = "tfe"
-            config.pop("eager")
+    def _validate_framework_config(self, config):
+        """Validates `framework` settings in config vs installed libraries.
 
+        Does not perform any hardware checks (e.g. GPUs).
+
+        Args:
+            config (TrainerConfigDict): The trainer/policy config dict to
+                canity check.
+        """
         # Handle tf Policy.
         if config.get("framework") in ["tf2", "tf", "tfe"]:
             # Tf not installed.
@@ -1078,7 +1081,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     "`pip install tensorflow` to solve this.")
             # tf2 configured, but version is tf1.x.
             if config["framework"] == "tf2" and tfv < 2:
-                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
+                raise ValueError("`framework=tf2`, but tf-version is < 2.0!")
             # Switch on eager mode (if not already done).
             elif config["framework"] in ["tf2", "tfe"] and \
                     not tf1.executing_eagerly():
@@ -1087,12 +1090,19 @@ class RolloutWorker(ParallelIteratorWorker):
                     config["eager_tracing"]))
             # If we are already in eager mode and framework=="tf" -> Error.
             # Currently, we do not support both tf modes at the same time.
-            elif config["framework"] == "tf" and tf1.executing_eagerly():
-                raise ValueError(
-                    "One of your Policies is configured to use static-graph "
-                    "TensorFlow, but other Policies are using tf-eager mode. "
-                    "This is currently not supported. Setup your Policies "
-                    "either with `framework=tf` or with framework=`tfe|tf2`.")
+            elif config["framework"] == "tf":
+                # Propose using eager
+                if not tf1.executing_eagerly():
+                    logger.info(
+                        "Tip: set framework=[tf2|tfe] to enable "
+                        "TensorFlow eager execution")
+                else:
+                    raise ValueError(
+                        "One of your Policies is configured to use "
+                        "static-graph TensorFlow, but other Policies are "
+                        "using tf-eager mode. This is currently not supported."
+                        " Setup your Policies either with `framework=tf` or "
+                        "with framework=`tfe|tf2`.")
         # PyTorch Policy.
         elif config.get("framework") == "torch":
             if not torch:
@@ -1100,14 +1110,6 @@ class RolloutWorker(ParallelIteratorWorker):
                     "One of your Policies is configured to run on PyTorch "
                     "(torch), but torch is not installed! Do "
                     "`pip install torch` to solve this.")
-
-        #TODO: move this somewhere else
-        # Propose using eager
-        #if tf1 and not tf1.executing_eagerly() and \
-        #        config["framework"] != "torch":
-        #    logger.info(
-        #        "Tip: set framework=[tf2|tfe] to enable "
-        #        "TensorFlow eager execution")
 
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):

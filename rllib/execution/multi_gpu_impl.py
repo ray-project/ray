@@ -58,7 +58,6 @@ class LocalSyncParallelOptimizer:
                  grad_norm_clipping=None):
         self.optimizer = optimizer
         self.devices = devices
-        print("DEVICES={}".format(devices))
         self.max_per_device_batch_size = max_per_device_batch_size
         self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph

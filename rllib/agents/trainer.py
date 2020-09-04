@@ -138,7 +138,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # also printed out once at startup at the INFO level). When using the
     # `rllib train` command, you can also use the `-v` and `-vv` flags as
     # shorthand for INFO and DEBUG.
-    "log_level": "INFO", #TODO
+    "log_level": "WARN",
     # Callbacks that will be run during various phases of training. See the
     # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
     # for more usage information.
@@ -491,12 +491,6 @@ class Trainer(Trainable):
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
         num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
-
-        # `num_gpus`=None: Set it to as many as we actually have available.
-        #if cf["num_gpus"] is None:
-        #    cf["num_gpus"] = ray.available_resources().get("GPU", 0)
-        print("num_gpus in default resource request={}".format(cf["num_gpus"]))
-
         # TODO(ekl): add custom resources here once tune supports them
         return Resources(
             cpu=cf["num_cpus_for_driver"],
@@ -1061,7 +1055,8 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        # `num_gpus`=None: Set it to as many as we actually have available.
+        # Resolve `num_gpus`=None (default): Set `num_gpus` to as many as we
+        # actually have available.
         if config["num_gpus"] is None:
             # TODO: This seems like a total hack. Why do these calls return
             #  different values in different situations (local_mode=True OR
@@ -1069,7 +1064,8 @@ class Trainer(Trainable):
             config["num_gpus"] = max(
                 ray.available_resources().get("GPU", 0),
                 len(ray.get_gpu_ids()))
-            print("num_gpus in Trainer._validate_config={}".format(config["num_gpus"]))
+            logger.info("`num_gpus` set to None -> setting it to {}.".format(
+                config["num_gpus"]))
 
         if config.get("_use_trajectory_view_api") and \
                 config.get("framework") != "torch":

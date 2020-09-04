@@ -31,7 +31,8 @@ from ray import tune
 from ray.tune import function
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, \
     HierarchicalWindyMazeEnv
-from ray.rllib.utils.test_utils import check_learning_achieved, RLLIB_FORCE_NUM_GPUS
+from ray.rllib.utils.test_utils import check_learning_achieved, \
+    RLLIB_FORCE_NUM_GPUS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--flat", action="store_true")
