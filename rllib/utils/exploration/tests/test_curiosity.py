@@ -32,20 +32,21 @@ class OneHotWrapper(gym.core.ObservationWrapper):
             self.frame_buffer.append(np.zeros((self.single_frame_dim, )))
 
         self.observation_space = gym.spaces.Box(
-            0.0, 1.0, shape=(self.single_frame_dim * self.framestack, ),
+            0.0,
+            1.0,
+            shape=(self.single_frame_dim * self.framestack, ),
             dtype=np.float32)
 
     def observation(self, obs):
         # Debug output: max-x/y positions to watch exploration progress.
         if self.step_count == 0:
             for _ in range(self.framestack):
-                self.frame_buffer.append(np.zeros((self.single_frame_dim,)))
+                self.frame_buffer.append(np.zeros((self.single_frame_dim, )))
             if self.vector_index == 0:
                 if self.x_positions:
                     max_diff = max(
-                        np.sqrt(
-                            (np.array(self.x_positions) - self.init_x) ** 2 +
-                            (np.array(self.y_positions) - self.init_y) ** 2))
+                        np.sqrt((np.array(self.x_positions) - self.init_x)**2 +
+                                (np.array(self.y_positions) - self.init_y)**2))
                     self.x_y_delta_buffer.append(max_diff)
                     print("100-average dist travelled={}".format(
                         np.mean(self.x_y_delta_buffer)))
@@ -73,8 +74,8 @@ class OneHotWrapper(gym.core.ObservationWrapper):
 
         all_ = np.concatenate([objects, colors, states], -1)
         all_flat = np.reshape(all_, (-1, ))
-        direction = one_hot(np.array(self.agent_dir), depth=4).astype(
-            np.float32)
+        direction = one_hot(
+            np.array(self.agent_dir), depth=4).astype(np.float32)
         single_frame = np.concatenate([all_flat, direction])
         self.frame_buffer.append(single_frame)
         return np.concatenate(self.frame_buffer)
@@ -135,7 +136,7 @@ class TestCuriosity(unittest.TestCase):
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
         config["horizon"] = 35
-        config["train_batch_size"] = 1024
+        config["train_batch_size"] = 2048
         config["num_sgd_iter"] = 10
         config["num_workers"] = 0  # local only
 
@@ -146,10 +147,10 @@ class TestCuriosity(unittest.TestCase):
                 "type": "Curiosity",
                 "lr": 0.0003,
                 "feature_dim": 128,
-#                "feature_net_config": {
-#                    "fcnet_hiddens": [],
-#                    "fcnet_activation": "relu",
-#                },
+                "feature_net_config": {
+                    "fcnet_hiddens": [],
+                    "fcnet_activation": "relu",
+                },
                 "sub_exploration": {
                     "type": "StochasticSampling",
                 }
@@ -232,8 +233,7 @@ class TestCuriosity(unittest.TestCase):
             #         s = env.reset()
             #     env.render()
 
-            results = tune.run(
-                "PPO", config=config, stop=stop, verbose=1)
+            results = tune.run("PPO", config=config, stop=stop, verbose=1)
             check_learning_achieved(results, min_reward)
             iters = results.trials[0].last_result["training_iteration"]
             print("Reached in {} iterations.".format(iters))

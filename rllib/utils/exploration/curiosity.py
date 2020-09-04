@@ -137,9 +137,9 @@ class Curiosity(Exploration):
             [self.action_dim], self.inverse_net_activation)
 
         self._curiosity_forward_fcnet = self._create_fc_net(
-            [self.feature_dim + self.action_dim] +
-            list(self.forward_net_hiddens) +
-            [self.feature_dim], self.forward_net_activation)
+            [self.feature_dim + self.action_dim] + list(
+                self.forward_net_hiddens) + [self.feature_dim],
+            self.forward_net_activation)
 
         # This is only used to select the correct action
         self.exploration_submodule = from_config(
@@ -210,10 +210,9 @@ class Curiosity(Exploration):
 
         # Predict next phi with forward model.
         predicted_next_phi = self.model._curiosity_forward_fcnet(
-            torch.cat([
-                phi,
-                one_hot(actions_tensor, self.action_space).float()
-            ], dim=-1))
+            torch.cat(
+                [phi, one_hot(actions_tensor, self.action_space).float()],
+                dim=-1))
 
         # Forward loss term (predicted phi', given phi and action vs actually
         # observed phi').
