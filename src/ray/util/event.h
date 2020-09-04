@@ -68,7 +68,7 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override { return "glog.event.reporter"; }
+  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
   std::string log_dir_;

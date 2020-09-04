@@ -37,16 +37,17 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
   }
   file_name_ += ".log";
 
-  log_sink_ = spdlog::rotating_logger_mt(
-      GetReporterKey() + log_dir_ + file_name_, log_dir_ + file_name_,
-      1048576 * rotate_max_file_size_, rotate_max_file_num_);
+  std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
+  log_sink_ = spdlog::get(log_sink_key);
+  if (log_sink_ == nullptr) {
+    log_sink_ =
+        spdlog::rotating_logger_mt(log_sink_key, log_dir_ + file_name_,
+                                   1048576 * rotate_max_file_size_, rotate_max_file_num_);
+  }
   log_sink_->set_pattern("%v");
 }
 
-LogEventReporter::~LogEventReporter() {
-  Flush();
-  log_sink_.reset();
-}
+LogEventReporter::~LogEventReporter() { Flush(); }
 
 void LogEventReporter::Flush() { log_sink_->flush(); }
 

@@ -204,7 +204,7 @@ TEST(EVENT_TEST, TEST_BASIC) {
   CheckEventDetail(result[3], "", "", "", "GCS", "FATAL", "", "");
 }
 
-TEST(EVENT_TEST, GLOG_ONE_THREAD) {
+TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   ray::EventManager::Instance().ClearReporters();
@@ -221,8 +221,6 @@ TEST(EVENT_TEST, GLOG_ONE_THREAD) {
     RAY_EVENT(INFO, "label " + std::to_string(i)) << "send message " + std::to_string(i);
   }
 
-  ray::EventManager::Instance().ClearReporters();
-
   std::vector<std::string> vc;
   ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
 
@@ -238,7 +236,7 @@ TEST(EVENT_TEST, GLOG_ONE_THREAD) {
   boost::filesystem::remove_all(log_dir.c_str());
 }
 
-TEST(EVENT_TEST, GLOG_MULTI_THREAD) {
+TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::string log_dir = GenerateLogDir();
 
   ray::EventManager::Instance().ClearReporters();
@@ -261,8 +259,6 @@ TEST(EVENT_TEST, GLOG_MULTI_THREAD) {
             << "send message " + std::to_string(loop_i);
       });
 
-  ray::EventManager::Instance().ClearReporters();
-
   std::vector<std::string> vc;
   ReadEventFromFile(vc, log_dir + "/event_GCS.log");
 
@@ -284,6 +280,34 @@ TEST(EVENT_TEST, GLOG_MULTI_THREAD) {
   EXPECT_EQ(*(--label_set.end()), "label " + std::to_string(print_times - 1));
 
   boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, LOG_ROTATE) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  ray::RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_RAYLET,
+      std::unordered_map<std::string, std::string>(
+          {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
+
+  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir, true, 1, 20));
+
+  int print_times = 100000;
+  for (int i = 1; i <= print_times; ++i) {
+    RAY_EVENT(INFO, "label " + std::to_string(i)) << "send message " + std::to_string(i);
+  }
+
+  int cnt = 0;
+  for (auto &entry :
+       boost::make_iterator_range(boost::filesystem::directory_iterator(log_dir), {})) {
+    if (entry.path().string().find("event_RAYLET") != std::string::npos) {
+      cnt++;
+    }
+  }
+
+  EXPECT_EQ(cnt, 21);
 }
 
 }  // namespace ray
