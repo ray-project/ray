@@ -1,7 +1,6 @@
 import inspect
 import logging
 
-import pytorch_lightning
 import torch
 import torch.nn as nn
 
@@ -622,7 +621,8 @@ class TrainingOperator:
         pass
 
     @staticmethod
-    def from_ptl(lightning_module_cls, train_dataloader):
+    def from_ptl(lightning_module_cls, train_dataloader=None,
+                 val_dataloader=None):
         """Creates a TrainingOperator from a Pytorch Lightning Module."""
         # if not isinstance(lightning_module, pytorch_lightning.LightningModule):
         #     raise ValueError("Argument must be instance of "
@@ -631,12 +631,38 @@ class TrainingOperator:
         class PTLOperator(TrainingOperator):
             def setup(self, config):
                 ptl_module = lightning_module_cls()
+                self.ptl_module = ptl_module
                 model = ptl_module
                 optimizer = ptl_module.configure_optimizers()
 
-                self.register(models=model, optimizers=optimizer,
-                              train_dataloader=train_dataloader,
-                              validation_loader=None)
+                called = False
+                if train_dataloader is not None:
+                    train_loader = train_dataloader
+                elif hasattr(ptl_module, "train_dataloader"):
+                    if hasattr(ptl_module, "prepare_data"):
+                        ptl_module.prepare_data()
+                        called = True
+                    train_loader = ptl_module.train_dataloader()
+
+                if val_dataloader is not None:
+                    val_loader = val_dataloader
+                elif hasattr(ptl_module, "val_dataloader"):
+                    if hasattr(ptl_module, "prepare_data") and not called:
+                        ptl_module.prepare_data()
+                    val_loader = ptl_module.val_dataloader()
+
+
+                self.model, self.optimizer = self.register(models=model,
+                                             optimizers=optimizer,
+                              train_loader=train_loader,
+                              validation_loader=val_loader)
+
+            def train_batch(self, batch, batch_info):
+                batch_idx = batch_info["batch_idx"]
+                result = self.ptl_module.training_step(batch, batch_idx)
+                return 
+
+        return PTLOperator
 
         
 
