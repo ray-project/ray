@@ -212,11 +212,11 @@ class DashboardController(BaseDashboardController):
     def kill_actor(self, actor_id, ip_address, port):
         return self.raylet_stats.kill_actor(actor_id, ip_address, port)
 
-    def get_logs(self, hostname, pid):
-        return self.node_stats.get_logs(hostname, pid)
+    def get_logs(self, ip, pid):
+        return self.node_stats.get_logs(ip, pid)
 
-    def get_errors(self, hostname, pid):
-        return self.node_stats.get_errors(hostname, pid)
+    def get_errors(self, ip, pid):
+        return self.node_stats.get_errors(ip, pid)
 
     def start_collecting_metrics(self):
         self.node_stats.start()
@@ -333,15 +333,15 @@ class DashboardRouteHandler(BaseDashboardRouteHandler):
             self.dashboard_controller.kill_actor(actor_id, ip_address, port))
 
     async def logs(self, req) -> aiohttp.web.Response:
-        hostname = req.query.get("hostname")
+        ip = req.query.get("ip_address")
         pid = req.query.get("pid")
-        result = self.dashboard_controller.get_logs(hostname, pid)
+        result = self.dashboard_controller.get_logs(ip, pid)
         return await json_response(self.is_dev, result=result)
 
     async def errors(self, req) -> aiohttp.web.Response:
-        hostname = req.query.get("hostname")
+        ip = req.query.get("ip_address")
         pid = req.query.get("pid")
-        result = self.dashboard_controller.get_errors(hostname, pid)
+        result = self.dashboard_controller.get_errors(ip, pid)
         return await json_response(self.is_dev, result=result)
 
 

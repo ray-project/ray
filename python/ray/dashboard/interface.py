@@ -47,11 +47,11 @@ class BaseDashboardController(ABC):
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_logs(self, hostname, pid):
+    def get_logs(self, ip, pid):
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
-    def get_errors(self, hostname, pid):
+    def get_errors(self, ip, pid):
         raise NotImplementedError("Please implement this method.")
 
     @abstractmethod
