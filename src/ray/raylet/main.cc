@@ -36,7 +36,6 @@ DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
@@ -75,7 +74,6 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
-  const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int num_initial_python_workers_for_first_job =
       static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
   const int maximum_startup_concurrency =
@@ -173,7 +171,6 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_initial_workers = num_initial_workers;
         node_manager_config.num_workers_soft_limit = num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;

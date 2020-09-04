@@ -1332,7 +1332,6 @@ def start_raylet(redis_address,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    num_initial_workers = resource_spec.num_cpus
     static_resources = resource_spec.to_resource_dict()
 
     # Limit the number of workers that can be started in parallel by the
@@ -1434,7 +1433,6 @@ def start_raylet(redis_address,
         f"--node_ip_address={node_ip_address}",
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
-        f"--num_initial_workers={num_initial_workers}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
