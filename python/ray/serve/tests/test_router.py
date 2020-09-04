@@ -181,7 +181,7 @@ async def test_router_use_max_concurrency(serve_instance):
     q = ray.remote(VisibleRouter).remote()
     await q.setup.remote("")
     backend_name = "max-concurrent-test"
-    config = BackendConfig({"max_concurrent_queries": 1})
+    config = BackendConfig(max_concurrent_queries=1)
     await q.set_traffic.remote("svc", TrafficPolicy({backend_name: 1.0}))
     await q.add_new_worker.remote(backend_name, "replica-tag", worker)
     await q.set_backend_config.remote(backend_name, config)

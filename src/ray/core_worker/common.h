@@ -54,9 +54,12 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(std::string name, int num_returns,
+              std::unordered_map<std::string, double> &resources)
+      : name(name), num_returns(num_returns), resources(resources) {}
 
+  /// The name of this task.
+  std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.

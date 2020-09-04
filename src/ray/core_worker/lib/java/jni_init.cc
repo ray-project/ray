@@ -54,6 +54,7 @@ jclass java_system_class;
 jmethodID java_system_gc;
 
 jclass java_ray_exception_class;
+jclass java_ray_intentional_system_exit_exception_class;
 
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
@@ -74,6 +75,9 @@ jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
+
+jclass java_call_options_class;
+jfieldID java_call_options_name;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
@@ -168,6 +172,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
 
   java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
+  java_ray_intentional_system_exit_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
 
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
@@ -197,6 +203,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
+
+  java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
+  java_call_options_name =
+      env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
@@ -265,6 +275,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_function_descriptor_class);

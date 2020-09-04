@@ -164,15 +164,40 @@ tune.randn
 
 .. autofunction:: ray.tune.randn
 
+tune.qrandn
+~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qrandn
+
 tune.loguniform
 ~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.loguniform
 
+tune.qloguniform
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qloguniform
+
 tune.uniform
 ~~~~~~~~~~~~
 
 .. autofunction:: ray.tune.uniform
+
+tune.quniform
+~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.quniform
+
+tune.randint
+~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.randint
+
+tune.qrandint
+~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qrandint
 
 tune.choice
 ~~~~~~~~~~~
@@ -182,7 +207,7 @@ tune.choice
 tune.sample_from
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.tune.sample_from
+.. autofunction:: ray.tune.sample_from
 
 Grid Search API
 ---------------

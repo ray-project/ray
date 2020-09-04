@@ -28,6 +28,9 @@ class Query:
     metadata: RequestMetadata
     async_future: Optional[asyncio.Future] = None
 
+    tick_enter_router: Optional[float] = None
+    tick_enter_replica: Optional[float] = None
+
     def __reduce__(self):
         return type(self).ray_deserialize, (self.ray_serialize(), )
 
@@ -131,6 +134,11 @@ class Router:
             "num_error_backend_requests",
             ("Number of requests that errored when getting result "
              "from the backend."), "requests", ["backend"])
+
+        self.backend_queue_size = metrics.Gauge(
+            "backend_queued_queries",
+            "Current number of queries queued in the router for a backend",
+            "requests", ["backend"])
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
@@ -327,9 +335,14 @@ class Router:
 
     async def report_queue_lengths(self):
         while True:
+            queue_lengths = {
+                backend: len(q)
+                for backend, q in self.backend_queues.items()
+            }
             self.controller.report_queue_lengths.remote(
-                self.name, {
-                    backend: len(q)
-                    for backend, q in self.backend_queues.items()
-                })
+                self.name, queue_lengths)
+
+            for backend, length in queue_lengths.items():
+                self.backend_queue_size.record(length, {"backend": backend})
+
             await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)
