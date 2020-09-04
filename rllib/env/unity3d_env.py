@@ -2,7 +2,7 @@ from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
 import time
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import override
@@ -31,11 +31,10 @@ class Unity3DEnv(MultiAgentEnv):
 
     def __init__(self,
                  file_name: str = None,
-                 worker_id: int = 0,
-                 base_port: int = 5004,
+                 port: Optional[int] = None,
                  seed: int = 0,
                  no_graphics: bool = False,
-                 timeout_wait: int = 60,
+                 timeout_wait: int = 120,
                  episode_horizon: int = 1000):
         """Initializes a Unity3DEnv object.
 
@@ -43,12 +42,7 @@ class Unity3DEnv(MultiAgentEnv):
             file_name (Optional[str]): Name of the Unity game binary.
                 If None, will assume a locally running Unity3D editor
                 to be used, instead.
-            worker_id (int): Number to add to `base_port`. Used when more than
-                one Unity3DEnv (games) are running on the same machine. This
-                will be determined automatically, if possible, so a value
-                of 0 should always suffice here.
-            base_port (int): Port number to connect to Unity environment.
-                `worker_id` increments on top of this.
+            port (Optional[int]): Port number to connect to Unity environment.
             seed (int): A random seed value to use for the Unity3D game.
             no_graphics (bool): Whether to run the Unity3D simulator in
                 no-graphics mode. Default: False.
@@ -70,31 +64,25 @@ class Unity3DEnv(MultiAgentEnv):
                 "instead.\nMake sure you are pressing the Play (|>) button in "
                 "your editor to start.")
 
-        #self.worker_id = worker_id
-
         import mlagents_envs
         from mlagents_envs.environment import UnityEnvironment
 
         # Try connecting to the Unity3D game instance. If a port
         while True:
             time.sleep(2)
-            port = self._BASE_PORT
+            port_ = port or self._BASE_PORT
             self._BASE_PORT += 1
             try:
-                print("Trying to create unity env on port={}".format(port))
                 self.unity_env = UnityEnvironment(
                     file_name=file_name,
                     worker_id=0,
-                    base_port=port,
+                    base_port=port_,
                     seed=seed,
                     no_graphics=no_graphics,
                     timeout_wait=timeout_wait,
                 )
+                print("Created UnityEnvironment for port {}".format(port_))
             except mlagents_envs.exception.UnityWorkerInUseException as e:
-                #worker_id += 1
-                ## Hard limit.
-                #if worker_id > 100:
-                #    raise e
                 pass
             else:
                 break
