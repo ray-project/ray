@@ -1,5 +1,6 @@
 import json
 import ray
+import ray.job_config
 from ray.streaming import StreamingContext
 import subprocess
 import os

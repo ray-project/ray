@@ -7,9 +7,7 @@ import io.ray.api.Ray;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -56,7 +54,6 @@ class ClusterStarter {
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
-    Map<String, String> config = new HashMap<>(RayConfig.create().rayletConfigParameters);
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -68,8 +65,7 @@ class ClusterStarter {
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
-        "--java-worker-options=" + workerOptions,
-        "--system-config=" + new Gson().toJson(config)
+        "--java-worker-options=" + workerOptions
     );
     if (!executeCommand(startCommand, 10)) {
       throw new RuntimeException("Couldn't start ray cluster.");
