@@ -337,7 +337,7 @@ RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable multi tenancy features.
 RAY_CONFIG(bool, enable_multi_tenancy,
-           getenv("RAY_ENABLE_MULTI_TENANCY") != nullptr &&
+           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
                getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
 /// Whether start the Plasma Store as a Raylet thread.

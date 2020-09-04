@@ -228,7 +228,12 @@ public class RayConfig {
       enableMultiTenancy =
           Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
     } else {
-      enableMultiTenancy = "1".equals(System.getenv("RAY_ENABLE_MULTI_TENANCY"));
+      String envString = System.getenv("RAY_ENABLE_MULTI_TENANCY");
+      if (StringUtils.isNotBlank(envString)) {
+        enableMultiTenancy = "1".equals(envString);
+      } else {
+        enableMultiTenancy = true; // Default value
+      }
     }
 
     if (!enableMultiTenancy) {
