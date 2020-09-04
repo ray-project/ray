@@ -277,7 +277,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         RAY_CHECK(lease_entry.tasks_in_flight == 0);
         RAY_CHECK(lease_entry.stealable_tasks.size() == 0);
 
-        size_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
+        ssize_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
 
         RAY_LOG(DEBUG) << "We stole " << number_of_tasks_stolen << " tasks "
@@ -290,7 +290,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) <<
         "TASK_STOLEN " << number_of_tasks_stolen << " " << time_elapsed;*/
 
-        for (size_t i = 0; i < reply.tasks_stolen_size(); i++) {
+        for (ssize_t i = 0; i < reply.tasks_stolen_size(); i++) {
           const TaskSpecification task_spec(reply.tasks_stolen(i));
           RAY_LOG(DEBUG) << "Thief " << thief_addr.worker_id << " Stole task "
                          << task_spec.TaskId() << "from worker: " << victim_wid;
