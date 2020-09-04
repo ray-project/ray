@@ -1125,8 +1125,8 @@ class ShimCreationTest(unittest.TestCase):
         client = AxClient(enforce_sequential_optimization=False)
         client.create_experiment(
             parameters=[],
-            objective_name=kwargs['metric'],
-            minimize=kwargs['mode'] == 'min',
+            objective_name=kwargs["metric"],
+            minimize=kwargs["mode"] == "min",
         )
         real_searcher_ax = AxSearch(client, mode=kwargs["mode"])
         assert type(shim_searcher_ax) is type(real_searcher_ax)
