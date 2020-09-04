@@ -77,25 +77,25 @@ class Unity3DEnv(MultiAgentEnv):
         self._BASE_PORT += 1
 
         # Try connecting to the Unity3D game instance. If a port
-        while True:
-            self.worker_id = worker_id
-            time.sleep(1)
-            try:
-                self.unity_env = UnityEnvironment(
-                    file_name=file_name,
-                    worker_id=worker_id,
-                    base_port=port, #TEST base_port
-                    seed=seed,
-                    no_graphics=no_graphics,
-                    timeout_wait=timeout_wait,
-                )
-            except mlagents_envs.exception.UnityWorkerInUseException as e:
-                worker_id += 1
-                # Hard limit.
-                if worker_id > 100:
-                    raise e
-            else:
-                break
+        #while True:
+        #    self.worker_id = worker_id
+        #    time.sleep(1)
+        #    try:
+        self.unity_env = UnityEnvironment(
+            file_name=file_name,
+            worker_id=worker_id,
+            base_port=port, #TEST base_port
+            seed=seed,
+            no_graphics=no_graphics,
+            timeout_wait=timeout_wait,
+        )
+        #    except mlagents_envs.exception.UnityWorkerInUseException as e:
+        #        worker_id += 1
+        #        # Hard limit.
+        #        if worker_id > 100:
+        #            raise e
+        #    else:
+        #        break
 
         # Reset entire env every this number of step calls.
         self.episode_horizon = episode_horizon

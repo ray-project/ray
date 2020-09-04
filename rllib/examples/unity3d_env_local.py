@@ -74,7 +74,9 @@ if __name__ == "__main__":
         "unity3d",
         lambda c: Unity3DEnv(
             file_name=c["file_name"],
-            episode_horizon=c["episode_horizon"]))
+            episode_horizon=c["episode_horizon"],
+            worker_id=c.worker_index,
+        ))
 
     # Get policies (different agent types; "behaviors" in MLAgents) and
     # the mappings from individual agents to Policies.
