@@ -26,6 +26,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search, HyperOptSearch
 from ray.tune.suggest.ax import AxSearch
+from ax.service.ax_client import AxClient
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
@@ -1114,21 +1115,21 @@ class ShimCreationTest(unittest.TestCase):
         scheduler = "async_hyperband"
         shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
         real_scheduler = AsyncHyperBandScheduler(scheduler, **kwargs)
-        assert type(shim_scheduler) == type(real_scheduler)
+        assert type(shim_scheduler) is type(real_scheduler)
 
     def testCreateSearcher(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
 
         searcher_ax = "ax"
         shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
-        real_searcher_ax = AxSearch(searcher_ax, **kwargs)
-        assert type(shim_searcher_ax) == type(real_searcher_ax)
+        real_searcher_ax = AxSearch(AxClient(), mode=kwargs['mode'])
+        assert type(shim_searcher_ax) is type(real_searcher_ax)
 
         searcher_hyperopt = "hyperopt"
         shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
                                                       **kwargs)
-        real_searcher_hyperopt = HyperOptSearch(searcher_hyperopt)
-        assert type(shim_searcher_hyperopt) == type(real_searcher_hyperopt)
+        real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
+        assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
 
 
 if __name__ == "__main__":
