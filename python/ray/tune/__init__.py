@@ -1,5 +1,6 @@
 from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
+from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
 from ray.tune.stopper import Stopper, EarlyStopping
@@ -26,5 +27,6 @@ __all__ = [
     "loguniform", "qloguniform", "ExperimentAnalysis", "Analysis",
     "CLIReporter", "JupyterNotebookReporter", "ProgressReporter", "report",
     "get_trial_dir", "get_trial_name", "get_trial_id", "make_checkpoint_dir",
-    "save_checkpoint", "checkpoint_dir", "create_searcher", "create_scheduler"
+    "save_checkpoint", "checkpoint_dir", "SyncConfig", "create_searcher",
+    "create_scheduler"
 ]
