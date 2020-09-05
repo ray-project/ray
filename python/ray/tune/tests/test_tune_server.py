@@ -29,7 +29,7 @@ class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TrialRunner(erver_port=port)
+        self.runner = TrialRunner(server_port=port)
         runner = self.runner
         kwargs = {
             "stopping_criterion": {
