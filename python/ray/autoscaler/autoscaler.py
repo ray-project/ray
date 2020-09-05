@@ -211,14 +211,8 @@ class StandardAutoscaler:
                 for node_type, count in to_launch:
                     self.launch_new_node(count, node_type=node_type)
 
-        # TODO (Alex): There's a race condition here where `num_pending` is
-        # derived from `pending_launches` and `len(nodes)` comes from
-        # `self.workers` and we have no synchronization to update them at the
-        # same time. This line ensures that we don't underestimate the number
-        # of workers. This may increase the latency of worker startup by an
-        # update (or so) which is better than a correctness issue around
-        # `max_workers`.
-        nodes = self.workers()
+            num_pending = self.pending_launches.value
+            nodes = self.workers()
 
         # Launch additional nodes of the default type, if still needed.
         num_workers = len(nodes) + num_pending
@@ -492,7 +486,6 @@ class StandardAutoscaler:
         tmp += self.load_metrics.info_string()
         tmp += "\n"
         if self.resource_demand_scheduler:
-            print(f"{self.load_metrics.get_resource_utilization()}")
             tmp += self.resource_demand_scheduler.debug_string(
                 nodes, self.pending_launches.breakdown(),
                 self.load_metrics.get_resource_utilization())
