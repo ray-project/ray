@@ -128,7 +128,8 @@ def create_or_update_cluster(config_file: str,
         cli_logger.newline()
 
     def handle_yaml_error(e):
-        cli_logger.error("Cluster config invalid\n")
+        cli_logger.error("Cluster config invalid")
+        cli_logger.newline()
         cli_logger.error("Failed to load YAML file " + cf.bold("{}"),
                          config_file)
         cli_logger.newline()
@@ -164,7 +165,7 @@ def create_or_update_cluster(config_file: str,
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid\n")
+    cli_logger.success("Cluster configuration valid")
 
     printed_overrides = False
 
