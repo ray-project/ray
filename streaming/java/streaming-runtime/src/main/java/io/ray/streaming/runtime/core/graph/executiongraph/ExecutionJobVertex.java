@@ -8,6 +8,7 @@ import io.ray.streaming.jobgraph.JobVertex;
 import io.ray.streaming.jobgraph.VertexType;
 import io.ray.streaming.operator.StreamOperator;
 import io.ray.streaming.runtime.config.master.ResourceConfig;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,7 +21,7 @@ import org.aeonbits.owner.ConfigFactory;
  * <p>Execution job vertex is the physical form of {@link JobVertex} and
  * every execution job vertex is corresponding to a group of {@link ExecutionVertex}.
  */
-public class ExecutionJobVertex {
+public class ExecutionJobVertex implements Serializable {
 
   /**
    * Unique id. Use {@link JobVertex}'s id directly.
