@@ -130,7 +130,7 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "gpu_type:"
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 

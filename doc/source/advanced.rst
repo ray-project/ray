@@ -105,7 +105,7 @@ load balancing, gang scheduling, and priority-based scheduling.
 Accelerator Types
 ------------------
 
-Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"gpu_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
+Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"accelerator_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
 
 .. code-block:: python
 
@@ -115,7 +115,7 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
     def train(data):
         return "This function was run on a node with a Tesla V100 GPU"
 
-See `ray.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
 Nested Remote Functions
