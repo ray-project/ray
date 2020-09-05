@@ -92,6 +92,9 @@ Suppose we have a Python module as follows:
 
   * The function or class should be decorated by `@ray.remote`.
 
+Then, in Java, we can call the above Python remote function, or create an actor 
+from the above Python class.
+
 .. code-block:: java
 
   package io.ray.demo;
