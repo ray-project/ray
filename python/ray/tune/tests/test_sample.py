@@ -241,6 +241,50 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertLess(trial.config["b"]["z"], 1e-2)
 
+    def testConvertBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+        import ConfigSpace
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = TuneBOHB.convert_search_space(config)
+        bohb_config = ConfigSpace.ConfigurationSpace()
+        bohb_config.add_hyperparameters([
+            ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
+            ConfigSpace.UniformIntegerHyperparameter(
+                "b/x", lower=0, upper=4, q=2),
+            ConfigSpace.UniformFloatHyperparameter(
+                "b/z", lower=1e-4, upper=1e-2, log=True)
+        ])
+
+        converted_config.seed(1234)
+        bohb_config.seed(1234)
+
+        searcher1 = TuneBOHB(space=converted_config)
+        searcher2 = TuneBOHB(space=bohb_config)
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = TuneBOHB(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp

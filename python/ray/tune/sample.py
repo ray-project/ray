@@ -2,7 +2,6 @@ import logging
 import random
 from copy import copy
 from inspect import signature
-from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
@@ -187,7 +186,7 @@ class Float(Domain):
         new.set_sampler(self._Normal(mean, sd))
         return new
 
-    def quantized(self, q: Number):
+    def quantized(self, q: float):
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
@@ -211,7 +210,7 @@ class Integer(Domain):
     def cast(self, value):
         return int(value)
 
-    def quantized(self, q: Number):
+    def quantized(self, q: int):
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
@@ -286,7 +285,7 @@ class Function(Domain):
 
 
 class Quantized(Sampler):
-    def __init__(self, sampler: Sampler, q: Number):
+    def __init__(self, sampler: Sampler, q: Union[float, int]):
         self.sampler = sampler
         self.q = q
 

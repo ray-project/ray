@@ -2,8 +2,17 @@
 
 import copy
 import logging
+import math
+from typing import Dict
 
+import ConfigSpace
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Normal, \
+    Quantized, \
+    Uniform
 from ray.tune.suggest import Searcher
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import unflatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +73,7 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space,
+                 space=None,
                  bohb_config=None,
                  max_concurrent=10,
                  metric="neg_mean_loss",
@@ -81,9 +90,39 @@ class TuneBOHB(Searcher):
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
-        bohb_config = bohb_config or {}
-        self.bohber = BOHB(space, **bohb_config)
+
+        self._bohb_config = bohb_config
+        self._space = space
+
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
+
+        if self._space:
+            self.setup_bohb()
+
+    def setup_bohb(self):
+        from hpbandster.optimizers.config_generators.bohb import BOHB
+
+        bohb_config = self._bohb_config or {}
+        self.bohber = BOHB(self._space, **bohb_config)
+
+    def set_search_properties(self, metric, mode, config):
+        if self._space:
+            return False
+        space = self.convert_search_space(config)
+        self._space = space
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = -1.
+        elif self._mode == "min":
+            self._metric_op = 1.
+
+        self.setup_bohb()
+        return True
 
     def suggest(self, trial_id):
         if len(self.running) < self._max_concurrent:
@@ -91,7 +130,7 @@ class TuneBOHB(Searcher):
             config, info = self.bohber.get_config(None)
             self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
-            return config
+            return unflatten_dict(config)
         return None
 
     def on_trial_result(self, trial_id, result):
@@ -123,3 +162,74 @@ class TuneBOHB(Searcher):
     def on_unpause(self, trial_id):
         self.paused.remove(trial_id)
         self.running.add(trial_id)
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to a TuneBOHB search space.")
+
+        def resolve_value(par, domain):
+            quantize = None
+
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                quantize = sampler.q
+                sampler = sampler.sampler
+
+            if isinstance(domain, Float):
+                if isinstance(sampler, LogUniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    return ConfigSpace.UniformFloatHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=True)
+                elif isinstance(sampler, Uniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    return ConfigSpace.UniformFloatHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=False)
+                elif isinstance(sampler, Normal):
+                    return ConfigSpace.NormalFloatHyperparameter(
+                        par,
+                        mu=sampler.mean,
+                        sigma=sampler.sd,
+                        q=quantize,
+                        log=False)
+
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, Uniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    return ConfigSpace.UniformIntegerHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=False)
+
+            elif isinstance(domain, Categorical):
+                if isinstance(sampler, Uniform):
+                    return ConfigSpace.CategoricalHyperparameter(
+                        par, choices=domain.categories)
+
+            raise ValueError("TuneBOHB does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
+
+        cs = ConfigSpace.ConfigurationSpace()
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            value = resolve_value(par, domain)
+            cs.add_hyperparameter(value)
+
+        return cs
