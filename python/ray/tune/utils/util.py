@@ -3,7 +3,6 @@ import logging
 import inspect
 import threading
 import time
-import types
 from collections import defaultdict, deque, Mapping, Sequence
 from threading import Thread
 
@@ -443,27 +442,6 @@ def detect_config_single(func):
         logger.debug(str(e))
         use_config_single = False
     return use_config_single
-
-
-def convert_to_args(func):
-    """Support function"""
-
-    use_config_single = detect_config_single(func)
-    use_checkpoint_function = detect_checkpoint_function(func)
-    if use_config_single:
-
-        def wrapper_trainable(config):
-            args = types.SimpleNamespace(**config)
-            return func(args)
-    elif use_checkpoint_function:
-
-        def wrapper_trainable(config, checkpoint_dir=None):
-            args = types.SimpleNamespace(**config)
-            return func(args, checkpoint_dir=checkpoint_dir)
-    else:
-        raise ValueError(
-            "Invalid signature. Provide one of the following signatures: "
-            "\n 'def func(args)' or 'def func(args, checkpoint_dir=None)'.")
 
 
 if __name__ == "__main__":
