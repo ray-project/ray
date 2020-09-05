@@ -14,6 +14,7 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
    plot_newsreader.rst
    plot_streaming.rst
    plot_example-lm.rst
+   testing-tips.rst
 
 
 .. customgalleryitem::
@@ -51,3 +52,7 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
 .. customgalleryitem::
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
    :description: :doc:`/auto_examples/plot_example-lm`
+
+.. customgalleryitem::
+   :tooltip: Tips for testing Ray applications
+   :description: :doc:`/auto_examples/testing-tips`
