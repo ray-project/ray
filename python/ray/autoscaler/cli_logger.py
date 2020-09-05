@@ -172,6 +172,18 @@ def _format_msg(msg: str,
 #     style="{")
 
 
+def _isatty():
+    """More robust check for interactive terminal/tty."""
+    try:
+        # https://stackoverflow.com/questions/6108330/
+        # checking-for-interactive-shell-in-a-python-script
+        return sys.__stdin__.isatty()
+    except Exception:
+        # sometimes this can fail due to closed output
+        # either way, no-tty is generally safe fallback.
+        return False
+
+
 class _CliLogger():
     """Singleton class for CLI logging.
 
@@ -208,7 +220,7 @@ class _CliLogger():
     def __init__(self):
         self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
         self.pretty = True
-        self.interactive = sys.stdin.isatty()
+        self.interactive = _isatty()
         self.indent_level = 0
 
         self._verbosity = 0
@@ -236,7 +248,7 @@ class _CliLogger():
         self._log_style = x.lower()
 
         if self._log_style == "auto":
-            self.pretty = sys.stdin.isatty()
+            self.pretty = _isatty()
         elif self._log_style == "record":
             self.pretty = False
             self.color_mode = "false"
