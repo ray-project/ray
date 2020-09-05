@@ -124,6 +124,7 @@ if __name__ == "__main__":
         num_samples=4,
         verbose=1,
         # fault tolerance parameters
+        sync_config=sync_config,
         max_failures=-1,
         checkpoint_freq=20,
         checkpoint_score_attr="training_iteration",
