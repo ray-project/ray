@@ -96,8 +96,11 @@ class TestDistributions(unittest.TestCase):
             # Do a stability test using extreme NN outputs to see whether
             # sampling and logp'ing result in NaN or +/-inf values.
             self._stability_test(
-                cls, inputs_space.shape,
-                fw=fw, sess=sess, bounds=(0, num_categories - 1))
+                cls,
+                inputs_space.shape,
+                fw=fw,
+                sess=sess,
+                bounds=(0, num_categories - 1))
 
             # Batch of size=3 and deterministic (True).
             expected = np.transpose(np.argmax(inputs, axis=-1))
@@ -118,8 +121,8 @@ class TestDistributions(unittest.TestCase):
             probs = softmax(inputs)
             values = values_space.sample()
 
-            out = categorical.logp(
-                values if fw != "torch" else torch.Tensor(values))
+            out = categorical.logp(values
+                                   if fw != "torch" else torch.Tensor(values))
             expected = []
             for i in range(batch_size):
                 expected.append(np.sum(np.log(np.array(probs[i][values[i]]))))
@@ -157,8 +160,11 @@ class TestDistributions(unittest.TestCase):
             # Do a stability test using extreme NN outputs to see whether
             # sampling and logp'ing result in NaN or +/-inf values.
             self._stability_test(
-                cls, inputs_space.shape,
-                fw=fw, sess=sess, bounds=(0, num_categories - 1),
+                cls,
+                inputs_space.shape,
+                fw=fw,
+                sess=sess,
+                bounds=(0, num_categories - 1),
                 extra_kwargs={"input_lens": input_lengths})
 
             # Batch of size=3 and deterministic (True).
