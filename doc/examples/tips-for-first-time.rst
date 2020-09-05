@@ -13,7 +13,7 @@ Ray provides a highly flexible, yet minimalist and easy to use API. On this page
    * - ``@ray.remote``
      - | Function or class decorator specifying that the function will be
        | executed as a task or the class as an actor in a different process.
-   * - ``.remote``
+   * - ``.remote()``
      - | Postfix to every remote function, remote class declaration, or
        | invocation of a remote class method.
        | Remote operations are asynchronous.
@@ -35,13 +35,13 @@ Ray provides a highly flexible, yet minimalist and easy to use API. On this page
 
 All the results reported in this page were obtained on a 13-inches MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM. While ``ray.init()`` automatically detects the number of cores when it runs on a single machine, to reduce the variability of the results you observe on your machine when running the code below, here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
 
-Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel. As a result, our Ray system consists of one driver executing the program, and up to four workers running remote tasks or actors,
+Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel. As a result, our Ray system consists of one driver executing the program, and up to four workers running remote tasks or actors.
 
 
 Tip 1: Delay ray.get()
 ----------------------
 
-With Ray, the invocation of every remote operation (e.g., task, actor method) is asynchronous. This means that the operation returns immediately a promise/future, which is essentially an identifier (ID) of the operation’s result. This is key to achieve parallelism, as it allows the driver program to launch multiple operations in parallel. To get the actual results, the programmer needs to call ``ray.get()`` on the IDs of the results. This call blocks until the results are available. As a side effect, this operation also blocks the driver program from invoking other operations, which can hurt parallelism.
+With Ray, the invocation of every remote operation (e.g., task, actor method) is asynchronous. This means that the operation immediately returns a promise/future, which is essentially an identifier (ID) of the operation’s result. This is key to achieving parallelism, as it allows the driver program to launch multiple operations in parallel. To get the actual results, the programmer needs to call ``ray.get()`` on the IDs of the results. This call blocks until the results are available. As a side effect, this operation also blocks the driver program from invoking other operations, which can hurt parallelism.
 
 Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray.get()``. To illustrate this point, consider the following simple Python code which call the ``do_some_work()`` function four times, where each invocation takes around 1 sec:
 
@@ -363,7 +363,7 @@ Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a li
         sum = process_incremental(sum, ray.get(done_id[0]))
     print("duration =", time.time() - start, "\nresult = ", sum)
 
-This program now takes just a bit over 4.8sec a significant improvement:
+This program now takes just a bit over 4.8sec, a significant improvement:
 
 .. code-block:: bash
 
