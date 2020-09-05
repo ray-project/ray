@@ -298,8 +298,6 @@ class _CliLogger():
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
         """
-        if "\n" in msg:
-            raise ValueError("NO")
         if self.pretty:
             rendered_message = "  " * self.indent_level + msg
         else:
@@ -394,6 +392,9 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
+        if self.old_style:
+            return
+
         self._print(
             cf.skyBlue(key) + ": " +
             _format_msg(cf.bold(msg), *args, **kwargs))
@@ -482,6 +483,8 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
+        if self.old_style:
+            return
 
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
 
@@ -495,6 +498,8 @@ class _CliLogger():
         Print an error and throw an exception to terminate the program
         (the exception will not print a message).
         """
+        if self.old_style:
+            return
 
         if msg is not None:
             self._error(msg, *args, _level_str="PANIC", **kwargs)
@@ -515,6 +520,9 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
+        if self.old_style:
+            return
+
         if not val:
             exc = None
             if not self.pretty:
@@ -572,6 +580,9 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
+        if self.old_style:
+            return
+
         should_abort = _abort
         default = _default
 
@@ -651,6 +662,9 @@ class _CliLogger():
         Returns:
             The string entered by the user.
         """
+        if self.old_style:
+            return
+
         complete_str = cf.underlined(msg)
         rendered_message = _format_msg(complete_str, *args, **kwargs)
         # the rendered message ends with ascii coding
