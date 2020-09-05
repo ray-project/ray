@@ -705,10 +705,10 @@ def test_atomic_creation(ray_start_cluster):
     # Make sure these are all scheduled.
     assert all(ray.get(check_with_pg))
 
-    ray.experimental.remove_placement_group(pg)
+    ray.util.remove_placement_group(pg)
 
     def pg_removed():
-        return ray.experimental.placement_group_table(pg)["state"] == "REMOVED"
+        return ray.util.placement_group_table(pg)["state"] == "REMOVED"
 
     wait_for_condition(pg_removed)
 
@@ -753,7 +753,7 @@ def test_mini_stress_scenario(ray_start_cluster):
     # Note this is half of total
     for _ in range(total_num_pg):
         pgs.append(
-            ray.experimental.placement_group(
+            ray.util.placement_group(
                 name="name",
                 strategy="PACK",
                 bundles=[{
@@ -777,7 +777,7 @@ def test_mini_stress_scenario(ray_start_cluster):
         index = pg_indexes[num_removed_pg]
         pg = pgs[index]
         assert all(ray.get(pg_tasks[index]))
-        ray.experimental.remove_placement_group(pg)
+        ray.util.remove_placement_group(pg)
         num_removed_pg += 1
 
     @ray.remote(num_cpus=2, num_gpus=per_node_gpus)

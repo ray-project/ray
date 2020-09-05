@@ -1829,9 +1829,7 @@ void NodeManager::HandleCommitBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle commit request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
-  RAY_CHECK(CommitBundle(cluster_resource_map_, bundle_spec))
-      << "Although resources are prepared, we failed to commit. This is anomaly. Please "
-         "fix the issue ASAP.";
+  CommitBundle(cluster_resource_map_, bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Call task dispatch to assign work to the new group.
@@ -1875,6 +1873,9 @@ void NodeManager::HandleCancelResourceReserve(
   // Return resources. We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
+  RAY_CHECK(it != bundle_state_map_.end())
+      << "Cancel requests are received to raylet although it hasn't received any prepare "
+         "or commit reuqest. This must be an anomaly.";
   const auto &bundle_state = it->second;
   if (bundle_state->state == CommitState::PREPARE) {
     CommitBundle(cluster_resource_map_, bundle_spec);
