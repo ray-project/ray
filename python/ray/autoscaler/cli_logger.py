@@ -159,6 +159,7 @@ def _format_msg(msg: str,
     res = [str(x) for x in res]
     return ", ".join(res)
 
+
 # TODO: come up with a plan to unify logging.
 # formatter = logging.Formatter(
 #     # TODO(maximsmol): figure out the required log level padding
@@ -536,23 +537,93 @@ class _CliLogger():
 
     def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
                   **kwargs: Any):
-        return
+        """Old debug logging proxy.
+
+        Pass along an old debug log iff new logging is disabled.
+        Supports the new formatting features.
+
+        Args:
+            logger (logging.Logger):
+                Logger to use if old logging behavior is selected.
+
+        For other arguments, see `_format_msg`.
+        """
+        if self.old_style:
+            logger.debug(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+            return
 
     def old_info(self, logger: logging.Logger, msg: str, *args: Any,
                  **kwargs: Any):
-        return
+        """Old info logging proxy.
+
+        Pass along an old info log iff new logging is disabled.
+        Supports the new formatting features.
+
+        Args:
+            logger (logging.Logger):
+                Logger to use if old logging behavior is selected.
+
+        For other arguments, see `_format_msg`.
+        """
+        if self.old_style:
+            logger.info(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+            return
 
     def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
                     **kwargs: Any):
-        return
+        """Old warning logging proxy.
+
+        Pass along an old warning log iff new logging is disabled.
+        Supports the new formatting features.
+
+        Args:
+            logger (logging.Logger):
+                Logger to use if old logging behavior is selected.
+
+        For other arguments, see `_format_msg`.
+        """
+        if self.old_style:
+            logger.warning(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+            return
 
     def old_error(self, logger: logging.Logger, msg: str, *args: Any,
                   **kwargs: Any):
-        return
+        """Old error logging proxy.
+
+        Pass along an old error log iff new logging is disabled.
+        Supports the new formatting features.
+
+        Args:
+            logger (logging.Logger):
+                Logger to use if old logging behavior is selected.
+
+        For other arguments, see `_format_msg`.
+        """
+        if self.old_style:
+            logger.error(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+            return
 
     def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
                       **kwargs: Any):
-        return
+        """Old exception logging proxy.
+
+        Pass along an old exception log iff new logging is disabled.
+        Supports the new formatting features.
+
+        Args:
+            logger (logging.Logger):
+                Logger to use if old logging behavior is selected.
+
+        For other arguments, see `_format_msg`.
+        """
+        if self.old_style:
+            logger.exception(
+                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+            return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
@@ -683,7 +754,14 @@ class _CliLogger():
         return res
 
     def old_confirm(self, msg: str, yes: bool):
-        return
+        """Old confirm dialog proxy.
+
+        Let `click` display a confirm dialog iff new logging is disabled.
+        """
+        if not self.old_style:
+            return
+
+        return None if yes else click.confirm(msg, abort=True)
 
 
 class SilentClickException(click.ClickException):
