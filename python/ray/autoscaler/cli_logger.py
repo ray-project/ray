@@ -8,7 +8,6 @@ Supports color, bold text, italics, underlines, etc.
 as well as indentation and other structured output.
 """
 
-import time
 import sys
 import logging
 import inspect
@@ -199,7 +198,7 @@ class _CliLogger():
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
     interactive: bool
-    VALID_LOG_STYLES = ("record", "pretty")
+    VALID_LOG_STYLES = ("auto", "record", "pretty")
 
     _autodetected_cf_colormode: int
 

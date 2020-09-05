@@ -55,7 +55,7 @@ logging_options = [
     click.option(
         "--log-style",
         required=False,
-        type=click.Choice(["auto", "record", "pretty"], case_sensitive=False),
+        type=click.Choice(cli_logger.VALID_LOG_STYLES, case_sensitive=False),
         default="auto",
         help=("If 'pretty', outputs with formatting and color. If 'record', "
               "outputs record-style without formatting. "
@@ -98,6 +98,7 @@ def add_click_options(options):
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray.utils.setup_logger(level, logging_format)
+    cli_logger.set_format(format_tmpl=logging_format)
 
 
 @click.command()

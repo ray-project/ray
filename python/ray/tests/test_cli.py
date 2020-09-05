@@ -99,7 +99,7 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            print('\n'.join(output_lines[i:]))
+            print("\n".join(output_lines[i:]))
             break
 
         exp = expected_lines[i]
