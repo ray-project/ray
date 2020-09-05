@@ -12,13 +12,13 @@ static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
   STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
   std::vector<ObjectID> return_ids;
-  ray::exported_::SendInternal(peer_actor_id_, std::move(buffer), async_func_, TASK_OPTION_RETURN_NUM_0, return_ids);
+  ray::streaming::SendInternal(peer_actor_id_, std::move(buffer), async_func_, TASK_OPTION_RETURN_NUM_0, return_ids);
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
   std::vector<ObjectID> return_ids;
-  ray:::streaming::SendInternal(peer_actor_id_, buffer, sync_func_, TASK_OPTION_RETURN_NUM_1, return_ids);
+  ray::streaming::SendInternal(peer_actor_id_, buffer, sync_func_, TASK_OPTION_RETURN_NUM_1, return_ids);
 
   std::vector<std::shared_ptr<RayObject>> results;
   Status get_st =
