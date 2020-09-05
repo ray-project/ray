@@ -11,13 +11,21 @@ import io.ray.api.id.ObjectId;
  */
 public class UnreconstructableException extends RayException {
 
-  public final ObjectId objectId;
+  public ObjectId objectId;
 
   public UnreconstructableException(ObjectId objectId) {
     super(String.format(
         "Object %s is lost (either evicted or explicitly deleted) and cannot be reconstructed.",
         objectId));
     this.objectId = objectId;
+  }
+
+  public UnreconstructableException(String message) {
+    super(message);
+  }
+
+  public UnreconstructableException(String message, Throwable cause) {
+    super(message, cause);
   }
 
 }

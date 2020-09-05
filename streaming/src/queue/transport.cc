@@ -12,7 +12,8 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
                              RayFunction &function, int return_num,
                              std::vector<ObjectID> &return_ids) {
   std::unordered_map<std::string, double> resources;
-  TaskOptions options{return_num, resources};
+  std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
+  TaskOptions options{name, return_num, resources};
 
   char meta_data[3] = {'R', 'A', 'W'};
   std::shared_ptr<LocalMemoryBuffer> meta =

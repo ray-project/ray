@@ -14,7 +14,7 @@ RUN apt-get update -y && apt-get upgrade -y \
         git \
         wget \
         cmake \
-        $(if [ "$AUTOSCALER" == "autoscaler" ]; then echo \
+        $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
         screen \
         rsync \
@@ -43,7 +43,7 @@ RUN apt-get update -y && apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && apt-get autoremove -y cmake \
     # Either install kubectl or remove wget 
-    && (if [ "$AUTOSCALER" == "autoscaler" ]; \
+    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - \
         && touch /etc/apt/sources.list.d/kubernetes.list \
         && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list \

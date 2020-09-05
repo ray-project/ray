@@ -322,7 +322,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
                 cli_logger.print(
                     "{} random worker nodes will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold(min_workers),
+                    cf.dimmed("(due to {})"), cf.bold(min_workers),
                     cf.bold("--keep-min-workers"))
                 cli_logger.old_info(logger,
                                     "teardown_cluster: Keeping {} nodes...",
@@ -334,7 +334,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             if workers_only:
                 cli_logger.print(
                     "The head node will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold("--workers-only"))
+                    cf.dimmed("(due to {})"), cf.bold("--workers-only"))
 
                 return workers
 
