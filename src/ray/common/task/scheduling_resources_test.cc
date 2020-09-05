@@ -32,12 +32,12 @@ class SchedulingResourcesTest : public ::testing::Test {
   std::shared_ptr<ResourceIdSet> resource_id_set;
 };
 
-TEST_F(SchedulingResourcesTest, AddBundleResources) {
+TEST_F(SchedulingResourcesTest, CommitBundleResources) {
   PlacementGroupID group_id = PlacementGroupID::FromRandom();
   std::vector<std::string> resource_labels = {"CPU"};
   std::vector<double> resource_capacity = {1.0};
   ResourceSet resource(resource_labels, resource_capacity);
-  resource_set->AddBundleResources(group_id, 1, resource);
+  resource_set->CommitBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_1_" + group_id.Hex());
   resource_labels.push_back("CPU_group_" + group_id.Hex());
@@ -52,7 +52,7 @@ TEST_F(SchedulingResourcesTest, AddBundleResource) {
   std::string index_name = "CPU_group_1_" + group_id.Hex();
   std::vector<int64_t> whole_ids = {1, 2, 3};
   ResourceIds resource_ids(whole_ids);
-  resource_id_set->AddBundleResourceIds(group_id, 1, "CPU", resource_ids);
+  resource_id_set->CommitBundleResourceIds(group_id, 1, "CPU", resource_ids);
   ASSERT_EQ(2, resource_id_set->AvailableResources().size());
   for (auto res : resource_id_set->AvailableResources()) {
     ASSERT_TRUE(res.first == wild_name || res.first == index_name) << res.first;
@@ -64,7 +64,7 @@ TEST_F(SchedulingResourcesTest, ReturnBundleResources) {
   std::vector<std::string> resource_labels = {"CPU"};
   std::vector<double> resource_capacity = {1.0};
   ResourceSet resource(resource_labels, resource_capacity);
-  resource_set->AddBundleResources(group_id, 1, resource);
+  resource_set->CommitBundleResources(group_id, 1, resource);
   resource_labels.pop_back();
   resource_labels.push_back("CPU_group_" + group_id.Hex());
   resource_labels.push_back("CPU_group_1_" + group_id.Hex());
@@ -83,8 +83,8 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemove) {
   ResourceSet resource(resource_labels, resource_capacity);
 
   // Construct resource set containing two bundles.
-  resource_set->AddBundleResources(group_id, 1, resource);
-  resource_set->AddBundleResources(group_id, 2, resource);
+  resource_set->CommitBundleResources(group_id, 1, resource);
+  resource_set->CommitBundleResources(group_id, 2, resource);
   resource_labels = {
       "CPU_group_" + group_id.Hex(),
       "CPU_group_1_" + group_id.Hex(),
@@ -120,10 +120,10 @@ TEST_F(SchedulingResourcesTest, MultipleBundlesAddRemoveIdSet) {
   // Construct resource set containing two bundles.
   auto rid1 = ResourceIds({1, 2});
   auto rid2 = ResourceIds({3, 4});
-  resource_ids.AddBundleResourceIds(group_id, 1, "CPU", rid1);
-  resource_ids.AddBundleResourceIds(group_id, 2, "CPU", rid2);
-  resource_ids.AddBundleResourceIds(group_id, 1, "GPU", rid1);
-  resource_ids.AddBundleResourceIds(group_id, 2, "GPU", rid2);
+  resource_ids.CommitBundleResourceIds(group_id, 1, "CPU", rid1);
+  resource_ids.CommitBundleResourceIds(group_id, 2, "CPU", rid2);
+  resource_ids.CommitBundleResourceIds(group_id, 1, "GPU", rid1);
+  resource_ids.CommitBundleResourceIds(group_id, 2, "GPU", rid2);
   auto result = ResourceSet(
       {
           "CPU_group_" + group_id.Hex(),
