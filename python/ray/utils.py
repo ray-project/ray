@@ -377,9 +377,11 @@ def resources_from_resource_arguments(
             object_store_memory, round_up=True)
 
     if runtime_accelerator_type is not None:
-        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{runtime_accelerator_type}"] = 0.001
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{runtime_accelerator_type}"] = 0.001
     elif default_accelerator_type is not None:
-        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{default_accelerator_type}"] = 0.001
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{default_accelerator_type}"] = 0.001
 
     return resources
 
