@@ -273,7 +273,7 @@ Then, run the following code:
 
   ray.shutdown()
 
-The exception will be:
+The exception stack will be:
 
 .. code-block:: text
 
