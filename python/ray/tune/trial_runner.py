@@ -95,7 +95,6 @@ class TrialRunner:
         search_alg (SearchAlgorithm): SearchAlgorithm for generating
             Trial objects.
         scheduler (TrialScheduler): Defaults to FIFOScheduler.
-        launch_web_server (bool): Flag for starting TuneServer
         local_checkpoint_dir (str): Path where
             global checkpoints are stored and restored from.
         remote_checkpoint_dir (str): Remote path where
@@ -124,7 +123,6 @@ class TrialRunner:
     def __init__(self,
                  search_alg=None,
                  scheduler=None,
-                 launch_web_server=False,
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
                  sync_to_cloud=None,

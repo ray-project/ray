@@ -386,7 +386,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
+            resume=True, local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 

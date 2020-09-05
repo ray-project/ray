@@ -106,28 +106,28 @@ def run(
         resources_per_trial=None,
         num_samples=1,
         local_dir=None,
-        progress_reporter=None,
-        trial_name_creator=None,
-        trial_dirname_creator=None,
-        loggers=None,
-        log_to_file=False,
-        checkpoint_freq=0,
-        checkpoint_at_end=False,
+        search_alg=None,
+        scheduler=None,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
+        checkpoint_freq=0,
+        checkpoint_at_end=False,
+        verbose=2,
+        progress_reporter=None,
+        loggers=None,
+        log_to_file=False,
+        trial_name_creator=None,
+        trial_dirname_creator=None,
+        sync_config=None,
         export_formats=None,
         max_failures=0,
         fail_fast=False,
         restore=None,
-        search_alg=None,
-        scheduler=None,
         server_port=None,
-        verbose=2,
         resume=False,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
-        sync_config=None,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
@@ -213,6 +213,12 @@ def run(
             best checkpoint. Default is increasing order. If attribute starts
             with `min-` it will rank attribute in decreasing order, i.e.
             `min-validation_loss`.
+        checkpoint_freq (int): How many training iterations between
+            checkpoints. A value of 0 (default) disables checkpointing.
+            This has no effect when using the Functional Training API.
+        checkpoint_at_end (bool): Whether to checkpoint at the end of the
+            experiment regardless of the checkpoint_freq. Default is False.
+            This has no effect when using the Functional Training API.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
         progress_reporter (ProgressReporter): Progress reporter for reporting
@@ -236,13 +242,8 @@ def run(
             for generating the trial dirname. This function should take
             in a Trial object and return a string representing the
             name of the directory. The return value cannot be a path.
-        sync_config (SyncConfig): TODO
-        checkpoint_freq (int): How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-            This has no effect when using the Functional Training API.
-        checkpoint_at_end (bool): Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
-            This has no effect when using the Functional Training API.
+        sync_config (SyncConfig): Configuration object for syncing. See
+            tune.SyncConfig.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
         max_failures (int): Try to recover a trial at least this many times.
