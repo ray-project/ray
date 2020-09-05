@@ -92,7 +92,7 @@ class GcsActor {
   ActorID GetActorID() const;
   /// Returns whether or not this is a detached actor.
   bool IsDetached() const;
-  /// Get the name of this actor (only set if it's a detached actor).
+  /// Get the name of this actor.
   std::string GetName() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;

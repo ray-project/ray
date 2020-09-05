@@ -304,12 +304,10 @@ class SearchSpaceTest(unittest.TestCase):
         ]
 
         sampler1 = RandomSampler(seed=1234)
-        searcher1 = OptunaSearch(
-            space=converted_config, sampler=sampler1, base_config=config)
+        searcher1 = OptunaSearch(space=converted_config, sampler=sampler1)
 
         sampler2 = RandomSampler(seed=1234)
-        searcher2 = OptunaSearch(
-            space=optuna_config, sampler=sampler2, base_config=config)
+        searcher2 = OptunaSearch(space=optuna_config, sampler=sampler2)
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
@@ -317,7 +315,6 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
-        self.assertEqual(config1["b"]["y"], 4)
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
 

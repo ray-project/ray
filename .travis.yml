@@ -376,6 +376,7 @@ matrix:
     - os: linux
       env:
         - PYTHON=3.7 TUNE_TESTING=1
+        - INSTALL_HOROVOD=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.5
