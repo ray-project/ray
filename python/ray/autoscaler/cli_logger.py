@@ -61,21 +61,6 @@ def _patched_makeRecord(self,
 logging.Logger.makeRecord = _patched_makeRecord
 
 
-def _parent_frame_info():
-    """Get the info from the caller frame.
-
-    Used to override the logging function and line number with the correct
-    ones. See the comment on _patched_makeRecord for more info.
-    """
-
-    frame = inspect.currentframe()
-    # we are also in a function, so must go 2 levels up
-    caller = frame.f_back.f_back
-    return {
-        "lineno": caller.f_lineno,
-        "filename": os.path.basename(caller.f_code.co_filename),
-    }
-
 def _external_caller_info():
     """Get the info from the caller frame.
 
@@ -229,12 +214,12 @@ class _CliLogger():
         self._verbosity = 0
         self._color_mode = "auto"
         self._log_style = "auto"
-        self._formatter = None
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
         self._autodetected_cf_colormode = cf.colorful.colormode
+        self.set_format()
 
     def set_format(self, format_tmpl=None):
         if not format_tmpl:
@@ -255,7 +240,7 @@ class _CliLogger():
         elif self._log_style == "record":
             self.pretty = False
             self.color_mode = "false"
-        elif self._log_style == "true":
+        elif self._log_style == "pretty":
             self.pretty = True
 
     @property
@@ -567,7 +552,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.debug(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_info(self, logger: logging.Logger, msg: str, *args: Any,
@@ -585,7 +571,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.info(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
@@ -603,7 +590,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.warning(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_error(self, logger: logging.Logger, msg: str, *args: Any,
@@ -621,7 +609,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.error(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
@@ -639,7 +628,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.exception(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
