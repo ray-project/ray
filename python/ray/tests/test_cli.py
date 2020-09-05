@@ -154,7 +154,8 @@ DEFAULT_TEST_CONFIG_PATH = str(
 def test_ray_start(configure_lang):
     runner = CliRunner()
     result = runner.invoke(
-        scripts.start, ["--head", "--log-style=pretty", "--log-color", "False"])
+        scripts.start,
+        ["--head", "--log-style=pretty", "--log-color", "False"])
     _die_on_error(runner.invoke(scripts.stop))
 
     _check_output_via_pattern("test_ray_start.txt", result)
@@ -194,8 +195,7 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
-def test_ray_up_record(configure_lang, _unlink_test_ssh_key,
-                                configure_aws):
+def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -240,8 +240,8 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         _die_on_error(result)
 
         result = runner.invoke(scripts.attach, [
-            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "--log-style=pretty",
-            "--log-color", "False"
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache",
+            "--log-style=pretty", "--log-color", "False"
         ])
 
         _check_output_via_pattern("test_ray_attach.txt", result)
@@ -268,8 +268,8 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         _die_on_error(result)
 
         result = runner.invoke(scripts.exec, [
-            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "--log-style=pretty",
-            "\"echo This is a test!\""
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache",
+            "--log-style=pretty", "\"echo This is a test!\""
         ])
 
         _check_output_via_pattern("test_ray_exec.txt", result)
