@@ -73,6 +73,9 @@ Suppose we have a Python module as follows:
 
   # ray_demo.py
 
+  import ray
+
+  @ray.remote
   class Counter(object):
     def __init__(self):
         self.value = 0
@@ -81,12 +84,13 @@ Suppose we have a Python module as follows:
         self.value += 1
         return self.value
 
-
+  @ray.remote
   def add(a, b):
       return a + b
 
-Then, in Java, we can call the above Python remote function, or create an actor
-from the above Python class.
+.. note::
+
+  * The function or class should be decorated by `@ray.remote`.
 
 .. code-block:: java
 
