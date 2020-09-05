@@ -38,6 +38,7 @@ struct Event {
   ProducerChannelInfo *channel_info;
   EventType type;
   bool urgent;
+  Event() = default;
   Event(ProducerChannelInfo *channel_info, EventType type, bool urgent) {
     this->channel_info = channel_info;
     this->type = type;
