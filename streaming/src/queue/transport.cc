@@ -1,7 +1,7 @@
 #include "queue/transport.h"
 
 #include "queue/utils.h"
-#include "ray/exported/test.h"
+#include "ray/streaming/streaming.h"
 
 namespace ray {
 namespace streaming {
@@ -18,7 +18,7 @@ void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
   std::vector<ObjectID> return_ids;
-  ray_exported::ray::SendInternal(peer_actor_id_, buffer, sync_func_, TASK_OPTION_RETURN_NUM_1, return_ids);
+  ray:::streaming::SendInternal(peer_actor_id_, buffer, sync_func_, TASK_OPTION_RETURN_NUM_1, return_ids);
 
   std::vector<std::shared_ptr<RayObject>> results;
   Status get_st =

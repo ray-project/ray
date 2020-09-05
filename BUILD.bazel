@@ -367,16 +367,18 @@ cc_library(
     ],
 )
 
+# This header is used to warp some streaming code so we can reduce suspicious
+# symbols export.
 cc_library(
-    name = "exported_lib",
+    name = "exported_streaming_internal",
     srcs = glob(
         [
-            "src/ray/exported/exported.cc",
+            "src/ray/streaming/streaming.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/exported/exported.h",
+            "src/ray/streaming/streaming.h",
         ],
     ),
     copts = COPTS,
@@ -1722,7 +1724,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
-        "//:exported_lib",
+        "//:exported_streaming_internal",
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:ray_util",
@@ -1777,7 +1779,7 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//:exported_lib",
+        "//:exported_streaming_internal",
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",

@@ -1,12 +1,12 @@
+#include "ray/streaming/streaming.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/exported/test.h"
 
 namespace ray {
-namespace exported_ {
+namespace streaming {
 
-void SubmitActorTask(const ActorID &peer_actor_id,
-                     std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
-                     int return_num, std::vector<ObjectID> &return_ids) {
+void SendInternal(const ActorID &peer_actor_id, std::shared_ptr<LocalMemoryBuffer> buffer,
+                  RayFunction &function, int return_num,
+                  std::vector<ObjectID> &return_ids) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
@@ -30,5 +30,5 @@ void SubmitActorTask(const ActorID &peer_actor_id,
   CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
                                                      options, &return_ids);
 }
-}  // namespace exported_
+}  // namespace streaming
 }  // namespace ray
