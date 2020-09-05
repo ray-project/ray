@@ -76,6 +76,24 @@ def _parent_frame_info():
         "filename": os.path.basename(caller.f_code.co_filename),
     }
 
+def _external_caller_info():
+    """Get the info from the caller frame.
+
+    Used to override the logging function and line number with the correct
+    ones. See the comment on _patched_makeRecord for more info.
+    """
+
+    frame = inspect.currentframe()
+    caller = frame
+    levels = 0
+    while caller.f_code.co_filename == __file__:
+        caller = caller.f_back
+        levels += 1
+    return {
+        "lineno": caller.f_lineno,
+        "filename": os.path.basename(caller.f_code.co_filename)
+    }
+
 
 def _format_msg(msg: str,
                 *args: Any,
@@ -236,7 +254,7 @@ class _CliLogger():
             self.pretty = sys.stdin.isatty()
         elif self._log_style == "record":
             self.pretty = False
-            self._color_mode = "false"
+            self.color_mode = "false"
         elif self._log_style == "true":
             self.pretty = True
 
@@ -303,7 +321,7 @@ class _CliLogger():
         else:
             if msg.strip() == "":
                 return
-
+            caller_info = _external_caller_info()
             record = logging.LogRecord(
                 name="cli",
                 # We override the level name later
@@ -313,8 +331,8 @@ class _CliLogger():
                 # and it would be very tedious to extract since _print
                 # can be at varying depths in the call stack
                 # TODO(maximsmol): do it anyway to be extra
-                pathname="n/a",
-                lineno=0,
+                pathname=caller_info["filename"],
+                lineno=caller_info["lineno"],
                 msg=msg,
                 args={},
                 # No exception
