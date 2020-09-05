@@ -12,10 +12,10 @@ import ray
 from ray import tune
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.logger import NoopLogger
-from ray.tune.function_runner import (wrap_function,
-                                      detect_checkpoint_function)
+from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
+from ray.tune.utils import detect_checkpoint_function
 from ray.util.sgd.torch.utils import setup_process_group, setup_address
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
