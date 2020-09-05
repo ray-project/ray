@@ -22,6 +22,10 @@ enum class StreamingBarrierType : uint32_t { GlobalBarrier = 0 };
 struct StreamingBarrierHeader {
   StreamingBarrierType barrier_type;
   uint64_t barrier_id;
+  StreamingBarrierHeader(StreamingBarrierType type, uint64_t barrier_id) {
+    this->type = type;
+    this->barrier_id = barrier_id;
+  }
   inline bool IsGlobalBarrier() {
     return StreamingBarrierType::GlobalBarrier == barrier_type;
   }

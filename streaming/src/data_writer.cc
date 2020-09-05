@@ -191,8 +191,7 @@ void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
                            << Util::join(barrier_id_vec.begin(), barrier_id_vec.end(),
                                          "|");
   }
-  StreamingBarrierHeader barrier_header = {
-      .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
+  StreamingBarrierHeader barrier_header(StreamingBarrierType::GlobalBarrier, barrier_id);
 
   auto barrier_payload =
       StreamingMessage::MakeBarrierPayload(barrier_header, data, data_size);
