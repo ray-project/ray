@@ -95,7 +95,8 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
 
     def tearDown(self):
         ray.shutdown()
@@ -136,7 +137,8 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
 
     def tearDown(self):
         ray.shutdown()

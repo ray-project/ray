@@ -16,7 +16,8 @@ from ray.cluster_utils import Cluster
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
         self.trial_executor = RayTrialExecutor(queue_trials=False)
-        ray.init()
+        ray.init(num_cpus=2)
+
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):

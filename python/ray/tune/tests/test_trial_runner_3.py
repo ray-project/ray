@@ -545,7 +545,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()
 
     def testCheckpointWithFunction(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial(
             "__fake",
             config={"callbacks": {
@@ -570,7 +571,8 @@ class TrialRunnerTest3(unittest.TestCase):
                         and fname.endswith(".json"))
                        for fname in os.listdir(cdir))
 
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
