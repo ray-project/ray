@@ -434,6 +434,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 
 if __name__ == "__main__":
     # You can change the number of GPUs per trial here:
+    ray.init(num_cpus=2)  # for testing purposes only
     main(num_samples=2, max_num_epochs=2, gpus_per_trial=0)
 
 

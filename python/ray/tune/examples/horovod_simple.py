@@ -97,6 +97,8 @@ if __name__ == "__main__":
     parser.add_argument("--hosts-per-trial", type=int, default=1)
     parser.add_argument("--slots-per-host", type=int, default=2)
     args = parser.parse_args()
+    if args.smoke_test:
+        ray.init(num_cpus=2)
 
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
