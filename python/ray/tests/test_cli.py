@@ -99,6 +99,7 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
+            print('\n'.join(output_lines[i:]))
             break
 
         exp = expected_lines[i]
@@ -189,6 +190,36 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
             "--log-new-style", "--log-color", "False"
         ])
         _check_output_via_pattern("test_ray_up.txt", result)
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
+@mock_ec2
+@mock_iam
+def test_ray_up_non_interactive(configure_lang, _unlink_test_ssh_key,
+                                configure_aws):
+    def commands_mock(command, stdin):
+        # if we want to have e.g. some commands fail,
+        # we can have overrides happen here.
+        # unfortunately, cutting out SSH prefixes and such
+        # is, to put it lightly, non-trivial
+        if "uptime" in command:
+            return PopenBehaviour(stdout="MOCKED uptime")
+        if "rsync" in command:
+            return PopenBehaviour(stdout="MOCKED rsync")
+        if "ray" in command:
+            return PopenBehaviour(stdout="MOCKED ray")
+        return PopenBehaviour(stdout="MOCKED GENERIC")
+
+    with _setup_popen_mock(commands_mock):
+        # config cache does not work with mocks
+        runner = CliRunner()
+        result = runner.invoke(scripts.up, [
+            DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
+            "--log-new-style",
+            "--log-non-interactive", "true"
+        ])
+        _check_output_via_pattern("test_ray_up_non_interactive.txt", result)
 
 
 @pytest.mark.skipif(
