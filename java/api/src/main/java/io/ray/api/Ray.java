@@ -37,7 +37,7 @@ public final class Ray extends RayCall {
    *
    * @param factory A factory that produces the runtime instance.
    */
-  public static synchronized void init(RayRuntimeFactory factory) {
+  private static synchronized void init(RayRuntimeFactory factory) {
     if (runtime == null) {
       runtime = factory.createRayRuntime();
       Runtime.getRuntime().addShutdownHook(new Thread(Ray::shutdown));
@@ -52,6 +52,14 @@ public final class Ray extends RayCall {
       internal().shutdown();
       runtime = null;
     }
+  }
+
+  /**
+   * Check if {@link #init} has been called yet.
+   * @return True if {@link #init} has already been called and false otherwise.
+   */
+  public static boolean isInitialized() {
+    return runtime != null;
   }
 
   /**
