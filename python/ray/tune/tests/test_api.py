@@ -14,7 +14,8 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping)
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
+                                 AsyncHyperBandScheduler)
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -24,6 +25,8 @@ from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
+from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
@@ -1103,6 +1106,30 @@ class TrainableFunctionApiTest(unittest.TestCase):
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
+
+
+class ShimCreationTest(unittest.TestCase):
+    def testCreateScheduler(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        scheduler = "async_hyperband"
+        shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
+        real_scheduler = AsyncHyperBandScheduler(**kwargs)
+        assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateSearcher(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        searcher_ax = "ax"
+        shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
+        real_searcher_ax = AxSearch(space=[], **kwargs)
+        assert type(shim_searcher_ax) is type(real_searcher_ax)
+
+        searcher_hyperopt = "hyperopt"
+        shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
+                                                      **kwargs)
+        real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
+        assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
 
 
 if __name__ == "__main__":

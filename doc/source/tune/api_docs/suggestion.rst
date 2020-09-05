@@ -79,6 +79,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
@@ -268,3 +269,11 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+.. _shim:
+
+Shim Instantiation (tune.create_searcher)
+-----------------------------------------
+There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+
+.. automethod:: ray.tune.create_searcher
