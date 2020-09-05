@@ -46,7 +46,26 @@ class TuneBOHB(Searcher):
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
 
-    Example:
+    Tune automatically converts search spaces to TuneBOHB"s format:
+
+    .. code-block:: python
+
+        config = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
+        }
+
+        algo = TuneBOHB(max_concurrent=4, metric="mean_loss", mode="min")
+        bohb = HyperBandForBOHB(
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min",
+            max_t=100)
+        run(MyTrainableClass, config=config, scheduler=bohb, search_alg=algo)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
 
     .. code-block:: python
 
@@ -54,19 +73,19 @@ class TuneBOHB(Searcher):
 
         config_space = CS.ConfigurationSpace()
         config_space.add_hyperparameter(
-            CS.UniformFloatHyperparameter('width', lower=0, upper=20))
+            CS.UniformFloatHyperparameter("width", lower=0, upper=20))
         config_space.add_hyperparameter(
-            CS.UniformFloatHyperparameter('height', lower=-100, upper=100))
+            CS.UniformFloatHyperparameter("height", lower=-100, upper=100))
         config_space.add_hyperparameter(
             CS.CategoricalHyperparameter(
-                name='activation', choices=['relu', 'tanh']))
+                name="activation", choices=["relu", "tanh"]))
 
         algo = TuneBOHB(
-            config_space, max_concurrent=4, metric='mean_loss', mode='min')
+            config_space, max_concurrent=4, metric="mean_loss", mode="min")
         bohb = HyperBandForBOHB(
-            time_attr='training_iteration',
-            metric='mean_loss',
-            mode='min',
+            time_attr="training_iteration",
+            metric="mean_loss",
+            mode="min",
             max_t=100)
         run(MyTrainableClass, scheduler=bohb, search_alg=algo)
 
@@ -80,7 +99,7 @@ class TuneBOHB(Searcher):
                  mode="max"):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, "HpBandSter must be installed!"
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        assert mode in ["min", "max"], "`mode` must be in [min, max]!"
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self.running = set()
