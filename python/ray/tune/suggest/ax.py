@@ -56,9 +56,34 @@ class AxSearch(Searcher):
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
 
+    Tune automatically converts search spaces to Ax's format:
+
     .. code-block:: python
 
-        from ax.service.ax_client import AxClient
+        from ray import tune
+        from ray.tune.suggest.ax import AxSearch
+
+        config = {
+            "x1": tune.uniform(0.0, 1.0),
+            "x2": tune.uniform(0.0, 1.0)
+        }
+
+        def easy_objective(config):
+            for i in range(100):
+                intermediate_result = config["x1"] + config["x2"] * i
+                tune.report(score=intermediate_result)
+
+        ax_search = AxSearch(objective_name="score")
+        tune.run(
+            config=config,
+            easy_objective,
+            search_alg=ax_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
+    .. code-block:: python
+
         from ray import tune
         from ray.tune.suggest.ax import AxSearch
 
@@ -72,9 +97,8 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        client = AxClient()
-        algo = AxSearch(space=parameters, objective_name="score")
-        tune.run(easy_objective, search_alg=algo)
+        ax_search = AxSearch(space=parameters, objective_name="score")
+        tune.run(easy_objective, search_alg=ax_search)
 
     """
 
