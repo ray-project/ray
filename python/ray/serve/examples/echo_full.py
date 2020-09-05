@@ -12,9 +12,8 @@ client = serve.start()
 
 # a backend can be a function or class.
 # it can be made to be invoked from web as well as python.
-def echo_v1(flask_request, response="hello from python!"):
-    if serve.context.web:
-        response = flask_request.url
+def echo_v1(flask_request):
+    response = flask_request.args.get("response", "web")
     return response
 
 
@@ -46,7 +45,7 @@ client.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 # Observe requests are now split between two backends.
 for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").text)
-    time.sleep(0.5)
+    time.sleep(0.2)
 
 # You can also change number of replicas for each backend independently.
 client.update_backend_config("echo:v1", {"num_replicas": 2})

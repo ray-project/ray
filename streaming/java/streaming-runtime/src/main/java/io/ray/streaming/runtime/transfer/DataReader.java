@@ -4,22 +4,11 @@ import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.config.types.TransferChannelType;
-import io.ray.streaming.runtime.transfer.channel.ChannelId;
-import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo;
-import io.ray.streaming.runtime.transfer.channel.ChannelRecoverInfo.ChannelCreationStatus;
-import io.ray.streaming.runtime.transfer.channel.ChannelUtils;
-import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
-import io.ray.streaming.runtime.transfer.message.BarrierMessage;
-import io.ray.streaming.runtime.transfer.message.ChannelMessage;
-import io.ray.streaming.runtime.transfer.message.DataMessage;
 import io.ray.streaming.runtime.util.Platform;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Queue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,20 +22,7 @@ public class DataReader {
   private static final Logger LOG = LoggerFactory.getLogger(DataReader.class);
 
   private long nativeReaderPtr;
-  // params set by getBundleNative: bundle data address + size
-  private final ByteBuffer getBundleParams = ByteBuffer.allocateDirect(24);
-  // We use direct buffer to reduce gc overhead and memory copy.
-  private final ByteBuffer bundleData = Platform.wrapDirectBuffer(0, 0);
-  private final ByteBuffer bundleMeta = ByteBuffer.allocateDirect(BundleMeta.LENGTH);
-
-  private final Map<String, ChannelCreationStatus> queueCreationStatusMap = new HashMap<>();
-  private Queue<ChannelMessage> buf = new LinkedList<>();
-
-  {
-    getBundleParams.order(ByteOrder.nativeOrder());
-    bundleData.order(ByteOrder.nativeOrder());
-    bundleMeta.order(ByteOrder.nativeOrder());
-  }
+  private Queue<DataMessage> buf = new LinkedList<>();
 
   /**
    * @param inputChannels input channels ids
@@ -56,7 +32,6 @@ public class DataReader {
   public DataReader(
       List<String> inputChannels,
       List<BaseActorHandle> fromActors,
-      Map<String, OffsetInfo> checkpoints,
       StreamingWorkerConfig workerConfig) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
@@ -64,16 +39,11 @@ public class DataReader {
         new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
     byte[][] inputChannelsBytes = inputChannels.stream()
         .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
-
-    // get sequence ID and message ID from OffsetInfo
+    long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
-      String channelId = inputChannels.get(i);
-      if (!checkpoints.containsKey(channelId)) {
-        msgIds[i] = 0;
-        continue;
-      }
-      msgIds[i] = checkpoints.get(inputChannels.get(i)).getStreamingMsgId();
+      seqIds[i] = 0;
+      msgIds[i] = 0;
     }
     long timerInterval = workerConfig.transferConfig.readerTimerIntervalMs();
     TransferChannelType channelType = workerConfig.transferConfig.channelType();
@@ -81,34 +51,33 @@ public class DataReader {
     if (TransferChannelType.MEMORY_CHANNEL == channelType) {
       isMock = true;
     }
+    boolean isRecreate = workerConfig.transferConfig.readerIsRecreate();
 
-    // create native reader
-    List<Integer> creationStatus = new ArrayList<>();
     this.nativeReaderPtr = createDataReaderNative(
         initialParameters,
         inputChannelsBytes,
+        seqIds,
         msgIds,
         timerInterval,
-        creationStatus,
+        isRecreate,
         ChannelUtils.toNativeConf(workerConfig),
         isMock
     );
-    for (int i = 0; i < inputChannels.size(); ++i) {
-      queueCreationStatusMap
-          .put(inputChannels.get(i), ChannelCreationStatus.fromInt(creationStatus.get(i)));
-    }
-    LOG.info("Create DataReader succeed for worker: {}, creation status={}.",
-        workerConfig.workerInternalConfig.workerName(), queueCreationStatusMap);
+    LOG.info("Create DataReader succeed for worker: {}.",
+        workerConfig.workerInternalConfig.workerName());
   }
 
-  private static native long createDataReaderNative(
-      ChannelCreationParametersBuilder initialParameters,
-      byte[][] inputChannels,
-      long[] msgIds,
-      long timerInterval,
-      List<Integer> creationStatus,
-      byte[] configBytes,
-      boolean isMock);
+  // params set by getBundleNative: bundle data address + size
+  private final ByteBuffer getBundleParams = ByteBuffer.allocateDirect(24);
+  // We use direct buffer to reduce gc overhead and memory copy.
+  private final ByteBuffer bundleData = Platform.wrapDirectBuffer(0, 0);
+  private final ByteBuffer bundleMeta = ByteBuffer.allocateDirect(BundleMeta.LENGTH);
+
+  {
+    getBundleParams.order(ByteOrder.nativeOrder());
+    bundleData.order(ByteOrder.nativeOrder());
+    bundleMeta.order(ByteOrder.nativeOrder());
+  }
 
   /**
    * Read message from input channels, if timeout, return null.
@@ -116,21 +85,26 @@ public class DataReader {
    * @param timeoutMillis timeout
    * @return message or null
    */
-  public ChannelMessage read(long timeoutMillis) {
+  public DataMessage read(long timeoutMillis) {
     if (buf.isEmpty()) {
       getBundle(timeoutMillis);
       // if bundle not empty. empty message still has data size + seqId + msgId
       if (bundleData.position() < bundleData.limit()) {
         BundleMeta bundleMeta = new BundleMeta(this.bundleMeta);
-        String channelID = bundleMeta.getChannelID();
-        long timestamp = bundleMeta.getBundleTs();
         // barrier
         if (bundleMeta.getBundleType() == DataBundleType.BARRIER) {
-          buf.offer(getBarrier(bundleData, channelID, timestamp));
+          throw new UnsupportedOperationException(
+              "Unsupported bundle type " + bundleMeta.getBundleType());
         } else if (bundleMeta.getBundleType() == DataBundleType.BUNDLE) {
+          String channelID = bundleMeta.getChannelID();
+          long timestamp = bundleMeta.getBundleTs();
           for (int i = 0; i < bundleMeta.getMessageListSize(); i++) {
             buf.offer(getDataMessage(bundleData, channelID, timestamp));
           }
+        } else if (bundleMeta.getBundleType() == DataBundleType.EMPTY) {
+          long messageId = bundleMeta.getLastMessageId();
+          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(),
+              messageId, bundleMeta.getChannelID()));
         }
       }
     }
@@ -138,31 +112,6 @@ public class DataReader {
       return null;
     }
     return buf.poll();
-  }
-
-  public ChannelRecoverInfo getQueueRecoverInfo() {
-    return new ChannelRecoverInfo(queueCreationStatusMap);
-  }
-
-  private String getQueueIdString(ByteBuffer buffer) {
-    byte[] bytes = new byte[ChannelId.ID_LENGTH];
-    buffer.get(bytes);
-    return ChannelId.idBytesToStr(bytes);
-  }
-
-  private BarrierMessage getBarrier(ByteBuffer bundleData, String channelID, long timestamp) {
-    ByteBuffer offsetsInfoBytes = ByteBuffer.wrap(getOffsetsInfoNative(nativeReaderPtr));
-    offsetsInfoBytes.order(ByteOrder.nativeOrder());
-    BarrierOffsetInfo offsetInfo = new BarrierOffsetInfo(offsetsInfoBytes);
-    DataMessage message = getDataMessage(bundleData, channelID, timestamp);
-    BarrierItem barrierItem = new BarrierItem(message, offsetInfo);
-    return new BarrierMessage(
-        message.getMsgId(),
-        message.getTimestamp(),
-        message.getChannelId(),
-        barrierItem.getData(),
-        barrierItem.getGlobalBarrierId(),
-        barrierItem.getBarrierOffsetInfo().getQueueOffsetInfo());
   }
 
   private DataMessage getDataMessage(ByteBuffer bundleData, String channelID, long timestamp) {
@@ -212,13 +161,21 @@ public class DataReader {
     LOG.info("Finish closing DataReader.");
   }
 
+  private static native long createDataReaderNative(
+      ChannelCreationParametersBuilder initialParameters,
+      byte[][] inputChannels,
+      long[] seqIds,
+      long[] msgIds,
+      long timerInterval,
+      boolean isRecreate,
+      byte[] configBytes,
+      boolean isMock);
+
   private native void getBundleNative(
       long nativeReaderPtr,
       long timeoutMillis,
       long params,
       long metaAddress);
-
-  private native byte[] getOffsetsInfoNative(long nativeQueueConsumerPtr);
 
   private native void stopReaderNative(long nativeReaderPtr);
 
@@ -236,16 +193,7 @@ public class DataReader {
     }
   }
 
-  public enum BarrierType {
-    GLOBAL_BARRIER(0);
-    private int code;
-
-    BarrierType(int code) {
-      this.code = code;
-    }
-  }
-
-  class BundleMeta {
+  static class BundleMeta {
 
     // kMessageBundleHeaderSize + kUniqueIDSize:
     // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
@@ -278,7 +226,13 @@ public class DataReader {
       }
       // rawBundleSize
       rawBundleSize = buffer.getInt();
-      channelID = getQueueIdString(buffer);
+      channelID = getQidString(buffer);
+    }
+
+    private String getQidString(ByteBuffer buffer) {
+      byte[] bytes = new byte[ChannelId.ID_LENGTH];
+      buffer.get(bytes);
+      return ChannelId.idBytesToStr(bytes);
     }
 
     public int getMagicNum() {
@@ -307,75 +261,6 @@ public class DataReader {
 
     public int getRawBundleSize() {
       return rawBundleSize;
-    }
-  }
-
-  class BarrierOffsetInfo {
-
-    private int queueSize;
-    private Map<String, OffsetInfo> queueOffsetInfo;
-
-    public BarrierOffsetInfo(ByteBuffer buffer) {
-      // deserialization offset
-      queueSize = buffer.getInt();
-      queueOffsetInfo = new HashMap<>(queueSize);
-      for (int i = 0; i < queueSize; ++i) {
-        String qid = getQueueIdString(buffer);
-        long streamingMsgId = buffer.getLong();
-        queueOffsetInfo.put(qid, new OffsetInfo(streamingMsgId));
-      }
-    }
-
-    public int getQueueSize() {
-      return queueSize;
-    }
-
-    public Map<String, OffsetInfo> getQueueOffsetInfo() {
-      return queueOffsetInfo;
-    }
-  }
-
-  class BarrierItem {
-
-    BarrierOffsetInfo barrierOffsetInfo;
-    private long msgId;
-    private BarrierType barrierType;
-    private long globalBarrierId;
-    private ByteBuffer data;
-
-    public BarrierItem(DataMessage message, BarrierOffsetInfo barrierOffsetInfo) {
-      this.barrierOffsetInfo = barrierOffsetInfo;
-      msgId = message.getMsgId();
-      ByteBuffer buffer = message.body();
-      // c++ use native order, so use native order here.
-      buffer.order(ByteOrder.nativeOrder());
-      int barrierTypeInt = buffer.getInt();
-      globalBarrierId = buffer.getLong();
-      // dataSize includes: barrier type(32 bit), globalBarrierId, data
-      data = buffer.slice();
-      data.order(ByteOrder.nativeOrder());
-      buffer.position(buffer.limit());
-      barrierType = BarrierType.GLOBAL_BARRIER;
-    }
-
-    public long getBarrierMsgId() {
-      return msgId;
-    }
-
-    public BarrierType getBarrierType() {
-      return barrierType;
-    }
-
-    public long getGlobalBarrierId() {
-      return globalBarrierId;
-    }
-
-    public ByteBuffer getData() {
-      return data;
-    }
-
-    public BarrierOffsetInfo getBarrierOffsetInfo() {
-      return barrierOffsetInfo;
     }
   }
 

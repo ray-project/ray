@@ -626,6 +626,14 @@ class TestRolloutWorker(unittest.TestCase):
         del os.environ["env_key_1"]
         del os.environ["env_key_2"]
 
+    def test_no_env_seed(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
+            policy=MockPolicy,
+            seed=1)
+        assert not hasattr(ev.env, "seed")
+        ev.stop()
+
     def sample_and_flush(self, ev):
         time.sleep(2)
         ev.sample()

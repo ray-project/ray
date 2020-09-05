@@ -1,5 +1,6 @@
 package io.ray.streaming.message;
 
+
 import java.util.Objects;
 
 public class KeyRecord<K, T> extends Record<T> {

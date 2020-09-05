@@ -29,9 +29,9 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
   }
 
   @Override
-  public void fetch() {
+  public void run() {
     try {
-      this.function.fetch(this.sourceContext);
+      this.function.run(this.sourceContext);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

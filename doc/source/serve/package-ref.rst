@@ -20,6 +20,12 @@ Handle API
 .. autoclass:: ray.serve.handle.RayServeHandle
     :members: remote, options
 
+When calling from Python, the backend implementation will receive ``ServeRequest``
+objects instead of Flask requests.
+
+.. autoclass:: ray.serve.utils.ServeRequest
+    :members:
+
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.accept_batch

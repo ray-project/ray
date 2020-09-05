@@ -36,7 +36,7 @@ public class UnionStreamTest {
     streamSource1
         .union(streamSource2, streamSource3)
         .sink((SinkFunction<Integer>) value -> {
-          LOG.info("UnionStreamTest, sink: {}", value);
+          LOG.info("UnionStreamTest: {}", value);
           try {
             if (!Files.exists(Paths.get(sinkFileName))) {
               Files.createFile(Paths.get(sinkFileName));

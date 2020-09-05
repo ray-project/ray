@@ -11,8 +11,8 @@ def test_np_in_composed_model(serve_instance):
     # AttributeError: 'bytes' object has no attribute 'readonly'
     # in cloudpickle _from_numpy_buffer
 
-    def sum_model(_request, data=None):
-        return np.sum(data)
+    def sum_model(request):
+        return np.sum(request.args["data"])
 
     class ComposedModel:
         def __init__(self):

@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "channel/channel.h"
+#include "channel.h"
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 
