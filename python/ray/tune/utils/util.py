@@ -411,7 +411,7 @@ def detect_checkpoint_function(train_func, abort=False):
         logger.debug(str(e))
         validated = False
     if abort and not validated:
-        func_args = inspect.getfullargs(train_func)
+        func_args = inspect.getfullargspec(train_func).args
         raise ValueError(
             "Provided training function must have 2 args "
             "in the signature, and the latter arg must "

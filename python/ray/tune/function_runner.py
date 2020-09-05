@@ -467,7 +467,7 @@ def wrap_function(train_func, warn=True):
     else:
         inherit_from = (FunctionRunner, )
 
-    func_args = inspect.getfullargs(train_func)
+    func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
     use_config_single = detect_config_single(train_func)
     use_reporter = detect_reporter(train_func)
