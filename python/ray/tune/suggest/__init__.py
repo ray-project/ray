@@ -44,7 +44,7 @@ def create_searcher(
         return SkOptSearch
 
     def _import_hyperopt_search():
-        from ray.tune.suggest import HyperOptSearch
+        from ray.tune.suggest.hyperopt import HyperOptSearch
         return HyperOptSearch
 
     def _import_bayesopt_search():
