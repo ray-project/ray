@@ -144,6 +144,13 @@ class TuneBOHB(Searcher):
         return True
 
     def suggest(self, trial_id):
+        if not self._space:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+
         if len(self.running) < self._max_concurrent:
             # This parameter is not used in hpbandster implementation.
             config, info = self.bohber.get_config(None)

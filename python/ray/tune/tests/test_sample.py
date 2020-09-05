@@ -368,6 +368,55 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+    def testConvertZOOpt(self):
+        from ray.tune.suggest.zoopt import ZOOptSearch
+        from zoopt import ValueType
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        # Does not support categorical variables
+        with self.assertRaises(ValueError):
+            converted_config = ZOOptSearch.convert_search_space(config)
+        config = {
+            "a": 2,
+            "b": {
+                "x": tune.sample.Integer(0, 5).uniform(),
+                "y": 4,
+                "z": tune.sample.Float(-3, 7).uniform().quantized(1e-4)
+            }
+        }
+        converted_config = ZOOptSearch.convert_search_space(config)
+
+        zoopt_config = {
+            "b/x": (ValueType.DISCRETE, [0, 5], True),
+            "b/z": (ValueType.CONTINUOUS, [-3, 7], 1e-4)
+        }
+
+        searcher1 = ZOOptSearch(dim_dict=converted_config, budget=5)
+        searcher2 = ZOOptSearch(dim_dict=zoopt_config, budget=5)
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(-3, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 7)
+
+        searcher = ZOOptSearch(budget=5, metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertEqual(trial.config["b"]["y"], 4)
+
 
 if __name__ == "__main__":
     import pytest
