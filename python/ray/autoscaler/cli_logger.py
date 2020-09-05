@@ -191,15 +191,16 @@ class _CliLogger():
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
-    verbosity: int
+    interactive: bool
+    VALID_LOG_STYLES = ("record", "pretty")
 
     _autodetected_cf_colormode: int
 
     def __init__(self):
-        self._non_interactive = False
-        self._non_interactive_mode = "auto"
-
         self._color_mode = "auto"
+        self._log_style = "auto"
+        self.pretty = True
+        self.interactive = sys.stdin.isatty()
         self.indent_level = 0
 
         self._verbosity = 0
@@ -210,31 +211,20 @@ class _CliLogger():
         self._autodetected_cf_colormode = cf.colorful.colormode
 
     @property
-    def non_interactive_mode(self):
-        return self._non_interactive_mode
+    def log_style(self):
+        return self._log_style
 
-    @non_interactive_mode.setter
-    def non_interactive_mode(self, x):
-        self._non_interactive_mode = x.lower()
+    @log_style.setter
+    def log_style(self, x):
+        self._log_style = x.lower()
 
-        if self.non_interactive_mode == "auto":
-            self.non_interactive = not sys.stdin.isatty()
-        elif self.non_interactive_mode == "false":
-            self.non_interactive = False
-        elif self.non_interactive_mode == "true":
-            self.non_interactive = True
-
-    @property
-    def non_interactive(self):
-        return self._non_interactive
-
-    @non_interactive.setter
-    def non_interactive(self, x):
-        if self._non_interactive_mode != "auto":
-            self._non_interactive_mode = "true" if x else "false"
-        if x:
-            self.color_mode = "false"
-        self._non_interactive = x
+        if self._log_style == "auto":
+            self.pretty = sys.stdin.isatty()
+        elif self._log_style == "record":
+            self.pretty = False
+            self._color_mode = "false"
+        elif self._log_style == "true":
+            self.pretty = True
 
     @property
     def color_mode(self):
@@ -247,7 +237,7 @@ class _CliLogger():
 
     @property
     def verbosity(self):
-        if self.non_interactive:
+        if not self.pretty:
             return 999
         return self._verbosity
 
@@ -296,7 +286,9 @@ class _CliLogger():
         """
         if "\n" in msg:
             raise ValueError("NO")
-        if self.non_interactive:
+        if self.pretty:
+            rendered_message = "  " * self.indent_level + msg
+        else:
             if msg.strip() == "":
                 return
 
@@ -317,8 +309,6 @@ class _CliLogger():
                 exc_info=None)
             record.levelname = _level_str
             rendered_message = formatter.format(record)
-        else:
-            rendered_message = "  " * self.indent_level + msg
 
         if not _linefeed:
             sys.stdout.write(rendered_message)
@@ -498,9 +488,9 @@ class _CliLogger():
         if exc is not None:
             raise exc
 
-        exc_cls = SilentClickException
-        if self.non_interactive:
-            exc_cls = click.ClickException
+        exc_cls = click.ClickException
+        if self.pretty:
+            exc_cls = SilentClickException
         raise exc_cls("Exiting due to cli_logger.abort()")
 
     def doassert(self, val: bool, msg: str, *args: Any, **kwargs: Any):
@@ -513,7 +503,7 @@ class _CliLogger():
         """
         if not val:
             exc = None
-            if self.non_interactive:
+            if not self.pretty:
                 exc = AssertionError()
 
             # TODO(maximsmol): rework asserts so that we get the expression
@@ -571,7 +561,7 @@ class _CliLogger():
         should_abort = _abort
         default = _default
 
-        if self.non_interactive and not yes:
+        if not self.interactive and not yes:
             # no formatting around --yes here since this is non-interactive
             self.error("This command requires user confirmation. "
                        "When running non-interactively, supply --yes to skip.")
