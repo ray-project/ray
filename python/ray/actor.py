@@ -6,7 +6,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray.experimental.placement_group import PlacementGroup, \
+from ray.util.placement_group import PlacementGroup, \
     check_placement_group_index
 
 from ray import ActorClassID, Language
