@@ -7,7 +7,7 @@
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-**Ray provides a simple and universal API for building distributed applications.**
+**Ray provides a simple, universal API for building distributed applications.**
 
 Ray accomplishes this mission by:
 

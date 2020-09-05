@@ -68,7 +68,7 @@ class Worker:
             if item is None:
                 time.sleep(0.01)
             else:
-                msg = pickle.loads(item.body())
+                msg = pickle.loads(item.body)
                 count += 1
         assert msg == msg_nums - 1
         print("ReaderWorker done.")
