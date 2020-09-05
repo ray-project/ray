@@ -37,28 +37,28 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertAlmostEqual(out["func"], out["uniform"] * 0.01)
 
-            self.assertGreater(out["uniform"], -5)
+            self.assertGreaterEqual(out["uniform"], -5)
             self.assertLess(out["uniform"], -1)
 
-            self.assertGreater(out["quniform"], 3.2)
+            self.assertGreaterEqual(out["quniform"], 3.2)
             self.assertLessEqual(out["quniform"], 5.4)
             self.assertAlmostEqual(out["quniform"] / 0.2,
                                    round(out["quniform"] / 0.2))
 
-            self.assertGreater(out["loguniform"], 1e-4)
+            self.assertGreaterEqual(out["loguniform"], 1e-4)
             self.assertLess(out["loguniform"], 1e-2)
 
-            self.assertGreater(out["qloguniform"], 1e-4)
+            self.assertGreaterEqual(out["qloguniform"], 1e-4)
             self.assertLessEqual(out["qloguniform"], 1e-1)
             self.assertAlmostEqual(out["qloguniform"] / 5e-4,
                                    round(out["qloguniform"] / 5e-4))
 
             self.assertIn(out["choice"], [2, 3, 4])
 
-            self.assertGreater(out["randint"], -9)
+            self.assertGreaterEqual(out["randint"], -9)
             self.assertLess(out["randint"], 15)
 
-            self.assertGreater(out["qrandint"], -21)
+            self.assertGreaterEqual(out["qrandint"], -21)
             self.assertLessEqual(out["qrandint"], 12)
             self.assertEqual(out["qrandint"] % 3, 0)
 
