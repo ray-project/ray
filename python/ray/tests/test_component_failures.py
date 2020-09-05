@@ -17,7 +17,7 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Not working with new GCS API.")
-def test_dying_worker_get(ray_start_2_cpus):
+def test_dying_worker_get(ray_start_10_cpus):
     @ray.remote
     def sleep_forever(signal):
         ray.get(signal.send.remote())
