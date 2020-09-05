@@ -11,7 +11,7 @@ import ray
 from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.experimental.placement_group import PlacementGroup
+from ray.util.placement_group import PlacementGroup
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -29,7 +29,7 @@ def test_placement_group_pack(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name", strategy="PACK", bundles=[{
             "CPU": 2
         }, {
@@ -75,7 +75,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name", strategy="STRICT_PACK", bundles=[{
             "CPU": 2
         }, {
@@ -121,7 +121,7 @@ def test_placement_group_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name", strategy="SPREAD", bundles=[{
             "CPU": 2
         }, {
@@ -167,7 +167,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name",
         strategy="STRICT_SPREAD",
         bundles=[{
@@ -222,7 +222,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    g1 = ray.util.placement_group([{"CPU": 2}])
     a1 = F.options(placement_group=g1).remote()
     resources = ray.get(a1.f.remote())
     assert len(resources) == 1, resources
@@ -240,7 +240,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    g1 = ray.util.placement_group([{"CPU": 2}])
     o1 = f.options(placement_group=g1).remote()
     resources = ray.get(o1)
     assert len(resources) == 1, resources
@@ -271,7 +271,7 @@ def test_placement_group_hang(ray_start_cluster):
     # Warm workers up, so that this triggers the hang rice.
     ray.get(f.remote())
 
-    g1 = ray.experimental.placement_group([{"CPU": 2}])
+    g1 = ray.util.placement_group([{"CPU": 2}])
     # This will start out infeasible. The placement group will then be created
     # and it transitions to feasible.
     o1 = f.options(placement_group=g1).remote()
@@ -290,19 +290,15 @@ def test_remove_placement_group(ray_start_cluster):
     random_group_id = PlacementGroupID.from_random()
     random_placement_group = PlacementGroup(random_group_id, [{"CPU": 1}])
     for _ in range(3):
-        ray.experimental.remove_placement_group(random_placement_group)
+        ray.util.remove_placement_group(random_placement_group)
 
     # Creating a placement group as soon as it is
     # created should work.
-    placement_group = ray.experimental.placement_group([{
-        "CPU": 2
-    }, {
-        "CPU": 2
-    }])
-    ray.experimental.remove_placement_group(placement_group)
+    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    ray.util.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
-        table = ray.experimental.placement_group_table(placement_group)
+        table = ray.util.placement_group_table(placement_group)
         if "state" not in table:
             return False
         return table["state"] == "REMOVED"
@@ -310,11 +306,7 @@ def test_remove_placement_group(ray_start_cluster):
     wait_for_condition(is_placement_group_removed)
 
     # # Now let's create a placement group.
-    placement_group = ray.experimental.placement_group([{
-        "CPU": 2
-    }, {
-        "CPU": 2
-    }])
+    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
 
     # Create an actor that occupies resources.
     @ray.remote(num_cpus=2)
@@ -338,10 +330,10 @@ def test_remove_placement_group(ray_start_cluster):
     a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
-    ray.experimental.remove_placement_group(placement_group)
+    ray.util.remove_placement_group(placement_group)
     # Subsequent remove request shouldn't do anything.
     for _ in range(3):
-        ray.experimental.remove_placement_group(placement_group)
+        ray.util.remove_placement_group(placement_group)
 
     # Make sure placement group resources are
     # released and we can schedule this task.
@@ -364,12 +356,8 @@ def test_remove_pending_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
     # Create a placement group that cannot be scheduled now.
-    placement_group = ray.experimental.placement_group([{
-        "GPU": 2
-    }, {
-        "CPU": 2
-    }])
-    ray.experimental.remove_placement_group(placement_group)
+    placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+    ray.util.remove_placement_group(placement_group)
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -399,9 +387,9 @@ def test_placement_group_table(ray_start_cluster):
     name = "name"
     strategy = "PACK"
     bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name=name, strategy=strategy, bundles=bundles)
-    result = ray.experimental.placement_group_table(placement_group)
+    result = ray.util.placement_group_table(placement_group)
     assert result["name"] == name
     assert result["strategy"] == strategy
     for i in range(len(bundles)):
@@ -416,7 +404,7 @@ def test_placement_group_table(ray_start_cluster):
         placement_group_bundle_index=0).remote()
     ray.get(actor_1.value.remote())
 
-    result = ray.experimental.placement_group_table(placement_group)
+    result = ray.util.placement_group_table(placement_group)
     assert result["state"] == "CREATED"
 
 
@@ -431,7 +419,7 @@ def test_cuda_visible_devices(ray_start_cluster):
         cluster.add_node(num_gpus=1)
     ray.init(address=cluster.address)
 
-    g1 = ray.experimental.placement_group([{"CPU": 1, "GPU": 1}])
+    g1 = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
     o1 = f.options(placement_group=g1).remote()
 
     devices = ray.get(o1)
@@ -459,7 +447,7 @@ def test_placement_group_reschedule_when_node_dead(ray_start_cluster):
     assert len(nodes) == 3
     assert nodes[0]["alive"] and nodes[1]["alive"] and nodes[2]["alive"]
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name",
         strategy="SPREAD",
         bundles=[{
@@ -519,7 +507,7 @@ def test_check_bundle_index(ray_start_cluster):
     cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name", strategy="SPREAD", bundles=[{
             "CPU": 2
         }, {
@@ -557,7 +545,7 @@ def test_pending_placement_group_wait(ray_start_cluster):
     cluster.wait_for_nodes()
 
     # Wait on placement group that cannot be created.
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name",
         strategy="SPREAD",
         bundles=[
@@ -574,7 +562,7 @@ def test_pending_placement_group_wait(ray_start_cluster):
     ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
     assert len(unready) == 1
     assert len(ready) == 0
-    table = ray.experimental.placement_group_table(placement_group)
+    table = ray.util.placement_group_table(placement_group)
     assert table["state"] == "PENDING"
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(placement_group.ready(), timeout=0.1)
@@ -587,7 +575,7 @@ def test_placement_group_wait(ray_start_cluster):
     cluster.wait_for_nodes()
 
     # Wait on placement group that cannot be created.
-    placement_group = ray.experimental.placement_group(
+    placement_group = ray.util.placement_group(
         name="name", strategy="SPREAD", bundles=[
             {
                 "CPU": 2
@@ -599,7 +587,7 @@ def test_placement_group_wait(ray_start_cluster):
     ready, unready = ray.wait([placement_group.ready()])
     assert len(unready) == 0
     assert len(ready) == 1
-    table = ray.experimental.placement_group_table(placement_group)
+    table = ray.util.placement_group_table(placement_group)
     assert table["state"] == "CREATED"
 
     pg = ray.get(placement_group.ready())
@@ -613,14 +601,10 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster):
     ray.init(address=cluster.address)
 
     # Creating a placement group that cannot be satisfied yet.
-    placement_group = ray.experimental.placement_group([{
-        "GPU": 2
-    }, {
-        "CPU": 2
-    }])
+    placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
 
     def is_placement_group_created():
-        table = ray.experimental.placement_group_table(placement_group)
+        table = ray.util.placement_group_table(placement_group)
         if "state" not in table:
             return False
         return table["state"] == "CREATED"
@@ -653,7 +637,7 @@ def test_atomic_creation(ray_start_cluster):
 
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
-    pg = ray.experimental.placement_group(
+    pg = ray.util.placement_group(
         name="name",
         strategy="PACK",
         bundles=[{

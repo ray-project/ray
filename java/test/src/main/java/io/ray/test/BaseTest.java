@@ -19,7 +19,7 @@ public class BaseTest {
 
   @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
-    Assert.assertNull(Ray.internal());
+    Assert.assertFalse(Ray.isInitialized());
     Ray.init();
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(

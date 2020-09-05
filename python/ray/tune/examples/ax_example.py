@@ -46,7 +46,6 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from ax.service.ax_client import AxClient
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -55,62 +54,32 @@ if __name__ == "__main__":
 
     ray.init()
 
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,
+            "x1": tune.uniform(0.0, 1.0),
+            "x2": tune.uniform(0.0, 1.0),
+            "x3": tune.uniform(0.0, 1.0),
+            "x4": tune.uniform(0.0, 1.0),
+            "x5": tune.uniform(0.0, 1.0),
+            "x6": tune.uniform(0.0, 1.0),
         },
         "stop": {
             "timesteps_total": 100
         }
     }
-    parameters = [
-        {
-            "name": "x1",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-            "value_type": "float",  # Optional, defaults to "bounds".
-            "log_scale": False,  # Optional, defaults to False.
-        },
-        {
-            "name": "x2",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x3",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x4",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x5",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x6",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-    ]
-    client = AxClient(enforce_sequential_optimization=False)
-    client.create_experiment(
-        parameters=parameters,
-        objective_name="hartmann6",
-        minimize=True,  # Optional, defaults to False.
+    algo = AxSearch(
+        max_concurrent=4,
+        metric="hartmann6",
+        mode="min",
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
-    algo = AxSearch(client, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
     tune.run(
         easy_objective,
         name="ax",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

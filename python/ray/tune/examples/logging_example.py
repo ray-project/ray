@@ -3,8 +3,6 @@
 import argparse
 import json
 import os
-import random
-
 import numpy as np
 
 from ray import tune
@@ -64,7 +62,6 @@ if __name__ == "__main__":
         loggers=[TestLogger],
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
-            "width": tune.sample_from(
-                lambda spec: 10 + int(90 * random.random())),
-            "height": tune.sample_from(lambda spec: int(100 * random.random()))
+            "width": tune.randint(10, 100),
+            "height": tune.loguniform(10, 100)
         })

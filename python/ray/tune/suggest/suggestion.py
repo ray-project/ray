@@ -86,6 +86,22 @@ class Searcher:
         self._metric = metric
         self._mode = mode
 
+    def set_search_properties(self, metric, mode, config):
+        """Pass search properties to searcher.
+
+        This method acts as an alternative to instantiating search algorithms
+        with their own specific search spaces. Instead they can accept a
+        Tune config through this method. A searcher should return ``True``
+        if setting the config was successful, or ``False`` if it was
+        unsuccessful, e.g. when the search space has already been set.
+
+        Args:
+            metric (str): Metric to optimize
+            mode (str): One of ["min", "max"]. Direction to optimize.
+            config (dict): Tune config dict.
+        """
+        return False
+
     def on_trial_result(self, trial_id, result):
         """Optional notification for result during training.
 
