@@ -130,7 +130,11 @@ public class RayConfig {
     workerMode = localWorkerMode;
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
-    runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    if (config.hasPath("ray.local-mode")) {
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+    } else {
+      runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    }
     // Node ip.
     if (config.hasPath("ray.node-ip")) {
       nodeIp = config.getString("ray.node-ip");

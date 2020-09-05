@@ -4,7 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.experimental.placement_group import PlacementGroup, \
+from ray.util.placement_group import PlacementGroup, \
     check_placement_group_index
 import ray.signature
 
