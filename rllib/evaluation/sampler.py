@@ -986,17 +986,18 @@ def _process_observations_w_trajectory_view_api(
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     _sample_collector.total_env_steps(),
-                    _sample_collector.count) + "are buffered in "
-                "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly and that"
-                " it terminates at some point. "
+                    _sample_collector.count) +
+                "are buffered in the sampler. If this is more than you "
+                "expected, check that that you set a horizon on your "
+                "environment correctly and that it terminates at some point. "
                 "Note: In multi-agent environments, `rollout_fragment_length` "
-                "sets the batch size based on environment steps, not the "
-                "steps of "
-                "individual agents, which can result in unexpectedly large "
-                "batches. Also, you may be in evaluation waiting for your Env "
-                "to terminate (batch_mode=`complete_episodes`). Make sure it "
-                "does at some point.")
+                "sets the batch size based on (across-agents) environment "
+                "steps, not the steps of individual agents, which can result "
+                "in unexpectedly large batches." +
+                ("Also, you may be in evaluation waiting for your Env to "
+                 "terminate (batch_mode=`complete_episodes`). Make sure it "
+                 "does at some point."
+                 if not multiple_episodes_in_batch else ""))
 
         # Check episode termination conditions.
         if dones[env_id]["__all__"] or episode.length >= horizon:
