@@ -233,7 +233,6 @@ def test_worker_capping_fifo():
 
     driver_code = """
 import ray
-import time
 
 ray.init(address="{}")
 
