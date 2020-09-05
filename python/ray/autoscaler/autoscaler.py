@@ -166,7 +166,8 @@ class StandardAutoscaler:
         for node_id in managed_workers:
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
-                    (len(managed_workers) - len(nodes_to_terminate) > target_workers):
+                    (len(managed_workers) - len(nodes_to_terminate)
+                     > target_workers):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
