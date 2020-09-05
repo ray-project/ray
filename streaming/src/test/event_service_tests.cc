@@ -23,7 +23,7 @@ TEST(EventServiceTest, Test1) {
   std::thread thread_empty([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(20);
     while (!stop) {
-      Event event{&mock_channel_info, EventType::EmptyEvent, true};
+      Event event(&mock_channel_info, EventType::EmptyEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
@@ -32,7 +32,7 @@ TEST(EventServiceTest, Test1) {
   std::thread thread_flow([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(2);
     while (!stop) {
-      Event event{&mock_channel_info, EventType::FlowEvent, true};
+      Event event(&mock_channel_info, EventType::FlowEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
@@ -41,7 +41,7 @@ TEST(EventServiceTest, Test1) {
   std::thread thread_user([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(2);
     while (!stop) {
-      Event event{&mock_channel_info, EventType::UserEvent, true};
+      Event event(&mock_channel_info, EventType::UserEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
@@ -76,9 +76,9 @@ TEST(EventServiceTest, remove_delete_channel_event) {
   mock_channel_info_vec.push_back(mock_channel_info2);
 
   for (auto &id : mock_channel_info_vec) {
-    Event empty_event{&id, EventType::EmptyEvent, true};
-    Event user_event{&id, EventType::UserEvent, true};
-    Event flow_event{&id, EventType::FlowEvent, true};
+    Event empty_event(&id, EventType::EmptyEvent, true);
+    Event user_event(&id, EventType::UserEvent, true);
+    Event flow_event(&id, EventType::FlowEvent, true);
     server->Push(empty_event);
     server->Push(user_event);
     server->Push(flow_event);
