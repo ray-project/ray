@@ -12,4 +12,12 @@ public class RayActorException extends RayException {
     super("The actor died unexpectedly before finishing this task.");
   }
 
+  public RayActorException(String message) {
+    super(message);
+  }
+
+  public RayActorException(String message, Throwable cause) {
+    super(message, cause);
+  }
+
 }
