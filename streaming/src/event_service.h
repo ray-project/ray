@@ -38,6 +38,12 @@ struct Event {
   ProducerChannelInfo *channel_info;
   EventType type;
   bool urgent;
+  Event() = default;
+  Event(ProducerChannelInfo *channel_info, EventType type, bool urgent) {
+    this->channel_info = channel_info;
+    this->type = type;
+    this->urgent = urgent;
+  }
 };
 
 /// Data writer utilizes what's called an event-driven programming model

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<settingsMap>
+  <map sectionType="System.Web.Configuration.MembershipSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
+       mapperType="Mono.Web.Util.MembershipSectionMapper, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
+       platform="Unix">
+
+    <!-- The 'what' tag specifies which region of the section to modify. The 'value' attribute value is mapper-specific and is not defined here. It can be
+         any expression understood by the mapper to designate the section region to modify.
+    -->
+    <what value="providers">
+      <!-- 'what' can contain any number of occurrences of any three elements:
+              replace - replace the designated region
+	      add - add a new entry to the region
+	      clear - clear the region
+	      remove - remove the designatedregion
+
+              The attributes to any of the above are freeform and are not processed by the mapper manager. They are stored verbatim for the
+	      mapper to peruse.
+      -->
+      <replace name="AspNetSqlMembershipProvider" 
+	       type="System.Web.Security.SqliteMembershipProvider, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" 
+	       connectionStringName="LocalSqliteServer" />
+    </what>
+  </map>
+
+  <map sectionType="System.Web.Configuration.RoleManagerSection, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
+       mapperType="Mono.Web.Util.RoleManagerSectionMapper, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a"
+       platform="Unix">
+
+    <!-- The 'what' tag specifies which region of the section to modify. The 'value' attribute value is mapper-specific and is not defined here. It can be
+         any expression understood by the mapper to designate the section region to modify.
+    -->
+    <what value="providers">
+      <!-- 'what' can contain any number of occurrences of any three elements:
+              replace - replace the designated region
+	      add - add a new entry to the region
+	      clear - clear the region
+	      remove - remove the designatedregion
+
+              The attributes to any of the above are freeform and are not processed by the mapper manager. They are stored verbatim for the
+	      mapper to peruse.
+      -->
+      <replace name="AspNetSqlRoleProvider" 
+	       type="System.Web.Security.SqliteRoleProvider, System.Web, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" 
+	       connectionStringName="LocalSqliteServer" />
+    </what>
+  </map>
+</settingsMap>

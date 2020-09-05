@@ -91,7 +91,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
       STREAMING_LOG(DEBUG) << "user_event had been in event_queue";
     } else if (!channel_info.flow_control) {
       channel_info.in_event_queue = true;
-      Event event{&channel_info, EventType::UserEvent, false};
+      Event event(&channel_info, EventType::UserEvent, false);
       event_service_->Push(event);
       ++channel_info.user_event_cnt;
     }
@@ -191,8 +191,7 @@ void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
                            << Util::join(barrier_id_vec.begin(), barrier_id_vec.end(),
                                          "|");
   }
-  StreamingBarrierHeader barrier_header = {
-      .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
+  StreamingBarrierHeader barrier_header(StreamingBarrierType::GlobalBarrier, barrier_id);
 
   auto barrier_payload =
       StreamingMessage::MakeBarrierPayload(barrier_header, data, data_size);
@@ -464,7 +463,7 @@ void DataWriter::EmptyMessageTimerCallback() {
       }
       if (current_ts - channel_info.message_pass_by_ts >=
           runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
-        Event event{&channel_info, EventType::EmptyEvent, true};
+        Event event(&channel_info, EventType::EmptyEvent, true);
         event_service_->Push(event);
         ++channel_info.sent_empty_cnt;
         ++count;

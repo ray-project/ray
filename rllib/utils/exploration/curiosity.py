@@ -1,18 +1,20 @@
-from gym.spaces import Discrete, Space
+from gym.spaces import Discrete, MultiDiscrete, Space
+import numpy as np
 from typing import Optional, Tuple, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchMultiCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, \
-    SampleBatchType
+from ray.rllib.utils.torch_ops import one_hot
+from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -91,12 +93,18 @@ class Curiosity(Exploration):
         """
         if framework != "torch":
             raise ValueError("Only torch is currently supported for Curiosity")
-        elif not isinstance(action_space, Discrete):
+        elif not isinstance(action_space, (Discrete, MultiDiscrete)):
             raise ValueError(
-                "Only Discrete action spaces supported for Curiosity so far.")
+                "Only (Multi)Discrete action spaces supported for Curiosity "
+                "so far!")
 
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
+
+        if self.policy_config["num_workers"] != 0:
+            raise ValueError(
+                "Curiosity exploration currently does not support parallelism."
+                " `num_workers` must be 0!")
 
         self.feature_dim = feature_dim
         if feature_net_config is None:
@@ -106,6 +114,9 @@ class Curiosity(Exploration):
         self.inverse_net_activation = inverse_net_activation
         self.forward_net_hiddens = forward_net_hiddens
         self.forward_net_activation = forward_net_activation
+
+        self.action_dim = self.action_space.n if isinstance(
+            self.action_space, Discrete) else np.sum(self.action_space.nvec)
 
         self.beta = beta
         self.eta = eta
@@ -128,11 +139,11 @@ class Curiosity(Exploration):
 
         self._curiosity_inverse_fcnet = self._create_fc_net(
             [2 * self.feature_dim] + list(self.inverse_net_hiddens) +
-            [self.action_space.n], self.inverse_net_activation)
+            [self.action_dim], self.inverse_net_activation)
 
         self._curiosity_forward_fcnet = self._create_fc_net(
-            [self.feature_dim + self.action_space.n
-             ] + list(forward_net_hiddens) + [self.feature_dim],
+            [self.feature_dim + self.action_dim] + list(
+                self.forward_net_hiddens) + [self.feature_dim],
             self.forward_net_activation)
 
         # This is only used to select the correct action
@@ -175,91 +186,72 @@ class Curiosity(Exploration):
         self.model._curiosity_forward_fcnet = \
             self._curiosity_forward_fcnet.to(self.device)
 
-        # Add the Adam for curiosity NN updating to the Policy's optimizers.
-        return optimizers + [
-            torch.optim.Adam(
-                forward_params + inverse_params + feature_params, lr=self.lr)
-        ]
+        # Create, but don't add Adam for curiosity NN updating to the policy.
+        # If we added and returned it here, it would be used in the policy's
+        # update loop, which we don't want (curiosity updating happens inside
+        # `postprocess_trajectory`).
+        self._optimizer = torch.optim.Adam(
+            forward_params + inverse_params + feature_params, lr=self.lr)
+
+        return optimizers
 
     @override(Exploration)
     def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
         """Calculates phi values (obs, obs', and predicted obs') and ri.
 
-        Stores calculated phi, phi' and predicted phi' as well as the intrinsic
-        rewards in the batch for loss processing by the policy.
+        Also calculates forward and inverse losses and updates the curiosity
+        module on the provided batch using our optimizer.
         """
-        batch_size = sample_batch[SampleBatch.OBS].shape[0]
+        # Push both observations through feature net to get both phis.
         phis, _ = self.model._curiosity_feature_net({
             SampleBatch.OBS: torch.cat([
                 torch.from_numpy(sample_batch[SampleBatch.OBS]),
                 torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS])
             ])
         })
-        phi, next_phi = phis[:batch_size], phis[batch_size:]
+        phi, next_phi = torch.chunk(phis, 2)
+        actions_tensor = torch.from_numpy(
+            sample_batch[SampleBatch.ACTIONS]).long()
 
+        # Predict next phi with forward model.
         predicted_next_phi = self.model._curiosity_forward_fcnet(
             torch.cat(
-                [
-                    phi.detach(),
-                    F.one_hot(
-                        torch.from_numpy(
-                            sample_batch[SampleBatch.ACTIONS]).long(),
-                        num_classes=self.action_space.n).float()
-                ],
+                [phi, one_hot(actions_tensor, self.action_space).float()],
                 dim=-1))
 
         # Forward loss term (predicted phi', given phi and action vs actually
         # observed phi').
         forward_l2_norm_sqared = 0.5 * torch.sum(
             torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1)
-        # Scale forward loss by eta hyper-parameter.
+        forward_loss = torch.mean(forward_l2_norm_sqared)
+
+        # Scale intrinsic reward by eta hyper-parameter.
         sample_batch[SampleBatch.REWARDS] = \
             sample_batch[SampleBatch.REWARDS] + \
             self.eta * forward_l2_norm_sqared.detach().cpu().numpy()
-        return sample_batch
 
-    @override(Exploration)
-    def get_exploration_loss(self, policy_loss, train_batch: SampleBatchType):
-        """Adds the loss for the inverse and forward models to policy_loss.
-        """
-        batch_size = train_batch[SampleBatch.OBS].shape[0]
-        phis, _ = self.model._curiosity_feature_net({
-            SampleBatch.OBS: torch.cat(
-                [
-                    train_batch[SampleBatch.OBS],
-                    train_batch[SampleBatch.NEXT_OBS]
-                ],
-                dim=0)
-        })
-        phi, next_phi = phis[:batch_size], phis[batch_size:]
         # Inverse loss term (prediced action that led from phi to phi' vs
         # actual action taken).
-        phi_next_phi = torch.cat([phi, next_phi], dim=-1)
-        dist_inputs = self.model._curiosity_inverse_fcnet(phi_next_phi)
-        action_dist = TorchCategorical(dist_inputs, self.model)
+        phi_cat_next_phi = torch.cat([phi, next_phi], dim=-1)
+        dist_inputs = self.model._curiosity_inverse_fcnet(phi_cat_next_phi)
+        action_dist = TorchCategorical(dist_inputs, self.model) if \
+            isinstance(self.action_space, Discrete) else \
+            TorchMultiCategorical(
+                dist_inputs, self.model, self.action_space.nvec)
         # Neg log(p); p=probability of observed action given the inverse-NN
         # predicted action distribution.
-        inverse_loss = -action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        inverse_loss = -action_dist.logp(actions_tensor)
         inverse_loss = torch.mean(inverse_loss)
 
-        # Forward loss term has already been calculated during train batch pre-
-        # processing (just have to weight with beta here).
-        predicted_next_phi = self.model._curiosity_forward_fcnet(
-            torch.cat(
-                [
-                    phi,
-                    F.one_hot(
-                        train_batch[SampleBatch.ACTIONS].long(),
-                        num_classes=self.action_space.n).float()
-                ],
-                dim=-1))
-        forward_loss = torch.mean(0.5 * torch.sum(
-            torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1))
+        # Calculate the ICM loss.
+        loss = (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
+        # Perform an optimizer step.
+        self._optimizer.zero_grad()
+        loss.backward()
+        self._optimizer.step()
 
-        # Append our loss to the policy loss(es).
-        return policy_loss + [
-            (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
-        ]
+        # Return the postprocessed sample batch (with the corrected rewards).
+        return sample_batch
 
     def _create_fc_net(self, layer_dims, activation):
         """Given a list of layer dimensions (incl. input-dim), creates FC-net.
@@ -269,9 +261,9 @@ class Curiosity(Exploration):
                 dimension.
             activation (str): An activation specifier string (e.g. "relu").
 
-
         Examples:
-            If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6.
+            If layer_dims is [4,8,6] we'll have a two layer net: 4->8 and 8->6,
+            where the second layer does not have an activation anymore.
         """
         layers = []
         for i in range(len(layer_dims) - 1):
@@ -280,5 +272,6 @@ class Curiosity(Exploration):
                 SlimFC(
                     in_size=layer_dims[i],
                     out_size=layer_dims[i + 1],
+                    initializer=torch.nn.init.xavier_uniform_,
                     activation_fn=act))
         return nn.Sequential(*layers)

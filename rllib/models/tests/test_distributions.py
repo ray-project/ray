@@ -245,7 +245,7 @@ class TestDistributions(unittest.TestCase):
 
     def test_diag_gaussian(self):
         """Tests the DiagGaussian ActionDistribution for all frameworks."""
-        input_space = Box(-2.0, 2.0, shape=(2000, 10))
+        input_space = Box(-2.0, 1.0, shape=(2000, 10))
 
         for fw, sess in framework_iterator(
                 frameworks=("torch", "tf", "tfe"), session=True):
