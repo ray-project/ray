@@ -1857,12 +1857,6 @@ def remote(*args, **kwargs):
 
     accelerator_type = kwargs.get("accelerator_type")
 
-    if accelerator_type and num_gpus is None:
-        logger.warning(
-            f"Accelerator type {accelerator_type} was specified, but"
-            "`num_gpus` was not set. This will be scheduled on a node with the"
-            "accelerator type, but Ray will not reserve the accelerator.")
-
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
