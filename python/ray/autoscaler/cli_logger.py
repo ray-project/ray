@@ -188,6 +188,7 @@ class _CliLogger():
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
     """
+    old_style: bool
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
@@ -197,6 +198,7 @@ class _CliLogger():
     _autodetected_cf_colormode: int
 
     def __init__(self):
+        self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
         self._color_mode = "auto"
         self._log_style = "auto"
         self.pretty = True
