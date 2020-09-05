@@ -64,7 +64,11 @@ Summary
      - :doc:`/tune/examples/sigopt_example`
 
 
-.. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
+.. note:: We are currently in the process of implementing automatic search space
+    conversions for all search algorithms. Currently this works for
+    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
+    will follow shortly, but have to be instantiated with their respective
+    search spaces at the moment. See the code examples and docstrings for more details.
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
@@ -191,7 +195,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 .. _tune-optuna:
 
 Optuna (tune.suggest.optuna.OptunaSearch)
---------------------------------------------------
+-----------------------------------------
 
 .. autoclass:: ray.tune.suggest.optuna.OptunaSearch
 

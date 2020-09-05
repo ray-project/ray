@@ -839,11 +839,11 @@ def stop(force, verbose, log_new_style, log_color):
 
                 if force:
                     cli_logger.verbose("Killed `{}` {} ", cf.bold(proc_string),
-                                       cf.gray("(via SIGKILL)"))
+                                       cf.dimmed("(via SIGKILL)"))
                 else:
                     cli_logger.verbose("Send termination request to `{}` {}",
                                        cf.bold(proc_string),
-                                       cf.gray("(via SIGTERM)"))
+                                       cf.dimmed("(via SIGTERM)"))
 
                 total_stopped += 1
             except psutil.NoSuchProcess:

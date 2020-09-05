@@ -15,7 +15,7 @@ import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import java.util.HashMap;
@@ -34,7 +34,7 @@ public class ExecutionGraphTest extends BaseUnitTest {
   public void testBuildExecutionGraph() {
     Map<String, String> jobConf = new HashMap<>();
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
-    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
+    GraphManager graphManager = new GraphManagerImpl(new JobMasterRuntimeContext(streamingConfig));
     JobGraph jobGraph = buildJobGraph();
     jobGraph.getJobConfig().put("streaming.task.resource.cpu.limitation.enable", "true");
 

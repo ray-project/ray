@@ -161,6 +161,10 @@ int main(int argc, char *argv[]) {
           // about this?
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
+        auto num_cpus_it = static_resource_conf.find("CPU");
+        int num_cpus = num_cpus_it != static_resource_conf.end()
+                           ? static_cast<int>(num_cpus_it->second)
+                           : 0;
 
         node_manager_config.raylet_config = raylet_config;
         node_manager_config.resource_config =
@@ -170,6 +174,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         node_manager_config.num_initial_workers = num_initial_workers;
+        node_manager_config.num_workers_soft_limit = num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
@@ -225,7 +230,6 @@ int main(int argc, char *argv[]) {
         object_manager_config.plasma_directory = plasma_directory;
         object_manager_config.huge_pages = huge_pages;
 
-        int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
         object_manager_config.object_chunk_size =
