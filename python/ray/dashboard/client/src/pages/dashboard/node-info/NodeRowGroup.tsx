@@ -9,7 +9,7 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React, { useState } from "react";
-import { NodeInfoResponse } from "../../../api";
+import { NodeInfoResponse, PlasmaStats } from "../../../api";
 import { StyledTableCell } from "../../../common/TableCell";
 import { NodeInfoFeature, WorkerFeatureData } from "./features/types";
 import { NodeWorkerRow } from "./NodeWorkerRow";
@@ -45,6 +45,7 @@ type NodeRowGroupProps = {
   features: NodeInfoFeature[];
   node: Node;
   rayletInfo?: string;
+  plasmaStats?: PlasmaStats;
   workerFeatureData: WorkerFeatureData[];
   initialExpanded: boolean;
 };
@@ -55,6 +56,7 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
   initialExpanded,
   rayletInfo,
   workerFeatureData,
+  plasmaStats,
 }) => {
   const [expanded, setExpanded] = useState<boolean>(initialExpanded);
   const toggleExpand = () => setExpanded(!expanded);
@@ -63,7 +65,7 @@ const NodeRowGroup: React.FC<NodeRowGroupProps> = ({
     const FeatureComponent = nodeInfoFeature.NodeFeatureRenderFn;
     return (
       <StyledTableCell className={classes.cell} key={i}>
-        <FeatureComponent node={node} />
+        <FeatureComponent node={node} plasmaStats={plasmaStats} />
       </StyledTableCell>
     );
   });

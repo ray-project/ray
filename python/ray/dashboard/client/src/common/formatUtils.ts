@@ -7,14 +7,19 @@ export const formatByteAmount = (
   ).toFixed(1)} ${unit === "mebibyte" ? "MiB" : "GiB"}`;
 
 export const formatUsage = (
-  used: number,
-  total: number,
+  used_b: number,
+  total_b: number,
   unit: "mebibyte" | "gibibyte",
+  includePercentage: boolean,
 ) => {
-  const usedFormatted = formatByteAmount(used, unit);
-  const totalFormatted = formatByteAmount(total, unit);
-  const percent = (100 * used) / total;
-  return `${usedFormatted} / ${totalFormatted} (${percent.toFixed(0)}%)`;
+  const usedFormatted = formatByteAmount(used_b, unit);
+  const totalFormatted = formatByteAmount(total_b, unit);
+  const percent = (100 * used_b) / total_b;
+  const ratioStr = `${usedFormatted} / ${totalFormatted}`;
+  if (includePercentage) {
+    return `${ratioStr} (${percent.toFixed(0)}%)`;
+  }
+  return ratioStr;
 };
 
 // Formats, e.g. 400 and 6000 as "400 MiB / 6000 MiB (6.7%)"

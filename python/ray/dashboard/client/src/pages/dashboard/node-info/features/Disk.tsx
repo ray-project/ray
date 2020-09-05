@@ -23,7 +23,7 @@ export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
   return (
     <UsageBar
       percent={(100 * used) / total}
-      text={formatUsage(used, total, "gibibyte")}
+      text={formatUsage(used, total, "gibibyte", true)}
     />
   );
 };
@@ -31,7 +31,12 @@ export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
 export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
   <UsageBar
     percent={(100 * node.disk["/"].used) / node.disk["/"].total}
-    text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}
+    text={formatUsage(
+      node.disk["/"].used,
+      node.disk["/"].total,
+      "gibibyte",
+      true,
+    )}
   />
 );
 
