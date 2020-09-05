@@ -211,7 +211,7 @@ class _CliLogger():
         return self._non_interactive_mode
     @non_interactive_mode.setter
     def non_interactive_mode(self, x):
-        self._non_interactive_mode = x
+        self._non_interactive_mode = x.lower()
 
         if self.non_interactive_mode == "auto":
             self.non_interactive = not sys.stdin.isatty()
@@ -237,7 +237,7 @@ class _CliLogger():
         return self._color_mode
     @color_mode.setter
     def color_mode(self, x):
-        self._color_mode = x
+        self._color_mode = x.lower()
         self.detect_colors()
 
     @property
@@ -257,7 +257,6 @@ class _CliLogger():
         color output
         (8-color ANSI if no terminal detected to be safe) in colorful.
         """
-        self.color_mode = self.color_mode.lower()
         if self.color_mode == "true":
             if self._autodetected_cf_colormode != cf.NO_COLORS:
                 cf.colormode = self._autodetected_cf_colormode
@@ -278,7 +277,8 @@ class _CliLogger():
         """
         self.print("")
 
-    def _print(self, msg: str, _level_str: str = "INFO", linefeed: bool = True):
+    def _print(self, msg: str, _level_str: str = "INFO",
+               _linefeed: bool = True):
         """Proxy for printing messages.
 
         Args:
@@ -287,6 +287,8 @@ class _CliLogger():
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
         """
+        if "\n" in msg:
+            raise ValueError("NO")
         if self.non_interactive:
             if msg.strip() == "":
                 return
@@ -424,7 +426,8 @@ class _CliLogger():
         """
         self.print(cf.limeGreen(msg), *args, _level_str="SUCC", **kwargs)
 
-    def _warning(self, msg: str, *args: Any, _level_str: str = None, **kwargs: Any):
+    def _warning(self, msg: str, *args: Any,
+                 _level_str: str = None, **kwargs: Any):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
@@ -436,7 +439,8 @@ class _CliLogger():
     def warning(self, *args, **kwargs):
         self._warning(*args, _level_str="WARN", **kwargs)
 
-    def _error(self, msg: str, *args: Any, _level_str: str = None, **kwargs: Any):
+    def _error(self, msg: str, *args: Any,
+               _level_str: str = None, **kwargs: Any):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
@@ -452,7 +456,8 @@ class _CliLogger():
         self._error(*args, _level_str="PANIC", **kwargs)
 
     # Fine to expose _level_str here, since this is a general log function.
-    def print(self, msg: str, *args: Any,  _level_str: str = "INFO", **kwargs: Any):
+    def print(self, msg: str, *args: Any,
+              _level_str: str = "INFO", **kwargs: Any):
         """Prints a message.
 
         For arguments, see `_format_msg`.
@@ -460,10 +465,10 @@ class _CliLogger():
 
         self._print(
             _format_msg(msg, *args, **kwargs),
-            _level_str=_level_str,
-            _linefeed=_linefeed)
+            _level_str=_level_str)
 
-    def abort(self, msg: Optional[str] = None, exc: Any = None, *args: Any, **kwargs: Any):
+    def abort(self, msg: Optional[str] = None,
+              *args: Any, exc: Any = None, **kwargs: Any):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
