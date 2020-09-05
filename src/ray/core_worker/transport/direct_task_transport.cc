@@ -274,21 +274,17 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
                   worker_to_lease_entry_.end());
         auto &lease_entry = worker_to_lease_entry_[thief_addr];
         RAY_CHECK(lease_entry.lease_client);
-        RAY_CHECK(lease_entry.tasks_in_flight == 0);
-        RAY_CHECK(lease_entry.stealable_tasks.size() == 0);
+        RAY_LOG(DEBUG) << "lease_entry.tasks_in_flight (thief): " << lease_entry.tasks_in_flight;
+        RAY_LOG(DEBUG) << "lease_entry.stealable_tasks.size() (thief): " << lease_entry.stealable_tasks.size();
+
+        size_t tasks_in_flight_before_stealing = lease_entry.tasks_in_flight;
+        size_t stealable_tasks_before_stealing = lease_entry.stealable_tasks.size();
 
         ssize_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
 
         RAY_LOG(DEBUG) << "We stole " << number_of_tasks_stolen << " tasks "
                        << "from worker: " << victim_wid;
-        
-        /*struct timespec tasks_stolen_time;
-        clock_gettime(CLOCK_REALTIME, &tasks_stolen_time);
-        long double time_elapsed = (long double)(tasks_stolen_time.tv_sec -
-        initial_time_.tv_sec) + (long double)((tasks_stolen_time.tv_nsec -
-        initial_time_.tv_nsec) / (long double) 1000000000.0); RAY_LOG(INFO) <<
-        "TASK_STOLEN " << number_of_tasks_stolen << " " << time_elapsed;*/
 
         for (ssize_t i = 0; i < reply.tasks_stolen_size(); i++) {
           const TaskSpecification task_spec(reply.tasks_stolen(i));
@@ -311,11 +307,14 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
 
           auto &client = *client_cache_->GetOrConnect(thief_addr.ToProto());
           RAY_CHECK(lease_entry.lease_client);
-          RAY_CHECK(lease_entry.tasks_in_flight == (unsigned int)i);
-          RAY_CHECK(lease_entry.stealable_tasks.size() == (unsigned int)i);
+          RAY_CHECK(lease_entry.tasks_in_flight == tasks_in_flight_before_stealing + (size_t) i) ;
+          RAY_CHECK(lease_entry.stealable_tasks.size() == stealable_tasks_before_stealing + (size_t) i);
 
           lease_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
                                            // the worker
+          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          scheduling_key_entry.total_tasks_in_flight++;
+
           auto res = lease_entry.stealable_tasks.emplace(task_spec.TaskId());
           RAY_CHECK(res.second);
           executing_tasks_.emplace(task_spec.TaskId(), thief_addr);
@@ -340,7 +339,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     return;
   }
   RAY_CHECK(lease_entry.lease_client);
-
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
@@ -385,7 +383,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
     if (current_queue.empty()) {
-      RAY_LOG(INFO) << "Task queue empty, canceling lease request";
+      RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
       CancelWorkerLeasesIfNeeded(scheduling_key);
     }
     RequestNewWorkersIfNeeded(scheduling_key, n_tasks_submitted);
@@ -512,7 +510,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkersIfNeeded(
 
     // Check whether we really need a new worker or whether we have
     // enough room in an existing worker's pipeline to send the new tasks
-    if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_)) {
+    if (!scheduling_key_entry.AllPipelinesToWorkersFull(max_tasks_in_flight_per_worker_) && !work_stealing_enabled_) {
       // The pipelines to the current workers are not full yet, so we don't need more
       // workers.
       return;
@@ -671,7 +669,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       // Decrement the total number of tasks in flight to any worker with the current
       // scheduling_key.
       auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+      
       RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= 1);
       scheduling_key_entry.total_tasks_in_flight--;
 

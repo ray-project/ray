@@ -277,6 +277,7 @@ class CoreWorkerDirectTaskSubmitter {
     bool CanDelete() const {
       if (pending_lease_requests.empty() && task_queue.empty() &&
           active_workers.size() == 0 && total_tasks_in_flight == 0) {
+        RAY_LOG(INFO) << "total_tasks_in_flight==0, CanDelete!";
         return true;
       }
 
