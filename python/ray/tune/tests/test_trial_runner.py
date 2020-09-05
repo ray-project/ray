@@ -38,7 +38,6 @@ class TrialRunnerTest(unittest.TestCase):
     def testExperimentTagTruncation(self):
         ray.init(num_cpus=2)
 
-
         def train(config, reporter):
             reporter(timesteps_total=1)
 

@@ -19,7 +19,6 @@ class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects

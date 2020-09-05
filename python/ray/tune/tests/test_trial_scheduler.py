@@ -40,7 +40,6 @@ class EarlyStoppingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -739,7 +738,6 @@ class _MockTrial(Trial):
 class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
-
 
     def tearDown(self):
         ray.shutdown()
@@ -1757,7 +1755,6 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
 class AsyncHyperBandSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
-
 
     def tearDown(self):
         ray.shutdown()

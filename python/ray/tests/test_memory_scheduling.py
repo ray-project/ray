@@ -70,7 +70,7 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneDriverHeapLimit(self):
         try:
-            ray.init(num_cpus=1, _memory=200 * MB)
+            ray.init(num_cpus=4, _memory=100 * MB)
             _register_all()
             result = tune.run(
                 "PG",
@@ -90,7 +90,11 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneDriverStoreLimit(self):
         try:
-            ray.init(num_cpus=1, _memory=200 * MB)
+            ray.init(
+                num_cpus=4,
+                _memory=100 * MB,
+                object_store_memory=100 * MB,
+            )
             _register_all()
             self.assertRaisesRegexp(
                 ray.tune.error.TuneError,
@@ -109,7 +113,7 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneWorkerHeapLimit(self):
         try:
-            ray.init(num_cpus=1, _memory=200 * MB)
+            ray.init(num_cpus=4, _memory=100 * MB)
             _register_all()
             result = tune.run(
                 "PG",
@@ -130,7 +134,11 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneWorkerStoreLimit(self):
         try:
-            ray.init(num_cpus=1, _memory=200 * MB)
+            ray.init(
+                num_cpus=4,
+                _memory=100 * MB,
+                object_store_memory=100 * MB,
+            )
             _register_all()
             self.assertRaisesRegexp(
                 ray.tune.error.TuneError,
@@ -148,7 +156,7 @@ class TestMemoryScheduling(unittest.TestCase):
 
     def testTuneObjectLimitApplied(self):
         try:
-            ray.init(num_cpus=1, _memory=200 * MB)
+            ray.init(num_cpus=2, object_store_memory=500 * MB)
             result = tune.run(
                 train_oom,
                 resources_per_trial={"object_store_memory": 150 * 1024 * 1024},
