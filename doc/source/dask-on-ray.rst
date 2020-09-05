@@ -1,8 +1,7 @@
 Dask on Ray
 ===========
 
-Ray offers an experimental scheduler backend for Dask.
-With this plugin, you can use familiar Dask APIs such as Dask DataFrames, and the computation will be executed by the Ray system.
+Ray offers a scheduler backend for Dask. With this plugin, you can use familiar Dask APIs such as Dask DataFrames, and the computation will be executed by the Ray system.
 
 The Ray plugin can be used with any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__ call.
 Note that for execution on a Ray cluster, you should *not* use the `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__ client.
@@ -12,7 +11,7 @@ Here's an example:
 .. code-block:: python
 
     import ray
-    from ray.experimental.dask import ray_dask_get
+    from ray.util.dask import ray_dask_get
     import dask.delayed
     from time import sleep
 

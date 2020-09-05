@@ -1,4 +1,4 @@
-package io.ray.streaming.runtime.transfer;
+package io.ray.streaming.runtime.transfer.channel;
 
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.generated.Streaming;
@@ -10,7 +10,7 @@ public class ChannelUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ChannelUtils.class);
 
-  static byte[] toNativeConf(StreamingWorkerConfig workerConfig) {
+  public static byte[] toNativeConf(StreamingWorkerConfig workerConfig) {
     Streaming.StreamingConfig.Builder builder = Streaming.StreamingConfig.newBuilder();
 
     // job name

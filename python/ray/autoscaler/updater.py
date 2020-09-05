@@ -253,7 +253,7 @@ class NodeUpdater:
 
                         cli_logger.print(
                             "SSH still not available {}, "
-                            "retrying in {} seconds.", cf.gray(retry_str),
+                            "retrying in {} seconds.", cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
                         cli_logger.old_debug(logger,
                                              "{}Node not up, retrying: {}",

@@ -19,7 +19,6 @@ enum class StreamingStatus : uint32_t {
   GetBundleTimeOut = 9,
   SkipSendEmptyMessage = 10,
   Interrupted = 11,
-  WaitQueueTimeOut = 12,
   OutOfMemory = 13,
   Invalid = 14,
   UnknownError = 15,

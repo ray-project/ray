@@ -4,9 +4,11 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFunc0;
+import io.ray.api.id.ObjectId;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
+import io.ray.runtime.exception.UnreconstructableException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -144,6 +146,25 @@ public class FailureTest extends BaseTest {
             "Actual execution time: " + duration + " ms.");
       }
     }
+  }
+
+  public void testExceptionSerialization() {
+    RayTaskException ex1 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new RayActorException())).get();
+    });
+    Assert.assertEquals(ex1.getCause().getClass(), RayActorException.class);
+    RayTaskException ex2 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new RayWorkerException())).get();
+    });
+    Assert.assertEquals(ex2.getCause().getClass(), RayWorkerException.class);
+
+    ObjectId objectId = ObjectId.fromRandom();
+    RayTaskException ex3 = Assert.expectThrows(RayTaskException.class, () -> {
+      Ray.put(new RayTaskException("xxx", new UnreconstructableException(objectId)))
+          .get();
+    });
+    Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
+    Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
   }
 }
 
