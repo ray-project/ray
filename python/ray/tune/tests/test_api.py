@@ -24,7 +24,8 @@ from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
 from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
-from ray.tune.suggest import grid_search, HyperOptSearch
+from ray.tune.suggest import grid_search
+from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
