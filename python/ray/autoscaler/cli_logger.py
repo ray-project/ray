@@ -159,20 +159,25 @@ def _format_msg(msg: str,
     res = [str(x) for x in res]
     return ", ".join(res)
 
-
-formatter = logging.Formatter(
-    # TODO(maximsmol): figure out the required log level padding
-    #                  width automatically
-    fmt="[{asctime}] {levelname:6} {message}",
-    datefmt="%x %X",
-    # We want alignment on our level names
-    style="{")
+# TODO: come up with a plan to unify logging.
+# formatter = logging.Formatter(
+#     # TODO(maximsmol): figure out the required log level padding
+#     #                  width automatically
+#     fmt="[{asctime}] {levelname:6} {message}",
+#     datefmt="%x %X",
+#     # We want alignment on our level names
+#     style="{")
 
 
 class _CliLogger():
     """Singleton class for CLI logging.
 
     Attributes:
+        old_style (bool):
+            If `old_style` is `True`, the old logging calls are used instead
+            of the new CLI UX. This is disabled by default and remains for
+            backwards compatibility. Currently can only be set via env var
+            RAY_LOG_NEWSTYLE="0".
         color_mode (str):
             Can be "true", "false", or "auto".
 
@@ -199,18 +204,25 @@ class _CliLogger():
 
     def __init__(self):
         self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
-        self._color_mode = "auto"
-        self._log_style = "auto"
         self.pretty = True
         self.interactive = sys.stdin.isatty()
         self.indent_level = 0
 
         self._verbosity = 0
+        self._color_mode = "auto"
+        self._log_style = "auto"
+        self._formatter = None
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
         self._autodetected_cf_colormode = cf.colorful.colormode
+
+    def set_format(self, format_tmpl=None):
+        if not format_tmpl:
+            import ray.ray_constants as ray_constants
+            format_tmpl = ray_constants.LOGGER_FORMAT
+        self._formatter = logging.Formatter(format_tmpl)
 
     @property
     def log_style(self):
@@ -310,7 +322,7 @@ class _CliLogger():
                 # No exception
                 exc_info=None)
             record.levelname = _level_str
-            rendered_message = formatter.format(record)
+            rendered_message = self._formatter.format(record)
 
         if not _linefeed:
             sys.stdout.write(rendered_message)

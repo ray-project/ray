@@ -562,8 +562,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
 
-        # new-style CLI UX (--log-new-style)
-        # this is a noop if that flag is not set, so the old logger calls
+        # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
         startup_msg = "Ray runtime started."
