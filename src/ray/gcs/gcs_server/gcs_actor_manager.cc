@@ -573,7 +573,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it != named_actors_.end()) {
-      RAY_CHECK(it->second == actor->GetActorID());
+      RAY_CHECK(it->second == actor->GetActorID())
+          << "Actor of a name " << it->first << " has an actor id " << it->second
+          << " which is different from this actor's id " << actor->GetActorID();
       named_actors_.erase(it);
     }
   }
