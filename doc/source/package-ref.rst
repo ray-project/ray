@@ -67,20 +67,6 @@ ray.get_gpu_ids
 
 .. autofunction:: ray.get_gpu_ids
 
-.. _ray-get_resource_ids-ref:
-
-ray.get_resource_ids
-~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_resource_ids
-
-.. _ray-get_dashboard_url-ref:
-
-ray.get_dashboard_url
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_dashboard_url
-
 .. _ray-shutdown-ref:
 
 ray.shutdown

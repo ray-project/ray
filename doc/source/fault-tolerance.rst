@@ -178,7 +178,7 @@ When there are no copies of an object left, Ray also provides an option to
 automatically recover the value by re-executing the task that created the
 value. Arguments to the task are recursively reconstructed with the same
 method. This option can be enabled with
-``ray.init(enable_object_reconstruction=True)`` in standalone mode or ``ray
+``ray.init(_enable_object_reconstruction=True)`` in standalone mode or ``ray
 start --enable-object-reconstruction`` in cluster mode.
 During reconstruction, each task will only be re-executed up to the specified
 number of times, using ``max_retries`` for normal tasks and
