@@ -159,6 +159,7 @@ def _format_msg(msg: str,
     res = [str(x) for x in res]
     return ", ".join(res)
 
+
 formatter = logging.Formatter(
     # TODO(maximsmol): figure out the required log level padding
     #                  width automatically
@@ -166,6 +167,8 @@ formatter = logging.Formatter(
     datefmt="%x %X",
     # We want alignment on our level names
     style="{")
+
+
 class _CliLogger():
     """Singleton class for CLI logging.
 
@@ -209,6 +212,7 @@ class _CliLogger():
     @property
     def non_interactive_mode(self):
         return self._non_interactive_mode
+
     @non_interactive_mode.setter
     def non_interactive_mode(self, x):
         self._non_interactive_mode = x.lower()
@@ -235,6 +239,7 @@ class _CliLogger():
     @property
     def color_mode(self):
         return self._color_mode
+
     @color_mode.setter
     def color_mode(self, x):
         self._color_mode = x.lower()
@@ -277,7 +282,9 @@ class _CliLogger():
         """
         self.print("")
 
-    def _print(self, msg: str, _level_str: str = "INFO",
+    def _print(self,
+               msg: str,
+               _level_str: str = "INFO",
                _linefeed: bool = True):
         """Proxy for printing messages.
 
@@ -294,20 +301,20 @@ class _CliLogger():
                 return
 
             record = logging.LogRecord(
-                name = "cli",
+                name="cli",
                 # We override the level name later
                 # TODO(maximsmol): give approximate level #s to our log levels
-                level = 0,
+                level=0,
                 # The user-facing logs do not need this information anyway
                 # and it would be very tedious to extract since _print
                 # can be at varying depths in the call stack
                 # TODO(maximsmol): do it anyway to be extra
-                pathname = "n/a",
-                lineno = 0,
-                msg = msg,
-                args = {},
+                pathname="n/a",
+                lineno=0,
+                msg=msg,
+                args={},
                 # No exception
-                exc_info = None)
+                exc_info=None)
             record.levelname = _level_str
             rendered_message = formatter.format(record)
         else:
@@ -426,8 +433,11 @@ class _CliLogger():
         """
         self.print(cf.limeGreen(msg), *args, _level_str="SUCC", **kwargs)
 
-    def _warning(self, msg: str, *args: Any,
-                 _level_str: str = None, **kwargs: Any):
+    def _warning(self,
+                 msg: str,
+                 *args: Any,
+                 _level_str: str = None,
+                 **kwargs: Any):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
@@ -439,8 +449,11 @@ class _CliLogger():
     def warning(self, *args, **kwargs):
         self._warning(*args, _level_str="WARN", **kwargs)
 
-    def _error(self, msg: str, *args: Any,
-               _level_str: str = None, **kwargs: Any):
+    def _error(self,
+               msg: str,
+               *args: Any,
+               _level_str: str = None,
+               **kwargs: Any):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
@@ -456,19 +469,23 @@ class _CliLogger():
         self._error(*args, _level_str="PANIC", **kwargs)
 
     # Fine to expose _level_str here, since this is a general log function.
-    def print(self, msg: str, *args: Any,
-              _level_str: str = "INFO", **kwargs: Any):
+    def print(self,
+              msg: str,
+              *args: Any,
+              _level_str: str = "INFO",
+              **kwargs: Any):
         """Prints a message.
 
         For arguments, see `_format_msg`.
         """
 
-        self._print(
-            _format_msg(msg, *args, **kwargs),
-            _level_str=_level_str)
+        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
 
-    def abort(self, msg: Optional[str] = None,
-              *args: Any, exc: Any = None, **kwargs: Any):
+    def abort(self,
+              msg: Optional[str] = None,
+              *args: Any,
+              exc: Any = None,
+              **kwargs: Any):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
@@ -506,7 +523,7 @@ class _CliLogger():
             self.abort(msg, *args, exc=exc, **kwargs)
 
     def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
+                  **kwargs: Any):
         return
 
     def old_info(self, logger: logging.Logger, msg: str, *args: Any,
@@ -514,15 +531,15 @@ class _CliLogger():
         return
 
     def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
+                    **kwargs: Any):
         return
 
     def old_error(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
+                  **kwargs: Any):
         return
 
     def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
+                      **kwargs: Any):
         return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):

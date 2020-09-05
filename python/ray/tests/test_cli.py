@@ -191,6 +191,7 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
         ])
         _check_output_via_pattern("test_ray_up.txt", result)
 
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
@@ -216,8 +217,7 @@ def test_ray_up_non_interactive(configure_lang, _unlink_test_ssh_key,
         runner = CliRunner()
         result = runner.invoke(scripts.up, [
             DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
-            "--log-new-style",
-            "--log-non-interactive", "true"
+            "--log-new-style", "--log-non-interactive", "true"
         ])
         _check_output_via_pattern("test_ray_up_non_interactive.txt", result)
 

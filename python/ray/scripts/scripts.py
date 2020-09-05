@@ -939,8 +939,8 @@ def stop(force, verbose, log_new_style, log_non_interactive, log_color):
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
-       use_login_shells, log_new_style,
-       log_non_interactive, log_color, verbose):
+       use_login_shells, log_new_style, log_non_interactive, log_color,
+       verbose):
     """Create or update a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.non_interactive_mode = log_non_interactive
@@ -1007,8 +1007,8 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     help="Retain the minimal amount of workers specified in the config.")
 @add_click_options(logging_options)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers, log_new_style, log_non_interactive,
-         log_color, verbose):
+         keep_min_workers, log_new_style, log_non_interactive, log_color,
+         verbose):
     """Tear down a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.non_interactive_mode = log_non_interactive
@@ -1062,8 +1062,7 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     help="Override the configured cluster name.")
 @add_click_options(logging_options)
 def monitor(cluster_config_file, lines, cluster_name, log_new_style,
-            log_non_interactive, log_color,
-            verbose):
+            log_non_interactive, log_color, verbose):
     """Tails the autoscaler logs of a Ray cluster."""
     cli_logger.old_style = not log_new_style
     cli_logger.non_interactive_mode = log_non_interactive
