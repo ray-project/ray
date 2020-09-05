@@ -9,7 +9,8 @@ import pytest
 import ray
 import ray.test_utils
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import wait_for_condition, run_string_as_driver_nonblocking
+from ray.test_utils import (wait_for_condition, run_string_as_driver,
+                            run_string_as_driver_nonblocking)
 
 
 def get_num_workers():
@@ -209,6 +210,34 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
     time.sleep(1)
     # The two remaining workers stay alive forever.
     assert get_num_workers() == 2
+
+
+def test_worker_capping_kill_idle_worker_of_another_job():
+    # Start 1 initial worker by setting num_cpus to 1.
+    info = ray.init(num_cpus=1, _system_config={"enable_multi_tenancy": True})
+    wait_for_condition(lambda: get_num_workers() == 1)
+
+    driver_code = """
+import ray
+
+ray.init(address="{}")
+
+@ray.remote
+def foo():
+    pass
+
+ray.get(foo.remote())
+ray.shutdown()
+    """.format(info["redis_address"])
+    run_string_as_driver(driver_code)
+
+    # Driver A (this process) creates 1 idle worker. Driver B
+    # (via run_string_as_driver) creates 1 worker to run a normal task.
+    # Because the soft limit is 1 (num_cpus == 1) and there are two workers,
+    # the idle worker created by driver A should be killed. After driver B
+    # exits, the worker created by driver B should be killed as well. In the
+    # end, there expected number of alive workers is 0.
+    wait_for_condition(lambda: get_num_workers() == 0)
 
 
 if __name__ == "__main__":
