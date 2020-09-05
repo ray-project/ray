@@ -102,13 +102,17 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, instance_name: str, http_host: str,
-                       http_port: str, http_middlewares: List[Any]) -> None:
-        # Unique name of the serve instance managed by this actor. Used to
-        # namespace child actors and checkpoints.
-        self.instance_name = instance_name
+    async def __init__(self,
+                       controller_name: str,
+                       http_host: str,
+                       http_port: str,
+                       http_middlewares: List[Any],
+                       detached: bool = False):
+        self.detached = detached
+        # Name of this controller actor.
+        self.controller_name = controller_name
         # Used to read/write checkpoints.
-        self.kv_store = RayInternalKVStore(namespace=instance_name)
+        self.kv_store = RayInternalKVStore(namespace=controller_name)
         # path -> (endpoint, methods).
         self.routes = dict()
         # backend -> BackendInfo.
@@ -180,7 +184,7 @@ class ServeController:
                 continue
 
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             try:
                 router = ray.get_actor(router_name)
             except ValueError:
@@ -190,7 +194,7 @@ class ServeController:
                                 self.http_port))
                 router = HTTPProxyActor.options(
                     name=router_name,
-                    lifetime="detached",
+                    lifetime="detached" if self.detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
                     max_task_retries=-1,
@@ -201,7 +205,7 @@ class ServeController:
                     node_id,
                     self.http_host,
                     self.http_port,
-                    instance_name=self.instance_name,
+                    controller_name=self.controller_name,
                     http_middlewares=self.http_middlewares)
 
             self.routers[node_id] = router
@@ -287,7 +291,7 @@ class ServeController:
 
         for node_id in router_node_ids:
             router_name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.instance_name, node_id)
+                                            self.controller_name, node_id)
             self.routers[node_id] = ray.get_actor(router_name)
 
         # Fetch actor handles for all of the backend replicas in the system.
@@ -297,7 +301,7 @@ class ServeController:
         for backend_tag, replica_tags in self.replicas.items():
             for replica_tag in replica_tags:
                 replica_name = format_actor_name(replica_tag,
-                                                 self.instance_name)
+                                                 self.controller_name)
                 self.workers[backend_tag][replica_tag] = ray.get_actor(
                     replica_name)
 
@@ -389,8 +393,8 @@ class ServeController:
         """Fetched by serve handles."""
         return self.traffic_policies[endpoint]
 
-    async def _start_backend_worker(self, backend_tag: str,
-                                    replica_tag: str) -> ActorHandle:
+    async def _start_backend_worker(self, backend_tag: str, replica_tag: str,
+                                    replica_name: str) -> ActorHandle:
         """Creates a backend worker and waits for it to start up.
 
         Assumes that the backend configuration has already been registered
@@ -400,18 +404,15 @@ class ServeController:
             replica_tag, backend_tag))
         backend_info = self.backends[backend_tag]
 
-        replica_name = format_actor_name(replica_tag, self.instance_name)
         worker_handle = ray.remote(backend_info.worker_class).options(
             name=replica_name,
-            lifetime="detached",
+            lifetime="detached" if self.detached else None,
             max_restarts=-1,
             max_task_retries=-1,
             **backend_info.replica_config.ray_actor_options).remote(
-                backend_tag,
-                replica_tag,
+                backend_tag, replica_tag,
                 backend_info.replica_config.actor_init_args,
-                backend_info.backend_config,
-                instance_name=self.instance_name)
+                backend_info.backend_config, self.controller_name)
         # TODO(edoakes): we should probably have a timeout here.
         await worker_handle.ready.remote()
         return worker_handle
@@ -420,11 +421,12 @@ class ServeController:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
+        replica_name = format_actor_name(replica_tag, self.controller_name)
         try:
-            worker_handle = ray.get_actor(replica_tag)
+            worker_handle = ray.get_actor(replica_name)
         except ValueError:
             worker_handle = await self._start_backend_worker(
-                backend_tag, replica_tag)
+                backend_tag, replica_tag, replica_name)
 
         self.replicas[backend_tag].append(replica_tag)
         self.workers[backend_tag][replica_tag] = worker_handle
@@ -466,8 +468,10 @@ class ServeController:
             for replica_tag in replicas_to_stop:
                 # NOTE(edoakes): the replicas may already be stopped if we
                 # failed after stopping them but before writing a checkpoint.
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
                 try:
-                    replica = ray.get_actor(replica_tag)
+                    replica = ray.get_actor(replica_name)
                 except ValueError:
                     continue
 
@@ -556,7 +560,7 @@ class ServeController:
                 self.replicas_to_start[backend_tag].append(replica_tag)
 
         elif delta_num_replicas < 0:
-            logger.debug("Removing {} replicas from backend {}".format(
+            logger.debug("Removing {} replicas from backend '{}'".format(
                 -delta_num_replicas, backend_tag))
             assert len(self.replicas[backend_tag]) >= delta_num_replicas
             for _ in range(-delta_num_replicas):

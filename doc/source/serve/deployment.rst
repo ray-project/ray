@@ -6,33 +6,27 @@ In the :doc:`key-concepts`, you saw some of the basics of how to write serve app
 This section will dive a bit deeper into how Ray Serve runs on a Ray cluster and how you're able
 to deploy and update your serve application over time.
 
-To deploy a Ray Serve instance you're going to need several things.
-
-1. A running Ray cluster (you can deploy one on your local machine for testing). To learn more about Ray clusters see :ref:`cluster-index`.
-2. A Ray Serve instance.
-3. Your Ray Serve endpoint(s) and backend(s).
-
 .. contents:: Deploying Ray Serve
 
 .. _serve-deploy-tutorial:
 
-Deploying a Model with Ray Serve
+Lifetime of a Ray Serve Instance
 ================================
 
-Let's get started deploying our first Ray Serve application. The first thing you'll need
-to do is start a Ray cluster. You can do that using the Ray cluster launcher, but in our case
-we'll create it on our local machine. To learn more about Ray Clusters see :ref:`cluster-index`.
+Ray Serve instances run on top of Ray clusters and are started using :mod:`serve.start <ray.serve.start>`.
+:mod:`serve.start <ray.serve.start>` returns a :mod:`Client <ray.serve.api.Client>` object that can be used to create the backends and endpoints
+that will be used to serve your Python code (including ML models).
+The Serve instance will be torn down when the client object goes out of scope or the script exits.
 
-Starting the Cluster
---------------------
-We do that by running:
+When running on a long-lived Ray cluster (e.g., one started using ``ray start`` and connected
+to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance as a long-running
+service using ``serve.start(detached=True)``. In this case, the Serve instance will continue to
+run on the Ray cluster even after the script that calls it exits. If you want to run another script
+to update the Serve instance, you can run another script that connects to the Ray cluster and then
+calls :mod:`serve.connect <ray.serve.connect>`. Note that there can only be one detached Serve instance on each Ray cluster.
 
-.. code::
-
-    ray start --head
-
-That starts a cluster on our local machine. We can shut that down by running ``ray stop``. You should
-run this after we complete this tutorial.
+Deploying a Model with Ray Serve
+================================
 
 Setup: Training a Model
 -----------------------
@@ -58,14 +52,14 @@ Creating a Model and Serving it
 In the following snippet we will complete two things:
 
 1. Define a servable model by instantiating a class and defining the ``__call__`` method.
-2. Connect to our running Ray cluster(``ray.init(...)``) and then start or connect to the Ray Serve instance on that
-   cluster(:mod:`serve.init(...) <ray.serve.init>`).
+2. Start a local Ray cluster and a Ray Serve instance on top of it
+   (:mod:`serve.start(...) <ray.serve.start>`).
 
 
 You can see that defining the model is straightforward and simple, we're simply instantiating
 the model like we might a typical Python class.
 
-Configuring our model to accept traffic is specified via :mod:`.set_traffic <ray.serve.set_traffic>` after we created
+Configuring our model to accept traffic is specified via :mod:`client.set_traffic <ray.serve.api.Client.set_traffic>` after we created
 a backend in serve for our model (and versioned it with a string).
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/tutorial_deploy.py
@@ -75,7 +69,7 @@ a backend in serve for our model (and versioned it with a string).
 What serve does when we run this code is store the model as a Ray actor
 and route traffic to it as the endpoint is queried, in this case over HTTP.
 Note that in order for this endpoint to be accessible from other machines, we
-need to specify ``http_host="0.0.0.0"`` in :mod:`serve.init <ray.serve.init>` like we did here.
+need to specify ``http_host="0.0.0.0"`` in :mod:`serve.start <ray.serve.start>` like we did here.
 
 Now let's query our endpoint to see the result.
 
@@ -111,7 +105,7 @@ these two models.
 
 .. code::
 
-    serve.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
+    client.set_traffic("iris_classifier", {"lr:v2": 0.25, "lr:v1": 0.75})
 
 While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information.
 One thing you may want to consider as well is
@@ -232,13 +226,13 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Connect to the running Ray cluster.
     ray.init(address="auto")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
-    serve.init(http_host="0.0.0.0")
+    client = serve.start(http_host="0.0.0.0")
 
     def hello():
         return "hello world"
 
-    serve.create_backend("hello_backend", hello)
-    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
+    client.create_backend("hello_backend", hello)
+    client.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -276,28 +270,3 @@ One thing you may notice is that we never have to declare a ``while True`` loop 
 something to keep the Ray Serve process running. In general, we don't recommend using forever loops and therefore
 opt for launching a Ray Cluster locally. Specify a Ray cluster like we did in :ref:`serve-deploy-tutorial`.
 To learn more, in general, about Ray Clusters see :ref:`cluster-index`.
-
-
-.. _serve-instance:
-
-Deploying Multiple Serve Instances on a Single Ray Cluster
-----------------------------------------------------------
-
-You can run multiple serve instances on the same Ray cluster by providing a ``name`` in :mod:`serve.init() <ray.serve.init>`.
-
-.. code-block:: python
-
-  # Create a first cluster whose HTTP server listens on 8000.
-  serve.init(name="cluster1", http_port=8000)
-
-  # Create a second cluster whose HTTP server listens on 8001.
-  serve.init(name="cluster2", http_port=8001)
-
-  # Create a backend that will be served on the second cluster.
-  serve.create_backend("backend2", function)
-  serve.create_endpoint("endpoint2", backend="backend2", route="/increment")
-
-  # Switch back to the first cluster and create the same backend on it.
-  serve.init(name="cluster1")
-  serve.create_backend("backend1", function)
-  serve.create_endpoint("endpoint1", backend="backend1", route="/increment")
