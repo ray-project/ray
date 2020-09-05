@@ -129,18 +129,6 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def include_java_from_redis(redis_client):
-    """This is used for query include_java bool from redis.
-
-    Args:
-        redis_client (StrictRedis): The redis client to GCS.
-
-    Returns:
-        True if this cluster backend enables Java worker.
-    """
-    return redis_client.get("INCLUDE_JAVA") == b"1"
-
-
 def find_redis_address_or_die():
     pids = psutil.pids()
     redis_addresses = set()
@@ -689,7 +677,6 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                include_java=False,
                 fate_share=None):
     """Start the Redis global state store.
 
@@ -715,8 +702,6 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -789,10 +774,6 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     primary_redis_client.set("RedirectOutput", 1
                              if redirect_worker_output else 0)
-
-    # put the include_java bool to primary redis-server, so that other nodes
-    # can access it and know whether or not to enable cross-languages.
-    primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
     # Init job counter to GCS.
     primary_redis_client.set("JobCounter", 0)
@@ -1273,7 +1254,6 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  config=None,
-                 include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
                  plasma_directory=None,
@@ -1317,8 +1297,6 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
         java_worker_options (list): The command options for Java worker.
     Returns:
         ProcessInfo for the process that was started.
@@ -1347,6 +1325,13 @@ def start_raylet(redis_address,
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
+    include_java = False
+    try:
+        java_proc = subprocess.run(["java", "-version"], capture_output=True)
+        if java_proc.returncode == 0:
+            include_java = True
+    except OSError:
+        pass
     if include_java is True:
         default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(

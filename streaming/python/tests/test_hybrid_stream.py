@@ -33,7 +33,6 @@ def test_hybrid_stream():
     assert not ray.is_initialized()
     ray.init(
         load_code_from_local=True,
-        include_java=True,
         java_worker_options=java_worker_options,
         _system_config={"num_workers_per_process_java": 1})
 
