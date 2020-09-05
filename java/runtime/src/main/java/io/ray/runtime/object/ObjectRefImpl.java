@@ -40,7 +40,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     addLocalReference();
   }
 
-  public ObjectRefImpl() {}
+  public ObjectRefImpl() {
+  }
 
   @Override
   public synchronized T get() {
@@ -103,10 +104,10 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
       // unit tests). So if `workerId` is null, it means this method has been invoked.
       if (!removed.getAndSet(true)) {
         REFERENCES.remove(this);
-        RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
         // It's possible that GC is executed after the runtime is shutdown.
-        if (runtime != null) {
-          runtime.getObjectStore().removeLocalReference(workerId, objectId);
+        if (Ray.isInitialized()) {
+          ((RayRuntimeInternal) (Ray.internal())).getObjectStore()
+              .removeLocalReference(workerId, objectId);
         }
       }
     }
