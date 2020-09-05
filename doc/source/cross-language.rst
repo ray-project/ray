@@ -41,7 +41,7 @@ from the above Java class.
 
   import ray
 
-  ray.init(_include_java=True, _load_code_from_local=True)
+  ray.init(_load_code_from_local=True)
 
   # Define a Java class.
   counter_class = ray.java_actor_class(
@@ -268,7 +268,7 @@ Then, run the following code:
 
   import ray
 
-  ray.init(_include_java=True, _load_code_from_local=True)
+  ray.init(_load_code_from_local=True)
 
   obj_ref = ray.java_function(
         "io.ray.demo.MyRayClass",
