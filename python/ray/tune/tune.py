@@ -1,6 +1,4 @@
 import logging
-from dataclasses import dataclass
-from typing import Any
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -12,7 +10,7 @@ from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync
+from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
@@ -26,37 +24,6 @@ _SCHEDULERS = {
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
-
-
-@dataclass
-class SyncConfig:
-    """Configuration object for syncing.
-
-    Args:
-        upload_dir (str): Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket`` or ``gs://bucket``).
-        sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template that
-            includes `{source}` and `{target}` for the syncer to run. If not
-            provided, the sync command defaults to standard S3 or gsutil sync
-            commands. By default local_dir is synced to remote_dir every 300
-            seconds. To change this, set the TUNE_CLOUD_SYNC_S
-            environment variable in the driver machine.
-        sync_to_driver (func|str|bool): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If True or not provided, it defaults to using rsync. If False,
-            syncing to driver is disabled.
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
-            driver. If set to False, checkpoint syncing from worker to driver
-            is asynchronous and best-effort. This does not affect persistent
-            storage syncing. Defaults to True.
-    """
-    upload_dir: str = None
-    sync_to_cloud: Any = None
-    sync_to_driver: Any = None
-    sync_on_checkpoint: bool = True
-
 
 try:
     class_name = get_ipython().__class__.__name__
@@ -308,6 +275,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
+    set_sync_periods(sync_config)
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors)

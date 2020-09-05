@@ -167,8 +167,8 @@ class TestSyncFunctionality(unittest.TestCase):
         def counter(local, remote):
             mock()
 
-        sync_config = tune.SyncConfig(upload_dir="test", sync_to_cloud=counter)
-        tune.syncer.CLOUD_SYNC_PERIOD = 1
+        sync_config = tune.SyncConfig(
+            upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
         # This was originally set to 0.5
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
         self.addCleanup(
@@ -195,7 +195,8 @@ class TestSyncFunctionality(unittest.TestCase):
                 print("writing to", f.name)
                 f.write(source)
 
-        sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
+        sync_config = tune.SyncConfig(
+            sync_to_driver=sync_func_driver, node_sync_period=5)
 
         [trial] = tune.run(
             "__fake",

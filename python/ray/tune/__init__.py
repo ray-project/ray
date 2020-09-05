@@ -1,5 +1,6 @@
 from ray.tune.error import TuneError
-from ray.tune.tune import run_experiments, run, SyncConfig
+from ray.tune.tune import run_experiments, run
+from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
 from ray.tune.stopper import Stopper, EarlyStopping
