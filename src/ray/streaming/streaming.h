@@ -5,7 +5,7 @@
 
 // This header is used to warp some streaming code so we can reduce suspicious
 // symbols export.
-export namespace ray {
+namespace ray {
 namespace streaming {
 
 /// Send buffer internal
