@@ -238,7 +238,7 @@ void DataReader::SplitBundle(std::shared_ptr<DataBundle> &message, uint64_t last
       message->data + kMessageBundleHeaderSize,
       message->data_size - kMessageBundleHeaderSize, message->meta->GetMessageListSize(),
       msg_list);
-  uint64_t bundle_size = 0;
+  uint32_t bundle_size = 0;
   for (auto it = msg_list.begin(); it != msg_list.end();) {
     if ((*it)->GetMessageId() > last_msg_id) {
       bundle_size += (*it)->ClassBytesSize();
