@@ -484,8 +484,8 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
-        enable_object_reconstruction=False,
         # The following are unstable parameters and their use is discouraged.
+        _enable_object_reconstruction=False,
         _redis_max_memory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
@@ -566,7 +566,7 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        enable_object_reconstruction (bool): If True, when an object stored in
+        _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
@@ -685,7 +685,7 @@ def init(
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             object_spilling_config=_object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -715,10 +715,10 @@ def init(
         if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "_lru_evict must not be provided.")
-        if enable_object_reconstruction:
+        if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
-                "enable_object_reconstruction must not be provided.")
+                "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -731,7 +731,7 @@ def init(
             load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,

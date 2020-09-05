@@ -8,9 +8,8 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.serve.context import TaskContext
 from ray.experimental import metrics
-from ray.serve.request_params import RequestMetadata
 from ray.serve.http_util import Response
-from ray.serve.router import Router
+from ray.serve.router import Router, RequestMetadata
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.

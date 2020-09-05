@@ -15,14 +15,14 @@ client = serve.start()
 # Let's define two models that just print out the data they received.
 
 
-def model_one(_unused_flask_request, data=None):
-    print("Model 1 called with data ", data)
+def model_one(request):
+    print("Model 1 called with data ", request.args.get("data"))
     return random()
 
 
-def model_two(_unused_flask_request, data=None):
-    print("Model 2 called with data ", data)
-    return data
+def model_two(request):
+    print("Model 2 called with data ", request.args.get("data"))
+    return request.args.get("data")
 
 
 class ComposedModel:

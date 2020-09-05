@@ -690,6 +690,30 @@ class BOHBSuite(unittest.TestCase):
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
 
+    def testPauseResumeChooseTrial(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandForBOHB(max_t=10, reduction_factor=3, mode="min")
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            runner.add_trial(t)
+            runner._launch_trial(t)
+
+        all_results = [result(1, 5), result(2, 1), result(3, 5)]
+        for trial, trial_result in zip(trials, all_results):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+
+        run_trial = sched.choose_trial_to_run(runner)
+        self.assertEqual(run_trial, trials[1])
+        self.assertSequenceEqual([t.status for t in trials],
+                                 [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
+
 
 class _MockTrial(Trial):
     def __init__(self, i, config):
