@@ -339,8 +339,8 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
             cli_logger.verbose("Command stdout is redirected to {}",
                                cf.bold(tmp.name))
             cli_logger.verbose(
-                cf.gray("Use --dump-command-output to "
-                        "dump to terminal instead."))
+                cf.dimmed("Use --dump-command-output to "
+                          "dump to terminal instead."))
 
             return _run_and_process_output(
                 cmd,

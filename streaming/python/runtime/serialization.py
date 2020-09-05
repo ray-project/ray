@@ -3,11 +3,11 @@ import pickle
 import msgpack
 from ray.streaming import message
 
-_RECORD_TYPE_ID = 0
-_KEY_RECORD_TYPE_ID = 1
-_CROSS_LANG_TYPE_ID = b"0"
-_JAVA_TYPE_ID = b"1"
-_PYTHON_TYPE_ID = b"2"
+RECORD_TYPE_ID = 0
+KEY_RECORD_TYPE_ID = 1
+CROSS_LANG_TYPE_ID = 0
+JAVA_TYPE_ID = 1
+PYTHON_TYPE_ID = 2
 
 
 class Serializer(ABC):
@@ -33,21 +33,21 @@ class CrossLangSerializer(Serializer):
 
     def serialize(self, obj):
         if type(obj) is message.Record:
-            fields = [_RECORD_TYPE_ID, obj.stream, obj.value]
+            fields = [RECORD_TYPE_ID, obj.stream, obj.value]
         elif type(obj) is message.KeyRecord:
-            fields = [_KEY_RECORD_TYPE_ID, obj.stream, obj.key, obj.value]
+            fields = [KEY_RECORD_TYPE_ID, obj.stream, obj.key, obj.value]
         else:
             raise Exception("Unsupported value {}".format(obj))
         return msgpack.packb(fields, use_bin_type=True)
 
     def deserialize(self, data):
-        fields = msgpack.unpackb(data, raw=False, strict_map_key=False)
-        if fields[0] == _RECORD_TYPE_ID:
+        fields = msgpack.unpackb(data, raw=False)
+        if fields[0] == RECORD_TYPE_ID:
             stream, value = fields[1:]
             record = message.Record(value)
             record.stream = stream
             return record
-        elif fields[0] == _KEY_RECORD_TYPE_ID:
+        elif fields[0] == KEY_RECORD_TYPE_ID:
             stream, key, value = fields[1:]
             key_record = message.KeyRecord(key, value)
             key_record.stream = stream

@@ -39,9 +39,6 @@ def try_import_tf(error=False):
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-    # TODO: (sven) Allow env var to force compat.v1 behavior even if tf2.x
-    #  installed.
-
     # Try to reuse already imported tf module. This will avoid going through
     # the initial import steps below and thereby switching off v2_behavior
     # (switching off v2 behavior twice breaks all-framework tests for eager).
@@ -239,6 +236,9 @@ def get_activation_fn(name, framework="tf"):
     if framework == "torch":
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            from ray.rllib.utils.torch_ops import Swish
+            return Swish
         _, nn = try_import_torch()
         if name == "relu":
             return nn.ReLU

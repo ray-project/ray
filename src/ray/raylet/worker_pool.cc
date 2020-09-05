@@ -55,6 +55,7 @@ namespace ray {
 namespace raylet {
 
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
+                       int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
                        int max_worker_port, std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -62,6 +63,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
+      num_workers_soft_limit_(num_workers_soft_limit),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       raylet_config_(raylet_config),
@@ -591,6 +593,64 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 }
 
+void WorkerPool::TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker) {
+  auto &worker_state = GetStateForLanguage(worker->GetLanguage());
+  if (worker_state.pending_unregistration_workers.count(worker) > 0) {
+    // This worker has already been killed.
+    // This is possible because a Java worker process may hold multiple workers.
+    return;
+  }
+
+  auto running_size = GetAllRegisteredWorkers().size();
+  for (const auto &entry : states_by_lang_) {
+    running_size -= entry.second.pending_unregistration_workers.size();
+  }
+  if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
+    return;
+  }
+
+  auto worker_id = worker->WorkerId();
+  const auto pid = worker->GetProcess().GetId();
+  if (worker_state.idle.count(worker) == 0) {
+    return;
+  }
+  if (worker_state.starting_worker_processes.count(worker->GetProcess()) > 0) {
+    // A Java worker process may hold multiple workers.
+    RAY_LOG(DEBUG) << "Some workers of pid " << pid
+                   << " are pending registration. Skip killing worker " << worker_id;
+    return;
+  }
+
+  // Make sure all workers in this worker process are idle.
+  // This block of code is needed by Java workers.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> workers_in_the_same_process;
+  for (const auto &worker_in_the_same_process : worker_state.registered_workers) {
+    if (worker_in_the_same_process->GetProcess().GetId() == pid) {
+      if (worker_state.idle.count(worker_in_the_same_process) == 0) {
+        // Another worker in this process isn't idle, so this process can't be killed.
+        return;
+      } else {
+        workers_in_the_same_process.insert(worker_in_the_same_process);
+      }
+    }
+  }
+
+  for (auto worker_it = workers_in_the_same_process.begin();
+       worker_it != workers_in_the_same_process.end(); worker_it++) {
+    RAY_LOG(INFO) << "The worker pool has " << running_size
+                  << " registered workers which exceeds the soft limit of "
+                  << num_workers_soft_limit_ << ", and worker "
+                  << (*worker_it)->WorkerId() << " with pid " << pid
+                  << " is idle. Kill it.";
+    // Remove the worker from the idle pool so it can't be popped anymore. However, we
+    // don't remove it from the registered pool because we want the worker to go through
+    // the normal disconnection logic in Node Manager.
+    RemoveWorker(worker_state.idle, *worker_it);
+    worker_state.pending_unregistration_workers.insert(*worker_it);
+  }
+  worker->GetProcess().Kill();
+}
+
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     const TaskSpecification &task_spec) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
@@ -671,6 +731,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  RemoveWorker(state.pending_unregistration_workers, worker);
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},

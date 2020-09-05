@@ -138,13 +138,13 @@ def _format_msg(msg: str,
                 tags_list += [k + "=" + v]
             if tags_list:
                 tags_str = cf.reset(
-                    cf.gray(" [{}]".format(", ".join(tags_list))))
+                    cf.dimmed(" [{}]".format(", ".join(tags_list))))
 
         numbering_str = ""
         if _numbered is not None:
             chars, i, n = _numbered
-            numbering_str = cf.gray(chars[0] + str(i) + "/" + str(n) +
-                                    chars[1]) + " "
+            numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) +
+                                      chars[1]) + " "
 
         if _no_format:
             # todo: throw if given args/kwargs?
@@ -289,7 +289,7 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.cornflowerBlue(msg), *args, **kwargs)
+        self.print(cf.dodgerBlue(msg), *args, **kwargs)
 
         return self.indented()
 
@@ -326,7 +326,8 @@ class _CliLogger():
             return
 
         self._print(
-            cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
+            cf.skyBlue(key) + ": " +
+            _format_msg(cf.bold(msg), *args, **kwargs))
 
     def verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message if verbosity is not 0.
@@ -365,14 +366,14 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.green(msg), *args, **kwargs)
+        self.print(cf.limeGreen(msg), *args, **kwargs)
 
     def warning(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.yellow(msg), *args, **kwargs)
+        self.print(cf.orange(msg), *args, **kwargs)
 
     def error(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted error message.
@@ -543,9 +544,9 @@ class _CliLogger():
         default = _default
 
         if default:
-            yn_str = cf.green("Y") + "/" + cf.red("n")
+            yn_str = cf.limeGreen("Y") + "/" + cf.red("n")
         else:
-            yn_str = cf.green("y") + "/" + cf.red("N")
+            yn_str = cf.limeGreen("y") + "/" + cf.red("N")
 
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 
@@ -559,7 +560,7 @@ class _CliLogger():
 
         if yes:
             self._print(complete_str + "y " +
-                        cf.gray("[automatic, due to --yes]"))
+                        cf.dimmed("[automatic, due to --yes]"))
             return True
 
         self._print(complete_str, linefeed=False)

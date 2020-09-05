@@ -9,7 +9,7 @@ import io.ray.streaming.api.function.impl.FlatMapFunction;
 import io.ray.streaming.api.function.impl.ReduceFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
 import io.ray.streaming.runtime.BaseUnitTest;
-import io.ray.streaming.runtime.transfer.ChannelId;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import io.ray.streaming.runtime.util.EnvUtil;
 import io.ray.streaming.util.Config;
 import java.io.File;
