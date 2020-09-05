@@ -69,9 +69,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``:
 Search Space (Grid/Random)
 --------------------------
 
-.. warning:: If you use a Search Algorithm, you will need to use a different search space API.
-
-You can specify a grid search or random search via the dict passed into ``tune.run(config=)``.
+You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=)``.
 
 .. code-block:: python
 
@@ -84,7 +82,7 @@ You can specify a grid search or random search via the dict passed into ``tune.r
 
     tune.run(trainable, config=parameters)
 
-By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated `num_samples` of times.
+By default, each random variable and grid search point is sampled once. To take multiple random samples, add ``num_samples: N`` to the experiment config. If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
 .. code-block:: python
    :emphasize-lines: 13
@@ -104,7 +102,7 @@ By default, each random variable and grid search point is sampled once. To take 
         num_samples=10
     )
 
-Read about this in the :ref:`Grid/Random Search API <tune-grid-random>` page.
+Note that search spaces may not be interoperable across different search algorithms. For example, for many search algorithms, you will not be able to use a ``grid_search`` parameter. Read about this in the :ref:`Search Space API <tune-search-space>` page.
 
 Reporting Metrics
 -----------------

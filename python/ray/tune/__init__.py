@@ -16,6 +16,8 @@ from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
 from ray.tune.sample import (function, sample_from, uniform, quniform, choice,
                              randint, qrandint, randn, qrandn, loguniform,
                              qloguniform)
+from ray.tune.suggest import create_searcher
+from ray.tune.schedulers import create_scheduler
 
 __all__ = [
     "Trainable", "DurableTrainable", "TuneError", "grid_search",
@@ -25,5 +27,6 @@ __all__ = [
     "loguniform", "qloguniform", "ExperimentAnalysis", "Analysis",
     "CLIReporter", "JupyterNotebookReporter", "ProgressReporter", "report",
     "get_trial_dir", "get_trial_name", "get_trial_id", "make_checkpoint_dir",
-    "save_checkpoint", "checkpoint_dir", "SyncConfig"
+    "save_checkpoint", "checkpoint_dir", "SyncConfig", "create_searcher",
+    "create_scheduler"
 ]
