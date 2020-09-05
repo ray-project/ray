@@ -250,18 +250,17 @@ def run(
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
     if global_checkpoint_period:
-        raise ValueError("global_checkpoint_period is deprecated. "
-                         "Set 'TUNE_GLOBAL_CHECKPOINT_S' instead.")
+        raise ValueError("global_checkpoint_period is deprecated. Set env var "
+                         "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
     if queue_trials:
         raise ValueError(
             "queue_trials is deprecated. "
             "Set env var 'TUNE_DISABLE_QUEUE_TRIALS=1' instead to "
             "disable queuing behavior.")
     if ray_auto_init:
-        raise ValueError(
-            "ray_auto_init is deprecated. "
-            "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
-            "call 'ray.init' before calling 'tune.run'.")
+        raise ValueError("ray_auto_init is deprecated. "
+                         "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
+                         "call 'ray.init' before calling 'tune.run'.")
     if with_server:
         raise ValueError(
             "with_server is deprecated. It is now enabled by default "
