@@ -1121,7 +1121,7 @@ class ShimCreationTest(unittest.TestCase):
 
         searcher_ax = "ax"
         shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
-        real_searcher_ax = AxSearch(space=[], objective_name=kwargs["mode"])
+        real_searcher_ax = AxSearch(space=[], **kwargs)
         assert type(shim_searcher_ax) is type(real_searcher_ax)
 
         searcher_hyperopt = "hyperopt"
