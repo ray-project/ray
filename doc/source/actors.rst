@@ -250,8 +250,8 @@ Automatic termination
 
     Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
 
-Self-termination
-^^^^^^^^^^^^^^^^
+Manual termination within the actor
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If necessary, you can manually terminate an actor from within one of the actor methods.
 This will kill the actor process and release resources associated/assigned to the actor.
@@ -279,8 +279,8 @@ This will kill the actor process and release resources associated/assigned to th
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
-Forceful termination
-^^^^^^^^^^^^^^^^^^^^
+Manual termination via an actor handle 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can terminate an actor forcefully.
 
