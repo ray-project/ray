@@ -1876,9 +1876,9 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   task_queue_length_ += 1;
   const TaskSpecification task_spec(request.task_spec());
   if (!task_spec.IsActorTask() && !task_spec.IsActorCreationTask()) {
-    RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId()
-                   << ". Adding it to the tasks_available_for_stealing_ queue!";
-    direct_task_receiver_->MarkTaskAvailableForStealing(task_spec);
+    RAY_LOG(DEBUG) << "Received non-actor task " << task_spec.TaskId()
+                   << ". Adding it to the non_actor_task_queue_ queue!";
+    direct_task_receiver_->EnqueueNonActorTask(task_spec);
   }
   task_execution_service_.post([=] {
     // We have posted an exit task onto the main event loop,
