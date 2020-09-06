@@ -445,6 +445,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             if not cli_logger.old_style and not with_output:
                 return run_cmd_redirected(
                     final_cmd,
+                    process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
             if with_output:

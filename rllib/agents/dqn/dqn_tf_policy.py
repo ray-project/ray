@@ -362,7 +362,7 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
 
 
 def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
-    # N-step Q adjustments
+    # N-step Q adjustments.
     if policy.config["n_step"] > 1:
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
                       batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
@@ -372,7 +372,7 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
-    # Prioritize on the worker side
+    # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],

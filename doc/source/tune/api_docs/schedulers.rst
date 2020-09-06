@@ -196,3 +196,9 @@ TrialScheduler
 
 .. autoclass:: ray.tune.schedulers.TrialScheduler
     :members:
+
+Shim Instantiation (tune.create_scheduler)
+------------------------------------------
+There is also a shim function that constructs the scheduler based on the provided string. This can be useful if the scheduler you want to use changes often (e.g., specifying the scheduler via a CLI option or config file).
+
+.. automethod:: ray.tune.create_scheduler

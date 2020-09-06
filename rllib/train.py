@@ -205,10 +205,14 @@ def run(args, parser):
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
 
+    if not args.queue_trials:
+        # TODO: this should be eventually removed as an arg
+        # because it is already autodetected on an autoscaling cluster.
+        os.environ["TUNE_DISABLE_QUEUE_TRIALS"] = "1"
+
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials,
         resume=args.resume,
         verbose=verbose,
         concurrent=True)

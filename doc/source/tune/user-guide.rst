@@ -202,7 +202,8 @@ disable cross-node syncing:
 
 .. code-block:: python
 
-    tune.run(func, sync_to_driver=False)
+    sync_config = tune.SyncConfig(sync_to_driver=False)
+    tune.run(func, sync_config=sync_config)
 
 
 Handling Large Datasets
@@ -415,17 +416,19 @@ If an upload directory is provided, Tune will automatically sync results from th
     tune.run(
         MyTrainableClass,
         local_dir="~/ray_results",
-        upload_dir="s3://my-log-dir"
+        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
     )
 
-You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument in ``tune.run``. This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
 
 .. code-block:: python
 
     tune.run(
         MyTrainableClass,
-        upload_dir="s3://my-log-dir",
-        sync_to_cloud=custom_sync_str_or_func,
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://my-log-dir",
+            sync_to_cloud=custom_sync_str_or_func
+        )
     )
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
@@ -440,7 +443,9 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period. Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``global_checkpoint_period`` argument. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, global_checkpoint_period)``.
+By default, syncing occurs every 300 seconds. To change the frequency of syncing, set the ``TUNE_CLOUD_SYNC_S`` environment variable in the driver to the desired syncing period.
+
+Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
 .. _tune-kubernetes:
 
@@ -449,14 +454,18 @@ Using Tune with Kubernetes
 Tune automatically syncs files and checkpoints between different remote
 nodes as needed.
 To make this work in your Kubernetes cluster, you will need to pass a
-``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.run()``.
+``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
 .. code-block:: python
 
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
-    tune.run(train,
-             sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True))
+    sync_config = tune.SyncConfig(
+        sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True)
+    )
+
+    tune.run(train, sync_config=sync_config)
+
 
 
 The ``KubernetesSyncer`` supports two modes for file synchronisation. Per
