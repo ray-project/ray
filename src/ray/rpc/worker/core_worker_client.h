@@ -120,7 +120,7 @@ class CoreWorkerClientInterface {
                               const ClientCallback<PushTaskReply> &callback) {}
 
   virtual void StealWork(std::unique_ptr<StealWorkRequest> request,
-                       const ClientCallback<StealWorkReply> &callback) {}
+                         const ClientCallback<StealWorkReply> &callback) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///

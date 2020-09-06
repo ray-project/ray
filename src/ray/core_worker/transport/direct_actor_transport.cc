@@ -322,9 +322,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
   if (!task_spec.IsActorTask() && !task_spec.IsActorCreationTask()) {
     absl::MutexLock lock(&mu_);
-    
+
     RAY_CHECK(non_actor_task_queue_.size() > 0);
-    
+
     // Pop task from the non_actor_task_queue_, and check if it was stolen.
     auto queue_front = non_actor_task_queue_.front();
     RAY_CHECK(queue_front.first.TaskId() == task_spec.TaskId());
@@ -332,16 +332,18 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     non_actor_task_queue_.pop_front();
 
     if (stolen) {
-      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from " << this_worker_id_ << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
+      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
+                     << this_worker_id_
+                     << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
       // task stolen. respond accordingly
       reply->set_task_stolen(true);
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
-    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was NOT stolen from " << this_worker_id_ << "'s non_actor_task_queue_! Proceeding with HandlePushTask normally";
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was NOT stolen from "
+                   << this_worker_id_
+                   << "'s non_actor_task_queue_! Proceeding with HandlePushTask normally";
   }
-
-
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
@@ -447,7 +449,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                  accept_callback, reject_callback, dependencies);
 }
 
-void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorkerDirectTaskReceiver::HandleStealWork(
+    const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mu_);
 
   size_t half = non_actor_task_queue_.size() / 2;
@@ -462,7 +466,8 @@ void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &
 
   size_t n_tasks_stolen = 0;
   // Use a reverse iterator to steal in a LIFO-fashion from the queue of non-actor tasks.
-  for (auto reverse_it = non_actor_task_queue_.rbegin(); reverse_it != non_actor_task_queue_.rend(); ++reverse_it) {
+  for (auto reverse_it = non_actor_task_queue_.rbegin();
+       reverse_it != non_actor_task_queue_.rend(); ++reverse_it) {
     if (n_tasks_stolen == half) {
       break;
     }
@@ -478,7 +483,8 @@ void CoreWorkerDirectTaskReceiver::HandleStealWork(const rpc::StealWorkRequest &
     // Add the task's TaskSpecification to the StealWork RPC reply
     reply->add_tasks_stolen()->CopyFrom(reverse_it->first.GetMessage());
     RAY_LOG(DEBUG) << "Task " << reverse_it->first.TaskId()
-                   << " was marked as stolen from worker " << this_worker_id_ << "'s non_actor_task_queue_!";
+                   << " was marked as stolen from worker " << this_worker_id_
+                   << "'s non_actor_task_queue_!";
 
     n_tasks_stolen++;
   }
