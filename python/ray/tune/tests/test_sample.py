@@ -22,7 +22,7 @@ class SearchSpaceTest(unittest.TestCase):
             "uniform": tune.uniform(-5, -1),
             "quniform": tune.quniform(3.2, 5.4, 0.2),
             "loguniform": tune.loguniform(1e-4, 1e-2),
-            "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),
+            "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
             "choice": tune.choice([2, 3, 4]),
             "randint": tune.randint(-9, 15),
             "qrandint": tune.qrandint(-21, 12, 3),
@@ -30,7 +30,7 @@ class SearchSpaceTest(unittest.TestCase):
             "qrandn": tune.qrandn(10, 2, 0.2),
         }
         for _, (_, generated) in zip(
-                range(10), generate_variants({
+                range(1000), generate_variants({
                     "config": config
                 })):
             out = generated["config"]
@@ -50,8 +50,8 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertGreaterEqual(out["qloguniform"], 1e-4)
             self.assertLessEqual(out["qloguniform"], 1e-1)
-            self.assertAlmostEqual(out["qloguniform"] / 5e-4,
-                                   round(out["qloguniform"] / 5e-4))
+            self.assertAlmostEqual(out["qloguniform"] / 5e-5,
+                                   round(out["qloguniform"] / 5e-5))
 
             self.assertIn(out["choice"], [2, 3, 4])
 
@@ -130,10 +130,21 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testQuantized(self):
         bounded_positive = tune.sample.Float(1e-4, 1e-1)
-        samples = bounded_positive.loguniform().quantized(5e-4).sample(size=10)
+
+        bounded = tune.sample.Float(1e-4, 1e-1)
+        with self.assertRaises(ValueError):
+            # Granularity too high
+            bounded.quantized(5e-4)
+
+        with self.assertRaises(ValueError):
+            tune.sample.Float(-1e-1, -1e-4).quantized(5e-4)
+
+        samples = bounded_positive.loguniform().quantized(5e-5).sample(
+            size=1000)
 
         for sample in samples:
-            factor = sample / 5e-4
+            factor = sample / 5e-5
+            assert 1e-4 <= sample <= 1e-1
             self.assertAlmostEqual(factor, round(factor), places=10)
 
     def testConvertAx(self):

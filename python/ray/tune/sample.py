@@ -187,7 +187,16 @@ class Float(Domain):
         new.set_sampler(self._Normal(mean, sd))
         return new
 
-    def quantized(self, q: Number):
+    def quantized(self, q: float):
+        if abs(self.lower / q) < 1:
+            raise ValueError(
+                f"Granularity of quantization factor {q} is too high. Choose "
+                "a value with a lower magnitude than your lower bound.")
+        if abs(self.upper / q) < 1:
+            raise ValueError(
+                f"Granularity of quantization factor {q} is too high. Choose "
+                "a value with a lower magnitude than your upper bound.")
+
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
