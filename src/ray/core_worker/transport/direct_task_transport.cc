@@ -274,8 +274,10 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
 
         auto &thief_entry = worker_to_lease_entry_[thief_addr];
         RAY_CHECK(thief_entry.lease_client);
-        RAY_LOG(DEBUG) << "thief_entry.tasks_in_flight (thief): " << thief_entry.tasks_in_flight;
-        RAY_LOG(DEBUG) << "thief_entry.stealable_tasks.size() (thief): " << thief_entry.stealable_tasks.size();
+        RAY_LOG(DEBUG) << "thief_entry.tasks_in_flight (thief): "
+                       << thief_entry.tasks_in_flight;
+        RAY_LOG(DEBUG) << "thief_entry.stealable_tasks.size() (thief): "
+                       << thief_entry.stealable_tasks.size();
 
         size_t tasks_in_flight_before_stealing = thief_entry.tasks_in_flight;
         size_t stealable_tasks_before_stealing = thief_entry.stealable_tasks.size();
@@ -308,11 +310,13 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
           auto &client = *client_cache_->GetOrConnect(thief_addr.ToProto());
 
           RAY_CHECK(thief_entry.lease_client);
-          RAY_CHECK(thief_entry.tasks_in_flight == tasks_in_flight_before_stealing + (size_t) i) ;
-          RAY_CHECK(thief_entry.stealable_tasks.size() == stealable_tasks_before_stealing + (size_t) i);
+          RAY_CHECK(thief_entry.tasks_in_flight ==
+                    tasks_in_flight_before_stealing + (size_t)i);
+          RAY_CHECK(thief_entry.stealable_tasks.size() ==
+                    stealable_tasks_before_stealing + (size_t)i);
 
           thief_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
-                                           // the worker
+                                          // the worker
 
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
           scheduling_key_entry.total_tasks_in_flight++;
@@ -325,9 +329,12 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         }
 
         if (number_of_tasks_stolen == 0) {
-          RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: " << victim_addr.worker_id;
+          RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: "
+                         << victim_addr.worker_id;
           if (thief_entry.tasks_in_flight == 0) {
-            RAY_LOG(DEBUG) << "Thief " << thief_addr.worker_id <<  " has no tasks in flight now, so we return it to the Raylet!";
+            RAY_LOG(DEBUG)
+                << "Thief " << thief_addr.worker_id
+                << " has no tasks in flight now, so we return it to the Raylet!";
             ReturnWorker(thief_addr, was_error, scheduling_key);
           }
         }
