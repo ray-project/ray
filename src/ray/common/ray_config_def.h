@@ -299,5 +299,6 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// execution are profiled and sent to the GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
-/// Enable stealing of non-actor tasks among workers that are associated with the same owner
+/// Enable stealing of non-actor tasks among workers that are associated with the same
+/// owner
 RAY_CONFIG(bool, work_stealing_enabled, false)

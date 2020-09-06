@@ -1895,8 +1895,6 @@ void CoreWorker::HandleStealWork(const rpc::StealWorkRequest &request,
   direct_task_receiver_->HandleStealWork(request, reply, send_reply_callback);
 }
 
-
-
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
     const rpc::DirectActorCallArgWaitCompleteRequest &request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,

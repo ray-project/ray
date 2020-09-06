@@ -521,8 +521,8 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply, rpc::SendReplyCallback send_reply_callback);
-
+  void HandleStealWork(const rpc::StealWorkRequest &request, rpc::StealWorkReply *reply,
+                       rpc::SendReplyCallback send_reply_callback);
 
  private:
   // Worker context.
@@ -546,7 +546,9 @@ class CoreWorkerDirectTaskReceiver {
   WorkerID this_worker_id_;
   /// Protects the non_actor_task_queue_ deque
   absl::Mutex mu_;
-  /// Queue containing the TaskSpecification of each non actor task that has been received (but has not been processed yet), along with a boolean indicating whether the task has been stolen
+  /// Queue containing the TaskSpecification of each non actor task that has been received
+  /// (but has not been processed yet), along with a boolean indicating whether the task
+  /// has been stolen
   std::deque<std::pair<TaskSpecification, bool>> non_actor_task_queue_ GUARDED_BY(mu_);
 };
 
