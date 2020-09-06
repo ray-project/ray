@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 tf1, tf, tfv = try_import_tf()
 
 
-class TestMARWIL(unittest.TestCase):
+class TestBC(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -20,8 +20,8 @@ class TestMARWIL(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_marwil_compilation_and_learning_from_offline_file(self):
-        """Test whether a MARWILTrainer can be built with all frameworks.
+    def test_bc_compilation_and_learning_from_offline_file(self):
+        """Test whether a BCTrainer can be built with all frameworks.
 
         And learns from a historic-data file.
         """
@@ -31,7 +31,7 @@ class TestMARWIL(unittest.TestCase):
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
-        config = marwil.DEFAULT_CONFIG.copy()
+        config = marwil.BC_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 1
@@ -43,7 +43,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Test for all frameworks.
         for _ in framework_iterator(config):
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
+            trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 eval_results = trainer.train()["evaluation"]
                 print("iter={} R={}".format(

@@ -1160,6 +1160,13 @@ class Trainer(Trainable):
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
 
+    @staticmethod
+    def with_updates(**overrides) -> Type["Trainer"]:
+        raise NotImplementedError(
+            "`with_updates` may only be called on Trainer sub-classes "
+            "that were generated via the `ray.rllib.agents.trainer_template."
+            "build_trainer()` function!")
+
     def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):
             return env_object

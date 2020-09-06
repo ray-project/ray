@@ -139,27 +139,30 @@ def build_trainer(
             if before_evaluate_fn:
                 before_evaluate_fn(self)
 
+        @override(Trainer)
         def __getstate__(self):
             state = Trainer.__getstate__(self)
             state["train_exec_impl"] = (
                 self.train_exec_impl.shared_metrics.get().save())
             return state
 
+        @override(Trainer)
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
             self.train_exec_impl.shared_metrics.get().restore(
                 state["train_exec_impl"])
 
-    def with_updates(**overrides):
-        """Build a copy of this trainer with the specified overrides.
+        @staticmethod
+        @override(Trainer)
+        def with_updates(**overrides) -> Type[Trainer]:
+            """Build a copy of this trainer with the specified overrides.
+    
+            Keyword Args:
+                overrides (dict): use this to override any of the arguments
+                    originally passed to build_trainer() for this policy.
+            """
+            return build_trainer(**dict(original_kwargs, **overrides))
 
-        Arguments:
-            overrides (dict): use this to override any of the arguments
-                originally passed to build_trainer() for this policy.
-        """
-        return build_trainer(**dict(original_kwargs, **overrides))
-
-    trainer_cls.with_updates = staticmethod(with_updates)
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls
