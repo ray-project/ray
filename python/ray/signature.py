@@ -73,8 +73,7 @@ def extract_signature(func, ignore_first=False):
     if ignore_first:
         if len(signature_parameters) == 0:
             raise ValueError("Methods must take a 'self' argument, but the "
-                             "method '{}' does not have one.".format(
-                                 func.__name__))
+                             f"method '{func.__name__}' does not have one.")
         signature_parameters = signature_parameters[1:]
 
     return signature_parameters

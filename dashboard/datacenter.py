@@ -19,7 +19,7 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
-    # {ip address(str): dashboard agent grpc server port(int)}
+    # {ip address(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {ip address(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
@@ -56,7 +56,7 @@ class DataOrganizer:
             node_worker_id_set.add(worker_stats["workerId"])
         node_actors = {}
         for actor_id, actor_table_data in DataSource.actors.items():
-            if actor_table_data["workerId"] in node_worker_id_set:
+            if actor_table_data["address"]["workerId"] in node_worker_id_set:
                 node_actors[actor_id] = actor_table_data
         return node_actors
 
@@ -102,6 +102,7 @@ class DataOrganizer:
         for hostname in DataSource.hostname_to_ip.keys():
             node_info = await cls.get_node_info(hostname)
             node_info.pop("workers", None)
+            node_info.pop("actors", None)
             node_info["raylet"].pop("workersStats", None)
             node_info["raylet"].pop("viewData", None)
             all_nodes_summary.append(node_info)

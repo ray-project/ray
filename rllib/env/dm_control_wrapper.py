@@ -73,19 +73,20 @@ class DMCEnv(core.Env):
                  task_kwargs=None,
                  visualize_reward=False,
                  from_pixels=False,
-                 height=84,
-                 width=84,
+                 height=64,
+                 width=64,
                  camera_id=0,
-                 frame_skip=1,
+                 frame_skip=2,
                  environment_kwargs=None,
-                 channels_first=False):
-        assert "random" in task_kwargs, "Seed for deterministic behaviour"
+                 channels_first=True,
+                 preprocess=True):
         self._from_pixels = from_pixels
         self._height = height
         self._width = width
         self._camera_id = camera_id
         self._frame_skip = frame_skip
         self._channels_first = channels_first
+        self.preprocess = preprocess
 
         if specs is None:
             raise RuntimeError((
@@ -120,6 +121,9 @@ class DMCEnv(core.Env):
                      width] if channels_first else [height, width, 3]
             self._observation_space = spaces.Box(
                 low=0, high=255, shape=shape, dtype=np.uint8)
+            if preprocess:
+                self._observation_space = spaces.Box(
+                    low=-0.5, high=0.5, shape=shape, dtype=np.float32)
         else:
             self._observation_space = _spec_to_box(
                 self._env.observation_spec().values())
@@ -127,9 +131,6 @@ class DMCEnv(core.Env):
         self._state_space = _spec_to_box(self._env.observation_spec().values())
 
         self.current_state = None
-
-        # set seed
-        self.seed(seed=task_kwargs.get("random", 1))
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -142,6 +143,8 @@ class DMCEnv(core.Env):
                 camera_id=self._camera_id)
             if self._channels_first:
                 obs = obs.transpose(2, 0, 1).copy()
+            if self.preprocess:
+                obs = obs / 255.0 - 0.5
         else:
             obs = _flatten_obs(time_step.observation)
         return obs
@@ -166,11 +169,6 @@ class DMCEnv(core.Env):
     @property
     def action_space(self):
         return self._norm_action_space
-
-    def seed(self, seed):
-        self._true_action_space.seed(seed)
-        self._norm_action_space.seed(seed)
-        self._observation_space.seed(seed)
 
     def step(self, action):
         assert self._norm_action_space.contains(action)

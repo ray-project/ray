@@ -12,6 +12,7 @@ public interface CommonConfig extends Config {
 
   /**
    * Ray streaming job id. Non-custom.
+   *
    * @return Job id with string type.
    */
   @DefaultValue(value = "default-job-id")
@@ -20,6 +21,7 @@ public interface CommonConfig extends Config {
 
   /**
    * Ray streaming job name. Non-custom.
+   *
    * @return Job name with string type.
    */
   @DefaultValue(value = "default-job-name")

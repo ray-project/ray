@@ -105,6 +105,11 @@ def _import_mbmpo():
     return mbmpo.MBMPOTrainer
 
 
+def _import_dreamer():
+    from ray.rllib.agents import dreamer
+    return dreamer.DREAMERTrainer
+
+
 ALGORITHMS = {
     "SAC": _import_sac,
     "DDPG": _import_ddpg,
@@ -126,6 +131,7 @@ ALGORITHMS = {
     "MARWIL": _import_marwil,
     "MAML": _import_maml,
     "MBMPO": _import_mbmpo,
+    "DREAMER": _import_dreamer,
 }
 
 

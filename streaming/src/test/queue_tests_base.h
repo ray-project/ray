@@ -87,7 +87,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
         msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+<<<<<<< HEAD
+    TaskOptions options(0, resources);
+=======
+    TaskOptions options{"", 0, resources};
+>>>>>>> 6a78ba9752dc7f17b0e4b7423898c0facf777d3d
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("", "", "init", "")};
@@ -103,7 +107,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+    TaskOptions options(0, resources);
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", test, "execute_test", "")};
@@ -119,7 +123,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, resources};
+<<<<<<< HEAD
+    TaskOptions options(1, resources);
+=======
+    TaskOptions options{"", 1, resources};
+>>>>>>> 6a78ba9752dc7f17b0e4b7423898c0facf777d3d
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "check_current_test_status", "")};
@@ -223,6 +231,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     }
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
+    // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
     CoreWorkerOptions options = {
         WorkerType::DRIVER,             // worker_type
         Language::PYTHON,               // langauge
@@ -242,6 +251,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         nullptr,                        // task_execution_callback
         nullptr,                        // check_signals
         nullptr,                        // gc_collect
+        nullptr,                        // spill_objects
+        nullptr,                        // restore_spilled_objects
         nullptr,                        // get_lang_stack
         nullptr,                        // kill_main
         true,                           // ref_counting_enabled

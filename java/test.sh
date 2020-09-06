@@ -16,6 +16,7 @@ run_testng() {
     fi
     # exit_code == 2 means there are skipped tests.
     if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
+        find . -name "hs_err_*log" -exec cat {} +
         exit $exit_code
     fi
 }

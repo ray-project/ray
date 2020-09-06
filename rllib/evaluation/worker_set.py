@@ -64,14 +64,14 @@ class WorkerSet:
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
 
-            # Always create a local worker
+            # Create a number of remote workers.
+            self._remote_workers = []
+            self.add_workers(num_workers)
+
+            # Always create a local worker.
             self._local_worker = self._make_worker(RolloutWorker, env_creator,
                                                    self._policy_class, 0,
                                                    self._local_config)
-
-            # Create a number of remote workers
-            self._remote_workers = []
-            self.add_workers(num_workers)
 
     def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""

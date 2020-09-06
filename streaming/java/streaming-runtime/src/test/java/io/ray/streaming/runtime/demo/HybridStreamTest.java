@@ -18,6 +18,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HybridStreamTest {
+
   private static final Logger LOG = LoggerFactory.getLogger(HybridStreamTest.class);
 
   public static class Mapper1 implements MapFunction<Object, Object> {

@@ -48,10 +48,7 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(
-        _internal_config=json.dumps({
-            "metrics_report_interval_ms": 1000
-        }))
+    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()

@@ -23,8 +23,16 @@ class LoadMetrics:
         self.dynamic_resources_by_ip = {}
         self.resource_load_by_ip = {}
         self.local_ip = services.get_node_ip_address()
+        self.waiting_bundles = []
+        self.infeasible_bundles = []
 
-    def update(self, ip, static_resources, dynamic_resources, resource_load):
+    def update(self,
+               ip,
+               static_resources,
+               dynamic_resources,
+               resource_load,
+               waiting_bundles=[],
+               infeasible_bundles=[]):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
 
@@ -43,6 +51,8 @@ class LoadMetrics:
                 static_resources != dynamic_resources:
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
+        self.waiting_bundles = waiting_bundles
+        self.infeasible_bundles = infeasible_bundles
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
@@ -126,6 +136,9 @@ class LoadMetrics:
             nodes_used = min(num_nonidle + 1.0, num_nodes)
 
         return nodes_used, resources_used, resources_total
+
+    def get_resource_demand_vector(self):
+        return self.waiting_bundles + self.infeasible_bundles
 
     def info_string(self):
         return " - " + "\n - ".join(

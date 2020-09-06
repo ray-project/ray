@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.exceptions import RayTimeoutError
+from ray.exceptions import GetTimeoutError
 from ray.experimental.queue import Queue, Empty, Full
 
 
@@ -80,7 +80,7 @@ def test_async_get(ray_start_regular):
     with pytest.raises(Empty):
         q.get_nowait()
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(future, timeout=0.1)  # task not canceled on timeout.
 
     q.put(1)
@@ -95,7 +95,7 @@ def test_async_put(ray_start_regular):
     with pytest.raises(Full):
         q.put_nowait(3)
 
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(future, timeout=0.1)  # task not canceled on timeout.
 
     assert q.get() == 1

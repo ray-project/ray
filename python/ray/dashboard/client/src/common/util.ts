@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export const getWeightedAverage = (
   input: {
     weight: number;
@@ -24,3 +26,24 @@ export const filterObj = (obj: Object, filterFn: any) =>
 
 export const mapObj = (obj: Object, filterFn: any) =>
   Object.fromEntries(Object.entries(obj).map(filterFn));
+
+export const useInterval = (callback: Function, delayMs: number) => {
+  const savedCallback = useRef<any>();
+  const intervalId = useRef<any>();
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
+  useEffect(() => {
+    const tick = () => savedCallback?.current();
+    intervalId.current = setInterval(tick, delayMs);
+    savedCallback.current();
+    return () => {
+      if (intervalId.current) {
+        clearInterval(intervalId.current);
+      }
+    };
+  }, [callback, delayMs]);
+  return intervalId.current
+    ? () => clearInterval(intervalId.current)
+    : () => null;
+};

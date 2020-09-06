@@ -331,7 +331,7 @@ hyperparameter configurations from this search space.
 
 The output of our training run coud look like this:
 
-.. code-block::
+.. code-block:: bash
    :emphasize-lines: 10
 
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
@@ -382,12 +382,19 @@ There are more parameters, which are explained in the
 :ref:`documentation <tune-scheduler-hyperband>`.
 
 Lastly, we have to report the loss metric to Tune. We do this with a ``Callback`` that
-XGBoost accepts and calls after each training iteration. We also tell XGBoost which
-loss metrics to calculate in the ``eval_metric`` parameter. These are the metrics
-available in ``env.evaluation_result_list`` below.
+XGBoost accepts and calls after each evaluation round. Ray Tune comes
+with :ref:`two XGBoost callbacks <tune-integration-xgboost>`
+we can use for this. The ``TuneReportCallback`` just reports the evaluation
+metrics back to Tune. The ``TuneReportCheckpointCallback`` would also save
+checkpoints after each evaluation round. We will just use the former in this
+example.
+
+We also tell XGBoost which loss metrics to calculate in the ``eval_metric``
+parameter in the config. These parameters are then reported to Tune
+via the callback.
 
 .. code-block:: python
-   :emphasize-lines: 11,12,13,26,42,44,45,46,47,48,49
+   :emphasize-lines: 9,26,42,44-49
 
     import numpy as np
     import sklearn.datasets
@@ -397,12 +404,7 @@ available in ``env.evaluation_result_list`` below.
     import xgboost as xgb
 
     from ray import tune
-
-
-    def XGBCallback(env):
-        # After every training iteration, report loss to Tune
-        tune.report(**dict(env.evaluation_result_list))
-
+    from ray.tune.integration.xgboost import TuneReportCallback
 
     def train_breast_cancer(config):
         # Load dataset
@@ -414,7 +416,12 @@ available in ``env.evaluation_result_list`` below.
         train_set = xgb.DMatrix(train_x, label=train_y)
         test_set = xgb.DMatrix(test_x, label=test_y)
         # Train the classifier
-        bst = xgb.train(config, train_set, evals=[(test_set, "eval")], verbose_eval=False, callbacks=[XGBCallback])
+        bst = xgb.train(
+            config,
+            train_set,
+            evals=[(test_set, "eval")],
+            verbose_eval=False,
+            callbacks=[TuneReportCallback()])
         # Predict labels for the test set
         preds = bst.predict(test_set)
         pred_labels = np.rint(preds)
@@ -447,7 +454,7 @@ available in ``env.evaluation_result_list`` below.
 
 The output of our run could look like this:
 
-.. code-block::
+.. code-block:: bash
    :emphasize-lines: 13
 
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+

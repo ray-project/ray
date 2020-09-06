@@ -1,3 +1,12 @@
+"""Implements multi-node-type autoscaling.
+
+This file implements an autoscaling algorithm that is aware of multiple node
+types (e.g., example-multi-node-type.yaml). The Ray autoscaler will pass in
+a vector of resource shape demands, and the resource demand scheduler will
+return a list of node types that can satisfy the demands given constraints
+(i.e., reverse bin packing).
+"""
+
 import copy
 import numpy as np
 import logging
@@ -30,18 +39,43 @@ class ResourceDemandScheduler:
         self.node_types = node_types
         self.max_workers = max_workers
 
-    def debug_string(self, nodes: List[NodeID],
-                     pending_nodes: Dict[NodeID, int]) -> str:
+    # TODO(ekl) take into account existing utilization of node resources. We
+    # should subtract these from node resources prior to running bin packing.
+    def get_nodes_to_launch(self, nodes: List[NodeID],
+                            pending_nodes: Dict[NodeType, int],
+                            resource_demands: List[ResourceDict]
+                            ) -> List[Tuple[NodeType, int]]:
+        """Given resource demands, return node types to add to the cluster.
+
+        This method:
+            (1) calculates the resources present in the cluster.
+            (2) calculates the unfulfilled resource bundles.
+            (3) calculates which nodes need to be launched to fulfill all
+                the bundle requests, subject to max_worker constraints.
+
+        Args:
+            nodes: List of existing nodes in the cluster.
+            pending_nodes: Summary of node types currently being launched.
+            resource_demands: Vector of resource demands from the scheduler.
+        """
+
+        if resource_demands is None:
+            logger.info("No resource demands")
+            return []
+
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
+        logger.info("Cluster resources: {}".format(node_resources))
+        logger.info("Node counts: {}".format(node_type_counts))
 
-        out = "Worker node types:"
-        for node_type, count in node_type_counts.items():
-            out += "\n - {}: {}".format(node_type, count)
-            if pending_nodes.get(node_type):
-                out += " ({} pending)".format(pending_nodes[node_type])
+        unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
+        logger.info("Resource demands: {}".format(resource_demands))
+        logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        return out
+        nodes = get_nodes_for(self.node_types, node_type_counts,
+                              self.max_workers - len(nodes), unfulfilled)
+        logger.info("Node requests: {}".format(nodes))
+        return nodes
 
     def calculate_node_resources(
             self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int]
@@ -73,36 +107,18 @@ class ResourceDemandScheduler:
 
         return node_resources, node_type_counts
 
-    def get_nodes_to_launch(self, nodes: List[NodeID],
-                            pending_nodes: Dict[NodeType, int],
-                            resource_demands: List[ResourceDict]
-                            ) -> List[Tuple[NodeType, int]]:
-        """Get a list of node types that should be added to the cluster.
-
-        This method:
-            (1) calculates the resources present in the cluster.
-            (2) calculates the unfulfilled resource bundles.
-            (3) calculates which nodes need to be launched to fulfill all
-                the bundle requests, subject to max_worker constraints.
-        """
-
-        if resource_demands is None:
-            logger.info("No resource demands")
-            return []
-
+    def debug_string(self, nodes: List[NodeID],
+                     pending_nodes: Dict[NodeID, int]) -> str:
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes)
-        logger.info("Cluster resources: {}".format(node_resources))
-        logger.info("Node counts: {}".format(node_type_counts))
 
-        unfulfilled = get_bin_pack_residual(node_resources, resource_demands)
-        logger.info("Resource demands: {}".format(resource_demands))
-        logger.info("Unfulfilled demands: {}".format(unfulfilled))
+        out = "Worker node types:"
+        for node_type, count in node_type_counts.items():
+            out += "\n - {}: {}".format(node_type, count)
+            if pending_nodes.get(node_type):
+                out += " ({} pending)".format(pending_nodes[node_type])
 
-        nodes = get_nodes_for(self.node_types, node_type_counts,
-                              self.max_workers - len(nodes), unfulfilled)
-        logger.info("Node requests: {}".format(nodes))
-        return nodes
+        return out
 
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],

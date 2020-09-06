@@ -1,8 +1,13 @@
-import copy
 from collections import defaultdict
 import logging
 import pickle
 import json
+from typing import Dict
+
+from ray.tune.sample import Float, Quantized
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils.util import unflatten_dict
+
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
 except ImportError:
@@ -60,6 +65,24 @@ class BayesOptSearch(Searcher):
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
+    Tune automatically converts search spaces to BayesOptSearch's format:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        config = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        }
+
+        bayesopt = BayesOptSearch(metric="mean_loss", mode="min")
+        tune.run(my_func, config=config, search_alg=bayesopt)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
     .. code-block:: python
 
         from ray import tune
@@ -69,15 +92,16 @@ class BayesOptSearch(Searcher):
             'width': (0, 20),
             'height': (-100, 100),
         }
-        algo = BayesOptSearch(space, metric="mean_loss", mode="min")
-        tune.run(my_func, search_alg=algo)
+        bayesopt = BayesOptSearch(space, metric="mean_loss", mode="min")
+        tune.run(my_func, search_alg=bayesopt)
+
     """
     # bayes_opt.BayesianOptimization: Optimization object
     optimizer = None
 
     def __init__(self,
-                 space,
-                 metric,
+                 space=None,
+                 metric="episode_reward_mean",
                  mode="max",
                  utility_kwargs=None,
                  random_state=42,
@@ -154,14 +178,44 @@ class BayesOptSearch(Searcher):
         self.random_search_trials = random_search_steps
         self._total_random_search_trials = 0
 
-        self.optimizer = byo.BayesianOptimization(
-            f=None, pbounds=space, verbose=verbose, random_state=random_state)
-
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
         # Registering the provided analysis, if given
         if analysis is not None:
             self.register_analysis(analysis)
+
+        self._space = space
+        self._verbose = verbose
+        self._random_state = random_state
+
+        self.optimizer = None
+        if space:
+            self.setup_optimizer()
+
+    def setup_optimizer(self):
+        self.optimizer = byo.BayesianOptimization(
+            f=None,
+            pbounds=self._space,
+            verbose=self._verbose,
+            random_state=self._random_state)
+
+    def set_search_properties(self, metric, mode, config):
+        if self.optimizer:
+            return False
+        space = self.convert_search_space(config)
+        self._space = space
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = 1.
+        elif self._mode == "min":
+            self._metric_op = -1.
+
+        self.setup_optimizer()
+        return True
 
     def suggest(self, trial_id):
         """Return new point to be explored by black box function.
@@ -174,6 +228,13 @@ class BayesOptSearch(Searcher):
             Either a dictionary describing the new point to explore or
             None, when no new point is to be explored for the time being.
         """
+        if not self.optimizer:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+
         # If we have more active trials than the allowed maximum
         total_live_trials = len(self._live_trial_mapping)
         if self.max_concurrent and self.max_concurrent <= total_live_trials:
@@ -214,7 +275,7 @@ class BayesOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = config
 
         # Return a deep copy of the mapping
-        return copy.deepcopy(config)
+        return unflatten_dict(config)
 
     def register_analysis(self, analysis):
         """Integrate the given analysis into the gaussian process.
@@ -283,3 +344,39 @@ class BayesOptSearch(Searcher):
             (self.optimizer, self._buffered_trial_results,
              self._total_random_search_trials,
              self._config_counter) = pickle.load(f)
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to a BayesOpt search space.")
+
+        def resolve_value(domain):
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                logger.warning(
+                    "BayesOpt search does not support quantization. "
+                    "Dropped quantization.")
+                sampler = sampler.get_sampler()
+
+            if isinstance(domain, Float):
+                if domain.sampler is not None:
+                    logger.warning(
+                        "BayesOpt does not support specific sampling methods. "
+                        "The {} sampler will be dropped.".format(sampler))
+                    return (domain.lower, domain.upper)
+
+            raise ValueError("BayesOpt does not support parameters of type "
+                             "`{}`".format(type(domain).__name__))
+
+        # Parameter name is e.g. "a/b/c" for nested dicts
+        bounds = {
+            "/".join(path): resolve_value(domain)
+            for path, domain in domain_vars
+        }
+
+        return bounds

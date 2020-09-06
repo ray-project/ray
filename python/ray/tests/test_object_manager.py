@@ -1,5 +1,4 @@
 from collections import defaultdict
-import json
 import multiprocessing
 import numpy as np
 import pytest
@@ -207,14 +206,14 @@ def test_object_transfer_retry(ray_start_cluster):
     # Also, force the receiving object manager to retry the pull sooner. We
     # make the chunk size smaller in order to make it easier to test objects
     # with multiple chunks.
-    config = json.dumps({
+    config = {
         "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
         "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
         "object_manager_default_chunk_size": 1000
-    })
+    }
     object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
-        object_store_memory=object_store_memory, _internal_config=config)
+        object_store_memory=object_store_memory, _system_config=config)
     cluster.add_node(num_gpus=1, object_store_memory=object_store_memory)
     ray.init(address=cluster.address)
 

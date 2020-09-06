@@ -66,7 +66,7 @@ class Actor:
     def value(self):
         return 1
 
-_ = Actor.options(name="DetachedActor").remote()
+_ = Actor.options(lifetime="detached", name="DetachedActor").remote()
 """.format(address)
 
     p = run_string_as_driver_nonblocking(driver)

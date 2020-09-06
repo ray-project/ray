@@ -9,7 +9,6 @@ import platform
 import shutil
 import uuid
 import time
-import tempfile
 import os
 from numbers import Number
 from ray.tune import TuneError
@@ -129,6 +128,19 @@ class TrialInfo:
         return self._trial_id
 
 
+def create_logdir(dirname, local_dir):
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
 class Trial:
     """A trial object holds the state for one model training run.
 
@@ -176,6 +188,7 @@ class Trial:
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
+                 trial_dirname_creator=None,
                  loggers=None,
                  log_to_file=None,
                  sync_to_driver_fn=None,
@@ -245,6 +258,7 @@ class Trial:
         self.error_msg = None
         self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
+        self.custom_dirname = None
 
         # Checkpointing fields
         self.saving_to = None
@@ -283,6 +297,12 @@ class Trial:
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
 
+        if trial_dirname_creator:
+            self.custom_dirname = trial_dirname_creator(self)
+            if os.path.sep in self.custom_dirname:
+                raise ValueError(f"Trial dirname must not contain '/'. "
+                                 "Got {self.custom_dirname}")
+
     @property
     def node_ip(self):
         return self.location.hostname
@@ -314,14 +334,6 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
-    @classmethod
-    def create_logdir(cls, identifier, local_dir):
-        local_dir = os.path.expanduser(local_dir)
-        os.makedirs(local_dir, exist_ok=True)
-        return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
-            dir=local_dir)
-
     def reset(self):
         return Trial(
             self.trainable_name,
@@ -351,9 +363,8 @@ class Trial:
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(
-                    self._trainable_name() + "_" + self.experiment_tag,
-                    self.local_dir)
+                self.logdir = create_logdir(self._generate_dirname(),
+                                            self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -591,6 +602,15 @@ class Trial:
         if include_trial_id:
             identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
+
+    def _generate_dirname(self):
+        if self.custom_dirname:
+            generated_dirname = self.custom_dirname
+        else:
+            generated_dirname = f"{self.trainable_name}_{self.experiment_tag}"
+            generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
+            generated_dirname += f"_{date_str()}{uuid.uuid4().hex[:8]}"
+        return generated_dirname.replace("/", "_")
 
     def __getstate__(self):
         """Memento generator for Trial.

@@ -1,7 +1,6 @@
 """This is the script for `ray microbenchmark`."""
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -110,10 +109,7 @@ def main():
 
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
 
-    ray.init(
-        _internal_config=json.dumps({
-            "put_small_object_in_memory_store": True
-        }))
+    ray.init(_system_config={"put_small_object_in_memory_store": True})
 
     value = ray.put(0)
 
@@ -138,10 +134,7 @@ def main():
     timeit("multi client put calls", put_multi_small, 1000)
 
     ray.shutdown()
-    ray.init(
-        _internal_config=json.dumps({
-            "put_small_object_in_memory_store": False
-        }))
+    ray.init(_system_config={"put_small_object_in_memory_store": False})
 
     value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
