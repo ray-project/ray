@@ -147,6 +147,12 @@ class SearchSpaceTest(unittest.TestCase):
             assert 1e-4 <= sample <= 1e-1
             self.assertAlmostEqual(factor, round(factor), places=10)
 
+        with self.assertRaises(ValueError):
+            tune.sample.Float(0, 32).quantized(3)
+
+        samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
+        self.assertTrue(all(0 <= s <= 33 for s in samples))
+
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient

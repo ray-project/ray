@@ -2,6 +2,7 @@ import logging
 import random
 from copy import copy
 from inspect import signature
+from math import isclose
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
@@ -188,14 +189,16 @@ class Float(Domain):
         return new
 
     def quantized(self, q: float):
-        if abs(self.lower / q) < 1:
+        if self.lower > float("-inf") and not isclose(self.lower / q,
+                                                      round(self.lower / q)):
             raise ValueError(
-                f"Granularity of quantization factor {q} is too high. Choose "
-                "a value with a lower magnitude than your lower bound.")
-        if abs(self.upper / q) < 1:
+                f"Your lower variable bound {self.lower} is not divisible by "
+                f"quantization factor {q}.")
+        if self.upper < float("inf") and not isclose(self.upper / q,
+                                                     round(self.upper / q)):
             raise ValueError(
-                f"Granularity of quantization factor {q} is too high. Choose "
-                "a value with a lower magnitude than your upper bound.")
+                f"Your upper variable bound {self.upper} is not divisible by "
+                f"quantization factor {q}.")
 
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
