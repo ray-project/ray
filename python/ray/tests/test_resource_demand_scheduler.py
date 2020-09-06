@@ -180,6 +180,35 @@ class LoadMetricsTest(unittest.TestCase):
             "GPU": 1
         }])
 
+    def testMultiNodeResourceDemanVector(self):
+        lm = LoadMetrics()
+        lm.update(
+            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }],
+            infeasible_bundles=[{
+                "CPU": 16
+            }])
+        lm.update(
+            "1.1.1.2", {"CPU": 2}, {"GPU": 1}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }],
+            infeasible_bundles=[{
+                "CPU": 64
+            }])
+        print(lm.get_resource_demand_vector())
+        assert same_elements(lm.get_resource_demand_vector(), [{
+            "CPU": 16
+        }, {
+            "GPU": 1
+        }, {
+            "GPU": 1
+        }, {
+            "CPU": 64
+        }])
+
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):

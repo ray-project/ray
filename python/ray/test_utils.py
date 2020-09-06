@@ -334,13 +334,28 @@ def dicts_equal(dict1, dict2, abs_tol=1e-4):
     return True
 
 
+def counts(iterable):
+    freqs = []
+    for elem in iterable:
+        found = False
+        for i in range(len(freqs)):
+            key, count = freqs[i]
+            if key == elem:
+                found = True
+                freqs[i][1] += 1
+        if not found:
+            freqs.append([elem, 1])
+    return freqs
+
+
 def same_elements(elems_a, elems_b):
     """Checks if two iterables (such as lists) contain the same elements. Elements
         do not have to be hashable (this allows us to compare sets of dicts for
         example). This comparison is not necessarily efficient.
     """
-    a = list(elems_a)
-    b = list(elems_b)
+
+    a = counts(elems_a)
+    b = counts(elems_b)
 
     for x in a:
         if x not in b:
