@@ -280,7 +280,6 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
                        << thief_entry.stealable_tasks.size();
 
         size_t tasks_in_flight_before_stealing = thief_entry.tasks_in_flight;
-        size_t stealable_tasks_before_stealing = thief_entry.stealable_tasks.size();
 
         ssize_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
@@ -312,8 +311,6 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
           RAY_CHECK(thief_entry.lease_client);
           RAY_CHECK(thief_entry.tasks_in_flight ==
                     tasks_in_flight_before_stealing + (size_t)i);
-          RAY_CHECK(thief_entry.stealable_tasks.size() ==
-                    stealable_tasks_before_stealing + (size_t)i);
 
           thief_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
                                           // the worker
