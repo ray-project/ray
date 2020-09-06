@@ -272,13 +272,13 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
 
         RAY_CHECK(worker_to_lease_entry_.find(thief_addr) !=
                   worker_to_lease_entry_.end());
-        auto &lease_entry = worker_to_lease_entry_[thief_addr];
-        RAY_CHECK(lease_entry.lease_client);
-        RAY_LOG(DEBUG) << "lease_entry.tasks_in_flight (thief): " << lease_entry.tasks_in_flight;
-        RAY_LOG(DEBUG) << "lease_entry.stealable_tasks.size() (thief): " << lease_entry.stealable_tasks.size();
+        auto &thief_entry = worker_to_lease_entry_[thief_addr];
+        RAY_CHECK(thief_entry.lease_client);
+        RAY_LOG(DEBUG) << "thief_entry.tasks_in_flight (thief): " << thief_entry.tasks_in_flight;
+        RAY_LOG(DEBUG) << "thief_entry.stealable_tasks.size() (thief): " << thief_entry.stealable_tasks.size();
 
-        size_t tasks_in_flight_before_stealing = lease_entry.tasks_in_flight;
-        size_t stealable_tasks_before_stealing = lease_entry.stealable_tasks.size();
+        size_t tasks_in_flight_before_stealing = thief_entry.tasks_in_flight;
+        size_t stealable_tasks_before_stealing = thief_entry.stealable_tasks.size();
 
         ssize_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
@@ -306,16 +306,16 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
           victim_entry.stealable_tasks.erase(task_spec.TaskId());
 
           auto &client = *client_cache_->GetOrConnect(thief_addr.ToProto());
-          RAY_CHECK(lease_entry.lease_client);
-          RAY_CHECK(lease_entry.tasks_in_flight == tasks_in_flight_before_stealing + (size_t) i) ;
-          RAY_CHECK(lease_entry.stealable_tasks.size() == stealable_tasks_before_stealing + (size_t) i);
+          RAY_CHECK(thief_entry.lease_client);
+          RAY_CHECK(thief_entry.tasks_in_flight == tasks_in_flight_before_stealing + (size_t) i) ;
+          RAY_CHECK(thief_entry.stealable_tasks.size() == stealable_tasks_before_stealing + (size_t) i);
 
-          lease_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
+          thief_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
                                            // the worker
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
           scheduling_key_entry.total_tasks_in_flight++;
 
-          auto res = lease_entry.stealable_tasks.emplace(task_spec.TaskId());
+          auto res = thief_entry.stealable_tasks.emplace(task_spec.TaskId());
           RAY_CHECK(res.second);
           executing_tasks_.emplace(task_spec.TaskId(), thief_addr);
           PushNormalTask(thief_addr, client, scheduling_key, task_spec,
@@ -323,9 +323,11 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         }
 
         if (number_of_tasks_stolen == 0) {
-          RAY_LOG(DEBUG) << "No tasks actually stolen, returning thief "
-                         << thief_addr.worker_id;
-          ReturnWorker(thief_addr, was_error, scheduling_key);
+          RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: " << victim_addr.worker_id;
+          if (thief_entry.tasks_in_flight == 0) {
+            RAY_LOG(DEBUG) << "Thief " << thief_addr.worker_id <<  " has no tasks in flight now, so we return it to the Raylet!";
+            ReturnWorker(thief_addr, was_error, scheduling_key);
+          }
         }
       }));
 
