@@ -689,7 +689,11 @@ class Node:
             process_info,
         ]
 
-    def start_raylet(self, plasma_directory, object_store_memory, use_valgrind=False, use_profiler=False):
+    def start_raylet(self,
+                     plasma_directory,
+                     object_store_memory,
+                     use_valgrind=False,
+                     use_profiler=False):
         """Start the raylet.
 
         Args:

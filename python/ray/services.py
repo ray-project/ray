@@ -1655,7 +1655,7 @@ def determine_plasma_store_config(object_store_memory,
     else:
         plasma_directory = os.path.abspath(plasma_directory)
         logger.info("object_store_memory is not verified when "
-                       "plasma_directory is set.")
+                    "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(f"The file {plasma_directory} does not "

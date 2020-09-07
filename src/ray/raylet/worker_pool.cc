@@ -362,7 +362,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   if (!child.IsValid() || ec) {
     if (ec == 24) {
       RAY_LOG(FATAL) << "Too many workers, failed to start file. Try setting "
-                     << "`ulimit -n <num_files>` then restart Ray.".;
+                     << "`ulimit -n <num_files>` then restart Ray.";
     } else {
       // The worker failed to start. This is a fatal error.
       RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
