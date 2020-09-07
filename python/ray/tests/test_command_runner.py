@@ -1,7 +1,7 @@
 import pytest
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import SSHCommandRunner, \
-    _with_environment_variables, DockerCommandRunner
+    _with_environment_variables, DockerCommandRunner, KubernetesCommandRunner
 from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
@@ -85,7 +85,43 @@ def test_ssh_command_runner():
         "--login",
         "-c",
         "-i",
-        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo'"""  # noqa: E501
+        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'"""  # noqa: E501
+    ]
+
+    # Much easier to debug this loop than the function call.
+    for x, y in zip(process_runner.calls[0], expected):
+        assert x == y
+    process_runner.assert_has_call("1.2.3.4", exact=expected)
+
+
+def test_kubernetes_command_runner():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    args = {
+        "log_prefix": "prefix",
+        "namespace": "namespace",
+        "node_id": 0,
+        "auth_config": auth_config,
+        "process_runner": process_runner,
+    }
+    cmd_runner = KubernetesCommandRunner(**args)
+
+    env_vars = {"var1": "quote between this \" and this", "var2": "123"}
+    cmd_runner.run(
+        "echo helloo",
+        environment_variables=env_vars)
+
+
+    expected = [
+        'kubectl',
+        '-n', 'namespace',
+        'exec',
+        '-it', '0', '--',
+        'bash',
+        '--login',
+        '-c', '-i',
+        '\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'' # noqa: E501
     ]
 
     # Much easier to debug this loop than the function call.
@@ -123,7 +159,7 @@ def test_docker_command_runner():
     # This string is insane because there are an absurd number of embedded
     # quotes. While this is a ridiculous string, the escape behavior is
     # important and somewhat difficult to get right for environment variables.
-    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello'"'"'"'"'"'"'"'"''"'"' '"""  # noqa: E501
+    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'""" # noqa: E501
 
     expected = [
         "ssh", "-tt", "-i", "8265.pem", "-o", "StrictHostKeyChecking=no", "-o",
