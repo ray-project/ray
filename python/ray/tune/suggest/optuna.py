@@ -100,11 +100,7 @@ class OptunaSearch(Searcher):
 
     """
 
-    def __init__(self,
-                 space=None,
-                 metric=None,
-                 mode=None,
-                 sampler=None):
+    def __init__(self, space=None, metric=None, mode=None, sampler=None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
