@@ -421,7 +421,7 @@ def detect_checkpoint_function(train_func, abort=False):
 
 
 def detect_reporter(func):
-    """Use checkpointing if any arg has "reporter" and args = 2"""
+    """Use reporter if any arg has "reporter" and args = 2"""
     func_sig = inspect.signature(func)
     use_reporter = True
     try:
