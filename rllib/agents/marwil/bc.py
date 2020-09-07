@@ -6,7 +6,6 @@ from ray.rllib.agents.marwil.marwil import MARWILTrainer, \
     DEFAULT_CONFIG as MARWIL_CONFIG
 from ray.rllib.utils.typing import TrainerConfigDict
 
-
 BC_DEFAULT_CONFIG = MARWILTrainer.merge_trainer_configs(
     MARWIL_CONFIG, {
         "beta": 0.0,

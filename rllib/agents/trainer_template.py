@@ -156,7 +156,7 @@ def build_trainer(
         @override(Trainer)
         def with_updates(**overrides) -> Type[Trainer]:
             """Build a copy of this trainer with the specified overrides.
-    
+
             Keyword Args:
                 overrides (dict): use this to override any of the arguments
                     originally passed to build_trainer() for this policy.
