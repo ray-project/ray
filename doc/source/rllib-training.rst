@@ -519,7 +519,7 @@ For even finer-grained control over training, you can use RLlib's lower-level `b
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
-Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *detached actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
+Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). These actors are assigned a global name and handles to them can be retrieved using these names. As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
 
 .. code-block:: python
 
@@ -912,7 +912,7 @@ Using PyTorch
 ~~~~~~~~~~~~~
 
 Trainers that have an implemented TorchPolicy, will allow you to run
-`rllib train` using the the command line ``--torch`` flag.
+`rllib train` using the command line ``--torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
 

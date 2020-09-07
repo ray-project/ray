@@ -7,7 +7,7 @@ from typing import Sequence
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.sample import sample_from
+from ray.tune.sample import Domain
 from ray.tune.stopper import FunctionStopper, Stopper
 from ray.tune.utils import detect_checkpoint_function
 
@@ -235,7 +235,7 @@ class Experiment:
 
         if isinstance(run_object, str):
             return run_object
-        elif isinstance(run_object, sample_from):
+        elif isinstance(run_object, Domain):
             logger.warning("Not registering trainable. Resolving as variant.")
             return run_object
         elif isinstance(run_object, type) or callable(run_object):

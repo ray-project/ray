@@ -29,7 +29,11 @@ def create_resettable_class():
             print("PRINT_STDERR: {}".format(self.msg), file=sys.stderr)
             logger.info("LOG_STDERR: {}".format(self.msg))
 
-            return {"num_resets": self.num_resets, "done": self.iter > 1}
+            return {
+                "num_resets": self.num_resets,
+                "done": self.iter > 1,
+                "iter": self.iter
+            }
 
         def save_checkpoint(self, chkpt_dir):
             return {"iter": self.iter}
@@ -64,7 +68,9 @@ class ActorReuseTest(unittest.TestCase):
                 }
             },
             reuse_actors=False,
-            scheduler=FrequentPausesScheduler())
+            scheduler=FrequentPausesScheduler(),
+            verbose=0)
+        self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
                          [0, 0, 0, 0])
 
@@ -78,11 +84,13 @@ class ActorReuseTest(unittest.TestCase):
                 }
             },
             reuse_actors=True,
-            scheduler=FrequentPausesScheduler())
+            scheduler=FrequentPausesScheduler(),
+            verbose=0)
+        self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials],
                          [1, 2, 3, 4])
 
-    def testTrialReuseEnabledError(self):
+    def testReuseEnabledError(self):
         def run():
             run_experiments(
                 {

@@ -4,7 +4,7 @@ import io.ray.streaming.api.function.impl.SourceFunction.SourceContext;
 
 public interface SourceOperator<T> extends Operator {
 
-  void run();
+  void fetch();
 
   SourceContext<T> getSourceContext();
 

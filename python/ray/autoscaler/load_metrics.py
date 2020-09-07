@@ -16,15 +16,24 @@ class LoadMetrics:
     can be removed.
     """
 
-    def __init__(self):
+    def __init__(self, local_ip=None):
         self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.resource_load_by_ip = {}
-        self.local_ip = services.get_node_ip_address()
+        self.local_ip = services.get_node_ip_address(
+        ) if local_ip is None else local_ip
+        self.waiting_bundles = []
+        self.infeasible_bundles = []
 
-    def update(self, ip, static_resources, dynamic_resources, resource_load):
+    def update(self,
+               ip,
+               static_resources,
+               dynamic_resources,
+               resource_load,
+               waiting_bundles=[],
+               infeasible_bundles=[]):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
 
@@ -43,6 +52,8 @@ class LoadMetrics:
                 static_resources != dynamic_resources:
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
+        self.waiting_bundles = waiting_bundles
+        self.infeasible_bundles = infeasible_bundles
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
@@ -88,7 +99,10 @@ class LoadMetrics:
         """
         return self.static_resources_by_ip.values()
 
-    def get_resource_usage(self):
+    def get_resource_utilization(self):
+        return self.dynamic_resources_by_ip
+
+    def _get_resource_usage(self):
         num_nodes = len(self.static_resources_by_ip)
         nodes_used = 0.0
         num_nonidle = 0
@@ -127,12 +141,16 @@ class LoadMetrics:
 
         return nodes_used, resources_used, resources_total
 
+    def get_resource_demand_vector(self):
+        return self.waiting_bundles + self.infeasible_bundles
+
     def info_string(self):
         return " - " + "\n - ".join(
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
     def _info(self):
-        nodes_used, resources_used, resources_total = self.get_resource_usage()
+        nodes_used, resources_used, resources_total = self._get_resource_usage(
+        )
 
         now = time.time()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]

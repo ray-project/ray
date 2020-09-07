@@ -89,14 +89,38 @@ static Gauge ObjectManagerProfileEvents("object_manager_num_buffered_profile_eve
                                         "Number of locally-buffered profile events.",
                                         "events");
 
-static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
-                                        "Stat the metric values of task dependency.",
-                                        "pcs", {ValueTypeKey});
+static Gauge NumSubscribedTasks(
+    "num_subscribed_tasks",
+    "The number of tasks that are subscribed to object dependencies.", "tasks");
 
-static Gauge SchedulingQueueStats("scheduling_queue_stats",
-                                  "Stats the metric values of scheduling queue.", "pcs",
-                                  {ValueTypeKey});
+static Gauge NumRequiredTasks("num_required_tasks",
+                              "The number of tasks whose output object(s) are "
+                              "required by another subscribed task.",
+                              "tasks");
 
-static Gauge ConnectionPoolStats("connection_pool_stats",
-                                 "Stats the connection pool metrics.", "pcs",
-                                 {ValueTypeKey});
+static Gauge NumRequiredObjects(
+    "num_required_objects",
+    "The number of objects that are required by a subscribed task.", "objects");
+
+static Gauge NumPendingTasks("num_pending_tasks",
+                             "The number of tasks that are pending execution.", "tasks");
+
+static Gauge NumPlaceableTasks(
+    "num_placeable_tasks",
+    "The number of tasks in the scheduler that are in the 'placeable' state.", "tasks");
+
+static Gauge NumWaitingTasks(
+    "num_waiting_tasks",
+    "The number of tasks in the scheduler that are in the 'waiting' state.", "tasks");
+
+static Gauge NumReadyTasks(
+    "num_ready_tasks",
+    "The number of tasks in the scheduler that are in the 'ready' state.", "tasks");
+
+static Gauge NumRunningTasks(
+    "num_running_tasks",
+    "The number of tasks in the scheduler that are in the 'running' state.", "tasks");
+
+static Gauge NumInfeasibleTasks(
+    "num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");

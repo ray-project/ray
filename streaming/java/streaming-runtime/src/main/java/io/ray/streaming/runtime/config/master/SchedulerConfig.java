@@ -11,8 +11,7 @@ public interface SchedulerConfig extends Config {
   String WORKER_STARTING_WAIT_TIMEOUT_MS = "streaming.scheduler.worker.starting.timeout.ms";
 
   /**
-   * The timeout ms of worker initiation.
-   * Default is: 10000ms(10s).
+   * The timeout ms of worker initiation. Default is: 10000ms(10s).
    *
    * @return timeout ms
    */
@@ -21,8 +20,7 @@ public interface SchedulerConfig extends Config {
   int workerInitiationWaitTimeoutMs();
 
   /**
-   * The timeout ms of worker starting.
-   * Default is: 10000ms(10s).
+   * The timeout ms of worker starting. Default is: 10000ms(10s).
    *
    * @return timeout ms
    */

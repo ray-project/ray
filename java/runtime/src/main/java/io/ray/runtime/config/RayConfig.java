@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Configurations of Ray runtime.
@@ -41,6 +42,9 @@ public class RayConfig {
 
   private Config config;
 
+  /**
+   * IP of this node. if not provided, IP will be automatically detected.
+   */
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
@@ -61,11 +65,14 @@ public class RayConfig {
   public final String headRedisPassword;
   public final String redisPassword;
 
+  // RPC socket name of object store.
   public String objectStoreSocketName;
   public final Long objectStoreSize;
 
+  // RPC socket name of Raylet.
   public String rayletSocketName;
-  private int nodeManagerPort;
+  // Listening port for node manager.
+  public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
   public final String jobResourcePath;
@@ -123,13 +130,17 @@ public class RayConfig {
     workerMode = localWorkerMode;
     boolean isDriver = workerMode == WorkerType.DRIVER;
     // Run mode.
-    runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    if (config.hasPath("ray.local-mode")) {
+      runMode = config.getBoolean("ray.local-mode") ? RunMode.SINGLE_PROCESS : RunMode.CLUSTER;
+    } else {
+      runMode = config.getEnum(RunMode.class, "ray.run-mode");
+    }
     // Node ip.
-    String nodeIp = config.getString("ray.node-ip");
-    if (nodeIp.isEmpty()) {
+    if (config.hasPath("ray.node-ip")) {
+      nodeIp = config.getString("ray.node-ip");
+    } else {
       nodeIp = NetworkUtil.getIpAddress(null);
     }
-    this.nodeIp = nodeIp;
     // Resources.
     resources = ResourceUtil.getResourcesMapFromString(
         config.getString("ray.resources"));
@@ -181,9 +192,10 @@ public class RayConfig {
 
     // Redis configurations.
     String redisAddress = config.getString("ray.redis.address");
-    if (!redisAddress.isEmpty()) {
+    if (StringUtils.isNotBlank(redisAddress)) {
       setRedisAddress(redisAddress);
     } else {
+      // We need to start gcs using `RunManager` for local cluster
       this.redisAddress = null;
     }
 
@@ -199,12 +211,12 @@ public class RayConfig {
     }
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
-
     // Raylet node manager port.
-    nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
-    if (nodeManagerPort == 0) {
-      Preconditions.checkState(this.redisAddress == null,
-          "Java worker started by raylet should accept the node manager port from raylet.");
+    if (config.hasPath("ray.raylet.node-manager-port")) {
+      nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
+    } else {
+      Preconditions.checkState(workerMode != WorkerType.WORKER,
+          "Worker started by raylet should accept the node manager port from raylet.");
       nodeManagerPort = NetworkUtil.getUnusedPort();
     }
 

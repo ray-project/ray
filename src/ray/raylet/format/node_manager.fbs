@@ -155,9 +155,9 @@ table RegisterClientReply {
   // Port that this worker should listen on.
   port: int;
   // Keys for internal config options.
-  internal_config_keys: [string];
+  system_config_keys: [string];
   // Values for internal config options corresponding to keys above.
-  internal_config_values: [string];
+  system_config_values: [string];
 }
 
 table AnnounceWorkerPort {

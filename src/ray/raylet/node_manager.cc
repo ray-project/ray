@@ -139,7 +139,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers,
+          io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, gcs_client_, config.worker_commands,
@@ -152,12 +152,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id, const ObjectID &required_object_id) {
             HandleTaskReconstruction(task_id, required_object_id);
           },
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_, object_directory_),
-      task_dependency_manager_(
-          object_manager, reconstruction_policy_, io_service, self_node_id_,
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_),
+          RayConfig::instance().object_timeout_milliseconds(), self_node_id_, gcs_client_,
+          object_directory_),
+      task_dependency_manager_(object_manager, reconstruction_policy_),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -769,7 +766,10 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+      << "monitor: GCS didn't receive heartbeats within timeout "
+      << RayConfig::instance().num_heartbeats_timeout() *
+             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+      << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -1262,16 +1262,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> internal_config_keys;
-    std::vector<std::string> internal_config_values;
+    std::vector<std::string> system_config_keys;
+    std::vector<std::string> system_config_values;
     for (auto kv : initial_config_.raylet_config) {
-      internal_config_keys.push_back(kv.first);
-      internal_config_values.push_back(kv.second);
+      system_config_keys.push_back(kv.first);
+      system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, internal_config_keys),
-        string_vec_to_flatbuf(fbb, internal_config_values));
+        string_vec_to_flatbuf(fbb, system_config_keys),
+        string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -1361,6 +1361,11 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
         local_queues_.GetTotalResourceLoad());
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
+  }
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the worker remains idle after scheduling, we may kill it to ensure the
+    // registered workers are in a reasonable size.
+    worker_pool_.TryKillingIdleWorker(worker);
   }
 }
 
@@ -1795,12 +1800,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task);
 }
 
-void NodeManager::HandleRequestResourceReserve(
-    const rpc::RequestResourceReserveRequest &request,
-    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+void NodeManager::HandlePrepareBundleResources(
+    const rpc::PrepareBundleResourcesRequest &request,
+    rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(sang): Port this onto the new scheduler.
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
   if (resource_ids.AvailableResources().size() == 0) {
@@ -1813,6 +1819,13 @@ void NodeManager::HandleRequestResourceReserve(
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleCommitBundleResources(
+    const rpc::CommitBundleResourcesRequest &request,
+    rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // TODO(sang): Implement this in the next PR.
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -2112,18 +2125,6 @@ void NodeManager::ScheduleTasks(
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetTasks(TaskState::PLACEABLE).size() == 0);
-}
-
-bool NodeManager::CheckDependencyManagerInvariant() const {
-  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the queues.
-  for (const auto &task_id : pending_task_ids) {
-    if (!local_queues_.HasTask(task_id)) {
-      return false;
-    }
-  }
-  // TODO(atumanov): perform the check in the opposite direction.
-  return true;
 }
 
 void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
@@ -3159,6 +3160,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3223,6 +3225,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
@@ -3232,7 +3238,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
           worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_worker_id(worker->WorkerId().Binary());
           worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          worker_stats->set_language(worker->GetLanguage());
           reply->set_num_workers(reply->num_workers() + 1);
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());

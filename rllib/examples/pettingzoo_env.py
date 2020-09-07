@@ -60,7 +60,7 @@ if __name__ == "__main__":
     config["log_level"] = "DEBUG"
     config["num_workers"] = 1
     # Fragment length, collected at once from each worker and for each agent!
-    config["sample_batch_size"] = 30
+    config["rollout_fragment_length"] = 30
     # Training batch size -> Fragments are concatenated up to this point.
     config["train_batch_size"] = 200
     # After n steps, force reset simulation

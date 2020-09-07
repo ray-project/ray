@@ -1,5 +1,4 @@
 import inspect
-import json
 import time
 import os
 import pytest
@@ -45,9 +44,9 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_internal_config": json.dumps({
+            "_system_config": {
                 "num_heartbeats_timeout": 10
-            })
+            }
         })
     # Pytest doesn't play nicely with imports
     register_trainable("__fake_remote", MockRemoteTrainer)
@@ -74,9 +73,9 @@ def start_connected_emptyhead_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "_internal_config": json.dumps({
+            "_system_config": {
                 "num_heartbeats_timeout": 10
-            })
+            }
         })
     # Pytest doesn't play nicely with imports
     _register_all()
@@ -643,9 +642,12 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
                             for line in inspect.getsource(_Mock).split("\n"))
 
     script = """
+import os
 import time
 import ray
 from ray import tune
+
+os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
 ray.init(address="{address}")
 
@@ -657,7 +659,6 @@ tune.run(
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
     checkpoint_freq=1,
-    global_checkpoint_period=0,
     max_failures=1,
     raise_on_failed_trial=False)
 """.format(

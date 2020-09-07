@@ -68,7 +68,7 @@ class Worker:
             if item is None:
                 time.sleep(0.01)
             else:
-                msg = pickle.loads(item.body())
+                msg = pickle.loads(item.body)
                 count += 1
         assert msg == msg_nums - 1
         print("ReaderWorker done.")
@@ -101,8 +101,8 @@ class Worker:
 
 def test_queue():
     ray.init()
-    writer = Worker._remote(is_direct_call=True)
-    reader = Worker._remote(is_direct_call=True)
+    writer = Worker._remote()
+    reader = Worker._remote()
     channel_id_str = transfer.ChannelID.gen_random_id()
     inits = [
         writer.init_writer.remote(channel_id_str, pickle.dumps(reader)),

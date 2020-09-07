@@ -42,16 +42,6 @@ class JobID;
 /// A helper function that get the `DriverID` of the given job.
 WorkerID ComputeDriverIdFromJob(const JobID &job_id);
 
-/// The type of this object. `PUT_OBJECT` indicates this object
-/// is generated through `ray.put` during the task's execution.
-/// And `RETURN_OBJECT` indicates this object is the return value
-/// of a task.
-enum class ObjectType : uint8_t {
-  PUT_OBJECT = 0x0,
-  RETURN_OBJECT = 0x1,
-};
-
-using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
 // Declaration.
 uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
@@ -113,9 +103,9 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t kLength = 2;
+  static constexpr int64_t kLength = 4;
 
-  static JobID FromInt(uint16_t value);
+  static JobID FromInt(uint32_t value);
 
   static size_t Size() { return kLength; }
 
@@ -250,15 +240,12 @@ class ObjectID : public BaseID<ObjectID> {
  private:
   static constexpr size_t kIndexBytesLength = sizeof(ObjectIDIndexType);
 
-  static constexpr size_t kFlagsBytesLength = sizeof(ObjectIDFlagsType);
-
  public:
   /// The maximum number of objects that can be returned or put by a task.
   static constexpr int64_t kMaxObjectIndex = ((int64_t)1 << kObjectIdIndexSize) - 1;
 
   /// The length of ObjectID in bytes.
-  static constexpr size_t kLength =
-      kIndexBytesLength + kFlagsBytesLength + TaskID::kLength;
+  static constexpr size_t kLength = kIndexBytesLength + TaskID::kLength;
 
   ObjectID() : BaseID() {}
 
@@ -282,36 +269,14 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The task ID of the task that created this object.
   TaskID TaskId() const;
 
-  /// Whether this object is created by a task.
-  ///
-  /// \return True if this object is created by a task, otherwise false.
-  bool CreatedByTask() const;
-
-  /// Whether this object was created through `ray.put`.
-  ///
-  /// \return True if this object was created through `ray.put`.
-  bool IsPutObject() const;
-
-  /// Whether this object was created as a return object of a task.
-  ///
-  /// \return True if this object is a return value of a task.
-  bool IsReturnObject() const;
-
-  /// Compute the object ID of an object put by the task.
+  /// Compute the object ID of an object created by a task, either via an object put
+  /// within the task or by being a task return object.
   ///
   /// \param task_id The task ID of the task that created the object.
-  /// \param index What index of the object put in the task.
+  /// \param index The index of the object created by the task.
   ///
   /// \return The computed object ID.
-  static ObjectID ForPut(const TaskID &task_id, ObjectIDIndexType put_index);
-
-  /// Compute the object ID of an object returned by the task.
-  ///
-  /// \param task_id The task ID of the task that created the object.
-  /// \param return_index What index of the object returned by in the task.
-  ///
-  /// \return The computed object ID.
-  static ObjectID ForTaskReturn(const TaskID &task_id, ObjectIDIndexType return_index);
+  static ObjectID FromIndex(const TaskID &task_id, ObjectIDIndexType index);
 
   /// Create an object id randomly.
   ///
@@ -334,11 +299,7 @@ class ObjectID : public BaseID<ObjectID> {
  private:
   /// A helper method to generate an ObjectID.
   static ObjectID GenerateObjectId(const std::string &task_id_binary,
-                                   ObjectIDFlagsType flags,
                                    ObjectIDIndexType object_index = 0);
-
-  /// Get the flags out of this object id.
-  ObjectIDFlagsType GetFlags() const;
 
  private:
   uint8_t id_[kLength];

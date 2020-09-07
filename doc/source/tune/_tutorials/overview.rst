@@ -126,6 +126,16 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
           </a>
         </td>
       </tr>
+
+      <tr>
+        <td class="tune-colab">Fine-tuning Huggingface Transformers with PBT.</td>
+        <td class="tune-colab">Huggingface Transformers/Pytorch</td>
+        <td class="tune-colab">
+          <a href="https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing" target="_parent">
+          <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
+          </a>
+        </td>
+      </tr>
     </table>
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.

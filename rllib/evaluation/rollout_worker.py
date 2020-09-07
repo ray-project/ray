@@ -388,9 +388,10 @@ class RolloutWorker(ParallelIteratorWorker):
             np.random.seed(seed)
             random.seed(seed)
             if not hasattr(self.env, "seed"):
-                raise ValueError("Env doesn't support env.seed(): {}".format(
+                logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
-            self.env.seed(seed)
+            else:
+                self.env.seed(seed)
             try:
                 assert torch is not None
                 torch.manual_seed(seed)
@@ -420,7 +421,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
-            if not ray.get_gpu_ids(as_str=True):
+            if not ray.get_gpu_ids():
                 logger.debug("Creating policy evaluation worker {}".format(
                     worker_index) +
                              " on CPU (please ignore any CUDA init errors)")
@@ -619,7 +620,7 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch
 
     @DeveloperAPI
-    @ray.method(num_return_vals=2)
+    @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate future."""
         batch = self.sample()

@@ -1,5 +1,5 @@
-Bootstraping AWS config
+Bootstrapping AWS config
 Fetched IP: .+
-Bootstraping AWS config
+Bootstrapping AWS config
 Fetched IP: .+
 This is a test!
