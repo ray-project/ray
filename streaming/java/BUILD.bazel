@@ -213,6 +213,8 @@ genrule(
         for f in $(locations //streaming/java:all_java_proto); do
             unzip -q -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
+        # remove third party protobuf
+        rm -rf $$WORK_DIR/streaming/java/streaming-runtime/src/main/java/com/
         date > $@
     """,
     local = 1,
