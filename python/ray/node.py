@@ -276,13 +276,13 @@ class Node:
                                    key, params_dict[key], env_dict[key]))
             return num_cpus, num_gpus, memory, object_store_memory, result
 
-        env_resources = {}
-        env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
-        if env_string:
-            env_resources = json.loads(env_string)
-            logger.info(f"Autosaler overriding resources: {env_resources}.")
 
         if not self._resource_spec:
+            env_resources = {}
+            env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
+            if env_string:
+                env_resources = json.loads(env_string)
+                logger.info(f"Autosaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
@@ -704,6 +704,7 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
+        print()
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
@@ -714,14 +715,14 @@ class Node:
             self._temp_dir,
             self._session_dir,
             self.get_resource_spec(),
-            self._ray_params.min_worker_port,
-            self._ray_params.max_worker_port,
-            self._ray_params.object_manager_port,
-            self._ray_params.redis_password,
-            self._ray_params.metrics_agent_port,
-            self._metrics_export_port,
             plasma_directory,
             object_store_memory,
+            min_worker_port=self._ray_params.min_worker_port,
+            max_worker_port=self._ray_params.max_worker_port,
+            object_manager_port=self._ray_params.object_manager_port,
+            redis_password=self._ray_params.redis_password,
+            metrics_agent_port=self._ray_params.metrics_agent_port,
+            metrics_export_port=self._metrics_export_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
@@ -817,9 +818,10 @@ class Node:
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
+        resource_spec = self.get_resource_spec()
         plasma_directory, object_store_memory = \
             ray.services.determine_plasma_store_config(
-            self._ray_params.object_store_memory,
+                resource_spec.object_store_memory,
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
         )
