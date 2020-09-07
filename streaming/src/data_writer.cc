@@ -346,7 +346,7 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
       break;
     }
     // ClassBytesSize = DataSize + MetaDataSize
-    // bundle_buffer_size += message_ptr->GetDataSize();
+    // bundle_buffer_size += message_ptr->PayloadSize();
     bundle_buffer_size += message_total_size;
     message_list.push_back(message_ptr);
     buffer_ptr->Pop();

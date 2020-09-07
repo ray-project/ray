@@ -77,7 +77,7 @@ TEST_F(StreamingTransferTest, exchange_single_channel_test) {
   StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
   auto &message_list = bundle_ptr->GetMessageList();
   auto &message = message_list.front();
-  EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
+  EXPECT_EQ(std::memcmp(message->Payload(), data, data_size), 0);
 }
 
 TEST_F(StreamingTransferTest, exchange_multichannel_test) {
@@ -94,7 +94,7 @@ TEST_F(StreamingTransferTest, exchange_multichannel_test) {
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
     auto &message_list = bundle_ptr->GetMessageList();
     auto &message = message_list.front();
-    EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
+    EXPECT_EQ(std::memcmp(message->Payload(), data, data_size), 0);
   }
 }
 
@@ -125,7 +125,7 @@ TEST_F(StreamingTransferTest, exchange_consumed_test) {
   int index = 0;
   for (auto &message : read_message_list) {
     func(index++);
-    EXPECT_EQ(std::memcmp(message->RawData(), data.get(), data_size), 0);
+    EXPECT_EQ(std::memcmp(message->Payload(), data.get(), data_size), 0);
   }
   write_thread.join();
 }
@@ -180,7 +180,7 @@ TEST_F(StreamingTransferTest, flow_control_test) {
   int index = 0;
   for (auto &message : read_message_list) {
     func(index++);
-    EXPECT_EQ(std::memcmp(message->RawData(), data.get(), data_size), 0);
+    EXPECT_EQ(std::memcmp(message->Payload(), data.get(), data_size), 0);
   }
   write_thread.join();
 }

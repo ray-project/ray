@@ -8,8 +8,8 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
-#include "status.h"
+#include "ring_buffer/ring_buffer.h"
+#include "common/status.h"
 using namespace std::placeholders;
 
 const uint32_t MESSAGE_BOUND_SIZE = 10000;
@@ -206,12 +206,12 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;
 
-        EXPECT_EQ(buff_len, item->GetDataSize());
+        EXPECT_EQ(buff_len, item->PayloadSize());
         uint8_t *compared_data = new uint8_t[buff_len];
-        for (uint32_t j = 0; j < item->GetDataSize(); ++j) {
+        for (uint32_t j = 0; j < item->PayloadSize(); ++j) {
           compared_data[j] = j % 128;
         }
-        EXPECT_EQ(std::memcmp(compared_data, item->RawData(), item->GetDataSize()), 0);
+        EXPECT_EQ(std::memcmp(compared_data, item->Payload(), item->PayloadSize()), 0);
         delete[] compared_data;
       }
       STREAMING_LOG(DEBUG) << "Received message count => " << recevied_message_cnt;
