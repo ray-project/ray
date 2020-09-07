@@ -38,8 +38,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     def __init__(self,
                  time_attr="training_iteration",
                  reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_t=100,
                  grace_period=1,
                  reduction_factor=4,
@@ -73,13 +73,41 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self._counter = 0  # for
         self._num_stopped = 0
         self._metric = metric
-        if mode == "max":
+        self._mode = mode
+        self._metric_op = None
+        if self._mode == "max":
             self._metric_op = 1.
-        elif mode == "min":
+        elif self._mode == "min":
             self._metric_op = -1.
         self._time_attr = time_attr
 
+    def set_search_properties(self, metric, mode):
+        if self._metric and metric:
+            return False
+        if self._mode and mode:
+            return False
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = 1.
+        elif self._mode == "min":
+            self._metric_op = -1.
+
+        return True
+
     def on_trial_add(self, trial_runner, trial):
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
+
         sizes = np.array([len(b._rungs) for b in self._brackets])
         probs = np.e**(sizes - sizes.max())
         normalized = probs / probs.sum()

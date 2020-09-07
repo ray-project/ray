@@ -30,6 +30,13 @@ class HyperBandForBOHB(HyperBandScheduler):
         to current bracket. Else, create new iteration, create new bracket,
         add to bracket.
         """
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
 
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]

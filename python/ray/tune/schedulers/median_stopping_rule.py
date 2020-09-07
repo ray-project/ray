@@ -40,13 +40,12 @@ class MedianStoppingRule(FIFOScheduler):
     def __init__(self,
                  time_attr="time_total_s",
                  reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  grace_period=60.0,
                  min_samples_required=3,
                  min_time_slice=0,
                  hard_stop=True):
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
@@ -60,14 +59,48 @@ class MedianStoppingRule(FIFOScheduler):
         self._min_samples_required = min_samples_required
         self._min_time_slice = min_time_slice
         self._metric = metric
-        assert mode in {"min", "max"}, "`mode` must be 'min' or 'max'."
-        self._worst = float("-inf") if mode == "max" else float("inf")
-        self._compare_op = max if mode == "max" else min
+        self._worst = None
+        self._compare_op = None
+
+        self._mode = mode
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+            self._worst = float("-inf") if self._mode == "max" else float(
+                "inf")
+            self._compare_op = max if self._mode == "max" else min
+
         self._time_attr = time_attr
         self._hard_stop = hard_stop
         self._trial_state = {}
         self._last_pause = collections.defaultdict(lambda: float("-inf"))
         self._results = collections.defaultdict(list)
+
+    def set_search_properties(self, metric, mode):
+        if self._metric and metric:
+            return False
+        if self._mode and mode:
+            return False
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        self._worst = float("-inf") if self._mode == "max" else float("inf")
+        self._compare_op = max if self._mode == "max" else min
+
+        return True
+
+    def on_trial_add(self, trial_runner, trial):
+        if not self._metric or not self._worst or not self._compare_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
+
+        super(MedianStoppingRule, self).on_trial_add(trial_runner, trial)
 
     def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
