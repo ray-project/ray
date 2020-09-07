@@ -717,7 +717,7 @@ def test_atomic_creation(ray_start_cluster):
     assert all(ray.get(check_without_pg))
 
 
-def test_mini_stress_scenario(ray_start_cluster):
+def test_mini_integration(ray_start_cluster):
     # Create bundles as many as number of gpus in the cluster.
     # Do some random work and make sure all resources are properly recovered.
 
