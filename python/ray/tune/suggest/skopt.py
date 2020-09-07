@@ -1,5 +1,12 @@
 import logging
 import pickle
+from typing import Dict
+
+from ray.tune.sample import Categorical, Float, Integer, Quantized
+from ray.tune.suggest.variant_generator import parse_spec_vars
+from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import unflatten_dict
+
 try:
     import skopt as sko
 except ImportError:
@@ -52,7 +59,6 @@ class SkOptSearch(Searcher):
 
         pip install scikit-optimize
 
-
     This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
 
     Parameters:
@@ -60,6 +66,10 @@ class SkOptSearch(Searcher):
             from skopt.
         parameter_names (list): List of parameter names. Should match
             the dimension of the optimizer output.
+        parameter_ranges (list): List of parameter ranges (tuple) for numerical
+            parameters or list of valid values for categorical variables. If no
+             `optimizer` has been passed, an optimizer with these
+             parameter ranges will be instantiated.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -77,24 +87,48 @@ class SkOptSearch(Searcher):
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
-    Example:
+    Tune automatically converts search spaces to SkOpt's format:
 
     .. code-block:: python
 
-        from skopt import Optimizer
-        optimizer = Optimizer([(0,20),(-100,100)])
+        config = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        }
+
         current_best_params = [[10, 0], [15, -20]]
 
-        algo = SkOptSearch(optimizer,
-            ["width", "height"],
+        skopt_search = SkOptSearch(
             metric="mean_loss",
             mode="min",
             points_to_evaluate=current_best_params)
+
+        tune.run(my_trainable, config=config, search_alg=skopt_search)
+
+    If you would like to pass the search space/optimizer manually,
+    the code would look like this:
+
+    .. code-block:: python
+
+        parameter_names = ["width", "height"]
+        parameter_ranges = [(0,20),(-100,100)]
+        current_best_params = [[10, 0], [15, -20]]
+
+        skopt_search = SkOptSearch(
+            parameter_names=parameter_names,
+            parameter_ranges=parameter_ranges,
+            metric="mean_loss",
+            mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(my_trainable, search_alg=skopt_search)
+
     """
 
     def __init__(self,
-                 optimizer,
-                 parameter_names,
+                 optimizer=None,
+                 parameter_names=None,
+                 parameter_ranges=None,
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
@@ -104,8 +138,7 @@ class SkOptSearch(Searcher):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
-        _validate_warmstart(parameter_names, points_to_evaluate,
-                            evaluated_rewards)
+
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         self.max_concurrent = max_concurrent
         super(SkOptSearch, self).__init__(
@@ -115,20 +148,74 @@ class SkOptSearch(Searcher):
             use_early_stopped_trials=use_early_stopped_trials)
 
         self._initial_points = []
-        if points_to_evaluate and evaluated_rewards:
-            optimizer.tell(points_to_evaluate, evaluated_rewards)
-        elif points_to_evaluate:
-            self._initial_points = points_to_evaluate
-        self._parameters = parameter_names
-        # Skopt internally minimizes, so "max" => -1
-        if mode == "max":
-            self._metric_op = -1.
-        elif mode == "min":
-            self._metric_op = 1.
+        self._parameters = None
+
+        self._parameter_names = parameter_names
+        self._parameter_ranges = parameter_ranges
+        self._points_to_evaluate = points_to_evaluate
+        self._evaluated_rewards = evaluated_rewards
+
         self._skopt_opt = optimizer
+        if self._skopt_opt or self._parameter_ranges:
+            self.setup_skopt()
+
         self._live_trial_mapping = {}
 
+    def setup_skopt(self):
+        _validate_warmstart(self._parameter_names, self._points_to_evaluate,
+                            self._evaluated_rewards)
+
+        if self._skopt_opt:
+            if self._parameter_ranges:
+                raise ValueError(
+                    "If you pass an optimizer instance to SkOptSearch, do not "
+                    "pass the `parameter_ranges` parameter.")
+        else:
+            if not self._parameter_ranges:
+                raise ValueError(
+                    "If you don't pass an optimizer instance to SkOptSearch, "
+                    "pass a valid `parameter_ranges` parameter.")
+
+            from skopt import Optimizer
+            self._skopt_opt = Optimizer(self._parameter_ranges)
+
+        if self._points_to_evaluate and self._evaluated_rewards:
+            self._skopt_opt.tell(self._points_to_evaluate,
+                                 self._evaluated_rewards)
+        elif self._points_to_evaluate:
+            self._initial_points = self._points_to_evaluate
+        self._parameters = self._parameter_names
+
+        # Skopt internally minimizes, so "max" => -1
+        if self._mode == "max":
+            self._metric_op = -1.
+        elif self._mode == "min":
+            self._metric_op = 1.
+
+    def set_search_properties(self, metric, mode, config):
+        if self._skopt_opt:
+            return False
+        space = self.convert_search_space(config)
+
+        self._parameter_names = space.keys()
+        self._parameter_ranges = space.values()
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        self.setup_skopt()
+        return True
+
     def suggest(self, trial_id):
+        if not self._skopt_opt:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -138,7 +225,7 @@ class SkOptSearch(Searcher):
         else:
             suggested_config = self._skopt_opt.ask()
         self._live_trial_mapping[trial_id] = suggested_config
-        return dict(zip(self._parameters, suggested_config))
+        return unflatten_dict(dict(zip(self._parameters, suggested_config)))
 
     def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
@@ -167,3 +254,48 @@ class SkOptSearch(Searcher):
             trials_object = pickle.load(inputFile)
         self._initial_points = trials_object[0]
         self._skopt_opt = trials_object[1]
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to a SkOpt search space.")
+
+        def resolve_value(domain):
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                logger.warning("SkOpt search does not support quantization. "
+                               "Dropped quantization.")
+                sampler = sampler.get_sampler()
+
+            if isinstance(domain, Float):
+                if domain.sampler is not None:
+                    logger.warning(
+                        "SkOpt does not support specific sampling methods."
+                        " The {} sampler will be dropped.".format(sampler))
+                return domain.lower, domain.upper
+
+            if isinstance(domain, Integer):
+                if domain.sampler is not None:
+                    logger.warning(
+                        "SkOpt does not support specific sampling methods."
+                        " The {} sampler will be dropped.".format(sampler))
+                return domain.lower, domain.upper
+
+            if isinstance(domain, Categorical):
+                return domain.categories
+
+            raise ValueError("SkOpt does not support parameters of type "
+                             "`{}`".format(type(domain).__name__))
+
+        # Parameter name is e.g. "a/b/c" for nested dicts
+        space = {
+            "/".join(path): resolve_value(domain)
+            for path, domain in domain_vars
+        }
+
+        return space

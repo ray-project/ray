@@ -51,7 +51,7 @@ class DragonflySearch(Searcher):
         domain (str): Optional domain. Should only be set if you don't pass
             an optimizer as the `optimizer` argument.
             Has to be one of [cartesian, euclidean].
-        space (dict): Search space. Should only be set if you don't pass
+        space (list): Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.

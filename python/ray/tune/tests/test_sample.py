@@ -431,6 +431,45 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
 
+    def testConvertSkOpt(self):
+        from ray.tune.suggest.skopt import SkOptSearch
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = SkOptSearch.convert_search_space(config)
+        skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
+
+        searcher1 = SkOptSearch(
+            parameter_names=converted_config.keys(),
+            parameter_ranges=converted_config.values())
+        searcher2 = SkOptSearch(
+            parameter_names=skopt_config.keys(),
+            parameter_ranges=skopt_config.values())
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = SkOptSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
