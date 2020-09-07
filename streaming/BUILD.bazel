@@ -176,6 +176,7 @@ cc_library(
 )
 
 test_common_deps = [
+    "//:exported_streaming_internal",
     ":streaming_lib",
     "//:ray_common",
     "//:ray_util",
