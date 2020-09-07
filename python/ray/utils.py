@@ -491,12 +491,28 @@ def get_system_memory():
 
 
 def get_num_cpus():
+    cpu_count = multiprocessing.cpu_count()
     try:
-        return int(subprocess.check_output("nproc"))
+        # Not easy to get cpu count in docker, see:
+        # https://bugs.python.org/issue36054
+        docker_count = subprocess.check_output("nproc")
+        if docker_count != cpu_count:
+            cpu_count = docker_count
+            if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
+                logger.warning(
+                    "Detecting limited number of GPUs due to docker. In "
+                    "previous versions of Ray, CPU detection in containers was "
+                    "buggy. Please ensure that Ray has enough CPUs allocated. "
+                    "This message will be removed in future version of Ray. You "
+                    "can set the environment variable: "
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now."
+                )
     except Exception:
-        # Nproc is a linux only utility, fallback to multiprocessing
-        # This is fine because nproc is primarily for Docker (linux only)
-        return multiprocessing.cpu_count()
+        # `nproc` is a linux-only utility. If docker only works on linux (will
+        # run in VM on other platforms) so this is fine.
+        pass
+
+    return cpu_count
 
 
 def get_used_memory():
