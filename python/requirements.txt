@@ -37,6 +37,7 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
+pydantic
 dataclasses
 
 # Requirements for running tests
@@ -68,3 +69,4 @@ tensorflow
 testfixtures
 werkzeug
 xlrd
+starlette

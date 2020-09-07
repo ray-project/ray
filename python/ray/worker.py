@@ -484,8 +484,8 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
-        enable_object_reconstruction=False,
         # The following are unstable parameters and their use is discouraged.
+        _enable_object_reconstruction=False,
         _redis_max_memory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
@@ -566,7 +566,7 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        enable_object_reconstruction (bool): If True, when an object stored in
+        _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
@@ -628,6 +628,10 @@ def init(
     if configure_logging:
         setup_logger(logging_level, logging_format)
 
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
+
     if local_mode:
         driver_mode = LOCAL_MODE
     else:
@@ -681,7 +685,7 @@ def init(
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             object_spilling_config=_object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -711,10 +715,10 @@ def init(
         if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
                              "_lru_evict must not be provided.")
-        if enable_object_reconstruction:
+        if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
-                "enable_object_reconstruction must not be provided.")
+                "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
@@ -727,7 +731,7 @@ def init(
             load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
@@ -1611,7 +1615,8 @@ def cancel(object_ref, *, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a TaskCancelledError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError or a
+    WorkerCrashedError if ``force=True``.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task
@@ -1648,6 +1653,7 @@ def make_decorator(num_returns=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   accelerator_type=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1682,8 +1688,9 @@ def make_decorator(num_returns=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_returns, max_calls,
-                max_retries, placement_group, placement_group_bundle_index)
+                memory, object_store_memory, resources, accelerator_type,
+                num_returns, max_calls, max_retries, placement_group,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1704,7 +1711,8 @@ def make_decorator(num_returns=None,
                     " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts, max_task_retries)
+                                        accelerator_type, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1740,6 +1748,9 @@ def remote(*args, **kwargs):
     * **resources:** The quantity of various custom resources to reserve for
       this task or for the lifetime of the actor. This is a dictionary mapping
       strings (resource names) to numbers.
+    * **accelerator_type:** If specified, requires that the task or actor run
+      on a node with the specified type of accelerator. See `ray.accelerators`
+      for accelerator types.
     * **max_calls:** Only for *remote functions*. This specifies the maximum
       number of times that a given worker can execute the given remote function
       before it must exit (this can be used to address memory leaks in
@@ -1828,6 +1839,7 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "accelerator_type",
             "max_calls",
             "max_restarts",
             "max_task_retries",
@@ -1846,6 +1858,8 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
+    accelerator_type = kwargs.get("accelerator_type")
+
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
@@ -1862,6 +1876,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        accelerator_type=accelerator_type,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,

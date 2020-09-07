@@ -39,11 +39,10 @@ class ResourceDemandScheduler:
         self.node_types = node_types
         self.max_workers = max_workers
 
-    # TODO(ekl) take into account existing utilization of node resources. We
-    # should subtract these from node resources prior to running bin packing.
     def get_nodes_to_launch(self, nodes: List[NodeID],
                             pending_nodes: Dict[NodeType, int],
-                            resource_demands: List[ResourceDict]
+                            resource_demands: List[ResourceDict],
+                            usage_by_ip: Dict[str, ResourceDict]
                             ) -> List[Tuple[NodeType, int]]:
         """Given resource demands, return node types to add to the cluster.
 
@@ -64,7 +63,8 @@ class ResourceDemandScheduler:
             return []
 
         node_resources, node_type_counts = self.calculate_node_resources(
-            nodes, pending_nodes)
+            nodes, pending_nodes, usage_by_ip)
+
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Node counts: {}".format(node_type_counts))
 
@@ -72,34 +72,43 @@ class ResourceDemandScheduler:
         logger.info("Resource demands: {}".format(resource_demands))
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
 
-        nodes = get_nodes_for(self.node_types, node_type_counts,
-                              self.max_workers - len(nodes), unfulfilled)
+        nodes = get_nodes_for(
+            self.node_types, node_type_counts,
+            self.max_workers - len(nodes) - sum(pending_nodes.values()),
+            unfulfilled)
         logger.info("Node requests: {}".format(nodes))
         return nodes
 
     def calculate_node_resources(
-            self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int]
+            self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int],
+            usage_by_ip: Dict[str, ResourceDict]
     ) -> (List[ResourceDict], Dict[NodeType, int]):
         """Returns node resource list and node type counts."""
 
         node_resources = []
         node_type_counts = collections.defaultdict(int)
 
-        def add_node(node_type):
+        def add_node(node_type, existing_resource_usages=None):
             if node_type not in self.node_types:
                 raise RuntimeError("Missing entry for node_type {} in "
                                    "available_node_types config: {}".format(
                                        node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
-            node_resources.append(
-                copy.deepcopy(self.node_types[node_type]["resources"]))
+            available = copy.deepcopy(self.node_types[node_type]["resources"])
+            if existing_resource_usages:
+                for resource, used in existing_resource_usages.items():
+                    available[resource] -= used
+
+            node_resources.append(available)
             node_type_counts[node_type] += 1
 
         for node_id in nodes:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                add_node(node_type)
+                ip = self.provider.internal_ip(node_id)
+                resources = usage_by_ip.get(ip, {})
+                add_node(node_type, resources)
 
         for node_type, count in pending_nodes.items():
             for _ in range(count):
@@ -108,9 +117,11 @@ class ResourceDemandScheduler:
         return node_resources, node_type_counts
 
     def debug_string(self, nodes: List[NodeID],
-                     pending_nodes: Dict[NodeID, int]) -> str:
+                     pending_nodes: Dict[NodeID, int],
+                     usage_by_ip: Dict[str, ResourceDict]) -> str:
+        print(f"{usage_by_ip}")
         node_resources, node_type_counts = self.calculate_node_resources(
-            nodes, pending_nodes)
+            nodes, pending_nodes, usage_by_ip)
 
         out = "Worker node types:"
         for node_type, count in node_type_counts.items():

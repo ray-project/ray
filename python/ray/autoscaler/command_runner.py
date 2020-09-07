@@ -445,6 +445,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             if not cli_logger.old_style and not with_output:
                 return run_cmd_redirected(
                     final_cmd,
+                    process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
             if with_output:
@@ -659,10 +660,11 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.container_name)
 
     def _check_docker_installed(self):
-        try:
-            self.ssh_command_runner.run("command -v docker")
-            return
-        except Exception:
+        no_exist = "NoExist"
+        output = self.ssh_command_runner.run(
+            f"command -v docker || echo '{no_exist}'", with_output=True)
+        cleaned_output = output.decode().strip()
+        if no_exist in cleaned_output or "docker" not in cleaned_output:
             install_commands = [
                 "curl -fsSL https://get.docker.com -o get-docker.sh",
                 "sudo sh get-docker.sh", "sudo usermod -aG docker $USER",

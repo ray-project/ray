@@ -173,9 +173,12 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
 
 def _run_and_process_output(cmd,
                             stdout_file,
+                            process_runner=subprocess,
                             stderr_file=None,
                             use_login_shells=False):
     """Run a command and process its output for special cases.
+
+    Calls a standard 'check_call' if process_runner is not subprocess.
 
     Specifically, run all command output through regex to detect
     error conditions and filter out non-error messages that went to stderr
@@ -184,6 +187,8 @@ def _run_and_process_output(cmd,
 
     Args:
         cmd (List[str]): Command to run.
+        process_runner: Used for command execution. Assumed to have
+            'check_call' and 'check_output' inplemented.
         stdout_file: File to redirect stdout to.
         stderr_file: File to redirect stderr to.
 
@@ -227,17 +232,18 @@ def _run_and_process_output(cmd,
     # This already should be validated in a higher place of the stack.
     assert not (does_allow_interactive() and is_output_redirected()), (
         "Cannot redirect output while in interactive mode.")
-    if does_allow_interactive() and not is_output_redirected():
+    if process_runner != subprocess or (does_allow_interactive()
+                                        and not is_output_redirected()):
         stdin_overwrite = None
 
     # See implementation note #1
 
-    if use_login_shells:
+    if use_login_shells or process_runner != subprocess:
         if stdout_file is None:
             stdout_file = sys.stdout
         if stderr_file is None:
             stderr_file = sys.stderr
-        return subprocess.check_call(
+        return process_runner.check_call(
             cmd,
             # See implementation note #2
             stdin=stdin_overwrite,
@@ -310,11 +316,15 @@ def _run_and_process_output(cmd,
             return p.returncode
 
 
-def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
+def run_cmd_redirected(cmd,
+                       process_runner=subprocess,
+                       silent=False,
+                       use_login_shells=False):
     """Run a command and optionally redirect output to a file.
 
     Args:
         cmd (List[str]): Command to run.
+        process_runner: Process runner used for executing commands.
         silent (bool): If true, the command output will be silenced completely
                        (redirected to /dev/null), unless verbose logging
                        is enabled. Use this for runnign utility commands like
@@ -322,11 +332,17 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
     """
     if silent and cli_logger.verbosity < 1:
         return _run_and_process_output(
-            cmd, stdout_file=None, use_login_shells=use_login_shells)
+            cmd,
+            process_runner=process_runner,
+            stdout_file=None,
+            use_login_shells=use_login_shells)
 
     if not is_output_redirected():
         return _run_and_process_output(
-            cmd, stdout_file=sys.stdout, use_login_shells=use_login_shells)
+            cmd,
+            process_runner=process_runner,
+            stdout_file=sys.stdout,
+            use_login_shells=use_login_shells)
     else:
         tmpfile_path = os.path.join(
             tempfile.gettempdir(), "ray-up-{}-{}.txt".format(
@@ -338,12 +354,10 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
                 buffering=1) as tmp:
             cli_logger.verbose("Command stdout is redirected to {}",
                                cf.bold(tmp.name))
-            cli_logger.verbose(
-                cf.gray("Use --dump-command-output to "
-                        "dump to terminal instead."))
 
             return _run_and_process_output(
                 cmd,
+                process_runner=process_runner,
                 stdout_file=tmp,
                 stderr_file=tmp,
                 use_login_shells=use_login_shells)
