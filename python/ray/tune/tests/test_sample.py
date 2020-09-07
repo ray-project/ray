@@ -504,12 +504,8 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config = SkOptSearch.convert_search_space(config)
         skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
 
-        searcher1 = SkOptSearch(
-            parameter_names=converted_config.keys(),
-            parameter_ranges=converted_config.values())
-        searcher2 = SkOptSearch(
-            parameter_names=skopt_config.keys(),
-            parameter_ranges=skopt_config.values())
+        searcher1 = SkOptSearch(space=converted_config)
+        searcher2 = SkOptSearch(space=skopt_config)
 
         np.random.seed(1234)
         config1 = searcher1.suggest("0")

@@ -64,12 +64,11 @@ class SkOptSearch(Searcher):
     Parameters:
         optimizer (skopt.optimizer.Optimizer): Optimizer provided
             from skopt.
-        parameter_names (list): List of parameter names. Should match
-            the dimension of the optimizer output.
-        parameter_ranges (list): List of parameter ranges (tuple) for numerical
-            parameters or list of valid values for categorical variables. If no
-             `optimizer` has been passed, an optimizer with these
-             parameter ranges will be instantiated.
+        space (dict|list): A dict mapping parameter names to valid parameters,
+            i.e. tuples for numerical parameters and lists for categorical
+            parameters. If you passed an optimizer instance as the
+            `optimizer` argument, this should be a list of parameter names
+            instead.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -127,8 +126,7 @@ class SkOptSearch(Searcher):
 
     def __init__(self,
                  optimizer=None,
-                 parameter_names=None,
-                 parameter_ranges=None,
+                 space=None,
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
@@ -149,14 +147,28 @@ class SkOptSearch(Searcher):
 
         self._initial_points = []
         self._parameters = None
+        self._parameter_names = None
+        self._parameter_ranges = None
 
-        self._parameter_names = parameter_names
-        self._parameter_ranges = parameter_ranges
+        self._space = space
+
+        if self._space:
+            if isinstance(optimizer, sko.Optimizer):
+                if not isinstance(space, list):
+                    raise ValueError(
+                        "You passed an optimizer instance to SkOpt. Your "
+                        "`space` parameter should be a list of parameter"
+                        "names.")
+                self._parameter_names = space
+            else:
+                self._parameter_names = space.keys()
+                self._parameter_ranges = space.values()
+
         self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
 
         self._skopt_opt = optimizer
-        if self._skopt_opt or self._parameter_ranges:
+        if self._skopt_opt or self._space:
             self.setup_skopt()
 
         self._live_trial_mapping = {}
@@ -165,19 +177,13 @@ class SkOptSearch(Searcher):
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
 
-        if self._skopt_opt:
-            if self._parameter_ranges:
-                raise ValueError(
-                    "If you pass an optimizer instance to SkOptSearch, do not "
-                    "pass the `parameter_ranges` parameter.")
-        else:
-            if not self._parameter_ranges:
+        if not self._skopt_opt:
+            if not self._space:
                 raise ValueError(
                     "If you don't pass an optimizer instance to SkOptSearch, "
-                    "pass a valid `parameter_ranges` parameter.")
+                    "pass a valid `space` parameter.")
 
-            from skopt import Optimizer
-            self._skopt_opt = Optimizer(self._parameter_ranges)
+            self._skopt_opt = sko.Optimizer(self._parameter_ranges)
 
         if self._points_to_evaluate and self._evaluated_rewards:
             self._skopt_opt.tell(self._points_to_evaluate,
@@ -197,6 +203,7 @@ class SkOptSearch(Searcher):
             return False
         space = self.convert_search_space(config)
 
+        self._space = space
         self._parameter_names = space.keys()
         self._parameter_ranges = space.values()
 

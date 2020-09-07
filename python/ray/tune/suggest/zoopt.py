@@ -28,7 +28,7 @@ class ZOOptSearch(Searcher):
 
     To use ZOOptSearch, install zoopt (>=0.4.0): ``pip install -U zoopt``.
 
-    Tune automatically converts search spaces to TuneBOHB"s format:
+    Tune automatically converts search spaces to ZOOpt"s format:
 
     .. code-block:: python
 
