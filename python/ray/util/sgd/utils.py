@@ -251,31 +251,6 @@ def check_for_failure(remote_values):
     return False
 
 
-class RayFileLock(FileLock):
-    """Utility for serializing data loading. Extends FileLock using a
-    temporary file as the lock file.
-
-    Example:
-        class CustomOperator(TrainingOperator):
-            def setup(self, config):
-                ...
-                # Load data
-                with RayFileLock():
-                    # All code here will be serialized across all workers.
-                    train_data = ...
-    """
-
-    def __init__(self, *args, **kwargs):
-        file = os.path.join(tempfile.gettempdir(), ".raydata.lock")
-        super(RayFileLock, self).__init__(file, *args, **kwargs)
-
-    def __enter__(self):
-        super(RayFileLock, self).__enter__()
-
-    def __exit__(self, *args, **kwargs):
-        super(RayFileLock, self).__exit__(*args, **kwargs)
-
-
 def override(interface_class):
     def overrider(method):
         assert (method.__name__ in dir(interface_class))

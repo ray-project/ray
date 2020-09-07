@@ -1,11 +1,14 @@
 import inspect
 import logging
+import os
+import tempfile
 
 import torch
 import torch.nn as nn
+from filelock import FileLock
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES, RayFileLock)
+                                NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH,
     NUM_STEPS,
@@ -802,7 +805,8 @@ class CreatorOperator(TrainingOperator):
         loaders = None
         if self._serialize_data_creation:
             logger.debug("Serializing the dataloading process.")
-            with RayFileLock():
+            with FileLock(os.path.join(tempfile.gettempdir(),
+                                       ".raydata.lock")):
                 loaders = self._data_creator(config)
         else:
             loaders = self._data_creator(config)

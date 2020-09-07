@@ -9,7 +9,6 @@ in the documentation.
 
 # __torch_operator_start__
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.utils import RayFileLock
 
 class MyTrainingOperator(TrainingOperator):
     def setup(self, config):
