@@ -16,6 +16,8 @@ import io.ray.runtime.util.ResourceUtil;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +75,7 @@ public class RayConfig {
   public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
-  public final String jobResourcePath;
+  public List<String> jobResourcePath;
   public final String pythonWorkerCommand;
 
   private static volatile RayConfig instance = null;
@@ -227,9 +229,15 @@ public class RayConfig {
 
     // Job resource path.
     if (config.hasPath("ray.job.resource-path")) {
-      jobResourcePath = config.getString("ray.job.resource-path");
+      try {
+        jobResourcePath =  config.getStringList("ray.job.resource-path");
+      } catch (ConfigException.WrongType e) {
+        config.getString("ray.job.resource-path");
+        jobResourcePath = Arrays.asList(
+            config.getString("ray.job.resource-path").split(File.pathSeparator));
+      }
     } else {
-      jobResourcePath = null;
+      jobResourcePath = Collections.emptyList();
     }
 
     boolean enableMultiTenancy = false;

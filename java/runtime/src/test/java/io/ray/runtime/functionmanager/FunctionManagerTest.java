@@ -7,6 +7,8 @@ import io.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -151,7 +153,8 @@ public class FunctionManagerTest {
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
     JobId jobId = JobId.fromInt(1);
-    final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
+    final List<String> resourcePath =
+        Collections.singletonList(FileUtils.getTempDirectoryPath() + "/ray_test_resources");
     final String jobResourcePath = resourcePath + "/" + jobId.toString();
     File jobResourceDir = new File(jobResourcePath);
     FileUtils.deleteQuietly(jobResourceDir);

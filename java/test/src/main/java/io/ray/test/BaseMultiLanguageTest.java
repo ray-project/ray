@@ -66,10 +66,9 @@ public abstract class BaseMultiLanguageTest {
     // jars in the `ray` wheel doesn't contains test classes, so we add test classes explicitly.
     // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
     // with `test` included in the name, we can check classpath `test` to filter out test classes.
-    String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
+    List<String> classpath = Stream.of(System.getProperty("java.class.path").split(":"))
         .filter(s -> !s.contains(" ") && s.contains("test"))
-        .collect(Collectors.joining(":"));
-    String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
+        .collect(Collectors.toList());
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -83,7 +82,7 @@ public abstract class BaseMultiLanguageTest {
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
-        "--java-worker-options=" + workerOptions,
+        "--job-resource-path=" + new Gson().toJson(classpath),
         "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
