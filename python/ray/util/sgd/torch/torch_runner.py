@@ -104,9 +104,9 @@ class TorchRunner:
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
         if self.validation_loader is None:
-            raise ValueError("No validation dataloader provided. Make sure "
+            raise ValueError("No validation dataloader provided. Make sure"
                              "you pass in a validation_loader to "
-                             "TrainingOperator.register.")
+                             "TrainingOperator.register_data.")
         info = info or {}
         self._toggle_profiling(profile=profile)
         validation_loader = self.validation_loader
@@ -223,18 +223,23 @@ class TorchRunner:
     @property
     def train_loader(self):
         if not hasattr(self.training_operator, "_train_loader"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered train loader. Are you calling "
-                               "self.register(...) inside the setup method "
-                               "of your Training Operator?")
+            logger.warning("Training Operator does not have any "
+                               "registered train loader. If this is "
+                           "unexepected, make sure to call "
+                           "self.register_data(...) inside the setup method "
+                               "of your Training Operator.")
+            return None
         return self.training_operator._train_loader
 
     @property
     def validation_loader(self):
         if not hasattr(self.training_operator, "_validation_loader"):
-            raise RuntimeError("Training Operator does not have any "
-                               "registered validation loader. Are you calling "
-                               "self.register(...) inside TrainingOperator.setup()?")
+            logger.warning("Training Operator does not have any "
+                           "registered validation loader. If this is "
+                           "unexepected, make sure to call "
+                           "self.register_data(...) inside the setup method "
+                           "of your Training Operator.")
+            return None
         return self.training_operator._validation_loader
 
     @property
