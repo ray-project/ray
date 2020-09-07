@@ -360,7 +360,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   argv.push_back(NULL);
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
-    if (ec == 24) {
+    if (ec.value() == 24) {
       RAY_LOG(FATAL) << "Too many workers, failed to start file. Try setting "
                      << "`ulimit -n <num_files>` then restart Ray.";
     } else {
