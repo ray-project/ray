@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError
-from ray.experimental.queue import Queue, Empty, Full
+from ray.util.queue import Queue, Empty, Full
 
 
 @ray.remote
