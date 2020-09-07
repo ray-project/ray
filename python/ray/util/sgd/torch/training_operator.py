@@ -47,8 +47,7 @@ def _is_multiple(component):
 
 
 class TrainingOperator:
-    """Abstract class to define training state as well as custom training or
-    validation loops.
+    """Abstract class to define training and validation state and logic.
 
     You must subclass this class and override the ``setup`` method to define
     your training components such as the model, optimizer, data, loss,
@@ -153,9 +152,10 @@ class TrainingOperator:
         self.timers = timers
 
     def setup(self, config):
-        """Override this method to implement custom operator setup. You should
-        call self.register and self.register_data here to register training
-        components with Ray SGD.
+        """Override this method to implement operator setup.
+
+        You should call self.register and self.register_data here to
+        register training components and data loaders with Ray SGD.
 
         Args:
             config (dict): Custom configuration value to be passed to
@@ -169,34 +169,36 @@ class TrainingOperator:
                  optimizers,
                  criterion=None,
                  schedulers=None):
-        """Registers parameters with Ray SGD, sets up the necessary
-        training components (Cuda, DDP, Fp16), and returns the registered
-        components.
-        You do not need to handle GPU/devices yourself; registering the
-        training components with this method will do that for you.
+        """Registers parameters with Ray SGD and sets up training components.
+
+        By calling this method to register your models, optimizers,
+        criterion, and schedulers, Ray SGD will automatically handle
+        necessary setup such as GPU/devices, Distributed Data Parallel, and
+        Fp16. The registered components are returned and should be set as
+        instance attributes to access during training/validation.
 
         If more than one model, optimizer, or scheduler is passed in,
         you should implement your own custom training loop.
 
         .. code-block:: python
 
-            @override(TrainingOperator)
-            def setup(self, config):
-                model = ...
-                optimizer = ...
-                train_loader = ...
-                val_loader = ...
-                loss = ...
+            class MyTrainingOperator(TrainingOperator):
+                def setup(self, config):
+                    model = ...
+                    optimizer = ...
+                    train_loader = ...
+                    val_loader = ...
+                    loss = ...
 
-                self.model, self.optimizer, self.criterion = self.register(
-                models=model, optimizers=optimizer, criterion=loss)
+                    self.model, self.optimizer, self.criterion = self.register(
+                    models=model, optimizers=optimizer, criterion=loss)
 
-                # At this point DDP, Cuda, and Fp16
-                # are set up for all our components. We then use self.model,
-                # self.optimizer, etc. in our training loop.
+                    # At this point DDP, Cuda, and Fp16
+                    # are set up for all our components. We then use
+                    # self.model, self.optimizer, etc. in our training loop.
 
-                self.register_data(train_loader=train_loader,
-                validation_loader=val_loader)
+                    self.register_data(train_loader=train_loader,
+                    validation_loader=val_loader)
 
 
         Args:
@@ -300,36 +302,38 @@ class TrainingOperator:
         return tuple(return_vals)
 
     def register_data(self, *, train_loader=None, validation_loader=None):
-        """Registers data loaders with Ray SGD. Calling this method will
-        automatically setup Distributed Sampler for these data loaders if
-        add_dist_sampler=True is passed into the TorchTrainer. This method
-        does not return the wrapped data loaders. You should use the iterators
-        passed into train_epoch and validate instead.
+        """Registers data loaders with Ray SGD.
+
+        Calling this method will automatically setup Distributed Sampler for
+        these data loaders if add_dist_sampler=True is passed into the
+        TorchTrainer. This method does not return the wrapped data loaders.
+        You should use the iterators passed into train_epoch and validate
+        instead.
 
         .. code-block:: python
 
-        @override(TrainingOperator)
-        def setup(self, config):
-            model = ...
-            optimizer = ...
-            train_loader = ...
-            val_loader = ...
-            loss = ...
+        class MyTrainingOperator(TrainingOperator):
+            def setup(self, config):
+                model = ...
+                optimizer = ...
+                train_loader = ...
+                val_loader = ...
+                loss = ...
 
-            self.model, self.optimizer, self.criterion = self.register(
-            models=model, optimizers=optimizer, criterion=loss)
+                self.model, self.optimizer, self.criterion = self.register(
+                models=model, optimizers=optimizer, criterion=loss)
 
-            self.register_data(train_loader=train_loader,
-            validation_loader=val_loader)
+                self.register_data(train_loader=train_loader,
+                validation_loader=val_loader)
 
-            # At this point the data loaders are registered with Ray SGD and
-            are wrapped with Distributed Samplers if applicable.
+                # At this point the data loaders are registered with Ray SGD
+                # and are wrapped with Distributed Samplers if applicable.
 
         @override(TrainingOperator)
         def train_epoch(self, iterator, info):
             # If providing custom training or validation methods,
-            the registered data loaders are passed in through the iterator
-            parameter.
+            # the registered data loaders are passed in through the iterator
+            # parameter.
             ...
 
 

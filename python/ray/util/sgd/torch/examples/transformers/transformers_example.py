@@ -104,9 +104,8 @@ class TransformerOperator(TrainingOperator):
         logger.info(f"tokenizer instantiation time: {time.time() - start}")
 
         # Load data.
-        with FileLock("~/.ray.lock"):
-            train_dataset = load_and_cache_examples(
-                args, args.task_name, self.tokenizer, evaluate=False)
+        train_dataset = load_and_cache_examples(
+            args, args.task_name, self.tokenizer, evaluate=False)
         train_sampler = RandomSampler(
             train_dataset) if not dist.is_initialized() else None
         train_loader = DataLoader(
