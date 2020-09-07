@@ -68,7 +68,6 @@ cc_binary(
     deps = ["//:exported_streaming_internal"],
 )
 
-
 cc_library(
     name = "streaming_util",
     srcs = glob([

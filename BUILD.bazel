@@ -382,12 +382,12 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    alwayslink = 1,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":core_worker_lib",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(
@@ -1724,8 +1724,8 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
-        "//:exported_streaming_internal",
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -1779,8 +1779,8 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//:exported_streaming_internal",
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",

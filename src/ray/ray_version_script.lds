@@ -4,7 +4,6 @@
 # Ray ABI is not finalized, the exact set of exported (C/C++) APIs is subject to change.
 VERSION_1.0 {
     global:
-        *ray*exported_*
         # common
         *ray*Language*;
         *ray*RayObject*;
@@ -31,5 +30,6 @@ VERSION_1.0 {
         *init_raylet*;
         *Java*;
         *JNI_*;
+        *ray*streaming*;
     local: *;
 };
