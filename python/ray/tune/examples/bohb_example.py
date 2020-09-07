@@ -48,9 +48,9 @@ if __name__ == "__main__":
 
     config = {
         "iterations": 100,
-        "LiNO3_vol": tune.uniform(0, 7),
-        "Li2SO4_vol": tune.uniform(0, 7),
-        "NaClO4_vol": tune.uniform(0, 7)
+        "width": tune.uniform(0, 20),
+        "height": tune.uniform(-100, 100),
+        "activation": tune.choice(["relu", "tanh"])
     }
 
     # Optional: Pass the parameter space yourself
