@@ -56,8 +56,7 @@ class ClusterStarter {
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
-    RayConfig.reset();
-    Map<String, String> config = new HashMap<>(RayConfig.getInstance().rayletConfigParameters);
+    Map<String, String> config = new HashMap<>(RayConfig.create().rayletConfigParameters);
     config.put("num_workers_per_process_java", "1");
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(

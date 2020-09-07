@@ -372,7 +372,7 @@ public class RayConfig {
    * 2. `ray.conf` file.
    * 3. `ray.default.conf` file.
    */
-  private static RayConfig create() {
+  public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config-file");

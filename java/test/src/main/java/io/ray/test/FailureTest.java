@@ -30,15 +30,11 @@ public class FailureTest extends BaseTest {
     // process, `sleep` will delay `System.exit`.
     oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-    System.out.println("++++++ Set ray.raylet.config.num_workers_per_process_java to 1");
-    System.out.flush();
   }
 
   @AfterClass
   public void tearDown() {
     System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
-    System.out.println("++++++ Set ray.raylet.config.num_workers_per_process_java to " + oldNumWorkersPerProcess);
-    System.out.flush();
   }
 
   public static int badFunc() {

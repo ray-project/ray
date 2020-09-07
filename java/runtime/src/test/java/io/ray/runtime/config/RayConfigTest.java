@@ -12,8 +12,7 @@ public class RayConfigTest {
   public void testCreateRayConfig() {
     try {
       System.setProperty("ray.job.resource-path", "path/to/ray/job/resource/path");
-      RayConfig.reset();
-      RayConfig rayConfig = RayConfig.getInstance();
+      RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
       Assert.assertEquals("path/to/ray/job/resource/path", rayConfig.jobResourcePath);
     } finally {
@@ -25,13 +24,11 @@ public class RayConfigTest {
   @Test
   public void testGenerateHeadPortRandomly() {
     boolean isSame = true;
-    RayConfig.reset();
-    final int port1 = RayConfig.getInstance().headRedisPort;
+    final int port1 = RayConfig.create().headRedisPort;
     // If we the 2 ports are the same, let's retry.
     // This is used to avoid any flaky chance.
     for (int i = 0; i < NUM_RETRIES; ++i) {
-      RayConfig.reset();
-      final int port2 = RayConfig.getInstance().headRedisPort;
+      final int port2 = RayConfig.create().headRedisPort;
       if (port1 != port2) {
         isSame = false;
         break;
@@ -43,11 +40,6 @@ public class RayConfigTest {
   @Test
   public void testSpecifyHeadPort() {
     System.setProperty("ray.redis.head-port", "11111");
-    try {
-      RayConfig.reset();
-      Assert.assertEquals(RayConfig.getInstance().headRedisPort, 11111);
-    } finally {
-      System.clearProperty("ray.redis.head-port");
-    }
+    Assert.assertEquals(RayConfig.create().headRedisPort, 11111);
   }
 }
