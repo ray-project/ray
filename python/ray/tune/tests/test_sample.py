@@ -285,6 +285,69 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertIn(trial.config["a"], [2, 3, 4])
         self.assertEqual(trial.config["b"]["y"], 4)
 
+    def testConvertDragonfly(self):
+        from ray.tune.suggest.dragonfly import DragonflySearch
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        with self.assertRaises(ValueError):
+            converted_config = DragonflySearch.convert_search_space(config)
+
+        config = {
+            "a": 4,
+            "b": {
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        dragonfly_config = [{
+            "name": "b/z",
+            "type": "float",
+            "min": 1e-4,
+            "max": 1e-2
+        }]
+        converted_config = DragonflySearch.convert_search_space(config)
+
+        np.random.seed(1234)
+        searcher1 = DragonflySearch(
+            optimizer="bandit",
+            domain="euclidean",
+            space=converted_config,
+            metric="none")
+
+        config1 = searcher1.suggest("0")
+
+        np.random.seed(1234)
+        searcher2 = DragonflySearch(
+            optimizer="bandit",
+            domain="euclidean",
+            space=dragonfly_config,
+            metric="none")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertLess(config2["point"], 1e-2)
+
+        searcher = DragonflySearch()
+        invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
+        with self.assertRaises(ValueError):
+            searcher.set_search_properties("none", "max", invalid_config)
+        invalid_config = {"a": {"b/c": tune.uniform(4.0, 8.0)}}
+        with self.assertRaises(ValueError):
+            searcher.set_search_properties("none", "max", invalid_config)
+
+        searcher = DragonflySearch(
+            optimizer="bandit", domain="euclidean", metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertLess(trial.config["point"], 1e-2)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp

@@ -46,7 +46,7 @@ class TuneBOHB(Searcher):
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
 
-    Tune automatically converts search spaces to TuneBOHB"s format:
+    Tune automatically converts search spaces to TuneBOHB's format:
 
     .. code-block:: python
 
