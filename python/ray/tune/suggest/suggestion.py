@@ -56,8 +56,8 @@ class Searcher:
     CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
         if use_early_stopped_trials is False:
