@@ -49,7 +49,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         assert grace_period > 0, "grace_period must be positive!"
         assert reduction_factor > 1, "Reduction Factor not valid!"
         assert brackets > 0, "brackets must be positive!"
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
         if reward_attr is not None:
             mode = "max"
