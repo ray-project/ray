@@ -34,6 +34,7 @@ MOCK_MODULES = [
     "ax",
     "ax.service.ax_client",
     "blist",
+    "ConfigSpace",
     "gym",
     "gym.spaces",
     "horovod",
