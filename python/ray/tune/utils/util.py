@@ -433,7 +433,7 @@ def detect_reporter(func):
 
 
 def detect_config_single(func):
-    """Check if func({}) workers."""
+    """Check if func({}) works."""
     func_sig = inspect.signature(func)
     use_config_single = True
     try:
