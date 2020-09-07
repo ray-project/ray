@@ -62,7 +62,7 @@ class TuneBOHB(Searcher):
             metric="mean_loss",
             mode="min",
             max_t=100)
-        run(MyTrainableClass, config=config, scheduler=bohb, search_alg=algo)
+        run(my_trainable, config=config, scheduler=bohb, search_alg=algo)
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -87,7 +87,7 @@ class TuneBOHB(Searcher):
             metric="mean_loss",
             mode="min",
             max_t=100)
-        run(MyTrainableClass, scheduler=bohb, search_alg=algo)
+        run(my_trainable, scheduler=bohb, search_alg=algo)
 
     """
 
