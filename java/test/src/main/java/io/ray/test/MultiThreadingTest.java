@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = {"cluster"})
 public class MultiThreadingTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
