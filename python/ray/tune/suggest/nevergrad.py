@@ -139,11 +139,11 @@ class NevergradSearch(Searcher):
                 if self._nevergrad_opt.instrumentation.args:
                     raise ValueError(
                         "Instrumented optimizers should use kwargs only")
-                if self._nevergrad_opt is not None:
+                if self._parameters is not None:
                     raise ValueError("Instrumented optimizers should provide "
                                      "None as parameter_names")
             else:
-                if self._nevergrad_opt is None:
+                if self._parameters is None:
                     raise ValueError("Non-instrumented optimizers should have "
                                      "a list of parameter_names")
                 if len(self._nevergrad_opt.instrumentation.args) != 1:
