@@ -14,7 +14,6 @@ from ray.serve.exceptions import RayServeException
 import requests
 import numpy as np
 import pydantic
-from werkzeug.datastructures import ImmutableMultiDict
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -51,7 +50,7 @@ class ServeRequest:
     @property
     def args(self):
         """The keyword arguments from ``handle.remote(**kwargs)``."""
-        return ImmutableMultiDict(self._kwargs)
+        return self._kwargs
 
     @property
     def json(self):
