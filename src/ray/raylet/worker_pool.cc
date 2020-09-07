@@ -209,34 +209,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                  << " non-actor workers";
 
   int workers_to_start = 1;
-  std::string job_resource_path = job_config->job_resource_path();
-  std::string job_resource_path_str;
-  if (!job_resource_path.empty()) {
-    for(int i = 0; job_config->job_resource_path_size(); i++) {
-      auto path = job_config->job_resource_path(i);
-      switch (language) {
-        case Language::PYTHON: {
-          if (i == 0) {
-            job_resource_path_str += "--job-resource-path=[";
-          }
-          job_resource_path_str += "'" + path+ "', ";
-          if (i == job_resource_path.size() - 1) {
-            job_resource_path_str += "]";
-          }
-          break;
-        }
-        case Language::JAVA: {
-          job_resource_path_str += "-Dray.job.resource-path." + i;
-          job_resource_path_str += "=" + path;
-          break;
-        }
-        default:
-          RAY_LOG(FATAL)
-              << "job_resource_path is not supported for worker language "
-              << language;
-      }
-    }
-  }
   if (dynamic_options.empty()) {
     if (!RayConfig::instance().enable_multi_tenancy()) {
       workers_to_start = state.num_workers_per_process;
@@ -291,7 +263,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
         } else {
           worker_command_args.push_back("-Dray.job.num-java-workers-per-process=" +
                                         std::to_string(workers_to_start));
-          worker_command_args.push_back("-Dray.job.resource-path=" + job_resource_path);
         }
         break;
       default:
@@ -303,6 +274,34 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     }
 
     worker_command_args.push_back(token);
+  }
+  // For non-multi-tenancy mode, job_resource_path is embedded in worker_command.
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    std::string job_resource_path_str;
+    for (int i = 0; job_config->job_resource_path_size(); i++) {
+      auto path = job_config->job_resource_path(i);
+      switch (language) {
+      case Language::PYTHON: {
+        if (i == 0) {
+          job_resource_path_str += "--job-resource-path=[";
+        }
+        job_resource_path_str += "'" + path + "', ";
+        if (i == job_config->job_resource_path_size() - 1) {
+          job_resource_path_str += "]";
+        }
+        break;
+      }
+      case Language::JAVA: {
+        job_resource_path_str += "-Dray.job.resource-path." + std::to_string(i);
+        job_resource_path_str += "=" + path;
+        break;
+      }
+      default:
+        RAY_LOG(FATAL) << "job_resource_path is not supported for worker language "
+                       << language;
+      }
+    }
+    worker_command_args.push_back(job_resource_path_str);
   }
 
   // Currently only Java worker process supports multi-worker.

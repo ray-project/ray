@@ -11,16 +11,15 @@ import socket
 import subprocess
 import sys
 import time
-import redis
 
 import colorama
+import colorful as cf
+import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-import psutil
-
+import redis
 from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 resource = None
 if sys.platform != "win32":
@@ -70,11 +69,6 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
-
-DEFAULT_JAVA_WORKER_CLASSPATH = [
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
-]
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -1282,7 +1276,8 @@ def start_raylet(redis_address,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None):
+                 object_spilling_config=None,
+                 job_resource_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1320,6 +1315,7 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (list): The command options for Java worker.
+        job_resource_path (list): resource path for worker.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1347,17 +1343,23 @@ def start_raylet(redis_address,
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
+    # job_resource_path is added to worker command in non-multi-tenancy mode
+    # and job_config in multi-tenancy mode.
+    if is__multi_tenancy_enabled(config):
+        assert not job_resource_path, \
+            "job-resource-path should be configured in job config in " \
+            "multi-tenancy mode."
+
     if include_java is True:
-        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options)
-            if java_worker_options else ["-classpath", default_cp],
+            json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
             node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
             session_dir,
+            job_resource_path
         )
     else:
         java_worker_command = []
@@ -1384,6 +1386,8 @@ def start_raylet(redis_address,
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
+    start_worker_command.append(
+        f"--job-resource-path={json.dumps(job_resource_path)}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1438,9 +1442,12 @@ def start_raylet(redis_address,
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
-        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
-        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
-        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",
+        # noqa
+        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",
+        # noqa
+        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",
+        # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1481,6 +1488,15 @@ def start_raylet(redis_address,
     return process_info
 
 
+def is__multi_tenancy_enabled(conf):
+    """Return a bool flag to indicate whether multi_tenancy is enabled"""
+    enable_multi_tenancy = conf.get("enable_multi_tenancy", "False") == "True"
+    if not enable_multi_tenancy:
+        enable_multi_tenancy = "RAY_ENABLE_MULTI_TENANCY" in os.environ and \
+                               os.environ["RAY_ENABLE_MULTI_TENANCY"] == "1"
+    return enable_multi_tenancy
+
+
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1501,6 +1517,7 @@ def build_java_worker_command(
         raylet_name,
         redis_password,
         session_dir,
+        job_resource_path
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1532,6 +1549,11 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
+    for index in range(len(job_resource_path)):
+        path = job_resource_path[index]
+        if os.path.isfile(path):
+            path = os.path.dirname(path)
+        pairs.append((f"ray.job.resource-path.{index}", path))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
@@ -1644,7 +1666,7 @@ def determine_plasma_store_config(object_store_memory,
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
                     "argument with the flag '--shm-size' to 'docker run'.".
-                    format(ray.utils.get_user_temp_dir(), shm_avail))
+                        format(ray.utils.get_user_temp_dir(), shm_avail))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
@@ -1669,14 +1691,14 @@ def determine_plasma_store_config(object_store_memory,
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap object store memory usage at {} "
                          "bytes, but the minimum allowed is {} bytes.".format(
-                             object_store_memory,
-                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+            object_store_memory,
+            ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
         "using {}.".format(
-            round(object_store_memory / 10**9, 2), plasma_directory))
+            round(object_store_memory / 10 ** 9, 2), plasma_directory))
 
     return plasma_directory, object_store_memory
 
