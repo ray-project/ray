@@ -70,6 +70,7 @@ public abstract class BaseMultiLanguageTest {
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.joining(":"));
     String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
+    RayConfig.reset();
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -84,7 +85,7 @@ public abstract class BaseMultiLanguageTest {
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions,
-        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
+        "--system-config=" + new Gson().toJson(RayConfig.getInstance().rayletConfigParameters)
     );
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");

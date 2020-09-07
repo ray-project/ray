@@ -222,11 +222,6 @@ public class MultiThreadingTest extends BaseTest {
   }
 
   @Test
-  public void testMissingWrapRunnableInDriver() throws InterruptedException {
-    testMissingWrapRunnable();
-  }
-
-  @Test
   public void testMissingWrapRunnableInWorker() {
     Ray.task(MultiThreadingTest::testMissingWrapRunnable).remote().get();
   }

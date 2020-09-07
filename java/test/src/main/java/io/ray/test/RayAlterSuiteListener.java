@@ -13,8 +13,9 @@ public class RayAlterSuiteListener implements IAlterSuiteListener {
   @Override
   public void alter(List<XmlSuite> suites) {
     XmlSuite suite = suites.get(0);
+    RayConfig.reset();
     String excludedGroup =
-        RayConfig.create().runMode == RunMode.SINGLE_PROCESS ? "cluster" : "singleProcess";
+        RayConfig.getInstance().runMode == RunMode.SINGLE_PROCESS ? "cluster" : "singleProcess";
     XmlGroups groups = new XmlGroups();
     XmlRun run = new XmlRun();
     run.onExclude(excludedGroup);
