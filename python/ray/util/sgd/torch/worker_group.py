@@ -108,6 +108,12 @@ class RemoteWorkerGroup(BaseWorkerGroup):
 
     def start_workers(self, num_workers, params, initialization_hook,
                       timeout_s, num_cpus_per_worker, use_gpu):
+        self.num_workers = num_workers
+        self.params = params
+        self.initialization_hook = initialization_hook
+        self.timeout_s = timeout_s
+        self.num_cpus_per_worker = num_cpus_per_worker
+        self.use_gpu = use_gpu
         if num_workers == 1:
             RemoteRunner = ray.remote(
                 num_cpus=num_cpus_per_worker,
@@ -214,23 +220,50 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         remote_worker_stats = self._validate(params)
         return ray.get(remote_worker_stats)
 
+    def _shutdown_remote_workers(self):
+        cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
+        return cleanup
+
+    def _shutdown(self, cleanup):
+        try:
+            ray.get(cleanup)
+            [
+                worker.__ray_terminate__.remote() for worker in self.remote_workers
+            ]
+        except RayActorError:
+            logger.warning("Failed to shutdown gracefully, forcing a "
+                           "shutdown.")
+            self._reset()
+
+
     def shutdown(self, force=False):
         if not force:
-            cleanup = [
-                worker.shutdown.remote() for worker in self.remote_workers
-            ]
-            try:
-                ray.get(cleanup)
-                [
-                    worker.__ray_terminate__.remote()
-                    for worker in self.remote_workers
-                ]
-            except RayActorError:
-                logger.warning("Failed to shutdown gracefully, forcing a "
-                               "shutdown.")
-                self._reset()
+            cleanup = self._shutdown_remote_workers()
+            self._shutdown(cleanup)
         else:
             self._reset()
+        self.remote_workers = []
+        # if not force:
+        #     cleanup = self._shutdown_remote_workers()
+        #     try:
+        #         ray.get(cleanup)
+        #         [
+        #             worker.__ray_terminate__.remote()
+        #             for worker in self.remote_workers
+        #         ]
+        #     except RayActorError:
+        #         logger.warning(
+        #             "Failed to shutdown gracefully, forcing a shutdown.")
+        #
+        #         for worker in self.remote_workers:
+        #             logger.warning(f"Killing worker {worker}.")
+        #             ray.kill(worker)
+        # else:
+        #     for worker in self.remote_workers:
+        #         logger.debug(f"Killing worker {worker}.")
+        #         ray.kill(worker)
+        #
+        # self.remote_workers = []
 
     def _reset(self):
         for worker in self.remote_workers:
@@ -267,7 +300,12 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             new_remote_workers = self._check_potential_remote_workers_size()
             if new_remote_workers:
                 self._last_resize = time.time()
-                self.start_workers(int(new_remote_workers))
+                self.start_workers(int(new_remote_workers),
+                                   params=self.params,
+                                   initialization_hook=self.initialization_hook,
+                                   num_cpus_per_worker=self.num_cpus_per_worker,
+                                   use_gpu=self.use_gpu,
+                                   timeout_s=self.timeout_s)
                 self.load_state_dict(self.state_dict())
                 return
             else:
@@ -292,6 +330,11 @@ class LocalWorkerGroup(BaseWorkerGroup):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
 
         self.num_workers = num_workers
+        self.params = params
+        self.initialization_hook = initialization_hook
+        self.timeout_s = timeout_s
+        self.num_cpus_per_worker = num_cpus_per_worker
+        self.use_gpu = use_gpu
 
         if num_workers == 1:
             self.local_worker = TorchRunner(**params)
@@ -375,7 +418,11 @@ class LocalWorkerGroup(BaseWorkerGroup):
                 self.remote_worker_group._check_potential_remote_workers_size()
             if new_remote_workers:
                 self._last_resize = time.time()
-                self.start_workers(int(new_remote_workers) + 1)
+                self.start_workers(int(new_remote_workers) + 1, params=self.params,
+                                   initialization_hook=self.initialization_hook,
+                                   num_cpus_per_worker=self.num_cpus_per_worker,
+                                   use_gpu=self.use_gpu,
+                                   timeout_s=self.timeout_s)
                 self.load_state_dict(self.state_dict())
                 return
             else:
@@ -427,6 +474,35 @@ class LocalWorkerGroup(BaseWorkerGroup):
 
         self.local_worker = DeactivatedRunner()
         self.remote_worker_group = RemoteWorkerGroup()
+        # if not force:
+        #     cleanup = [
+        #         worker.shutdown.remote() for worker in
+        #         self.remote_worker_group.remote_workers
+        #     ]
+        #     #self.local_worker.shutdown()
+        #     try:
+        #         ray.get(cleanup)
+        #         terminate = [
+        #             worker.__ray_terminate__.remote()
+        #             for worker in self.remote_worker_group.remote_workers
+        #         ]
+        #     except RayActorError:
+        #         logger.warning(
+        #             "Failed to shutdown gracefully, forcing a shutdown.")
+        #
+        #         for worker in self.remote_worker_group.remote_workers:
+        #             logger.warning(f"Killing worker {worker}.")
+        #             ray.kill(worker)
+        #     self.local_worker.shutdown()
+        # else:
+        #     self.local_worker.shutdown()
+        #     for worker in self.remote_workers:
+        #         logger.debug(f"Killing worker {worker}.")
+        #         ray.kill(worker)
+        #
+        # self.local_worker = DeactivatedRunner()
+        # #self.remote_worker_group.remote_workers = []
+        # self.remote_worker_group = RemoteWorkerGroup()
 
     def get_num_workers(self):
         return self.remote_worker_group.get_num_workers() + 1
