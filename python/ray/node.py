@@ -649,16 +649,17 @@ class Node:
             redis_client = self.create_redis_client()
             redis_client.hmset("webui", {"url": self._webui_url})
 
-    def start_plasma_store(self):
+    def start_plasma_store(self, plasma_directory, object_store_memory):
         """Start the plasma store."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "plasma_store", unique=True)
         process_info = ray.services.start_plasma_store(
             self.get_resource_spec(),
+            plasma_directory,
+            object_store_memory,
             self._plasma_store_socket_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             keep_idle=bool(self._config.get("plasma_store_as_thread")),
             fate_share=self.kernel_fate_share)
@@ -688,7 +689,7 @@ class Node:
             process_info,
         ]
 
-    def start_raylet(self, use_valgrind=False, use_profiler=False):
+    def start_raylet(self, plasma_directory, object_store_memory, use_valgrind=False, use_profiler=False):
         """Start the raylet.
 
         Args:
@@ -715,6 +716,8 @@ class Node:
             self._ray_params.redis_password,
             self._ray_params.metrics_agent_port,
             self._metrics_export_port,
+            plasma_directory,
+            object_store_memory,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
@@ -723,7 +726,6 @@ class Node:
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
@@ -809,8 +811,16 @@ class Node:
         logger.debug(f"Process STDOUT and STDERR is being "
                      f"redirected to {self._logs_dir}.")
 
-        self.start_plasma_store()
-        self.start_raylet()
+        # Make sure we don't call `determine_plasma_store_config` multiple
+        # times to avoid printing multiple warnings.
+        plasma_directory, object_store_memory = \
+            ray.services.determine_plasma_store_config(
+            self._ray_params.object_store_memory,
+                plasma_directory=self._ray_params.plasma_directory,
+                huge_pages=self._ray_params.huge_pages
+        )
+        self.start_plasma_store(plasma_directory, object_store_memory)
+        self.start_raylet(plasma_directory, object_store_memory)
         if "RAY_USE_NEW_DASHBOARD" not in os.environ:
             self.start_reporter()
 
