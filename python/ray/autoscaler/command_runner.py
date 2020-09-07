@@ -226,8 +226,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                     return self.process_runner.check_output(
                         final_cmd, shell=True)
                 else:
-                    self.process_runner.check_call(
-                        final_cmd, shell=True)
+                    self.process_runner.check_call(final_cmd, shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = " ".join(final_cmd[:-1] +

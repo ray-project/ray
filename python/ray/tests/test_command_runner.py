@@ -108,20 +108,21 @@ def test_kubernetes_command_runner():
     cmd_runner = KubernetesCommandRunner(**args)
 
     env_vars = {"var1": "quote between this \" and this", "var2": "123"}
-    cmd_runner.run(
-        "echo helloo",
-        environment_variables=env_vars)
-
+    cmd_runner.run("echo helloo", environment_variables=env_vars)
 
     expected = [
-        'kubectl',
-        '-n', 'namespace',
-        'exec',
-        '-it', '0', '--',
-        'bash',
-        '--login',
-        '-c', '-i',
-        '\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'' # noqa: E501
+        "kubectl",
+        "-n",
+        "namespace",
+        "exec",
+        "-it",
+        "0",
+        "--",
+        "bash",
+        "--login",
+        "-c",
+        "-i",
+        """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
     ]
 
     # Much easier to debug this loop than the function call.
@@ -159,7 +160,7 @@ def test_docker_command_runner():
     # This string is insane because there are an absurd number of embedded
     # quotes. While this is a ridiculous string, the escape behavior is
     # important and somewhat difficult to get right for environment variables.
-    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'""" # noqa: E501
+    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'"""  # noqa: E501
 
     expected = [
         "ssh", "-tt", "-i", "8265.pem", "-o", "StrictHostKeyChecking=no", "-o",
