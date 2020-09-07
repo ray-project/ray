@@ -66,6 +66,7 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
+        None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
         None,  # max_retries
