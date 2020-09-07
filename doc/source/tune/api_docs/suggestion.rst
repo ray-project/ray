@@ -63,13 +63,6 @@ Summary
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
 
-
-.. note:: We are currently in the process of implementing automatic search space
-    conversions for all search algorithms. Currently this works for
-    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
-    will follow shortly, but have to be instantiated with their respective
-    search spaces at the moment. See the code examples and docstrings for more details.
-
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
 **Want to use your own algorithm?** The interface is easy to implement. :ref:`Read instructions here <byo-algo>`.
