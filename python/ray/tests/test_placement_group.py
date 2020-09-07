@@ -653,7 +653,7 @@ def test_atomic_creation(ray_start_cluster):
 
     # Create a placement group actor.
     # This shouldn't be scheduled because atomic
-    # placement group creation should've failed
+    # placement group creation should've failed.
     pg_actor = NormalActor.options(
         placement_group=pg,
         placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()

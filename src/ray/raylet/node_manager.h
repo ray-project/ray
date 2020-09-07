@@ -109,15 +109,15 @@ struct pair_hash {
 
 enum CommitState {
   /// Resources are prepared.
-  PREPARE,
+  PREPARED,
   /// Resources are COMMITTED.
-  COMMIT
+  COMMITTED
 };
 
 struct BundleState {
   /// Leasing state for 2PC protocol.
   CommitState state;
-  /// resources that are acquired at preparation stage.
+  /// Resources that are acquired at preparation stage.
   ResourceIdSet acquired_resources;
 };
 

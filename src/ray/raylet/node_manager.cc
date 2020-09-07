@@ -1827,7 +1827,7 @@ void NodeManager::HandleCommitBundleResources(
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
 
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle commit request " << bundle_spec.BundleId().first
+  RAY_LOG(DEBUG) << "Received bundle commit request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   CommitBundle(cluster_resource_map_, bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1870,14 +1870,14 @@ void NodeManager::HandleCancelResourceReserve(
     KillWorker(worker);
   }
 
-  // Return resources. We should commit resources if it weren't because
+  // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
   RAY_CHECK(it != bundle_state_map_.end())
       << "Cancel requests are received to raylet although it hasn't received any prepare "
          "or commit reuqest. This must be an anomaly.";
   const auto &bundle_state = it->second;
-  if (bundle_state->state == CommitState::PREPARE) {
+  if (bundle_state->state == CommitState::PREPARED) {
     CommitBundle(cluster_resource_map_, bundle_spec);
   }
   bundle_state_map_.erase(it);
@@ -2067,7 +2067,7 @@ bool NodeManager::PrepareBundle(
         bundle_spec.GetRequiredResources());
 
     // Register bundle state.
-    bundle_state->state = CommitState::PREPARE;
+    bundle_state->state = CommitState::PREPARED;
     bundle_state_map_.emplace(bundle_id, bundle_state);
   }
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
@@ -2084,7 +2084,7 @@ void NodeManager::CommitBundle(
   // because it is currently not idempotent.
   RAY_CHECK(it != bundle_state_map_.end());
   const auto &bundle_state = it->second;
-  bundle_state->state = CommitState::COMMIT;
+  bundle_state->state = CommitState::COMMITTED;
   const auto &acquired_resources = bundle_state->acquired_resources;
   for (auto resource : acquired_resources.AvailableResources()) {
     local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),

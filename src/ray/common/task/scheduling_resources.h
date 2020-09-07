@@ -584,7 +584,7 @@ class SchedulingResources {
   ///
   /// We need this step for running 2PC protocol for atomic placement group creation.
   ///
-  /// \param resource_name: Name of the resource to be modified
+  /// \param resource_name: Name of the resource to be modified.
   /// \param resource_set: New resource_set of the resource.
   void PrepareBundleResources(const PlacementGroupID &group, const int bundle_index,
                               const ResourceSet &resource_set);
