@@ -47,7 +47,9 @@ def wandb_mixin(func):
     are used to configure the ``WandbTrainableMixin`` itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key_file (str): Path to file containing the Wandb API KEY. This
+            file only needs to be present on the node running the Tune script
+            if using the WandbLogger.
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
