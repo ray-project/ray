@@ -341,6 +341,30 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
+def test_ray_options(shutdown_only):
+    @ray.remote(
+        num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
+    def foo():
+        return ray.available_resources()
+
+    ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
+
+    without_options = ray.get(foo.remote())
+    with_options = ray.get(
+        foo.options(
+            num_cpus=3,
+            num_gpus=4,
+            memory=50 * 2**20,
+            resources={
+                "custom1": 0.5
+            }).remote())
+
+    to_check = ["CPU", "GPU", "memory", "custom1"]
+    for key in to_check:
+        assert without_options[key] != with_options[key]
+    assert without_options != with_options
+
+
 def test_nested_functions(ray_start_shared_local_modes):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.

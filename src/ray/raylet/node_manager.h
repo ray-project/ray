@@ -67,6 +67,8 @@ struct NodeManagerConfig {
   int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
+  /// The soft limit of the number of workers.
+  int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
   int num_initial_python_workers_for_first_job;
   /// The maximum number of workers that can be started concurrently by a
@@ -552,10 +554,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
-  /// Handle a `ResourcesLease` request.
-  void HandleRequestResourceReserve(const rpc::RequestResourceReserveRequest &request,
-                                    rpc::RequestResourceReserveReply *reply,
+  /// Handle a `PrepareBundleResources` request.
+  void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
+                                    rpc::PrepareBundleResourcesReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `CommitBundleResources` request.
+  void HandleCommitBundleResources(const rpc::CommitBundleResourcesRequest &request,
+                                   rpc::CommitBundleResourcesReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ResourcesReturn` request.
   void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,

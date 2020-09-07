@@ -188,7 +188,7 @@ logs in ``/tmp/ray/session_*/logs/monitor*``.
 
     $ ray monitor cluster.yaml
 
-The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go the the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
+The Ray autoscaler also reports per-node status in the form of instance tags. In your cloud provider console, you can click on a Node, go to the "Tags" pane, and add the ``ray-node-status`` tag as a column. This lets you see per-node statuses at a glance:
 
 .. image:: /images/autoscaler-status.png
 

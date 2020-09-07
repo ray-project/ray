@@ -47,7 +47,7 @@ class MockWorker {
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
-        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7);
+        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8);
     options.ref_counting_enabled = true;
     options.num_workers = 1;
     options.metrics_agent_port = -1;
@@ -57,7 +57,8 @@ class MockWorker {
   void RunTaskExecutionLoop() { CoreWorkerProcess::RunTaskExecutionLoop(); }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
+  Status ExecuteTask(TaskType task_type, const std::string task_name,
+                     const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,

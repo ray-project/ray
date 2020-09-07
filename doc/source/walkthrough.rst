@@ -15,7 +15,14 @@ Java demo code in this documentation can be found `here <https://github.com/ray-
 Installation
 ------------
 
-To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+.. tabs::
+  .. group-tab:: Python
+
+    To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+
+  .. group-tab:: Java
+
+    To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. We don't publish snapshot versions right now.
 
 Starting Ray
 ------------
@@ -35,14 +42,14 @@ You can start Ray on a single machine by adding this to your code.
 
   .. code-tab:: java
 
-    import io.ray.Ray;
+    import io.ray.api.Ray;
 
     public class MyRayApp {
 
       public static void main(String[] args) {
         // Start Ray runtime. If you're connecting to an existing cluster, you can set
         // the `-Dray.redis.address=<cluster-address>` java system property.
-        Ray.init()
+        Ray.init();
         ...
       }
     }
@@ -427,7 +434,7 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
 
   .. group-tab:: Java
 
-    ``Ray.actor`` is used to create actors from regular Java classes. Unlike Python, multiple Java actors may share one JVM process, in order to reduce JVM's memory overhead. But this is transparent to normal users.
+    ``Ray.actor`` is used to create actors from regular Java classes.
 
     .. code-block:: java
 

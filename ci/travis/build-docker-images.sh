@@ -19,7 +19,7 @@ docker_push() {
 }
 build_and_push_tags() {
     # $1 image-name, also used as the directory where the Dockerfile lives (e.g. base-deps)
-    # $2 tag for image (e.g. hahs of commit)
+    # $2 tag for image (e.g. hash of commit)
     for GPU in "" "-gpu" 
     do 
         BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
@@ -52,6 +52,9 @@ build_or_pull_base_images() {
         done
 
     else
+        docker pull rayproject/ray-deps:latest
+        docker pull rayproject/ray-deps:latest-gpu
+        docker pull rayproject/base-deps:latest-gpu
         echo "Just pulling images"
     fi
 
@@ -73,23 +76,35 @@ if [[ "$TRAVIS" == "true" ]]; then
 
     commit_sha=$(echo "$TRAVIS_COMMIT" | head -c 6)
     cp -r "$ROOT_DIR"/.whl "$ROOT_DIR"/docker/ray/.whl
-    cp "$ROOT_DIR"/python/requirements.txt "$ROOT_DIR"/docker/autoscaler/requirements.txt
-    cp "$ROOT_DIR"/python/requirements_autoscaler.txt "$ROOT_DIR"/docker/autoscaler/requirements_autoscaler.txt
+    cp "$ROOT_DIR"/python/requirements*.txt "$ROOT_DIR"/docker/ray-ml/
 
     build_or_pull_base_images
 
 
     build_and_push_tags "ray" "$commit_sha"
 
-    build_and_push_tags "autoscaler" "$commit_sha"
+    build_and_push_tags "ray-ml" "$commit_sha"
+
+    # Temporarily push autoscaler images as well
+    # TODO(ilr) Remove autoscaler in the future
+    for GPU in "" "-gpu"
+    do
+        docker tag "rayproject/ray-ml:latest$GPU" "rayproject/autoscaler:latest$GPU"
+        docker tag "rayproject/ray-ml:$commit_sha$GPU" "rayproject/autoscaler:$commit_sha$GPU"
+        docker_push "rayproject/autoscaler:latest$GPU" 
+        docker_push "rayproject/autoscaler:$commit_sha$GPU"
+    done
+
+    docker_push rayproject/autoscaler:latest
+    docker_push rayproject/autoscaler:"$commit_sha"
  
 
     # We have a branch build, e.g. release/v0.7.0
     if [[ "$TRAVIS_BRANCH" != "master" ]]; then
        # Replace / in branch name to - so it is legal tag name
        normalized_branch_name=$(echo "$TRAVIS_BRANCH" | sed -e "s/\//-/")
-
-       for IMAGE in "base-deps" "ray-deps" "ray" "autoscaler"
+        # TODO(ilr) Remove autoscaler in the future
+       for IMAGE in "base-deps" "ray-deps" "ray" "ray-ml" "autoscaler"
        do
             for GPU in "" "-gpu"
             do

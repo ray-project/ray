@@ -2,6 +2,7 @@ import pytest
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler.command_runner import SSHCommandRunner, \
     _with_environment_variables, DockerCommandRunner
+from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
 
@@ -139,6 +140,88 @@ def test_docker_command_runner():
         print(f"actual: \t{x}")
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
+
+
+def test_docker_rsync():
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    docker_config = {"container_name": "container"}
+    args = {
+        "log_prefix": "prefix",
+        "node_id": 0,
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+        "docker_config": docker_config,
+    }
+    cmd_runner = DockerCommandRunner(**args)
+
+    local_mount = "/home/ubuntu/base/mount/"
+    remote_mount = "/root/protected_mount/"
+    remote_host_mount = f"{DOCKER_MOUNT_PREFIX}{remote_mount}"
+
+    local_file = "/home/ubuntu/base-file"
+    remote_file = "/root/protected-file"
+    remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
+
+    process_runner.respond_to_call("docker inspect -f", "true")
+    cmd_runner.run_rsync_up(
+        local_mount, remote_mount, options={"file_mount": True})
+
+    # Make sure we do not copy directly to raw destination
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_mount}")
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"mkdir -p {remote_mount}")
+    # No docker cp for file_mounts
+    process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
+    process_runner.assert_has_call(
+        "1.2.3.4",
+        pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_host_mount}")
+    process_runner.clear_history()
+    ##############################
+
+    process_runner.respond_to_call("docker inspect -f", "true")
+    cmd_runner.run_rsync_up(
+        local_file, remote_file, options={"file_mount": False})
+
+    # Make sure we do not copy directly to raw destination
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_file}")
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"mkdir -p {remote_file}")
+
+    process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
+    process_runner.assert_has_call(
+        "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_host_file}")
+    process_runner.clear_history()
+    ##############################
+
+    cmd_runner.run_rsync_down(
+        remote_mount, local_mount, options={"file_mount": True})
+
+    process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_mount} {local_mount}")
+    process_runner.assert_has_call(
+        "1.2.3.4",
+        pattern=f"-avz ray@1.2.3.4:{remote_host_mount} {local_mount}")
+
+    process_runner.clear_history()
+    ##############################
+
+    cmd_runner.run_rsync_down(
+        remote_file, local_file, options={"file_mount": False})
+
+    process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
+    process_runner.assert_not_has_call(
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_file} {local_file}")
+    process_runner.assert_has_call(
+        "1.2.3.4", pattern=f"-avz ray@1.2.3.4:{remote_host_file} {local_file}")
 
 
 if __name__ == "__main__":

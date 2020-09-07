@@ -250,6 +250,9 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
+            elif metadata == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+                obj = self._deserialize_msgpack_data(data, metadata)
+                return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on
             # the error type.
             try:
@@ -349,10 +352,20 @@ class SerializationContext:
     def _serialize_to_msgpack(self, value):
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
+        contained_object_refs = []
+
         if isinstance(value, RayTaskError):
             metadata = str(
                 ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
             value = value.to_bytes()
+        elif isinstance(value, ray.actor.ActorHandle):
+            # TODO(fyresone): ActorHandle should be serialized via the
+            # custom type feature of cross-language.
+            serialized, actor_handle_id = value._serialization_helper()
+            contained_object_refs.append(actor_handle_id)
+            # Update ref counting for the actor handle
+            metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
+            value = serialized
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 
@@ -373,6 +386,7 @@ class SerializationContext:
             pickle5_serialized_object = None
 
         return MessagePackSerializedObject(metadata, msgpack_data,
+                                           contained_object_refs,
                                            pickle5_serialized_object)
 
     def serialize(self, value):

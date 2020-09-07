@@ -14,7 +14,7 @@ from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
-    get_bin_pack_residual, get_nodes_for
+    get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -163,6 +163,23 @@ def test_get_nodes_respects_max_limit():
     }] * 10) == [("m4.large", 2)]
 
 
+def test_get_nodes_to_launch_limits():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, 3)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
+        "GPU": 8
+    }] * 2, utilizations)
+    assert to_launch == []
+
+
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
@@ -219,10 +236,6 @@ class AutoscalingTest(unittest.TestCase):
         return path
 
     def testGetOrCreateMultiNodeType(self):
-        config = MULTI_WORKER_CLUSTER.copy()
-        # Commenting out this line causes the test case to fail?!?!
-        config["min_workers"] = 0
-        config_path = self.write_config(config)
         config_path = self.write_config(MULTI_WORKER_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -263,6 +276,44 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+    def testScaleUpIgnoreUsed(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config["target_utilization_fraction"] = 1.0
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+        lm = LoadMetrics(local_ip=head_ip)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        self.waitForNodes(1)
+
+        lm.update(
+            head_ip, {
+                "CPU": 4,
+                "GPU": 1
+            }, {"GPU": 1}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
 
     def testRequestBundlesAccountsForHeadNode(self):
         config = MULTI_WORKER_CLUSTER.copy()
@@ -452,6 +503,107 @@ class AutoscalingTest(unittest.TestCase):
                                "new_worker_initialization_cmd")
         runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
                                    "init_cmd")
+
+    def testDockerWorkers(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["available_node_types"]["p2.8xlarge"]["docker"] = {
+            "worker_image": "p2.8x_image:latest",
+            "worker_run_options": ["p2.8x-run-options"]
+        }
+        config["available_node_types"]["p2.xlarge"]["docker"] = {
+            "worker_image": "p2x_image:nightly"
+        }
+        config["docker"]["worker_run_options"] = ["standard-run-options"]
+        config["docker"]["image"] = "default-image:nightly"
+        config["docker"]["worker_image"] = "default-image:nightly"
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config["max_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+        autoscaler.request_resources([{"GPU": 1}] * 9)
+        autoscaler.update()
+        self.waitForNodes(3)
+        assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
+        autoscaler.update()
+        # Fill up m4, p2.8, p2 and request 2 more CPUs
+        autoscaler.request_resources([{
+            "CPU": 2
+        }, {
+            "CPU": 16
+        }, {
+            "CPU": 32
+        }, {
+            "CPU": 2
+        }])
+        autoscaler.update()
+        self.waitForNodes(4)
+        assert self.provider.mock_nodes[3].node_type == "m4.16xlarge"
+        autoscaler.update()
+        sleep(0.1)
+        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
+                               "p2.8x-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
+                               "p2.8x_image:latest")
+        runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
+                                   "default-image:nightly")
+        runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
+                                   "standard-run-options")
+
+        runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
+                               "p2x_image:nightly")
+        runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
+                               "standard-run-options")
+        runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
+                                   "p2.8x-run-options")
+
+        runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
+                               "default-image:nightly")
+        runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
+                               "standard-run-options")
+        runner.assert_not_has_call(self.provider.mock_nodes[3].internal_ip,
+                                   "p2.8x-run-options")
+        runner.assert_not_has_call(self.provider.mock_nodes[3].internal_ip,
+                                   "p2x_image:nightly")
+
+    def testUpdateConfig(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        config["min_workers"] = 0
+        config["available_node_types"]["m4.large"]["node_config"][
+            "field_changed"] = 1
+        config_path = self.write_config(config)
+        autoscaler.update()
+        self.waitForNodes(0)
 
 
 if __name__ == "__main__":

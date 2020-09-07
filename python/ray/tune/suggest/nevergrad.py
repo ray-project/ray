@@ -115,7 +115,6 @@ class NevergradSearch(Searcher):
         # in v0.2.0+, output of ask() is a Candidate,
         # with fields args and kwargs
         if not suggested_config.kwargs:
-            print(suggested_config.args, suggested_config.kwargs)
             return dict(zip(self._parameters, suggested_config.args[0]))
         else:
             return suggested_config.kwargs

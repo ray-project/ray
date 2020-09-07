@@ -1,4 +1,6 @@
-"""Decentralized Distributed PPO implementation.
+"""
+Decentralized Distributed PPO (DD-PPO)
+======================================
 
 Unlike APPO or PPO, learning is no longer done centralized in the trainer
 process. Instead, gradients are computed remotely on each rollout worker and
@@ -19,6 +21,7 @@ import time
 
 import ray
 from ray.rllib.agents.ppo import ppo
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -26,11 +29,16 @@ from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
+
+# Adds the following updates to the `PPOTrainer` config in
+# rllib/agents/ppo/ppo.py.
 DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
     ppo.DEFAULT_CONFIG,
     {
@@ -67,36 +75,64 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
     },
     _allow_unknown_configs=True,
 )
+
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def validate_config(config):
+    """Validates the Trainer's config dict.
+
+    Args:
+        config (TrainerConfigDict): The Trainer's config to check.
+
+    Throws:
+        ValueError: In case something is wrong with the config.
+    """
+
+    # Auto-train_batch_size: Calculate from rollout len and envs-per-worker.
     if config["train_batch_size"] == -1:
-        # Auto set.
         config["train_batch_size"] = (
             config["rollout_fragment_length"] * config["num_envs_per_worker"])
+    # Users should not define `train_batch_size` directly (always -1).
     else:
         raise ValueError(
             "Set rollout_fragment_length instead of train_batch_size "
             "for DDPPO.")
+
+    # Only supported for PyTorch so far.
     if config["framework"] != "torch":
         raise ValueError(
             "Distributed data parallel is only supported for PyTorch")
+    # `num_gpus` must be 0/None, since all optimization happens on Workers.
     if config["num_gpus"]:
         raise ValueError(
             "When using distributed data parallel, you should set "
             "num_gpus=0 since all optimization "
             "is happening on workers. Enable GPUs for workers by setting "
             "num_gpus_per_worker=1.")
+    # `batch_mode` must be "truncate_episodes".
     if config["batch_mode"] != "truncate_episodes":
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
+    # Call (base) PPO's config validation function.
     ppo.validate_config(config)
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: The Policy class to use with PGTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Setup the distributed processes.
@@ -194,8 +230,12 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+# Build a child class of `Trainer`, based on PPOTrainer's setup.
+# Note: The generated class is NOT a sub-class of PPOTrainer, but directly of
+# the `Trainer` class.
 DDPPOTrainer = ppo.PPOTrainer.with_updates(
     name="DDPPO",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     execution_plan=execution_plan,
-    validate_config=validate_config)
+)

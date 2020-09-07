@@ -153,8 +153,6 @@ def actor_critic_loss(policy, model, _, train_batch):
         q_tp1_best_masked = (1.0 - train_batch[SampleBatch.DONES].float()) * \
             q_tp1_best
 
-    assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
-
     # compute RHS of bellman equation
     q_t_selected_target = (
         train_batch[SampleBatch.REWARDS] +
