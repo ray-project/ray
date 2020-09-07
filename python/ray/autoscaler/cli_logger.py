@@ -61,7 +61,7 @@ def _patched_makeRecord(self,
 logging.Logger.makeRecord = _patched_makeRecord
 
 
-def _parent_frame_info():
+def _external_caller_info():
     """Get the info from the caller frame.
 
     Used to override the logging function and line number with the correct
@@ -69,11 +69,14 @@ def _parent_frame_info():
     """
 
     frame = inspect.currentframe()
-    # we are also in a function, so must go 2 levels up
-    caller = frame.f_back.f_back
+    caller = frame
+    levels = 0
+    while caller.f_code.co_filename == __file__:
+        caller = caller.f_back
+        levels += 1
     return {
         "lineno": caller.f_lineno,
-        "filename": os.path.basename(caller.f_code.co_filename),
+        "filename": os.path.basename(caller.f_code.co_filename)
     }
 
 
@@ -138,13 +141,13 @@ def _format_msg(msg: str,
                 tags_list += [k + "=" + v]
             if tags_list:
                 tags_str = cf.reset(
-                    cf.gray(" [{}]".format(", ".join(tags_list))))
+                    cf.dimmed(" [{}]".format(", ".join(tags_list))))
 
         numbering_str = ""
         if _numbered is not None:
             chars, i, n = _numbered
-            numbering_str = cf.gray(chars[0] + str(i) + "/" + str(n) +
-                                    chars[1]) + " "
+            numbering_str = cf.dimmed(chars[0] + str(i) + "/" + str(n) +
+                                      chars[1]) + " "
 
         if _no_format:
             # todo: throw if given args/kwargs?
@@ -159,26 +162,43 @@ def _format_msg(msg: str,
     return ", ".join(res)
 
 
+# TODO: come up with a plan to unify logging.
+# formatter = logging.Formatter(
+#     # TODO(maximsmol): figure out the required log level padding
+#     #                  width automatically
+#     fmt="[{asctime}] {levelname:6} {message}",
+#     datefmt="%x %X",
+#     # We want alignment on our level names
+#     style="{")
+
+
+def _isatty():
+    """More robust check for interactive terminal/tty."""
+    try:
+        # https://stackoverflow.com/questions/6108330/
+        # checking-for-interactive-shell-in-a-python-script
+        return sys.__stdin__.isatty()
+    except Exception:
+        # sometimes this can fail due to closed output
+        # either way, no-tty is generally safe fallback.
+        return False
+
+
 class _CliLogger():
     """Singleton class for CLI logging.
 
     Attributes:
-        strip (bool):
-            If `strip` is `True`, all TTY control sequences will be
-            removed from the output.
         old_style (bool):
             If `old_style` is `True`, the old logging calls are used instead
-            of the new CLI UX. This is enabled by default and remains for
-            backwards compatibility.
+            of the new CLI UX. This is disabled by default and remains for
+            backwards compatibility. Currently can only be set via env var
+            RAY_LOG_NEWSTYLE="0".
         color_mode (str):
             Can be "true", "false", or "auto".
 
-            Determines the value of `strip` using a human-readable string
-            that can be set from command line arguments.
+            Enables or disables `colorful`.
 
-            Also affects the `colorful` settings.
-
-            If `color_mode` is "auto", `strip` is set to `not stdout.isatty()`
+            If `color_mode` is "auto", is set to `not stdout.isatty()`
         indent_level (int):
             The current indentation level.
 
@@ -188,26 +208,71 @@ class _CliLogger():
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
     """
-    strip: bool
     old_style: bool
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
-    verbosity: int
+    interactive: bool
+    VALID_LOG_STYLES = ("auto", "record", "pretty")
 
     _autodetected_cf_colormode: int
 
     def __init__(self):
-        self.old_style = True
-        self.color_mode = "auto"
+        self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
+        self.pretty = True
+        self.interactive = _isatty()
         self.indent_level = 0
 
-        self.verbosity = 0
+        self._verbosity = 0
+        self._color_mode = "auto"
+        self._log_style = "auto"
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
         # so it has some non-trivial logic to determine this)
         self._autodetected_cf_colormode = cf.colorful.colormode
+        self.set_format()
+
+    def set_format(self, format_tmpl=None):
+        if not format_tmpl:
+            import ray.ray_constants as ray_constants
+            format_tmpl = ray_constants.LOGGER_FORMAT
+        self._formatter = logging.Formatter(format_tmpl)
+
+    @property
+    def log_style(self):
+        return self._log_style
+
+    @log_style.setter
+    def log_style(self, x):
+        self._log_style = x.lower()
+
+        if self._log_style == "auto":
+            self.pretty = _isatty()
+        elif self._log_style == "record":
+            self.pretty = False
+            self.color_mode = "false"
+        elif self._log_style == "pretty":
+            self.pretty = True
+
+    @property
+    def color_mode(self):
+        return self._color_mode
+
+    @color_mode.setter
+    def color_mode(self, x):
+        self._color_mode = x.lower()
+        self.detect_colors()
+
+    @property
+    def verbosity(self):
+        if not self.pretty:
+            return 999
+        return self._verbosity
+
+    @verbosity.setter
+    def verbosity(self, x):
+        self._verbosity = x
 
     def detect_colors(self):
         """Update color output settings.
@@ -216,7 +281,6 @@ class _CliLogger():
         color output
         (8-color ANSI if no terminal detected to be safe) in colorful.
         """
-        self.color_mode = self.color_mode.lower()
         if self.color_mode == "true":
             if self._autodetected_cf_colormode != cf.NO_COLORS:
                 cf.colormode = self._autodetected_cf_colormode
@@ -237,7 +301,10 @@ class _CliLogger():
         """
         self.print("")
 
-    def _print(self, msg: str, linefeed: bool = True):
+    def _print(self,
+               msg: str,
+               _level_str: str = "INFO",
+               _linefeed: bool = True):
         """Proxy for printing messages.
 
         Args:
@@ -246,13 +313,31 @@ class _CliLogger():
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
         """
+        if self.pretty:
+            rendered_message = "  " * self.indent_level + msg
+        else:
+            if msg.strip() == "":
+                return
+            caller_info = _external_caller_info()
+            record = logging.LogRecord(
+                name="cli",
+                # We override the level name later
+                # TODO(maximsmol): give approximate level #s to our log levels
+                level=0,
+                # The user-facing logs do not need this information anyway
+                # and it would be very tedious to extract since _print
+                # can be at varying depths in the call stack
+                # TODO(maximsmol): do it anyway to be extra
+                pathname=caller_info["filename"],
+                lineno=caller_info["lineno"],
+                msg=msg,
+                args={},
+                # No exception
+                exc_info=None)
+            record.levelname = _level_str
+            rendered_message = self._formatter.format(record)
 
-        if self.old_style:
-            return
-
-        rendered_message = "  " * self.indent_level + msg
-
-        if not linefeed:
+        if not _linefeed:
             sys.stdout.write(rendered_message)
             sys.stdout.flush()
             return
@@ -289,7 +374,7 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.cornflowerBlue(msg), *args, **kwargs)
+        self.print(cf.dodgerBlue(msg), *args, **kwargs)
 
         return self.indented()
 
@@ -326,7 +411,8 @@ class _CliLogger():
             return
 
         self._print(
-            cf.cyan(key) + ": " + _format_msg(cf.bold(msg), *args, **kwargs))
+            cf.skyBlue(key) + ": " +
+            _format_msg(cf.bold(msg), *args, **kwargs))
 
     def verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a message if verbosity is not 0.
@@ -334,7 +420,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.print(msg, *args, **kwargs)
+            self.print(msg, *args, _level_str="VINFO", **kwargs)
 
     def verbose_warning(self, msg, *args, **kwargs):
         """Prints a formatted warning if verbosity is not 0.
@@ -342,7 +428,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.warning(msg, *args, **kwargs)
+            self._warning(msg, *args, _level_str="VWARN", **kwargs)
 
     def verbose_error(self, msg: str, *args: Any, **kwargs: Any):
         """Logs an error if verbosity is not 0.
@@ -350,7 +436,7 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 0:
-            self.error(msg, *args, **kwargs)
+            self._error(msg, *args, _level_str="VERR", **kwargs)
 
     def very_verbose(self, msg: str, *args: Any, **kwargs: Any):
         """Prints if verbosity is > 1.
@@ -358,30 +444,56 @@ class _CliLogger():
         For arguments, see `_format_msg`.
         """
         if self.verbosity > 1:
-            self.print(msg, *args, **kwargs)
+            self.print(msg, *args, _level_str="VVINFO", **kwargs)
 
     def success(self, msg: str, *args: Any, **kwargs: Any):
         """Prints a formatted success message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.green(msg), *args, **kwargs)
+        self.print(cf.limeGreen(msg), *args, _level_str="SUCC", **kwargs)
 
-    def warning(self, msg: str, *args: Any, **kwargs: Any):
+    def _warning(self,
+                 msg: str,
+                 *args: Any,
+                 _level_str: str = None,
+                 **kwargs: Any):
         """Prints a formatted warning message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.yellow(msg), *args, **kwargs)
+        if _level_str is None:
+            raise ValueError("Log level not set.")
+        self.print(cf.orange(msg), *args, _level_str=_level_str, **kwargs)
 
-    def error(self, msg: str, *args: Any, **kwargs: Any):
+    def warning(self, *args, **kwargs):
+        self._warning(*args, _level_str="WARN", **kwargs)
+
+    def _error(self,
+               msg: str,
+               *args: Any,
+               _level_str: str = None,
+               **kwargs: Any):
         """Prints a formatted error message.
 
         For arguments, see `_format_msg`.
         """
-        self.print(cf.red(msg), *args, **kwargs)
+        if _level_str is None:
+            raise ValueError("Log level not set.")
+        self.print(cf.red(msg), *args, _level_str=_level_str, **kwargs)
 
-    def print(self, msg: str, *args: Any, **kwargs: Any):
+    def error(self, *args, **kwargs):
+        self._error(*args, _level_str="ERR", **kwargs)
+
+    def panic(self, *args, **kwargs):
+        self._error(*args, _level_str="PANIC", **kwargs)
+
+    # Fine to expose _level_str here, since this is a general log function.
+    def print(self,
+              msg: str,
+              *args: Any,
+              _level_str: str = "INFO",
+              **kwargs: Any):
         """Prints a message.
 
         For arguments, see `_format_msg`.
@@ -389,9 +501,13 @@ class _CliLogger():
         if self.old_style:
             return
 
-        self._print(_format_msg(msg, *args, **kwargs))
+        self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
 
-    def abort(self, msg: Optional[str] = None, *args: Any, **kwargs: Any):
+    def abort(self,
+              msg: Optional[str] = None,
+              *args: Any,
+              exc: Any = None,
+              **kwargs: Any):
         """Prints an error and aborts execution.
 
         Print an error and throw an exception to terminate the program
@@ -401,9 +517,15 @@ class _CliLogger():
             return
 
         if msg is not None:
-            self.error(msg, *args, **kwargs)
+            self._error(msg, *args, _level_str="PANIC", **kwargs)
 
-        raise SilentClickException("Exiting due to cli_logger.abort()")
+        if exc is not None:
+            raise exc
+
+        exc_cls = click.ClickException
+        if self.pretty:
+            exc_cls = SilentClickException
+        raise exc_cls("Exiting due to cli_logger.abort()")
 
     def doassert(self, val: bool, msg: str, *args: Any, **kwargs: Any):
         """Handle assertion without throwing a scary exception.
@@ -417,7 +539,15 @@ class _CliLogger():
             return
 
         if not val:
-            self.abort(msg, *args, **kwargs)
+            exc = None
+            if not self.pretty:
+                exc = AssertionError()
+
+            # TODO(maximsmol): rework asserts so that we get the expression
+            #                  that triggered the assert
+            #                  to do this, install a global try-catch
+            #                  for AssertionError and raise them normally
+            self.abort(msg, *args, exc=exc, **kwargs)
 
     def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
                   **kwargs: Any):
@@ -434,7 +564,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.debug(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_info(self, logger: logging.Logger, msg: str, *args: Any,
@@ -452,7 +583,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.info(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
@@ -470,7 +602,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.warning(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_error(self, logger: logging.Logger, msg: str, *args: Any,
@@ -488,7 +621,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.error(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
@@ -506,7 +640,8 @@ class _CliLogger():
         """
         if self.old_style:
             logger.exception(
-                _format_msg(msg, *args, **kwargs), extra=_parent_frame_info())
+                _format_msg(msg, *args, **kwargs),
+                extra=_external_caller_info())
             return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
@@ -535,22 +670,28 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
-
         if self.old_style:
             return
 
         should_abort = _abort
         default = _default
 
+        if not self.interactive and not yes:
+            # no formatting around --yes here since this is non-interactive
+            self.error("This command requires user confirmation. "
+                       "When running non-interactively, supply --yes to skip.")
+            raise ValueError("Non-interactive confirm without --yes.")
+
         if default:
-            yn_str = cf.green("Y") + "/" + cf.red("n")
+            yn_str = cf.limeGreen("Y") + "/" + cf.red("n")
         else:
-            yn_str = cf.green("y") + "/" + cf.red("N")
+            yn_str = cf.limeGreen("y") + "/" + cf.red("N")
 
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 
         rendered_message = _format_msg(msg, *args, **kwargs)
-        if rendered_message and rendered_message[-1] != "\n":
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
             rendered_message += " "
 
         msg_len = len(rendered_message.split("\n")[-1])
@@ -558,10 +699,10 @@ class _CliLogger():
 
         if yes:
             self._print(complete_str + "y " +
-                        cf.gray("[automatic, due to --yes]"))
+                        cf.dimmed("[automatic, due to --yes]"))
             return True
 
-        self._print(complete_str, linefeed=False)
+        self._print(complete_str, _linefeed=False)
 
         res = None
         yes_answers = ["y", "yes", "true", "1"]
@@ -588,7 +729,7 @@ class _CliLogger():
                            "Expected {} or {}", indent, cf.bold(ans.strip()),
                            self.render_list(yes_answers, "/"),
                            self.render_list(no_answers, "/"))
-                self._print(indent + confirm_str, linefeed=False)
+                self._print(indent + confirm_str, _linefeed=False)
         except KeyboardInterrupt:
             self.newline()
             res = default
@@ -599,6 +740,35 @@ class _CliLogger():
             self._print("Exiting...")
             raise SilentClickException(
                 "Exiting due to the response to confirm(should_abort=True).")
+
+        return res
+
+    def prompt(self, msg: str, *args, **kwargs):
+        """Prompt the user for some text input.
+
+        Args:
+            msg (str): The mesage to display to the user before the prompt.
+
+        Returns:
+            The string entered by the user.
+        """
+        if self.old_style:
+            return
+
+        complete_str = cf.underlined(msg)
+        rendered_message = _format_msg(complete_str, *args, **kwargs)
+        # the rendered message ends with ascii coding
+        if rendered_message and not msg.endswith("\n"):
+            rendered_message += " "
+        self._print(rendered_message, linefeed=False)
+
+        res = ""
+        try:
+            ans = sys.stdin.readline()
+            ans = ans.lower()
+            res = ans.strip()
+        except KeyboardInterrupt:
+            self.newline()
 
         return res
 

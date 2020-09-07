@@ -4,7 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.experimental.placement_group import PlacementGroup, \
+from ray.util.placement_group import PlacementGroup, \
     check_placement_group_index
 import ray.signature
 
@@ -40,7 +40,7 @@ class RemoteFunction:
         _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
-        _num_return_vals: The default number of return values for invocations
+        _num_returns: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
             before exiting.
@@ -62,8 +62,8 @@ class RemoteFunction:
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
-                 num_return_vals, max_calls, max_retries, placement_group,
-                 placement_group_bundle_index):
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 placement_group, placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -79,8 +79,9 @@ class RemoteFunction:
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
-        self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
-                                 num_return_vals is None else num_return_vals)
+        self._accelerator_type = accelerator_type
+        self._num_returns = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
+                             if num_returns is None else num_returns)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
@@ -107,7 +108,7 @@ class RemoteFunction:
     def _submit(self,
                 args=None,
                 kwargs=None,
-                num_return_vals=None,
+                num_returns=None,
                 num_cpus=None,
                 num_gpus=None,
                 resources=None):
@@ -116,7 +117,7 @@ class RemoteFunction:
         return self._remote(
             args=args,
             kwargs=kwargs,
-            num_return_vals=num_return_vals,
+            num_returns=num_returns,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources)
@@ -144,16 +145,17 @@ class RemoteFunction:
     def _remote(self,
                 args=None,
                 kwargs=None,
-                num_return_vals=None,
-                is_direct_call=None,
+                num_returns=None,
                 num_cpus=None,
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
+                accelerator_type=None,
                 resources=None,
                 max_retries=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -183,10 +185,8 @@ class RemoteFunction:
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args
 
-        if num_return_vals is None:
-            num_return_vals = self._num_return_vals
-        if is_direct_call is not None and not is_direct_call:
-            raise ValueError("Non-direct call tasks are no longer supported.")
+        if num_returns is None:
+            num_returns = self._num_returns
         if max_retries is None:
             max_retries = self._max_retries
 
@@ -198,8 +198,9 @@ class RemoteFunction:
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            self._object_store_memory, self._resources, self._accelerator_type,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -215,8 +216,8 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language, self._function_descriptor, list_args,
-                num_return_vals, resources, max_retries, placement_group.id,
+                self._language, self._function_descriptor, list_args, name,
+                num_returns, resources, max_retries, placement_group.id,
                 placement_group_bundle_index)
 
             if len(object_refs) == 1:

@@ -11,7 +11,7 @@ def test_spill_objects_manually(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=75 * 1024 * 1024,
-        object_spilling_config={
+        _object_spilling_config={
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
@@ -58,7 +58,7 @@ def test_spill_objects_manually_from_workers(shutdown_only):
     # Limit our object store to 100 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        object_spilling_config={
+        _object_spilling_config={
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
@@ -84,7 +84,7 @@ def test_spill_objects_manually_with_workers(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        object_spilling_config={
+        _object_spilling_config={
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
@@ -111,7 +111,7 @@ def test_spill_objects_manually_with_workers(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 0,
         "object_store_memory": 75 * 1024 * 1024,
-        "object_spilling_config": {
+        "_object_spilling_config": {
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
@@ -127,7 +127,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(
         object_store_memory=75 * 1024 * 1024,
-        object_spilling_config={
+        _object_spilling_config={
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"

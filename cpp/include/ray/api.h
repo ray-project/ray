@@ -33,6 +33,9 @@ class Ray {
   /// Initialize Ray runtime.
   static void Init();
 
+  /// Shutdown Ray runtime.
+  static void Shutdown();
+
   /// Store an object in the object store.
   ///
   /// \param[in] obj The object which should be stored.

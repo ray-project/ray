@@ -42,6 +42,10 @@ public class KillActorTest extends BaseTest {
     public void kill(ActorHandle<?> actor, boolean noRestart) {
       actor.kill(noRestart);
     }
+
+    public void killWithoutRestart(ActorHandle<?> actor) {
+      actor.kill();
+    }
   }
 
   private static void localKill(ActorHandle<?> actor, boolean noRestart) {
@@ -87,10 +91,16 @@ public class KillActorTest extends BaseTest {
   public void testLocalKill() {
     testKillActor(KillActorTest::localKill, false);
     testKillActor(KillActorTest::localKill, true);
+    testKillActor((actorHandle, noRestart) -> actorHandle.kill(), true);
   }
 
   public void testRemoteKill() {
     testKillActor(KillActorTest::remoteKill, false);
     testKillActor(KillActorTest::remoteKill, true);
+    testKillActor((actor, noRestart) -> {
+      ActorHandle<KillerActor> killer = Ray.actor(KillerActor::new).remote();
+      killer.task(KillerActor::killWithoutRestart, actor).remote();
+    }, true);
   }
+
 }

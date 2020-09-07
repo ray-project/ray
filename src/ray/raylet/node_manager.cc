@@ -139,7 +139,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers,
+          io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, gcs_client_, config.worker_commands,
@@ -1362,6 +1362,11 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the worker remains idle after scheduling, we may kill it to ensure the
+    // registered workers are in a reasonable size.
+    worker_pool_.TryKillingIdleWorker(worker);
+  }
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1795,12 +1800,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task);
 }
 
-void NodeManager::HandleRequestResourceReserve(
-    const rpc::RequestResourceReserveRequest &request,
-    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+void NodeManager::HandlePrepareBundleResources(
+    const rpc::PrepareBundleResourcesRequest &request,
+    rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(sang): Port this onto the new scheduler.
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
   auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
   if (resource_ids.AvailableResources().size() == 0) {
@@ -1813,6 +1819,13 @@ void NodeManager::HandleRequestResourceReserve(
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleCommitBundleResources(
+    const rpc::CommitBundleResourcesRequest &request,
+    rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // TODO(sang): Implement this in the next PR.
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -3147,6 +3160,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3211,6 +3225,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
@@ -3220,7 +3238,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
           worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_worker_id(worker->WorkerId().Binary());
           worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          worker_stats->set_language(worker->GetLanguage());
           reply->set_num_workers(reply->num_workers() + 1);
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());

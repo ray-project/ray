@@ -13,7 +13,7 @@ class Cluster:
                  connect=False,
                  head_node_args=None,
                  shutdown_at_exit=True):
-        """Initializes the cluster.
+        """Initializes all services of a Ray cluster.
 
         Args:
             initialize_head (bool): Automatically start a Ray cluster
@@ -53,7 +53,7 @@ class Cluster:
         output_info = ray.init(
             ignore_reinit_error=True,
             address=self.redis_address,
-            redis_password=self.redis_password)
+            _redis_password=self.redis_password)
         logger.info(output_info)
         self.connected = True
 

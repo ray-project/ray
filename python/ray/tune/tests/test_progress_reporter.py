@@ -70,7 +70,7 @@ tune.run_experiments({
             "c": tune.grid_search(list(range(10))),
         },
     },
-}, reuse_actors=True, verbose=1)"""
+}, verbose=1)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
 +---------------+----------+-------+-----+-----+

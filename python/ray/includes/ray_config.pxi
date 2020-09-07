@@ -111,3 +111,7 @@ cdef class Config:
     @staticmethod
     def metrics_report_interval_ms():
         return RayConfig.instance().metrics_report_interval_ms()
+
+    @staticmethod
+    def enable_timeline():
+        return RayConfig.instance().enable_timeline()

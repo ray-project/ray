@@ -17,11 +17,12 @@ on `Github`_.
    trainable.rst
    reporters.rst
    analysis.rst
-   grid_random.rst
+   search_space.rst
    suggestion.rst
    schedulers.rst
    sklearn.rst
    logging.rst
+   integration.rst
    internals.rst
    client.rst
    cli.rst

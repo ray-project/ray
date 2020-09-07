@@ -100,16 +100,16 @@ class Monitor:
         """
         waiting_bundles, infeasible_bundles = [], []
         try:
-            if not self.autoscaler:
-                return
-            for resource_demand_pb in list(
-                    resource_load_by_shape.resource_demands):
-                request_shape = dict(resource_demand_pb.shape)
-                for _ in range(resource_demand_pb.num_ready_requests_queued):
-                    waiting_bundles.append(request_shape)
-                for _ in range(
-                        resource_demand_pb.num_infeasible_requests_queued):
-                    infeasible_bundles.append(request_shape)
+            if self.autoscaler:
+                for resource_demand_pb in list(
+                        resource_load_by_shape.resource_demands):
+                    request_shape = dict(resource_demand_pb.shape)
+                    for _ in range(
+                            resource_demand_pb.num_ready_requests_queued):
+                        waiting_bundles.append(request_shape)
+                    for _ in range(
+                            resource_demand_pb.num_infeasible_requests_queued):
+                        infeasible_bundles.append(request_shape)
         except Exception as e:
             logger.exception(e)
         return waiting_bundles, infeasible_bundles

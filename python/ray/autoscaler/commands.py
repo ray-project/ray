@@ -128,7 +128,8 @@ def create_or_update_cluster(config_file: str,
         cli_logger.newline()
 
     def handle_yaml_error(e):
-        cli_logger.error("Cluster config invalid\n")
+        cli_logger.error("Cluster config invalid")
+        cli_logger.newline()
         cli_logger.error("Failed to load YAML file " + cf.bold("{}"),
                          config_file)
         cli_logger.newline()
@@ -164,7 +165,7 @@ def create_or_update_cluster(config_file: str,
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid\n")
+    cli_logger.success("Cluster configuration valid")
 
     printed_overrides = False
 
@@ -255,7 +256,7 @@ def _bootstrap_config(config: Dict[str, Any],
     provider_cls = importer(config["provider"])
 
     with cli_logger.timed(  # todo: better message
-            "Bootstraping {} config",
+            "Bootstrapping {} config",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
@@ -322,7 +323,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
                 cli_logger.print(
                     "{} random worker nodes will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold(min_workers),
+                    cf.dimmed("(due to {})"), cf.bold(min_workers),
                     cf.bold("--keep-min-workers"))
                 cli_logger.old_info(logger,
                                     "teardown_cluster: Keeping {} nodes...",
@@ -334,7 +335,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             if workers_only:
                 cli_logger.print(
                     "The head node will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold("--workers-only"))
+                    cf.dimmed("(due to {})"), cf.bold("--workers-only"))
 
                 return workers
 
@@ -344,9 +345,41 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
             return head + workers
 
+        def run_docker_stop(node, container_name):
+            try:
+                updater = NodeUpdaterThread(
+                    node_id=node,
+                    provider_config=config["provider"],
+                    provider=provider,
+                    auth_config=config["auth"],
+                    cluster_name=config["cluster_name"],
+                    file_mounts=config["file_mounts"],
+                    initialization_commands=[],
+                    setup_commands=[],
+                    ray_start_commands=[],
+                    runtime_hash="",
+                    file_mounts_contents_hash="",
+                    is_head_node=False,
+                    docker_config=config.get("docker"))
+                _exec(
+                    updater,
+                    f"docker stop {container_name}",
+                    False,
+                    False,
+                    run_env="host")
+            except Exception:
+                cli_logger.warning(f"Docker stop failed on {node}")
+                cli_logger.old_warning(logger, f"Docker stop failed on {node}")
+
         # Loop here to check that both the head and worker nodes are actually
         #   really gone
         A = remaining_nodes()
+
+        container_name = config.get("docker", {}).get("container_name")
+        if container_name:
+            for node in A:
+                run_docker_stop(node, container_name)
+
         with LogTimer("teardown_cluster: done."):
             while A:
                 cli_logger.old_info(
@@ -632,13 +665,13 @@ def get_or_create_head_node(config,
             cli_logger.print("Prepared bootstrap config")
 
             if restart_only:
-                init_commands = []
+                setup_commands = []
                 ray_start_commands = config["head_start_ray_commands"]
             elif no_restart:
-                init_commands = config["head_setup_commands"]
+                setup_commands = config["head_setup_commands"]
                 ray_start_commands = []
             else:
-                init_commands = config["head_setup_commands"]
+                setup_commands = config["head_setup_commands"]
                 ray_start_commands = config["head_start_ray_commands"]
 
             if not no_restart:
@@ -652,7 +685,7 @@ def get_or_create_head_node(config,
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 initialization_commands=config["initialization_commands"],
-                setup_commands=init_commands,
+                setup_commands=setup_commands,
                 ray_start_commands=ray_start_commands,
                 process_runner=_runner,
                 runtime_hash=runtime_hash,

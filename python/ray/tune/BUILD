@@ -102,6 +102,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_pytorch_lightning",
+    size = "small",
+    srcs = ["tests/test_integration_pytorch_lightning.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_integration_wandb",
     size = "small",
     srcs = ["tests/test_integration_wandb.py"],
@@ -135,6 +143,14 @@ py_test(
     name = "test_run_experiment",
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_sample",
+    size = "medium",
+    srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -246,6 +262,14 @@ py_test(
     tags = ["exclusive", "example"],
 )
 
+py_test(
+    name = "ext_pytorch",
+    size = "medium",
+    srcs = ["tests/ext_pytorch.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+)
+
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
@@ -312,6 +336,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod",
+    size = "medium",
+    srcs = ["tests/test_horovod.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
@@ -345,6 +377,15 @@ py_test(
     srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "horovod_simple",
+    size = "medium",
+    srcs = ["examples/horovod_simple.py"],
+    tags = ["exclusive", "example", "py37"],
+    deps = [":tune_lib"],
     args = ["--smoke-test"]
 )
 
@@ -424,6 +465,15 @@ py_test(
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "mxnet_example",
+    size = "small",
+    srcs = ["examples/mxnet_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -543,6 +593,27 @@ py_test(
 #     name = "sigopt_example",
 #     size = "medium",
 #     srcs = ["examples/sigopt_example.py"],
+#     deps = [":tune_lib"],
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_multi_objective_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_multi_objective_example.py"],
+#     deps = [":tune_lib"],                 s
+#     tags = ["exclusive", "example"],
+#     args = ["--smoke-test"]
+# )
+
+# Needs SigOpt API key.
+# py_test(
+#     name = "sigopt_prior_beliefs_example",
+#     size = "medium",
+#     srcs = ["examples/sigopt_prior_beliefs_example.py"],
 #     deps = [":tune_lib"],
 #     tags = ["exclusive", "example"],
 #     args = ["--smoke-test"]

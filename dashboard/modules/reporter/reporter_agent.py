@@ -6,6 +6,7 @@ import os
 import socket
 import subprocess
 import sys
+import traceback
 
 import aioredis
 
@@ -17,6 +18,7 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.metrics_agent import MetricsAgent
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -67,30 +69,46 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+        self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
         duration = request.duration
         profiling_file_path = os.path.join(ray.utils.get_ray_temp_dir(),
-                                           "{}_profiling.txt".format(pid))
-        process = subprocess.Popen(
-            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
-            .format(profiling_file_path, pid, duration),
+                                           f"{pid}_profiling.txt")
+        sudo = "sudo" if ray.utils.get_user() != "root" else ""
+        process = await asyncio.create_subprocess_shell(
+            f"{sudo} $(which py-spy) record "
+            f"-o {profiling_file_path} -p {pid} -d {duration} -f speedscope",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
-        stdout, stderr = process.communicate()
+        stdout, stderr = await process.communicate()
         if process.returncode != 0:
             profiling_stats = ""
         else:
             with open(profiling_file_path, "r") as f:
                 profiling_stats = f.read()
         return reporter_pb2.GetProfilingStatsReply(
-            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
+            profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
     async def ReportMetrics(self, request, context):
-        # TODO(sang): Process metrics here.
-        return reporter_pb2.ReportMetricsReply()
+        # NOTE: Exceptions are not propagated properly
+        # when we don't catch them here.
+        try:
+            metrcs_description_required = (
+                self._metrics_agent.record_metrics_points(
+                    request.metrics_points))
+        except Exception as e:
+            logger.error(e)
+            logger.error(traceback.format_exc())
+
+        # If metrics description is missing, we should notify cpp processes
+        # that we need them. Cpp processes will then report them to here.
+        # We need it when (1) a new metric is reported (application metric)
+        # (2) a reporter goes down and restarted (currently not implemented).
+        return reporter_pb2.ReportMetricsReply(
+            metrcs_description_required=metrcs_description_required)
 
     @staticmethod
     def _get_cpu_percent():
@@ -222,8 +240,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 await aioredis_client.publish(
                     "{}{}".format(reporter_consts.REPORTER_PREFIX,
                                   self._hostname), jsonify_asdict(stats))
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 

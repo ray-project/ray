@@ -23,6 +23,14 @@ class Processor(ABC):
     def close(self):
         pass
 
+    @abstractmethod
+    def save_checkpoint(self):
+        pass
+
+    @abstractmethod
+    def load_checkpoint(self, checkpoint_obj):
+        pass
+
 
 class StreamingProcessor(Processor, ABC):
     """StreamingProcessor is a process unit for a operator."""
@@ -40,7 +48,13 @@ class StreamingProcessor(Processor, ABC):
         logger.info("Opened Processor {}".format(self))
 
     def close(self):
-        pass
+        self.operator.close()
+
+    def save_checkpoint(self):
+        self.operator.save_checkpoint()
+
+    def load_checkpoint(self, checkpoint_obj):
+        self.operator.load_checkpoint(checkpoint_obj)
 
 
 class SourceProcessor(StreamingProcessor):
@@ -52,8 +66,8 @@ class SourceProcessor(StreamingProcessor):
     def process(self, record):
         raise Exception("SourceProcessor should not process record")
 
-    def run(self):
-        self.operator.run()
+    def fetch(self):
+        self.operator.fetch()
 
 
 class OneInputProcessor(StreamingProcessor):

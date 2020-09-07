@@ -18,16 +18,11 @@ available_node_types:
             InstanceType: m4.xlarge
         resources: {"CPU": 4}
         max_workers: 5
-    cpu_4_spot:
-        node_config:
-            InstanceType: m4.xlarge
-            InstanceMarketOptions:
-                MarketType: spot
-        resources: {"CPU": 4}
-        max_workers: 20
-    cpu_16_ondemand:
+    cpu_16_spot:
         node_config:
             InstanceType: m4.4xlarge
+            InstanceMarketOptions:
+                MarketType: spot
         resources: {"CPU": 16, "Custom1": 1}
         max_workers: 10
     gpu_1_ondemand:
@@ -35,17 +30,21 @@ available_node_types:
             InstanceType: p2.xlarge
         resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
         max_workers: 4
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
     gpu_8_ondemand:
         node_config:
             InstanceType: p2.8xlarge
         resources: {"CPU": 32, "GPU": 8}
         max_workers: 2
+        worker_setup_commands:
+            - pip install tensorflow-gpu  # Example command.
 
 # Specify the node type of the head node (as configured above).
 head_node_type: cpu_4_ondemand
 
 # Specify the default type of the worker node (as configured above).
-worker_default_node_type: cpu_4_spot
+worker_default_node_type: cpu_16_spot
 
 # The default settings for the head node. This will be merged with the per-node
 # type configs given above.

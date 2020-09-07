@@ -17,12 +17,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 class ClusterStarter {
+
   private static final Logger LOG = LoggerFactory.getLogger(ClusterStarter.class);
   private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/plasma_store_socket";
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/raylet_socket";
 
   static synchronized void startCluster(boolean isCrossLanguage, boolean isLocal) {
-    Preconditions.checkArgument(Ray.internal() == null);
+    Preconditions.checkArgument(!Ray.isInitialized());
     RayConfig.reset();
     if (!isLocal) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");

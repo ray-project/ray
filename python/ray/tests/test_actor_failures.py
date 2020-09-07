@@ -30,7 +30,7 @@ def ray_init_with_task_retry_delay():
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "object_store_memory": 150 * 1024 * 1024,
-        "lru_evict": True,
+        "_lru_evict": True,
     }],
     indirect=True)
 def test_actor_eviction(ray_start_regular):
@@ -63,7 +63,7 @@ def test_actor_eviction(ray_start_regular):
             val = ray.get(obj)
             assert isinstance(val, np.ndarray), val
             num_success += 1
-        except ray.exceptions.UnreconstructableError:
+        except ray.exceptions.ObjectLostError:
             num_evicted += 1
     # Some objects should have been evicted, and some should still be in the
     # object store.
@@ -241,7 +241,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
         def ready(self):
             return
 
-    actor = RestartableActor.options(detached=True).remote()
+    actor = RestartableActor.options(lifetime="detached").remote()
     ray.get(actor.ready.remote())
     results = [actor.increase.remote() for _ in range(100)]
     # Kill actor node, while the above task is still being executed.

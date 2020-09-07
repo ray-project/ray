@@ -165,10 +165,8 @@ class TrialExecutor:
                     raise TuneError(
                         ("Insufficient cluster resources to launch trial: "
                          "trial requested {} but the cluster has only {}. "
-                         "Pass `queue_trials=True` in "
-                         "ray.tune.run() or on the command "
-                         "line to queue trials until the cluster scales "
-                         "up or resources become available. {}").format(
+                         "This error should not occur if running on an "
+                         "autoscaling cluster. {}").format(
                              trial.resources.summary_string(),
                              self.resource_string(),
                              trial.get_trainable_cls().resource_help(

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import ray
 import ray.cluster_utils
 import ray.test_utils
-from ray.exceptions import RayTimeoutError
+from ray.exceptions import GetTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +351,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj_ref)
 
 
@@ -366,25 +366,6 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-def test_get_multiple_experimental(ray_start_regular_shared):
-    object_refs = [ray.put(i) for i in range(10)]
-
-    object_refs_tuple = tuple(object_refs)
-    assert ray.experimental.get(object_refs_tuple) == list(range(10))
-
-    object_refs_nparray = np.array(object_refs)
-    assert ray.experimental.get(object_refs_nparray) == list(range(10))
-
-
-def test_get_dict(ray_start_regular_shared):
-    d = {str(i): ray.put(i) for i in range(5)}
-    for i in range(5, 10):
-        d[str(i)] = i
-    result = ray.experimental.get(d)
-    expected = {str(i): i for i in range(10)}
-    assert result == expected
-
-
 def test_get_with_timeout(ray_start_regular_shared):
     signal = ray.test_utils.SignalActor.remote()
 
@@ -396,7 +377,7 @@ def test_get_with_timeout(ray_start_regular_shared):
     # Check that get() raises a TimeoutError after the timeout if the object
     # is not ready yet.
     result_id = signal.wait.remote()
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(result_id, timeout=0.1)
 
     # Check that a subsequent get() returns early.

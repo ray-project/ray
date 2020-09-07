@@ -2,6 +2,7 @@ from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
+import sys
 import unittest
 
 import ray
@@ -257,7 +258,6 @@ class TestRolloutLearntPolicy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
     import pytest
 
     # One can specify the specific TestCase class to run.

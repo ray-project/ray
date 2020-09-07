@@ -20,22 +20,33 @@ AbstractRayRuntime *AbstractRayRuntime::DoInit(std::shared_ptr<RayConfig> config
     GenerateBaseAddressOfCurrentLibrary();
     runtime = new LocalModeRayRuntime(config);
   } else {
-    ProcessHelper::RayStart();
+    ProcessHelper::getInstance().RayStart(config);
     runtime = new NativeRayRuntime(config);
   }
   RAY_CHECK(runtime);
   return runtime;
 }
 
+void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
+  if (config->run_mode == RunMode::CLUSTER) {
+    ProcessHelper::getInstance().RayStop(config);
+  }
+}
+
+void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
+                             ObjectID *object_id) {
+  object_store_->Put(data, object_id);
+}
+
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,
                              const ObjectID &object_id) {
-  object_store_->Put(object_id, data);
+  object_store_->Put(data, object_id);
 }
 
 ObjectID AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data) {
   ObjectID object_id =
       ObjectID::FromIndex(worker_->GetCurrentTaskID(), worker_->GetNextPutIndex());
-  Put(data, object_id);
+  Put(data, &object_id);
   return object_id;
 }
 
@@ -56,8 +67,9 @@ WaitResult AbstractRayRuntime::Wait(const std::vector<ObjectID> &ids, int num_ob
 ObjectID AbstractRayRuntime::Call(RemoteFunctionPtrHolder &fptr,
                                   std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  invocationSpec.task_id =
-      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
+  // TODO(Guyang Song): make it from different task
+  invocationSpec.task_id = TaskID::ForFakeTask();
+  invocationSpec.name = "";
   invocationSpec.actor_id = ActorID::Nil();
   invocationSpec.args = args;
   invocationSpec.func_offset =
@@ -76,8 +88,9 @@ ObjectID AbstractRayRuntime::CallActor(const RemoteFunctionPtrHolder &fptr,
                                        const ActorID &actor,
                                        std::shared_ptr<msgpack::sbuffer> args) {
   InvocationSpec invocationSpec;
-  invocationSpec.task_id =
-      TaskID::ForFakeTask();  // TODO(Guyang Song): make it from different task
+  // TODO(Guyang Song): make it from different task
+  invocationSpec.task_id = TaskID::ForFakeTask();
+  invocationSpec.name = "";
   invocationSpec.actor_id = actor;
   invocationSpec.args = args;
   invocationSpec.func_offset =

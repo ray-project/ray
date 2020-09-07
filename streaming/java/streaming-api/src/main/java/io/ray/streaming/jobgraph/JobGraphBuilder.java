@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JobGraphBuilder {
+
   private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilder.class);
 
   private JobGraph jobGraph;
@@ -34,8 +35,9 @@ public class JobGraphBuilder {
     this(streamSinkList, jobName, new HashMap<>());
   }
 
-  public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
-                         Map<String, String> jobConfig) {
+  public JobGraphBuilder(
+      List<StreamSink> streamSinkList, String jobName,
+      Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);
@@ -98,7 +100,7 @@ public class JobGraphBuilder {
 
       // process join stream
       if (stream instanceof JoinStream) {
-        DataStream rightStream =  ((JoinStream) stream).getRightStream();
+        DataStream rightStream = ((JoinStream) stream).getRightStream();
         this.jobGraph.addEdge(
             new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
         processStream(rightStream);

@@ -45,6 +45,7 @@ DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
+DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -84,6 +85,7 @@ int main(int argc, char *argv[]) {
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
+  const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -159,6 +161,10 @@ int main(int argc, char *argv[]) {
           // about this?
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
+        auto num_cpus_it = static_resource_conf.find("CPU");
+        int num_cpus = num_cpus_it != static_resource_conf.end()
+                           ? static_cast<int>(num_cpus_it->second)
+                           : 0;
 
         node_manager_config.raylet_config = raylet_config;
         node_manager_config.resource_config =
@@ -168,6 +174,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         node_manager_config.num_initial_workers = num_initial_workers;
+        node_manager_config.num_workers_soft_limit = num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
@@ -182,9 +189,14 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
         }
-        if (python_worker_command.empty() && java_worker_command.empty()) {
-          RAY_CHECK(0) << "Either Python worker command or Java worker command should be "
-                          "provided.";
+        if (!cpp_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
+        }
+        if (python_worker_command.empty() && java_worker_command.empty() &&
+            cpp_worker_command.empty()) {
+          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+                         << "should be provided";
         }
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
@@ -218,7 +230,6 @@ int main(int argc, char *argv[]) {
         object_manager_config.plasma_directory = plasma_directory;
         object_manager_config.huge_pages = huge_pages;
 
-        int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
         object_manager_config.object_chunk_size =
