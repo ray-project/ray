@@ -42,7 +42,7 @@ class TestBC(unittest.TestCase):
         num_iterations = 300
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks="torch"): #TODO
+        for _ in framework_iterator(config):
             trainer = marwil.BCTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 eval_results = trainer.train()["evaluation"]
