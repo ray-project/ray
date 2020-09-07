@@ -203,10 +203,6 @@ public final class Ray extends RayCall {
     return internal().wrapCallable(callable);
   }
 
-  public static boolean isInitialized() {
-    return runtime != null;
-  }
-
   /**
    * Get the underlying runtime instance.
    */

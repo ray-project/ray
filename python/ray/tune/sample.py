@@ -2,6 +2,7 @@ import logging
 import random
 from copy import copy
 from inspect import signature
+from math import isclose
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
@@ -187,6 +188,17 @@ class Float(Domain):
         return new
 
     def quantized(self, q: float):
+        if self.lower > float("-inf") and not isclose(self.lower / q,
+                                                      round(self.lower / q)):
+            raise ValueError(
+                f"Your lower variable bound {self.lower} is not divisible by "
+                f"quantization factor {q}.")
+        if self.upper < float("inf") and not isclose(self.upper / q,
+                                                     round(self.upper / q)):
+            raise ValueError(
+                f"Your upper variable bound {self.upper} is not divisible by "
+                f"quantization factor {q}.")
+
         new = copy(self)
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
