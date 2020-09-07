@@ -322,7 +322,7 @@ message JobConfig {
   // The jvm options for java workers of the job.
   repeated string jvm_options = 3;
   // job resource directory
-  string job_resource_path = 4;
+  repeated string job_resource_path = 4;
 }
 
 message JobTableData {

@@ -209,13 +209,39 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                  << " non-actor workers";
 
   int workers_to_start = 1;
-  std::string job_resource_path;
+  std::string job_resource_path = job_config->job_resource_path();
+  std::string job_resource_path_str;
+  if (!job_resource_path.empty()) {
+    for(int i = 0; job_config->job_resource_path_size(); i++) {
+      auto path = job_config->job_resource_path(i);
+      switch (language) {
+        case Language::PYTHON: {
+          if (i == 0) {
+            job_resource_path_str += "--job-resource-path=[";
+          }
+          job_resource_path_str += "'" + path+ "', ";
+          if (i == job_resource_path.size() - 1) {
+            job_resource_path_str += "]";
+          }
+          break;
+        }
+        case Language::JAVA: {
+          job_resource_path_str += "-Dray.job.resource-path." + i;
+          job_resource_path_str += "=" + path;
+          break;
+        }
+        default:
+          RAY_LOG(FATAL)
+              << "job_resource_path is not supported for worker language "
+              << language;
+      }
+    }
+  }
   if (dynamic_options.empty()) {
     if (!RayConfig::instance().enable_multi_tenancy()) {
       workers_to_start = state.num_workers_per_process;
     } else if (language == Language::JAVA) {
       workers_to_start = job_config->num_java_workers_per_process();
-      job_resource_path = job_config->job_resource_path();
     }
   }
 

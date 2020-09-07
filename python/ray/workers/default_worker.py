@@ -1,6 +1,8 @@
 import argparse
 import json
 import time
+import sys
+import os
 
 import ray
 import ray.actor
@@ -98,7 +100,11 @@ parser.add_argument(
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.")
-
+parser.add_argument(
+    "--job-resource-path",
+    default=None,
+    type=json.loads,
+    help="Specify job resource path.")
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -134,6 +140,13 @@ if __name__ == "__main__":
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
+
+    job_resource_path = args.job_resource_path
+    if job_resource_path is not None:
+        for p in job_resource_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.append(p)
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
