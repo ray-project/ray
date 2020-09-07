@@ -70,6 +70,13 @@ class Searcher:
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
 
+        self._metric = metric
+        self._mode = mode
+
+        if not mode or not metric:
+            # Early return to avoid assertions
+            return
+
         assert isinstance(
             metric, type(mode)), "metric and mode must be of the same type"
         if isinstance(mode, str):
@@ -82,9 +89,6 @@ class Searcher:
                        mode), "All of mode must be 'min' or 'max' or 'obs'!"
         else:
             raise ValueError("Mode most either be a list or string")
-
-        self._metric = metric
-        self._mode = mode
 
     def set_search_properties(self, metric, mode, config):
         """Pass search properties to searcher.
