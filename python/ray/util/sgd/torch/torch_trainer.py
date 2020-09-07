@@ -13,6 +13,7 @@ from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
+from ray.util import log_once
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
@@ -185,11 +186,12 @@ class TorchTrainer:
                 "batch size to be used across all workers.")
 
         if serialize_data_creation is True:
-            logging.warning(
-                "serialize_data_creation is deprecated and will be ignored. "
-                "If you require serialized data loading you should use "
-                "implement this in TrainingOperator.setup. You may find "
-                "sgd.utils.RayFileLock useful here.")
+            if log_once("serialize_data_creation"):
+                logging.warning(
+                    "serialize_data_creation is deprecated and will be ignored. "
+                    "If you require serialized data loading you should "
+                    "implement this in TrainingOperator.setup. You may find "
+                    "FileLock useful here.")
 
         if data_loader_args:
             raise DeprecationWarning(

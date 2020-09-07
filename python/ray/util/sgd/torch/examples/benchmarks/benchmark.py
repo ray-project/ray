@@ -80,9 +80,8 @@ class Training(TrainingOperator):
 
         self.model, self.optimizer = self.register(
             models=model,
-            optimizers=optimizer,
-            train_loader=train_data,
-            validation_loader=None)
+            optimizers=optimizer,)
+        self.register_data(train_loader=train_data, validation_loader=None)
         data = torch.randn(args.batch_size, 3, 224, 224)
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:

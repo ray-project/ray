@@ -9,6 +9,7 @@ import torch.utils.data
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 import numpy as np
+from filelock import FileLock
 
 from tqdm import trange
 
@@ -18,7 +19,7 @@ from scipy.stats import entropy
 
 import ray
 from ray.util.sgd import TorchTrainer
-from ray.util.sgd.utils import override, RayFileLock
+from ray.util.sgd.utils import override
 from ray.util.sgd.torch import TrainingOperator
 
 MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
@@ -114,7 +115,7 @@ class GANOperator(TrainingOperator):
             betas=(0.5, 0.999))
         optimizers = (discriminator_opt, generator_opt)
 
-        with RayFileLock():
+        with FileLock(".ray.lock"):
             dataset = datasets.MNIST(
                 root="~/mnist/",
                 download=True,
@@ -123,17 +124,17 @@ class GANOperator(TrainingOperator):
                     transforms.ToTensor(),
                     transforms.Normalize((0.5, ), (0.5, )),
                 ]))
-            if config.get("test_mode"):
-                dataset = torch.utils.data.Subset(dataset, list(range(64)))
-            train_dataloader = torch.utils.data.DataLoader(
-                dataset, batch_size=config.get("batch_size", 32))
+        if config.get("test_mode"):
+            dataset = torch.utils.data.Subset(dataset, list(range(64)))
+        train_dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=config.get("batch_size", 32))
 
         self.models, self.optimizers, self.criterion = self.register(
             models=models,
             optimizers=optimizers,
-            train_loader=train_dataloader,
-            validation_loader=None,
             criterion=nn.BCELoss())
+        self.register_data(train_dataloader=train_dataloader,
+                           validation_loader=None)
 
         self.model = self.models[0]
         self.optimizer = self.optimizers[0]

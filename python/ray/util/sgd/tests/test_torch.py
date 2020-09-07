@@ -132,9 +132,9 @@ def test_multi_model(ray_start_2_cpus, num_workers):
             self.models, self.optimizers, self.criterion = self.register(
                 models=models,
                 optimizers=opts,
-                train_loader=train_dataloader,
-                validation_loader=val_dataloader,
                 criterion=loss)
+            self.register_data(train_loader=train_dataloader,
+                               validation_loader=val_dataloader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -219,8 +219,9 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
             self.models, self.optimizers, self.criterion, self.schedulers = \
                 self.register(models=models, optimizers=optimizers,
                               schedulers=schedulers,
-                              train_loader=train_loader,
-                              validation_loader=val_loader, criterion=loss)
+                              criterion=loss)
+            self.register_data(train_loader=train_loader,
+                               validation_loader=val_loader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -262,8 +263,9 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
             self.model, self.optimizer, self.criterion, self.scheduler = \
                 self.register(
                     models=model, optimizers=optimizer,
-                    criterion=loss, train_loader=train_loader,
-                    validation_loader=val_loader, schedulers=scheduler)
+                    criterion=loss, schedulers=scheduler)
+            self.register_data(train_loader=train_loader,
+                               validation_loader=val_loader)
 
     if scheduler_freq is None:
         with pytest.raises(ValueError):
@@ -313,9 +315,7 @@ def test_dataset(ray_start_4_cpus):
             self.model, self.optimizer, self.criterion = self.register(
                 models=model,
                 optimizers=optimizer,
-                criterion=loss,
-                train_loader=None,
-                validation_loader=None)
+                criterion=loss)
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,

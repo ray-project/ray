@@ -807,9 +807,9 @@ class CreatorOperator(TrainingOperator):
             logger.debug("Serializing the dataloading process.")
             with FileLock(os.path.join(tempfile.gettempdir(),
                                        ".raydata.lock")):
-                loaders = self._data_creator(config)
+                loaders = self.__class__._data_creator(config)
         else:
-            loaders = self._data_creator(config)
+            loaders = self.__class__._data_creator(config)
         train_loader, val_loader = self._validate_loaders(loaders)
 
         return train_loader, val_loader
@@ -819,33 +819,33 @@ class CreatorOperator(TrainingOperator):
         logger.debug("Loading data.")
         train_loader = None
         validation_loader = None
-        if self._data_creator and callable(
-                self._data_creator):
+        if self.__class__._data_creator and callable(
+                self.__class__._data_creator):
             train_loader, validation_loader = self._initialize_dataloaders(
                 config)
 
         logger.debug("Creating model")
-        models = self._model_creator(config)
+        models = self.__class__._model_creator(config)
 
         kwargs["models"] = models
 
         logger.debug("Creating optimizer.")
-        optimizers = self._optimizer_creator(models, config)
+        optimizers = self.__class__._optimizer_creator(models, config)
 
         kwargs["optimizers"] = optimizers
 
-        if self._scheduler_creator:
+        if self.__class__._scheduler_creator:
             logger.debug("Creating scheduler.")
-            schedulers = self._scheduler_creator(optimizers, config)
+            schedulers = self.__class__._scheduler_creator(optimizers, config)
             kwargs["schedulers"] = schedulers
 
-        if self._loss_creator:
+        if self.__class__._loss_creator:
             logger.debug("Creating loss.")
-            if inspect.isclass(self._loss_creator) and issubclass(
-                    self._loss_creator, torch.nn.modules.loss._Loss):
-                criterion = self._loss_creator()
+            if inspect.isclass(self.__class__._loss_creator) and issubclass(
+                    self.__class__._loss_creator, torch.nn.modules.loss._Loss):
+                criterion = self.__class__._loss_creator()
             else:
-                criterion = self._loss_creator(config)
+                criterion = self.__class__._loss_creator(config)
             kwargs["criterion"] = criterion
 
         state = self.register(**kwargs)

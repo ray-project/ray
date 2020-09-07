@@ -40,9 +40,9 @@ class MyTrainingOperator(TrainingOperator):
         # Distributed Sampling, FP16.
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
-                          train_loader=train_loader,
-                          validation_loader=val_loader, criterion=criterion,
+                          criterion=criterion,
                           scheduler=scheduler)
+        self.register_data(train_loader=train_loader, validation_loader=val_loader)
 # __torch_operator_end__
 
 # __torch_model_start__

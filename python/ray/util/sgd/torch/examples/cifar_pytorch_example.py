@@ -13,7 +13,7 @@ from tqdm import trange
 import ray
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE, override,
+from ray.util.sgd.utils import BATCH_SIZE, override
 
 
 def initialization_hook():
@@ -83,9 +83,8 @@ class CifarTrainingOperator(TrainingOperator):
         # Register all components.
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
-                          train_loader=train_loader,
-                          validation_loader=validation_loader,
                           criterion=criterion, schedulers=scheduler)
+        self.register_data(train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":

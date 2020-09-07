@@ -3,6 +3,8 @@ import os
 import torch
 import torch.nn as nn
 import argparse
+
+from filelock import FileLock
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from torch.utils.data import DataLoader, Subset
@@ -13,7 +15,7 @@ import ray
 from ray.tune import CLIReporter
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE, RayFileLock, override
+from ray.util.sgd.utils import BATCH_SIZE, override
 
 
 def initialization_hook():
@@ -39,20 +41,21 @@ class CifarTrainingOperator(TrainingOperator):
             momentum=config.get("momentum", 0.9))
 
         # Load in training and validation data.
-        with RayFileLock():
-            transform_train = transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                     (0.2023, 0.1994, 0.2010)),
-            ])  # meanstd transformation
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])  # meanstd transformation
 
-            transform_test = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465),
-                                     (0.2023, 0.1994, 0.2010)),
-            ])
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])
+
+        with FileLock("~/.ray.lock"):
             train_dataset = CIFAR10(
                 root="~/data",
                 train=True,
@@ -64,26 +67,25 @@ class CifarTrainingOperator(TrainingOperator):
                 download=False,
                 transform=transform_test)
 
-            if config.get("test_mode"):
-                train_dataset = Subset(train_dataset, list(range(64)))
-                validation_dataset = Subset(validation_dataset, list(
-                    range(64)))
+        if config.get("test_mode"):
+            train_dataset = Subset(train_dataset, list(range(64)))
+            validation_dataset = Subset(validation_dataset, list(
+                range(64)))
 
-            train_loader = DataLoader(
-                train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-            validation_loader = DataLoader(
-                validation_dataset,
-                batch_size=config[BATCH_SIZE],
-                num_workers=2)
+        train_loader = DataLoader(
+            train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+        validation_loader = DataLoader(
+            validation_dataset,
+            batch_size=config[BATCH_SIZE],
+            num_workers=2)
 
         # Create loss.
         criterion = nn.CrossEntropyLoss()
 
         self.model, self.optimizer, self.criterion = \
             self.register(models=model, optimizers=optimizer,
-                          train_loader=train_loader,
-                          validation_loader=validation_loader,
                           criterion=criterion,)
+        self.register_data(train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":
