@@ -8,7 +8,7 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
+#include "ring_buffer/ring_buffer.h"
 #include "status.h"
 using namespace std::placeholders;
 
