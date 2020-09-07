@@ -184,8 +184,8 @@ class StandardAutoscaler:
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        while (len(nodes) - len(nodes_to_terminate)
-               ) > self.config["max_workers"] and nodes:
+        while (len(nodes) -
+               len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
             to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
                         "{}: Terminating unneeded node".format(to_terminate))
