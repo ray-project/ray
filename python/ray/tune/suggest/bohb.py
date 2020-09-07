@@ -105,10 +105,6 @@ class TuneBOHB(Searcher):
         self.running = set()
         self.paused = set()
         self._metric = metric
-        if mode == "max":
-            self._metric_op = -1.
-        elif mode == "min":
-            self._metric_op = 1.
 
         self._bohb_config = bohb_config
         self._space = space
@@ -120,6 +116,11 @@ class TuneBOHB(Searcher):
 
     def setup_bohb(self):
         from hpbandster.optimizers.config_generators.bohb import BOHB
+
+        if self._mode == "max":
+            self._metric_op = -1.
+        elif self._mode == "min":
+            self._metric_op = 1.
 
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
@@ -134,11 +135,6 @@ class TuneBOHB(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-
-        if self._mode == "max":
-            self._metric_op = -1.
-        elif self._mode == "min":
-            self._metric_op = 1.
 
         self.setup_bohb()
         return True
