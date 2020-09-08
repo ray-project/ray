@@ -1315,7 +1315,9 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (list): The command options for Java worker.
-        job_resource_path (list): resource path for worker.
+        job_resource_path (list): resource path for worker. job_resource_path
+          is added to worker command in non-multi-tenancy mode and job_config
+           in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1342,13 +1344,6 @@ def start_raylet(redis_address,
         ["{},{}".format(*kv) for kv in static_resources.items()])
 
     gcs_ip_address, gcs_port = redis_address.split(":")
-
-    # job_resource_path is added to worker command in non-multi-tenancy mode
-    # and job_config in multi-tenancy mode.
-    if is__multi_tenancy_enabled(config):
-        assert not job_resource_path, \
-            "job-resource-path should be configured in job config in " \
-            "multi-tenancy mode."
 
     if include_java is True:
         java_worker_command = build_java_worker_command(
@@ -1386,8 +1381,9 @@ def start_raylet(redis_address,
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
-    start_worker_command.append(
-        f"--job-resource-path={json.dumps(job_resource_path)}")
+    if job_resource_path:
+        start_worker_command.append(
+            f"--job-resource-path={json.dumps(job_resource_path)}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1529,6 +1525,7 @@ def build_java_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        job_resource_path (list): Teh job resource path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1551,8 +1548,6 @@ def build_java_worker_command(
     pairs.append(("ray.session-dir", session_dir))
     for index in range(len(job_resource_path)):
         path = job_resource_path[index]
-        if os.path.isfile(path):
-            path = os.path.dirname(path)
         pairs.append((f"ray.job.resource-path.{index}", path))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]

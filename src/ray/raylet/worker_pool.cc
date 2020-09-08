@@ -225,7 +225,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                            job_config->jvm_options().end());
   }
   // For non-multi-tenancy mode, job_resource_path is embedded in worker_command.
-  if (RayConfig::instance().enable_multi_tenancy()) {
+  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     std::string job_resource_path_str;
     for (int i = 0; i < job_config->job_resource_path_size(); i++) {
       auto path = job_config->job_resource_path(i);
@@ -253,7 +253,9 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                        << language;
       }
     }
-    dynamic_options.push_back(job_resource_path_str);
+    if (!job_resource_path_str.empty()) {
+      dynamic_options.push_back(job_resource_path_str);
+    }
   }
 
   // Extract pointers from the worker command to pass into execvp.
