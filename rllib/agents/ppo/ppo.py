@@ -77,6 +77,12 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -173,7 +179,12 @@ class UpdateKL:
 
 
 def execution_plan(workers, config):
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    parallel_rollouts_mode = config.get("parallel_rollouts_mode", "bulk_sync")
+    num_async = config.get("parallel_rollouts_num_async")
+    # This could be set to None explicitly
+    if not num_async:
+        num_async = 1
+    rollouts = ParallelRollouts(workers, mode=parallel_rollouts_mode, num_async=num_async)
 
     if config.get("execution_plan_custom_store_ops"):
         custom_store_ops = config["execution_plan_custom_store_ops"]

@@ -1001,7 +1001,9 @@ class LocalIterator(Generic[T]):
                 as many items from the first iterator as the second.
                 [2, 1, "*"] will cause as many items to be pulled as possible
                 from the third iterator without blocking. This overrides the
-                deterministic flag.
+                deterministic flag. If weights has fixed values, we will Stop
+                the Iteration if any of the iterators with fixed weight stop
+                its iteration before metting the expected count.
         """
 
         for it in others:
@@ -1036,23 +1038,36 @@ class LocalIterator(Generic[T]):
         active = list(zip(round_robin_weights, active))
 
         def build_union(timeout=None):
+            MAX_PULL = 100 # TOOD(ekl) how to best bound this?
+            pull_counts = [0] * len(active)
             while True:
-                for weight, it in list(active):
+                yield_counts = [0] * len(active)
+                for i, (weight, it) in enumerate(list(active)):
                     if weight == "*":
-                        max_pull = 100  # TOOD(ekl) how to best bound this?
+                        max_pull = MAX_PULL
                     else:
                         max_pull = _randomized_int_cast(weight)
                     try:
                         for _ in range(max_pull):
+                            pull_counts[i] += 1
                             item = next(it)
                             if isinstance(item, _NextValueNotReady):
                                 if timeout is not None:
                                     yield item
                                 break
                             else:
+                                yield_counts[i] += 1
                                 yield item
                     except StopIteration:
                         active.remove((weight, it))
+                        fix_weights = [
+                            w != "*" for w in round_robin_weights
+                        ]
+                        expected_yield_counts = weight if weight != "*" else MAX_PULL
+                        if (any(fix_weights) and
+                            yield_counts[i] < expected_yield_counts and
+                            pull_counts[i] >= MAX_PULL):
+                            raise
                 if not active:
                     break
 

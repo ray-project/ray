@@ -43,6 +43,12 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # If set, this will fix the ratio of sampled to replayed timesteps.
         # Otherwise, replay will proceed as fast as possible.
         "training_intensity": None,
+        # Which mode to use in the ParallelRollouts operator used to collect
+        # samples. For more details check the operator in rollout_ops module.
+        "parallel_rollouts_mode": "async",
+        # This only applies if async mode is used (above config setting).
+        # Controls the max number of async requests in flight per actor
+        "parallel_rollouts_num_async": 2,
     },
 )
 # __sphinx_doc_end__
@@ -107,7 +113,12 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our replay buffer actors. Update
     # the weights of the worker that generated the batch.
-    rollouts = ParallelRollouts(workers, mode="async", num_async=2)
+    parallel_rollouts_mode = config.get("parallel_rollouts_mode", "async")
+    num_async = config.get("parallel_rollouts_num_async")
+    # This could be set to None explicitly
+    if not num_async:
+        num_async = 2
+    rollouts = ParallelRollouts(workers, mode=parallel_rollouts_mode, num_async=num_async)
     store_op = rollouts \
         .for_each(StoreToReplayBuffer(actors=replay_actors))
     if config.get("execution_plan_custom_store_ops"):

@@ -258,11 +258,7 @@ class RolloutWorker(ParallelIteratorWorker):
             for key, value in extra_python_environs.items():
                 os.environ[key] = str(value)
 
-        def gen_rollouts():
-            while True:
-                yield self.sample()
-
-        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
+        ParallelIteratorWorker.__init__(self, self.gen_rollouts, False)
 
         policy_config = policy_config or {}
         if (tf and policy_config.get("framework") == "tfe"
@@ -502,6 +498,18 @@ class RolloutWorker(ParallelIteratorWorker):
         logger.debug(
             "Created rollout worker with env {} ({}), policies {}".format(
                 self.async_env, self.env, self.policy_map))
+
+    @DeveloperAPI
+    def gen_rollouts(self):
+        """Simple generator of rollouts.
+        This generator is used by the ParallelRollout operators to produce
+        samples using the Ray ParallelIterator API.
+
+        Child classes could override this method if a custom generator function
+        is required.
+        """
+        while True:
+            yield self.sample()
 
     @DeveloperAPI
     def sample(self):

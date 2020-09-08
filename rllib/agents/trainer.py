@@ -275,6 +275,15 @@ COMMON_CONFIG = {
     "extra_python_environs_for_driver": {},
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed as fast as possible.
+    "training_intensity": None,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": None,
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 
     # === Advanced Resource Settings ===
     # Number of CPUs to allocate per worker.

@@ -106,6 +106,12 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 0,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 })
 # __sphinx_doc_end__
 # yapf: enable

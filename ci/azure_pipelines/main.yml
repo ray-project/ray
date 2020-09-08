@@ -8,6 +8,7 @@
 name: $(BuildDefinitionName)_$(SourceBranchName)_$(BuildID)
 stages:
   - stage: Build
+    dependsOn: []
     jobs:
       - job: RayTests
         timeoutInMinutes: 240
@@ -297,6 +298,7 @@ stages:
           # Template containing steps to publish artifacts
           - template: templates/artifacts.yml
   - stage: Tests
+    dependsOn: []
     jobs:
       - job: StreamingTests
         # Disabled

@@ -125,6 +125,12 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 
     # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
     # by user's config). If we don't set them here, we will get an error
@@ -250,7 +256,12 @@ def execution_plan(workers, config):
         multiagent_sync_replay=config.get("multiagent_sync_replay"),
         **prio_args)
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    parallel_rollouts_mode = config.get("parallel_rollouts_mode", "bulk_sync")
+    num_async = config.get("parallel_rollouts_num_async")
+    # This could be set to None explicitly
+    if not num_async:
+        num_async = 1
+    rollouts = ParallelRollouts(workers, mode=parallel_rollouts_mode, num_async=num_async)
 
     # We execute the following steps concurrently:
     # (1) Generate rollouts and store them in our local replay buffer. Calling

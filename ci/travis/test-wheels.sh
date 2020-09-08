@@ -39,7 +39,7 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("cp36" "cp37" "cp38")
   PY_MMS=("3.6.9"
           "3.7.6"
           "3.8.2")
