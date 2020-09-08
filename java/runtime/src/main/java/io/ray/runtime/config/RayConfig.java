@@ -31,8 +31,6 @@ public class RayConfig {
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
-  private static int DEFAULT_NUM_JAVA_WORKER_PER_PROCESS = 10;
-
   private static final Random RANDOM = new Random();
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
@@ -96,7 +94,6 @@ public class RayConfig {
       instance = null;
     }
   }
-
 
   public final int numWorkersPerProcess;
 
@@ -242,14 +239,13 @@ public class RayConfig {
     }
 
     if (!enableMultiTenancy) {
-      numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
-    } else {
-      final int localNumWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-      if (localNumWorkersPerProcess <= 0) {
-        numWorkersPerProcess = DEFAULT_NUM_JAVA_WORKER_PER_PROCESS;
+      if (!isDriver) {
+        numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
       } else {
-        numWorkersPerProcess = localNumWorkersPerProcess;
+        numWorkersPerProcess = 1; // Actually this value isn't used in RayNativeRuntime.
       }
+    } else {
+      numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
     }
 
     // Validate config.
