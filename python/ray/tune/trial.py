@@ -578,8 +578,15 @@ class Trial:
     def is_saving(self):
         return self.saving_to is not None
 
+    def summary(self):
+        name = f"{str(self)}"
+        status = f"[status={self.status}]"
+        last_update = f"[last_update={time.strftime("%Y-%m-%d %H:%M:%S", self.last_update_time)
+        if not self.is_finished:
+            pass
+
     def __repr__(self):
-        return self._trainable_name(include_trial_id=True)
+        return f"{str(self)}[status={self.status}]"
 
     def __str__(self):
         return self._trainable_name(include_trial_id=True)
