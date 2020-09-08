@@ -322,14 +322,15 @@ class TrainingOperator:
                     self.register_data(train_loader=train_loader,
                     validation_loader=val_loader)
 
-                    # At this point the data loaders are registered with Ray SGD
-                    # and are wrapped with Distributed Samplers if applicable.
+                    # At this point the data loaders are registered with
+                    # Ray SGD and are wrapped with Distributed Samplers if
+                    # applicable.
 
 
                 def train_epoch(self, iterator, info):
                     # If providing custom training or validation methods,
-                    # the registered data loaders are passed in through the iterator
-                    # parameter.
+                    # the registered data loaders are passed in through the
+                    # iterator parameter.
                     ...
 
         Args:
@@ -663,7 +664,8 @@ class TrainingOperator:
         pass
 
     @classmethod
-    def from_creators(cls, model_creator,
+    def from_creators(cls,
+                      model_creator,
                       optimizer_creator,
                       data_creator=None,
                       loss_creator=None,

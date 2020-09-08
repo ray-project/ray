@@ -1,6 +1,4 @@
 import collections
-import os
-import tempfile
 from contextlib import closing, contextmanager
 import logging
 import numpy as np
@@ -8,7 +6,6 @@ import socket
 import time
 
 import ray
-from filelock import FileLock
 from ray.exceptions import RayActorError
 
 logger = logging.getLogger(__name__)

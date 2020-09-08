@@ -35,6 +35,7 @@ def data_creator(config):
     validation_loader = DataLoader(val_dataset, batch_size=config[BATCH_SIZE])
     return train_loader, validation_loader
 
+
 # __torch_tune_example__
 def tune_example(operator_cls, num_workers=1, use_gpu=False):
     TorchTrainable = TorchTrainer.as_trainable(

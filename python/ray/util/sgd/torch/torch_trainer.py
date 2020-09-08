@@ -189,10 +189,10 @@ class TorchTrainer:
         if serialize_data_creation is True:
             if log_once("serialize_data_creation"):
                 logging.warning(
-                    "serialize_data_creation is deprecated and will be ignored. "
-                    "If you require serialized data loading you should "
-                    "implement this in TrainingOperator.setup. You may find "
-                    "FileLock useful here.")
+                    "serialize_data_creation is deprecated and will be "
+                    "ignored. If you require serialized data loading you "
+                    "should implement this in TrainingOperator.setup. "
+                    "You may find FileLock useful here.")
 
         if data_loader_args:
             raise DeprecationWarning(
