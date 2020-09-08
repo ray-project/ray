@@ -191,9 +191,9 @@ The command will print out the address of the Redis server that was started (and
 
 If you want to run a Java job, you need to specify the classpath via the ``--code-search-path`` option.
 
-  .. code-block:: bash
+.. code-block:: bash
 
-    $ ray start ... --code-search-path=/path/to/jars
+  $ ray start ... --code-search-path=/path/to/jars
 
 Local mode
 ----------

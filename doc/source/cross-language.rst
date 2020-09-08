@@ -6,7 +6,7 @@ This page will show you how to use Ray's cross-language programming feature.
 Setup the cluster
 -----------------
 
-We need to set the ``--code-search-path`` option on `ray start` command. The ``--code-search-path`` option instructs workers to load Java or Python code from the specified code search path.
+We need to set the ``--code-search-path`` option on ``ray start`` command. The ``--code-search-path`` option instructs workers to load Java or Python code from the specified code search path.
 
 .. code-block:: bash
 
