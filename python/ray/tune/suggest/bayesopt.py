@@ -65,6 +65,24 @@ class BayesOptSearch(Searcher):
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
+    Tune automatically converts search spaces to BayesOptSearch's format:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        config = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        }
+
+        bayesopt = BayesOptSearch(metric="mean_loss", mode="min")
+        tune.run(my_func, config=config, search_alg=bayesopt)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
     .. code-block:: python
 
         from ray import tune
@@ -74,8 +92,9 @@ class BayesOptSearch(Searcher):
             'width': (0, 20),
             'height': (-100, 100),
         }
-        algo = BayesOptSearch(space, metric="mean_loss", mode="min")
-        tune.run(my_func, search_alg=algo)
+        bayesopt = BayesOptSearch(space, metric="mean_loss", mode="min")
+        tune.run(my_func, search_alg=bayesopt)
+
     """
     # bayes_opt.BayesianOptimization: Optimization object
     optimizer = None
@@ -335,11 +354,6 @@ class BayesOptSearch(Searcher):
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a BayesOpt search space.")
-
-        if resolved_vars:
-            raise ValueError(
-                "BayesOpt does not support fixed parameters. Please find a "
-                "different way to pass constants to your training function.")
 
         def resolve_value(domain):
             sampler = domain.get_sampler()

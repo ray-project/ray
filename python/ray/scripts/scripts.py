@@ -53,24 +53,21 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
 
 logging_options = [
     click.option(
-        "--log-new-style/--log-old-style",
-        is_flag=True,
-        default=True,
-        envvar="RAY_LOG_NEWSTYLE",
-        help=("Whether to use the old or the new CLI UX. "
-              "You can also toggle this via the env var RAY_LOG_NEWSTYLE. "
-              "The new UX supports colored, formatted output and was "
-              "designed to display only the most important information for "
-              "human users. The old UX uses the standard `logging` module. "
-              "It is most suitable for writing to a file and will include "
-              "timestamps and message level (ERROR/WARNING/INFO).")),
+        "--log-style",
+        required=False,
+        type=click.Choice(cli_logger.VALID_LOG_STYLES, case_sensitive=False),
+        default="auto",
+        help=("If 'pretty', outputs with formatting and color. If 'record', "
+              "outputs record-style without formatting. "
+              "'auto' defaults to 'pretty', and disables pretty logging "
+              "if stdin is *not* a TTY.")),
     click.option(
         "--log-color",
         required=False,
         type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
         help=("Use color logging. "
-              "Valid values are: auto (if stdout is a tty), true, false.")),
+              "Auto enables color logging if stdout is a TTY.")),
     click.option("-v", "--verbose", count=True)
 ]
 
@@ -101,6 +98,7 @@ def add_click_options(options):
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray.utils.setup_logger(level, logging_format)
+    cli_logger.set_format(format_tmpl=logging_format)
 
 
 @click.command()
@@ -389,10 +387,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           java_worker_options, load_code_from_local, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, log_new_style,
+          enable_object_reconstruction, metrics_export_port, log_style,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -558,8 +556,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
 
-        # new-style CLI UX (--log-new-style)
-        # this is a noop if that flag is not set, so the old logger calls
+        # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
         startup_msg = "Ray runtime started."
@@ -747,10 +744,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     is_flag=True,
     help="If set, ray will send SIGKILL instead of SIGTERM.")
 @add_click_options(logging_options)
-def stop(force, verbose, log_new_style, log_color):
+def stop(force, verbose, log_style, log_color):
     """Stop Ray processes manually on the local machine."""
 
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -916,9 +913,9 @@ def stop(force, verbose, log_new_style, log_color):
 @add_click_options(logging_options)
 def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
-       use_login_shells, log_new_style, log_color, verbose):
+       use_login_shells, log_style, log_color, verbose):
     """Create or update a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -982,9 +979,9 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
     help="Retain the minimal amount of workers specified in the config.")
 @add_click_options(logging_options)
 def down(cluster_config_file, yes, workers_only, cluster_name,
-         keep_min_workers, log_new_style, log_color, verbose):
+         keep_min_workers, log_style, log_color, verbose):
     """Tear down a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1034,10 +1031,10 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 @add_click_options(logging_options)
-def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
+def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
             verbose):
     """Tails the autoscaler logs of a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1078,10 +1075,9 @@ def monitor(cluster_config_file, lines, cluster_name, log_new_style, log_color,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def attach(cluster_config_file, start, screen, tmux, cluster_name,
-           no_config_cache, new, port_forward, log_new_style, log_color,
-           verbose):
+           no_config_cache, new, port_forward, log_style, log_color, verbose):
     """Create or attach to a SSH session to a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1109,10 +1105,10 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name,
     type=str,
     help="Override the configured cluster name.")
 @add_click_options(logging_options)
-def rsync_down(cluster_config_file, source, target, cluster_name,
-               log_new_style, log_color, verbose):
+def rsync_down(cluster_config_file, source, target, cluster_name, log_style,
+               log_color, verbose):
     """Download specific files from a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1138,9 +1134,9 @@ def rsync_down(cluster_config_file, source, target, cluster_name,
     help="Upload to all nodes (workers and head).")
 @add_click_options(logging_options)
 def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
-             log_new_style, log_color, verbose):
+             log_style, log_color, verbose):
     """Upload specific files to a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1200,8 +1196,8 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
 @click.argument("script_args", nargs=-1)
 @add_click_options(logging_options)
 def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
-           no_config_cache, port_forward, script, args, script_args,
-           log_new_style, log_color, verbose):
+           no_config_cache, port_forward, script, args, script_args, log_style,
+           log_color, verbose):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
@@ -1211,7 +1207,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     Example:
         >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()
@@ -1332,10 +1328,10 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 @add_click_options(logging_options)
 def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
-         cluster_name, no_config_cache, port_forward, log_new_style, log_color,
+         cluster_name, no_config_cache, port_forward, log_style, log_color,
          verbose):
     """Execute a command via SSH on a Ray cluster."""
-    cli_logger.old_style = not log_new_style
+    cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
     cli_logger.verbosity = verbose
     cli_logger.detect_colors()

@@ -3,7 +3,6 @@ Thus, the output from subcommands will be logged as is\.
 Consider using --use-normal-shells, if you tested your workflow and it is compatible\.
 
 Cluster configuration valid
-
 Cluster: test-cli
 
 Bootstrapping AWS config

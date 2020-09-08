@@ -90,7 +90,7 @@ public abstract class BaseMultiLanguageTest {
     }
 
     // Connect to the cluster.
-    Assert.assertNull(Ray.internal());
+    Assert.assertFalse(Ray.isInitialized());
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);

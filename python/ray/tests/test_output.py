@@ -40,16 +40,10 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 3, lines
-    logging_header = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}\sINFO\s"
-    assert re.match(
-        logging_header + r"resource_spec.py:\d+ -- Starting Ray with [0-9\.]+ "
-        r"GiB memory available for workers and up to [0-9\.]+ GiB "
-        r"for objects. You can adjust these settings with .*?.", lines[0])
-    assert re.match(
-        logging_header +
-        r"services.py:\d+ -- View the Ray dashboard at .*?127.0.0.1:\d+?.*",
-        lines[1])
+    assert len(lines) == 8, lines
+    assert re.match(r".*Workers: .*GiB", lines[1])
+    assert re.match(r".*Objects: .*GiB", lines[2])
+    assert re.match(r".*Dashboard URL: http:.*", lines[6])
 
 
 if __name__ == "__main__":
