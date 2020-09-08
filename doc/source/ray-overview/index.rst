@@ -38,7 +38,7 @@ Parallelizing Python/Java Functions with Ray Tasks
 
   .. group-tab:: Java
 
-    Frist, use ``Ray.init`` to initialize Ray runtime.
+    First, use ``Ray.init`` to initialize Ray runtime.
     Then you can use ``Ray.task(...).remote()`` to convert any Java static method into a Ray task. The task will run asynchronously in a remote worker process. The ``remote`` method will return an ``ObjectRef``, and you can then fetch the actual result with ``get``.
 
     .. code-block:: java
@@ -58,7 +58,7 @@ Parallelizing Python/Java Functions with Ray Tasks
           // Intialize Ray runtime.
           Ray.init();
           List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
-          // Inoke the `f` method 4 times remotely as Ray tasks.
+          // Invoke the `f` method 4 times remotely as Ray tasks.
           // The tasks will run in parallel in the background.
           for (int i = 0; i < 4; i++) {
             objectRefList.add(Ray.task(RayDemo::f, i).remote());
