@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+from typing import Dict
 
+from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.utils import flatten_dict
 
 try:
@@ -327,14 +329,14 @@ class ExperimentAnalysis(Analysis):
             default_mode)
 
     @property
-    def best_trial(self):
+    def best_trial(self) -> Trial:
         """Get the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
         using the `metric` and `mode` parameters passed to `tune.run()`.
 
         If you didn't pass these parameters, use
-        `get_best_trial(metric, mode)` instead.
+        `get_best_trial(metric, mode, scope)` instead.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -345,14 +347,14 @@ class ExperimentAnalysis(Analysis):
         return self.get_best_trial(self.default_metric, self.default_mode)
 
     @property
-    def best_config(self):
+    def best_config(self) -> Dict:
         """Get the config of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
         using the `metric` and `mode` parameters passed to `tune.run()`.
 
         If you didn't pass these parameters, use
-        `get_best_config(metric, mode)` instead.
+        `get_best_config(metric, mode, scope)` instead.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -363,7 +365,7 @@ class ExperimentAnalysis(Analysis):
         return self.get_best_config(self.default_metric, self.default_mode)
 
     @property
-    def best_checkpoint(self):
+    def best_checkpoint(self) -> Checkpoint:
         """Get the checkpoint of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -383,7 +385,7 @@ class ExperimentAnalysis(Analysis):
                                         self.default_mode)
 
     @property
-    def best_logdir(self):
+    def best_logdir(self) -> str:
         """Get the logdir of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -396,12 +398,12 @@ class ExperimentAnalysis(Analysis):
             raise ValueError(
                 "To fetch the `best_logdir`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use the "
-                "`get_best_logdir(metric, mode)` method to set the metric "
-                "and mode explicitly.")
+                "`get_best_logdir(metric, mode, scope)` method to set the "
+                "metric and mode explicitly.")
         return self.get_best_logdir(self.default_metric, self.default_mode)
 
     @property
-    def best_dataframe(self):
+    def best_dataframe(self) -> DataFrame:
         """Get the full result dataframe of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -419,14 +421,14 @@ class ExperimentAnalysis(Analysis):
         return self.trial_dataframes[best_logdir]
 
     @property
-    def best_result(self):
+    def best_result(self) -> Dict:
         """Get the last result of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
         using the `metric` and `mode` parameters passed to `tune.run()`.
 
         If you didn't pass these parameters, use
-        `get_best_trial(metric, mode).last_result` instead.
+        `get_best_trial(metric, mode, scope).last_result` instead.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -444,7 +446,7 @@ class ExperimentAnalysis(Analysis):
         using the `metric` and `mode` parameters passed to `tune.run()`.
 
         If you didn't pass these parameters, use
-        `get_best_trial(metric, mode).last_result` instead.
+        `get_best_trial(metric, mode, scope).last_result` instead.
         """
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
@@ -453,7 +455,7 @@ class ExperimentAnalysis(Analysis):
         return pd.DataFrame.from_records([best_result], index="trial_id")
 
     @property
-    def results(self):
+    def results(self) -> Dict[str, Dict]:
         """Get the last result of the all trials of the experiment"""
         return {trial.trial_id: trial.last_result for trial in self.trials}
 
