@@ -23,13 +23,13 @@ public abstract class BaseUnitTest {
   }
 
   @BeforeMethod
-  public void testBegin(Method method) {
+  public void beforeMethod(Method method) {
     LOG.info(">>>>>>>>>>>>>>>>>>>> Test case: {}.{} began >>>>>>>>>>>>>>>>>>>>",
         method.getDeclaringClass(), method.getName());
   }
 
   @AfterMethod
-  public void testEnd(Method method) {
+  public void afterMethod(Method method) {
     LOG.info(">>>>>>>>>>>>>>>>>>>> Test case: {}.{} end >>>>>>>>>>>>>>>>>>>>",
         method.getDeclaringClass(), method.getName());
   }

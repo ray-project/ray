@@ -40,7 +40,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   }
 
   @org.testng.annotations.BeforeSuite
-  public void suiteSetUp() throws Exception {
+  public void suiteSetUp() {
     LOGGER.info("Do set up");
     String management = ManagementFactory.getRuntimeMXBean().getName();
     String pid = management.split("@")[0];

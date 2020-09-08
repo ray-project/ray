@@ -3,12 +3,14 @@ package io.ray.streaming.runtime.master.resourcemanager;
 import io.ray.api.Ray;
 import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
+import io.ray.streaming.runtime.BaseRayClusterTest;
 import io.ray.streaming.runtime.BaseUnitTest;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.config.global.CommonConfig;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.util.RayUtils;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,16 +20,15 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class ResourceManagerTest extends BaseUnitTest {
+public class ResourceManagerTest extends BaseRayClusterTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerTest.class);
 
   private Object rayAsyncContext;
 
   @BeforeMethod
-  public void init() {
-    // ray init
-    Ray.init();
+  public void beforeMethod(Method method) {
+    super.beforeMethod(method);
     rayAsyncContext = Ray.getAsyncContext();
   }
 

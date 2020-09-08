@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.master;
 
 import io.ray.api.Ray;
+import io.ray.streaming.runtime.BaseRayClusterTest;
 import io.ray.streaming.runtime.BaseUnitTest;
 import java.util.HashMap;
 import org.testng.Assert;
@@ -8,18 +9,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class JobMasterTest extends BaseUnitTest {
-
-  @BeforeMethod
-  public void init() {
-    // ray init
-    Ray.init();
-  }
-
-  @AfterMethod
-  public void tearDown() {
-    Ray.shutdown();
-  }
+public class JobMasterTest extends BaseRayClusterTest {
 
   @Test
   public void testCreation() {
