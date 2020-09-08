@@ -71,10 +71,9 @@ DEFAULT_WORKER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
-DEFAULT_JAVA_WORKER_CLASSPATH = [
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
-]
+JAVA_JAR_PATH = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "ray/jars/ray_dist.jar")
+
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -1325,16 +1324,19 @@ def start_raylet(redis_address,
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
-    include_java = False
+    has_java_command = False
     try:
         java_proc = subprocess.run(
             ["java", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if java_proc.returncode == 0:
-            include_java = True
+            has_java_command = True
     except OSError:
         pass
+    ray_java_installed = os.path.exists(JAVA_JAR_PATH)
+
+    include_java = has_java_command and ray_java_installed
     if include_java is True:
-        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
+        default_cp = os.pathsep.join([JAVA_JAR_PATH])
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options)
             if java_worker_options else ["-classpath", default_cp],
