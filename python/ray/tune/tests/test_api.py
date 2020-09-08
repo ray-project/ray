@@ -1120,19 +1120,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("f1", train)
 
         start = time.time()
-        tune.run("f1", timeout=5)
+        tune.run("f1", time_budget_s=5)
         diff = time.time() - start
         self.assertLess(diff, 10)
 
         # Metric should fire first
         start = time.time()
-        tune.run("f1", stop={"metric": 3}, timeout=7)
+        tune.run("f1", stop={"metric": 3}, time_budget_s=7)
         diff = time.time() - start
         self.assertLess(diff, 7)
 
         # Timeout should fire first
         start = time.time()
-        tune.run("f1", stop={"metric": 10}, timeout=5)
+        tune.run("f1", stop={"metric": 10}, time_budget_s=5)
         diff = time.time() - start
         self.assertLess(diff, 10)
 
@@ -1141,7 +1141,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         tune.run(
             "f1",
             stop=TimeoutStopper(10),
-            timeout=datetime.timedelta(seconds=3))
+            time_budget_s=datetime.timedelta(seconds=3))
         diff = time.time() - start
         self.assertLess(diff, 9)
 

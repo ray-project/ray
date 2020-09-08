@@ -103,7 +103,7 @@ class Experiment:
                  name,
                  run,
                  stop=None,
-                 timeout=None,
+                 time_budget_s=None,
                  config=None,
                  resources_per_trial=None,
                  num_samples=1,
@@ -161,12 +161,12 @@ class Experiment:
             raise ValueError("Invalid stop criteria: {}. Must be a "
                              "callable or dict".format(stop))
 
-        if timeout:
+        if time_budget_s:
             if self._stopper:
                 self._stopper = CombinedStopper(self._stopper,
-                                                TimeoutStopper(timeout))
+                                                TimeoutStopper(time_budget_s))
             else:
-                self._stopper = TimeoutStopper(timeout)
+                self._stopper = TimeoutStopper(time_budget_s)
 
         _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 

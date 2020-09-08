@@ -69,7 +69,7 @@ def run(
         run_or_experiment,
         name=None,
         stop=None,
-        timeout=None,
+        time_budget_s=None,
         config=None,
         resources_per_trial=None,
         num_samples=1,
@@ -156,8 +156,9 @@ def run(
             ``ray.tune.Stopper``, which allows users to implement
             custom experiment-wide stopping (i.e., stopping an entire Tune
             run based on some time constraint).
-        timeout (int|float|datetime.timedelta): Global timeout in seconds
-            after which all trials are stopped.
+        time_budget_s (int|float|datetime.timedelta): Global time budget in
+            seconds after which all trials are stopped. Can also be a
+            ``datetime.timedelta`` object.
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
@@ -292,7 +293,7 @@ def run(
                 name=name,
                 run=exp,
                 stop=stop,
-                timeout=timeout,
+                time_budget_s=time_budget_s,
                 config=config,
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
