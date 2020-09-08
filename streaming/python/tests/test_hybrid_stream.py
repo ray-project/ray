@@ -35,8 +35,8 @@ def test_hybrid_stream():
     assert not ray.is_initialized()
     ray.init(
         _load_code_from_local=True,
-        include_java=True,
-        java_worker_options=java_worker_options,
+        _include_java=True,
+        _java_worker_options=java_worker_options,
         _system_config={"num_workers_per_process_java": 1})
 
     sink_file = "/tmp/ray_streaming_test_hybrid_stream.txt"
