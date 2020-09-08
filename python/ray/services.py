@@ -1392,7 +1392,7 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    if job_resource_path is not None and len(job_resource_path) > 0:
+    if code_search_path is not None and len(code_search_path) > 0:
         load_code_from_local = True
 
     if load_code_from_local:
