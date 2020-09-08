@@ -642,6 +642,14 @@ void WorkerPool::TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker) {
                   << num_workers_soft_limit_ << ", and worker "
                   << (*worker_it)->WorkerId() << " with pid " << pid
                   << " is idle. Kill it.";
+    auto rpc_client = (*worker_it)->rpc_client();
+    RAY_CHECK(rpc_client);
+    rpc::ExitRequest request;
+    rpc_client->Exit(request, [](const ray::Status &status, const rpc::ExitReply &r) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+      }
+    });
     // Remove the worker from the idle pool so it can't be popped anymore. However, we
     // don't remove it from the registered pool because we want the worker to go through
     // the normal disconnection logic in Node Manager.

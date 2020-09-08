@@ -2240,6 +2240,12 @@ void CoreWorker::HandleRestoreSpilledObjects(
   }
 }
 
+void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  Exit(/*intentional=*/true);
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
