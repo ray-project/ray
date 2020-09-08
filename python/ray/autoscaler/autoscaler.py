@@ -146,8 +146,10 @@ class StandardAutoscaler:
         # nodes to minimize chance number of pending nodes changing after
         # additional all_nodes are launched.
         num_pending = self.pending_launches.value
-        self.load_metrics.prune_active_ips(
-            [self.provider.internal_ip(node_id) for node_id in self.all_workers()])
+        self.load_metrics.prune_active_ips([
+            self.provider.internal_ip(node_id)
+            for node_id in self.all_workers()
+        ])
         target_workers = self.target_num_workers()
 
         if len(nodes) >= target_workers:
