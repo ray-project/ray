@@ -26,11 +26,11 @@ idle_timeout_minutes: 5
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled. Assumes Docker is installed.
 docker:
-    image: "" # e.g., rayproject/ray:0.8.7
-    container_name: "" # e.g. ray_docker
+    image: "rayproject/ray:latest" # e.g., rayproject/ray:latest
+    container_name: "ray_docker_container" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
-    pull_before_run: True
+    pull_before_run: False
     run_options: []  # Extra options to pass into "docker run"
 
 # Local specific configuration.

@@ -23,19 +23,19 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., rayproject/ray:0.8.7
-    container_name: "" # e.g. ray_docker
+    image: "rayproject/ray:latest" # e.g., rayproject/ray:latest
+    container_name: "ray_docker_container" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
-    pull_before_run: True
+    pull_before_run: False
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:latest-gpu"
     # head_run_options:
     #     - --runtime=nvidia
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:latest"
     # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
