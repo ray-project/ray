@@ -31,6 +31,7 @@ public class ClassLoaderTest extends BaseTest {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job resource path.
     System.setProperty("ray.job.resource-path", resourcePath);
+    System.out.println(resourcePath);
   }
 
   @AfterClass
@@ -40,8 +41,6 @@ public class ClassLoaderTest extends BaseTest {
 
   @Test(groups = {"cluster"})
   public void testClassLoaderInMultiThreading() throws Exception {
-    Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
-
     final String jobResourcePath = resourcePath + "/" + Ray.getRuntimeContext().getCurrentJobId();
     File jobResourceDir = new File(jobResourcePath);
     FileUtils.deleteQuietly(jobResourceDir);
