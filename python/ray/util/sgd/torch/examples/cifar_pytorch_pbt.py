@@ -55,7 +55,7 @@ class CifarTrainingOperator(TrainingOperator):
                                  (0.2023, 0.1994, 0.2010)),
         ])
 
-        with FileLock("~/.ray.lock"):
+        with FileLock(".ray.lock"):
             train_dataset = CIFAR10(
                 root="~/data",
                 train=True,

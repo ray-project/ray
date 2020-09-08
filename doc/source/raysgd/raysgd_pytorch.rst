@@ -51,7 +51,7 @@ And then you can instantiate the trainer object using your custom ``TrainingOper
 You can also set the number of workers and whether the workers will use GPUs:
 
 .. code-block:: python
-    :emphasize-lines: 8,9
+    :emphasize-lines: 4,5
 
     trainer = TorchTrainer(
         training_operator_cls=MyTrainingOperator,
