@@ -1109,6 +1109,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertIn("LOG_STDERR", content)
 
     def testTimeout(self):
+        from ray.tune.stopper import TimeoutStopper
+        import datetime
+
         def train(config):
             for i in range(20):
                 tune.report(metric=i)
@@ -1135,8 +1138,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Combined stopper. Shorter timeout should win.
         start = time.time()
-        from ray.tune.stopper import TimeoutStopper
-        tune.run("f1", stop=TimeoutStopper(10), timeout=3)
+        tune.run(
+            "f1",
+            stop=TimeoutStopper(10),
+            timeout=datetime.timedelta(seconds=3))
         diff = time.time() - start
         self.assertLess(diff, 9)
 
