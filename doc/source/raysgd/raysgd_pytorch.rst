@@ -15,8 +15,8 @@ For end to end examples leveraging RaySGD TorchTrainer, jump to :ref:`raysgd-tor
 
 .. contents:: :local:
 
-TorchTrainer
-------------
+Basic Usage
+-----------
 
 Setting up training
 ~~~~~~~~~~~~~~~~~~~
@@ -25,7 +25,7 @@ Setting up training
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
-.. warning:: You must call ``self.register(...)`` inside the ``setup`` method of your custom ``TrainingOperator`` to register the necessary training components with Ray SGD.
+.. warning:: You should call ``self.register(...)`` and ``self.register_data(...)`` inside the ``setup`` method of your custom ``TrainingOperator`` to register the necessary training components with Ray SGD.
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
     :language: python
@@ -126,31 +126,19 @@ After training, you may want to reappropriate the Ray cluster. To release Ray re
 .. note:: Be sure to call ``trainer.save()`` or ``trainer.get_model()`` before shutting down.
 
 See the documentation on the TorchTrainer here: :ref:`ref-torch-trainer`.
+
 See the documentation on the TrainingOperator here: :ref:`ref-torch-operator`.
-
-.. _backwards-compat:
-
-Backwards Compatibility
-~~~~~~~~~~~~~~~~~~~~~~~
-In previous versions of Ray, *creator functions* (``model_creator``, ``optimizer_creator``, etc.) were necessary to setup the training components.
-These creator functions are no longer used and instead training component setup should be specified inside the ``setup`` method of a custom ``TrainingOperator``.
-However, if you have these creator functions already and do not want to change your code, you can easily use these creator functions to create a custom ``TrainingOperator``.
-
-.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
-   :language: python
-   :start-after: __backwards_compat__start
-   :end-before: __backwards_compat_end
 
 .. _raysgd-custom-training:
 
 Custom Training and Validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you would like to implement custom training and validation logic, you can do so by overriding the appropiate methods inside your custom :ref:`ref-torch-operator`.
+If you would like to implement custom training and validation logic, you can do so by overriding the appropiate methods inside your :ref:`ref-torch-operator` subclass.
 
 For both training and validation, there are two granularities that you can provide customization - per epoch and per batch. These correspond to ``train_batch``,
-``train_epoch``, ``validate``, and ``validate_batch``. Other useful methods to override include ``setup``, ``save`` and ``restore``. You can use these
-to manage state (like a classifier neural network for calculating inception score, or a heavy tokenizer).
+``train_epoch``, ``validate``, and ``validate_batch``. Other useful methods to override include ``state_dict`` and ``load_state_dict``. You can use these
+to save and load additional state for your custom ``TrainingOperator``.
 
 Custom training is necessary if you are using multiple models, optimizers, or schedulers.
 
@@ -173,6 +161,7 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
             """
             ...
             self.models, self.optimizers, ... = self.register(...)
+            self.register_data(...)
 
         def train_batch(self, batch, batch_info):
             """Trains on one batch of data from the data creator.
@@ -288,6 +277,19 @@ By setting ``TorchTrainer(wrap_ddp=False)``, you can change the parameters on th
         num_workers=2,
         use_gpu=True
         wrap_ddp=False)
+
+.. _backwards-compat:
+
+Backwards Compatibility
+~~~~~~~~~~~~~~~~~~~~~~~
+In previous versions of Ray, *creator functions* (``model_creator``, ``optimizer_creator``, etc.) were necessary to setup the training components.
+These creator functions are no longer used and instead training component setup should be specified inside the ``setup`` method of a ``TrainingOperator`` subclass.
+However, if you have these creator functions already and do not want to change your code, you can easily use these creator functions to create a custom ``TrainingOperator``.
+
+.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __backwards_compat__start
+   :end-before: __backwards_compat_end
 
 Initialization Functions
 ------------------------
@@ -535,6 +537,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 
             # Register all the components.
             self.models, self.optimizers, ... = self.register(models=(net_d, net_g), optimizers=(d_opt, g_opt), ...)
+            self.register_data(...)
 
         def train_epoch(self, iterator, info):
             result = {}
@@ -606,7 +609,7 @@ Here's some simple tips on how to debug the TorchTrainer.
 
 **My TorchTrainer implementation is erroring after I ported things over from my previous code.**
 
-Try using ``ipdb``, a custom TrainingOperator, and ``num_workers=1``. This will provide you introspection what is being called and when.
+Try using ``ipdb`` and ``num_workers=1``. This will provide you introspection what is being called and when.
 
 .. code-block:: python
 
@@ -617,7 +620,7 @@ Try using ``ipdb``, a custom TrainingOperator, and ``num_workers=1``. This will 
     class CustomOperator(TrainingOperator):
         def setup(self, config):
             import ipdb; ipdb.set_trace()
-            ... # custom code if exists?
+            ...
 
         def train_batch(self, batch, batch_idx):
             import ipdb; ipdb.set_trace()
@@ -644,7 +647,7 @@ or use `Python profiling <https://docs.python.org/3/library/debug.html>`_.
 
 **My setup function downloads data, and I don't want multiple processes downloading to the same path at once.**
 
-Use ``filelock`` within the creator functions to create locks for critical regions. You may find ``sgd.utils.RayFileLock`` useful here. For example:
+Use ``FileLock`` to create locks for critical regions. For example:
 
 .. code-block:: python
 

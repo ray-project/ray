@@ -224,10 +224,10 @@ class TorchRunner:
     def train_loader(self):
         if not hasattr(self.training_operator, "_train_loader"):
             logger.warning("Training Operator does not have any "
-                               "registered train loader. If this is "
+                           "registered train loader. If this is "
                            "unexepected, make sure to call "
                            "self.register_data(...) inside the setup method "
-                               "of your Training Operator.")
+                           "of your Training Operator.")
             return None
         return self.training_operator._train_loader
 

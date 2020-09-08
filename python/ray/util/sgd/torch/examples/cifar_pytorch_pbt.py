@@ -69,15 +69,12 @@ class CifarTrainingOperator(TrainingOperator):
 
         if config.get("test_mode"):
             train_dataset = Subset(train_dataset, list(range(64)))
-            validation_dataset = Subset(validation_dataset, list(
-                range(64)))
+            validation_dataset = Subset(validation_dataset, list(range(64)))
 
         train_loader = DataLoader(
             train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
         validation_loader = DataLoader(
-            validation_dataset,
-            batch_size=config[BATCH_SIZE],
-            num_workers=2)
+            validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
 
         # Create loss.
         criterion = nn.CrossEntropyLoss()
@@ -85,7 +82,8 @@ class CifarTrainingOperator(TrainingOperator):
         self.model, self.optimizer, self.criterion = \
             self.register(models=model, optimizers=optimizer,
                           criterion=criterion,)
-        self.register_data(train_loader=train_loader, validation_loader=validation_loader)
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":

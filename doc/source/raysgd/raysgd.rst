@@ -36,9 +36,8 @@ You can start a ``TorchTrainer`` with the following:
     class CustomTrainingOperator(TrainingOperator):
         def setup(self, config):
             # Load data.
-            with RayFileLock():
-                train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
-                val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+            train_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
+            val_loader = DataLoader(LinearDataset(2, 5), config["batch_size"])
 
             # Create model.
             model = torch.nn.Linear(1, 1)
@@ -49,13 +48,15 @@ You can start a ``TorchTrainer`` with the following:
             # Create loss.
             loss = torch.nn.MSELoss()
 
-            # Register all components.
+            # Register model, optimizer, and loss.
             self.model, self.optimizer, self.criterion = self.register(
                 models=model,
                 optimizers=optimizer,
-                train_loader=train_loader,
-                validation_loader=val_loader,
                 criterion=loss)
+
+            # Register data loaders.
+            self.register_data(train_loader=train_loader, validation_loader=val_loader)
+
 
     ray.init()
 

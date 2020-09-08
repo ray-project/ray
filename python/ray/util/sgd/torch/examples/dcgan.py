@@ -130,11 +130,9 @@ class GANOperator(TrainingOperator):
             dataset, batch_size=config.get("batch_size", 32))
 
         self.models, self.optimizers, self.criterion = self.register(
-            models=models,
-            optimizers=optimizers,
-            criterion=nn.BCELoss())
-        self.register_data(train_dataloader=train_dataloader,
-                           validation_loader=None)
+            models=models, optimizers=optimizers, criterion=nn.BCELoss())
+        self.register_data(
+            train_dataloader=train_dataloader, validation_loader=None)
 
         self.model = self.models[0]
         self.optimizer = self.optimizers[0]

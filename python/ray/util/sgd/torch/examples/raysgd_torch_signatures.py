@@ -38,6 +38,9 @@ class MyTrainingOperator(TrainingOperator):
         # Register all of these components with Ray SGD.
         # This allows Ray SGD to do framework level setup like Cuda, DDP,
         # Distributed Sampling, FP16.
+        # We also assign the return values of self.register to instance
+        # attributes so we can access it in our custom training/validation
+        # methods.
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
                           criterion=criterion,

@@ -36,8 +36,6 @@ def data_creator(config):
     return train_loader, validation_loader
 
 # __torch_tune_example__
-
-
 def tune_example(operator_cls, num_workers=1, use_gpu=False):
     TorchTrainable = TorchTrainer.as_trainable(
         training_operator_cls=operator_cls,
@@ -54,7 +52,6 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
         verbose=1)
 
     return analysis.get_best_config(metric="validation_loss", mode="min")
-
 # __end_torch_tune_example__
 
 

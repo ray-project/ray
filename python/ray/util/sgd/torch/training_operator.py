@@ -64,19 +64,19 @@ class TrainingOperator:
                     model.parameters(), lr=config.get("lr", 1e-4))
                 loss = torch.nn.MSELoss()
 
-                self.model, self.optimizer, self.criterion = self.register(
-                                                    models=model,
-                                                    optimizers=optimizer,
-                                                    criterion=loss)
-
                 batch_size = config["batch_size"]
                 train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
                 train_loader = DataLoader(train_data, batch_size=batch_size)
                 val_loader = DataLoader(val_data, batch_size=batch_size)
 
-                self.register_data(train_loader=train_loader,
-                validation_loader=val_loader)
+                self.model, self.optimizer = self.register(
+                    models=model,
+                    optimizers=optimizer,
+                    criterion=loss)
 
+                self.register_data(
+                    train_loader=train_loader,
+                    validation_loader=val_loader)
 
 
         trainer = TorchTrainer(
@@ -110,9 +110,10 @@ class TrainingOperator:
     implement custom training and validation.
 
     Raises:
-        ValueError if custom training or validation is not provided,
-        and ``self.model``, ``self.optimizer``, or ``self.criterion``
-        are not set.
+        ValueError
+            You are expected to either set ``self.model``,
+            ``self.optimizer``, and ``self.criterion`` instance attributes in
+            setup or implement custom training & validation.
     """
 
     def __init__(self,
@@ -163,12 +164,7 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self,
-                 *,
-                 models,
-                 optimizers,
-                 criterion=None,
-                 schedulers=None):
+    def register(self, *, models, optimizers, criterion=None, schedulers=None):
         """Registers parameters with Ray SGD and sets up training components.
 
         By calling this method to register your models, optimizers,
@@ -312,30 +308,29 @@ class TrainingOperator:
 
         .. code-block:: python
 
-        class MyTrainingOperator(TrainingOperator):
-            def setup(self, config):
-                model = ...
-                optimizer = ...
-                train_loader = ...
-                val_loader = ...
-                loss = ...
+            class MyTrainingOperator(TrainingOperator):
+                def setup(self, config):
+                    model = ...
+                    optimizer = ...
+                    train_loader = ...
+                    val_loader = ...
+                    loss = ...
 
-                self.model, self.optimizer, self.criterion = self.register(
-                models=model, optimizers=optimizer, criterion=loss)
+                    self.model, self.optimizer, self.criterion = self.register(
+                    models=model, optimizers=optimizer, criterion=loss)
 
-                self.register_data(train_loader=train_loader,
-                validation_loader=val_loader)
+                    self.register_data(train_loader=train_loader,
+                    validation_loader=val_loader)
 
-                # At this point the data loaders are registered with Ray SGD
-                # and are wrapped with Distributed Samplers if applicable.
+                    # At this point the data loaders are registered with Ray SGD
+                    # and are wrapped with Distributed Samplers if applicable.
 
-        @override(TrainingOperator)
-        def train_epoch(self, iterator, info):
-            # If providing custom training or validation methods,
-            # the registered data loaders are passed in through the iterator
-            # parameter.
-            ...
 
+                def train_epoch(self, iterator, info):
+                    # If providing custom training or validation methods,
+                    # the registered data loaders are passed in through the iterator
+                    # parameter.
+                    ...
 
         Args:
             train_loader (Iterator): An iterator for training
@@ -384,8 +379,6 @@ class TrainingOperator:
                 if self._add_dist_sampler:
                     self._validation_loader = with_sampler(
                         self._validation_loader)
-
-
 
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
@@ -669,8 +662,8 @@ class TrainingOperator:
             state_dict (dict): State dict as returned by the operator. """
         pass
 
-    @staticmethod
-    def from_creators(model_creator,
+    @classmethod
+    def from_creators(cls, model_creator,
                       optimizer_creator,
                       data_creator=None,
                       loss_creator=None,
@@ -734,7 +727,6 @@ class TrainingOperator:
             _loss_creator = loss_creator
             _scheduler_creator = scheduler_creator
             _serialize_data_creation = serialize_data_creation
-
 
         return CustomCreatorOperator
 
@@ -809,8 +801,8 @@ class CreatorOperator(TrainingOperator):
         loaders = None
         if self._serialize_data_creation:
             logger.debug("Serializing the dataloading process.")
-            with FileLock(os.path.join(tempfile.gettempdir(),
-                                       ".raydata.lock")):
+            with FileLock(
+                    os.path.join(tempfile.gettempdir(), ".raydata.lock")):
                 loaders = self.__class__._data_creator(config)
         else:
             loaders = self.__class__._data_creator(config)
@@ -873,7 +865,8 @@ class CreatorOperator(TrainingOperator):
             else:
                 self.scheduler = self.schedulers
 
-        self.register_data(train_loader=train_loader, validation_loader=validation_loader)
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 def get_test_operator(operator_cls):

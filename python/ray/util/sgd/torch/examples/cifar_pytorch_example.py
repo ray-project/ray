@@ -84,7 +84,8 @@ class CifarTrainingOperator(TrainingOperator):
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
                           criterion=criterion, schedulers=scheduler)
-        self.register_data(train_loader=train_loader, validation_loader=validation_loader)
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":

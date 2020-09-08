@@ -130,11 +130,10 @@ def test_multi_model(ray_start_2_cpus, num_workers):
             loss = nn.MSELoss()
             train_dataloader, val_dataloader = data_creator(config)
             self.models, self.optimizers, self.criterion = self.register(
-                models=models,
-                optimizers=opts,
-                criterion=loss)
-            self.register_data(train_loader=train_dataloader,
-                               validation_loader=val_dataloader)
+                models=models, optimizers=opts, criterion=loss)
+            self.register_data(
+                train_loader=train_dataloader,
+                validation_loader=val_dataloader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -220,8 +219,8 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
                 self.register(models=models, optimizers=optimizers,
                               schedulers=schedulers,
                               criterion=loss)
-            self.register_data(train_loader=train_loader,
-                               validation_loader=val_loader)
+            self.register_data(
+                train_loader=train_loader, validation_loader=val_loader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -264,8 +263,8 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
                 self.register(
                     models=model, optimizers=optimizer,
                     criterion=loss, schedulers=scheduler)
-            self.register_data(train_loader=train_loader,
-                               validation_loader=val_loader)
+            self.register_data(
+                train_loader=train_loader, validation_loader=val_loader)
 
     if scheduler_freq is None:
         with pytest.raises(ValueError):
@@ -313,9 +312,7 @@ def test_dataset(ray_start_4_cpus):
             loss = nn.MSELoss()
 
             self.model, self.optimizer, self.criterion = self.register(
-                models=model,
-                optimizers=optimizer,
-                criterion=loss)
+                models=model, optimizers=optimizer, criterion=loss)
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,
