@@ -28,7 +28,6 @@ You can start a ``TorchTrainer`` with the following:
     from ray.util.sgd import TorchTrainer
     from ray.util.sgd.torch import TrainingOperator
     from ray.util.sgd.torch.examples.train_example import LinearDataset
-    from ray.util.sgd.utils import RayFileLock
 
     import torch
     from torch.utils.data import DataLoader
