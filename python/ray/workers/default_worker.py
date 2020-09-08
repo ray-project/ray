@@ -105,8 +105,8 @@ parser.add_argument(
     default=None,
     type=str,
     help="A list of directories or jar files separated by colon that specify "
-         "the search path for user code. This will be used as `CLASSPATH` in "
-         "Java `PYTHONPATH` in Python.")
+    "the search path for user code. This will be used as `CLASSPATH` in "
+    "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
     args = parser.parse_args()
 

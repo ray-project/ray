@@ -1348,8 +1348,14 @@ def start_raylet(redis_address,
     if include_java is True:
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options) if java_worker_options else [],
-            redis_address, node_manager_port, plasma_store_name, raylet_name,
-            redis_password, session_dir, code_search_path)
+            redis_address,
+            node_manager_port,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+            code_search_path,
+        )
     else:
         java_worker_command = []
 

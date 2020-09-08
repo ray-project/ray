@@ -359,8 +359,8 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=None,
     type=str,
     help="A list of directories or jar files separated by colon that specify "
-         "the search path for user code. This will be used as `CLASSPATH` in "
-         "Java `PYTHONPATH` in Python.")
+    "the search path for user code. This will be used as `CLASSPATH` in "
+    "Java and `PYTHONPATH` in Python.")
 @click.option(
     "--system-config",
     default=None,
