@@ -189,6 +189,11 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --address=<address>
 
+If you want to run a Java job, you need to specify the classpath via the ``--job-resource-path`` option.
+
+  .. code-block:: bash
+
+    $ ray start [--head | --address=...] --job-resource-path=/path/to/jars
 
 Local mode
 ----------

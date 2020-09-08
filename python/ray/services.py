@@ -1398,6 +1398,9 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
+    if job_resource_path is not None and len(job_resource_path) > 0:
+        load_code_from_local = True
+
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
 
