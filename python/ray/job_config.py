@@ -10,7 +10,7 @@ class JobConfig:
         num_java_workers_per_process (int): The number of java workers per
             worker process.
         jvm_options (str[]): The jvm options for java workers of the job.
-        code_search_path (str): A list of directories or jar files that specify
+        code_search_path (list): A list of directories or jar files that specify
             the search path for user code. This will be used as `CLASSPATH` in
             Java and `PYTHONPATH` in Python.
     """
