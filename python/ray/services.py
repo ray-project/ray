@@ -1348,14 +1348,8 @@ def start_raylet(redis_address,
     if include_java is True:
         java_worker_command = build_java_worker_command(
             json.loads(java_worker_options) if java_worker_options else [],
-            redis_address,
-            node_manager_port,
-            plasma_store_name,
-            raylet_name,
-            redis_password,
-            session_dir,
-            code_search_path
-        )
+            redis_address, node_manager_port, plasma_store_name, raylet_name,
+            redis_password, session_dir, code_search_path)
     else:
         java_worker_command = []
 
@@ -1493,16 +1487,10 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(
-        java_worker_options,
-        redis_address,
-        node_manager_port,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-        code_search_path
-):
+def build_java_worker_command(java_worker_options, redis_address,
+                              node_manager_port, plasma_store_name,
+                              raylet_name, redis_password, session_dir,
+                              code_search_path):
     """This method assembles the command used to start a Java worker.
 
     Args:
