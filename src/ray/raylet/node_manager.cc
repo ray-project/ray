@@ -2610,6 +2610,58 @@ bool NodeManager::FinishAssignedTask(WorkerInterface &worker) {
   return !spec.IsActorCreationTask();
 }
 
+std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
+    const TaskSpecification &task_spec, int port, const WorkerID &worker_id) {
+  RAY_CHECK(task_spec.IsActorCreationTask());
+  auto actor_id = task_spec.ActorCreationId();
+  auto actor_entry = actor_registry_.find(actor_id);
+  std::shared_ptr<ActorTableData> actor_info_ptr;
+  // TODO(swang): If this is an actor that was restarted, and previous
+  // actor notifications were delayed, then this node may not have an entry for
+  // the actor in actor_regisry_. Then, the fields for the number of
+  // restarts will be wrong.
+  if (actor_entry == actor_registry_.end()) {
+    actor_info_ptr.reset(new ActorTableData());
+    // Set all of the static fields for the actor. These fields will not
+    // change even if the actor fails or is restarted.
+    actor_info_ptr->set_actor_id(actor_id.Binary());
+    actor_info_ptr->set_actor_creation_dummy_object_id(
+        task_spec.ActorDummyObject().Binary());
+    actor_info_ptr->set_job_id(task_spec.JobId().Binary());
+    actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
+    actor_info_ptr->set_num_restarts(0);
+    actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
+    actor_info_ptr->mutable_owner_address()->CopyFrom(
+        task_spec.GetMessage().caller_address());
+  } else {
+    // If we've already seen this actor, it means that this actor was restarted.
+    // Thus, its previous state must be RESTARTING.
+    // TODO: The following is a workaround for the issue described in
+    // https://github.com/ray-project/ray/issues/5524, please see the issue
+    // description for more information.
+    if (actor_entry->second.GetState() != ActorTableData::RESTARTING) {
+      RAY_LOG(WARNING) << "Actor not in restarting state, most likely it "
+                       << "died before creation handler could run. Actor state is "
+                       << actor_entry->second.GetState();
+    }
+    // Copy the static fields from the current actor entry.
+    actor_info_ptr.reset(new ActorTableData(actor_entry->second.GetTableData()));
+    // We are restarting the actor, so increment its num_restarts
+    actor_info_ptr->set_num_restarts(actor_info_ptr->num_restarts() + 1);
+  }
+
+  // Set the new fields for the actor's state to indicate that the actor is
+  // now alive on this node manager.
+  actor_info_ptr->mutable_address()->set_ip_address(
+      gcs_client_->Nodes().GetSelfInfo().node_manager_address());
+  actor_info_ptr->mutable_address()->set_port(port);
+  actor_info_ptr->mutable_address()->set_raylet_id(self_node_id_.Binary());
+  actor_info_ptr->mutable_address()->set_worker_id(worker_id.Binary());
+  actor_info_ptr->set_state(ActorTableData::ALIVE);
+  actor_info_ptr->set_timestamp(current_time_ms());
+  return actor_info_ptr;
+}
+
 void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
                                                   const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
