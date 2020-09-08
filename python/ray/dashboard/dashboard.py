@@ -22,7 +22,6 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 import ray
 import ray.ray_constants as ray_constants
-from itertools import chain
 
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -117,7 +116,11 @@ class DashboardController(BaseDashboardController):
                 node_plasma_stats[view_name] = view_data
             plasma_stats[address] = node_plasma_stats
 
-        return {"nodes": D, "actorGroups": actor_groups, "plasmaStats": plasma_stats}
+        return {
+            "nodes": D,
+            "actorGroups": actor_groups,
+            "plasmaStats": plasma_stats
+        }
 
     def get_ray_config(self):
         try:

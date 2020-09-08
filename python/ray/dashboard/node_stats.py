@@ -47,7 +47,6 @@ def _get_actor_group_stats(group):
     sum_timestamps = 0
     now = time.time() * 1000  # convert S -> MS
     for actor in group:
-        logger.info(actor)
         state_to_count[actor["state"]] += 1
         if "timestamp" in actor:
             if not min_timestamp or actor["timestamp"] < min_timestamp:
@@ -254,8 +253,6 @@ class NodeStats(threading.Thread):
                               str(actor_data["OwnerAddress"]["Port"]))
                 self._addr_to_owner_addr[addr] = owner_addr
                 self._addr_to_actor_id[addr] = actor_data["ActorID"]
-                logger.info(
-                    f"timestamp data in actor table {actor_data['Timestamp']}")
                 self._addr_to_extra_info_dict[addr] = {
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
@@ -313,10 +310,12 @@ class NodeStats(threading.Thread):
                         self._ip_to_hostname[data["ip"]] = data["hostname"]
                         self._node_stats[data["hostname"]] = data
                     else:
+                        try:
+                            data = json.loads(ray.utils.decode(data))
+                        except Exception as e:
+                            data = f"Failed to load data because of {e}"
                         logger.warning("Unexpected channel data received, "
-                                       "channel: {}, data: {}".format(
-                                           channel,
-                                           json.loads(ray.utils.decode(data))))
+                                       f"channel: {channel}, data: {data}")
 
             except Exception:
                 logger.exception(traceback.format_exc())
