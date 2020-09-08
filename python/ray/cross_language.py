@@ -72,6 +72,7 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
+        None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
         None,  # max_retries
@@ -90,10 +91,12 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_restarts,
-        0,  # max_task_retries,
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None)  # resources,
+        max_restarts=0,
+        max_task_retries=0,
+        num_cpus=None,
+        num_gpus=None,
+        memory=None,
+        object_store_memory=None,
+        resources=None,
+        accelerator_type=None,
+    )

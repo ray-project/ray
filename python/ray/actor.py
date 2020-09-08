@@ -264,7 +264,7 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+                 object_store_memory, resources, accelerator_type):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -279,6 +279,7 @@ class ActorClassMetadata:
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.accelerator_type = accelerator_type
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -336,7 +337,8 @@ class ActorClass:
     @classmethod
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
                                  max_task_retries, num_cpus, num_gpus, memory,
-                                 object_store_memory, resources):
+                                 object_store_memory, resources,
+                                 accelerator_type):
         for attribute in [
                 "remote",
                 "_remote",
@@ -368,7 +370,7 @@ class ActorClass:
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources)
+            resources, accelerator_type)
 
         return self
 
@@ -376,13 +378,13 @@ class ActorClass:
     def _ray_from_function_descriptor(
             cls, language, actor_creation_function_descriptor, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources):
+            resources, accelerator_type):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources)
+            object_store_memory, resources, accelerator_type)
 
         return self
 
@@ -428,6 +430,7 @@ class ActorClass:
                 memory=None,
                 object_store_memory=None,
                 resources=None,
+                accelerator_type=None,
                 max_concurrency=None,
                 max_restarts=None,
                 max_task_retries=None,
@@ -536,8 +539,9 @@ class ActorClass:
         # decorator. Last three conditions are to check that no resources were
         # specified when _remote() was called.
         if (meta.num_cpus is None and meta.num_gpus is None
-                and meta.resources is None and num_cpus is None
-                and num_gpus is None and resources is None):
+                and meta.resources is None and meta.accelerator_type is None
+                and num_cpus is None and num_gpus is None and resources is None
+                and accelerator_type is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
             cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE
@@ -572,8 +576,8 @@ class ActorClass:
 
         resources = ray.utils.resources_from_resource_arguments(
             cpus_to_use, meta.num_gpus, meta.memory, meta.object_store_memory,
-            meta.resources, num_cpus, num_gpus, memory, object_store_memory,
-            resources)
+            meta.resources, meta.accelerator_type, num_cpus, num_gpus, memory,
+            object_store_memory, resources, accelerator_type)
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
@@ -904,7 +908,7 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_restarts, max_task_retries):
+               accelerator_type, max_restarts, max_task_retries):
     Class = modify_class(cls)
 
     if max_restarts is None:
@@ -928,7 +932,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
-        num_cpus, num_gpus, memory, object_store_memory, resources)
+        num_cpus, num_gpus, memory, object_store_memory, resources,
+        accelerator_type)
 
 
 def exit_actor():

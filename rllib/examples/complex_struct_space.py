@@ -19,7 +19,6 @@ from ray.rllib.examples.models.simple_rpg_model import CustomTorchRPGModel, \
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework", choices=["tf", "tfe", "torch"], default="tf")
-parser.add_argument("--eager", action="store_true")
 
 if __name__ == "__main__":
     ray.init(local_mode=True)
@@ -35,7 +34,6 @@ if __name__ == "__main__":
         },
         config={
             "framework": args.framework,
-            "eager": args.eager,
             "env": SimpleRPG,
             "rollout_fragment_length": 1,
             "train_batch_size": 2,

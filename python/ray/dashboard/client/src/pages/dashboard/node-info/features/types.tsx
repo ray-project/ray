@@ -1,13 +1,17 @@
 import React from "react";
-import { NodeInfoResponse, RayletWorkerStats } from "../../../../api";
+import {
+  NodeInfoResponse,
+  PlasmaStats,
+  RayletWorkerStats,
+} from "../../../../api";
 import { Accessor } from "../../../../common/tableUtils";
 
 type ArrayType<T> = T extends Array<infer U> ? U : never;
 export type Node = ArrayType<NodeInfoResponse["clients"]>;
 export type Worker = ArrayType<Node["workers"]>;
 
-type ClusterFeatureData = { nodes: Node[] };
-export type NodeFeatureData = { node: Node };
+type ClusterFeatureData = { nodes: Node[]; plasmaStats: PlasmaStats[] };
+export type NodeFeatureData = { node: Node; plasmaStats?: PlasmaStats };
 export type WorkerFeatureData = {
   node: Node;
   worker: Worker;
@@ -39,6 +43,7 @@ export type nodeInfoColumnId =
   | "ram"
   | "gpu"
   | "gram"
+  | "objectStoreMemory"
   | "disk"
   | "sent"
   | "received"
