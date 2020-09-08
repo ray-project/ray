@@ -16,7 +16,7 @@ You can also provide multiple directories for this option.
 
 .. code-block:: bash
 
-  ray start ... --code-search-path=["/path/to/jars1","/path/to/jars2","/path/to/pys1","/path/to/pys2"]
+  ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
 
 .. note:
 
