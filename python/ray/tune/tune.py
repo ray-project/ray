@@ -60,9 +60,17 @@ def _report_progress(runner, reporter, done=False):
     """
     trials = runner.get_trials()
     if reporter.should_report(trials, done=done):
+        messages = []
         sched_debug_str = runner.scheduler_alg.debug_string()
+        if sched_debug_str:
+            messages += [sched_debug_str]
+        runner_debug_str = runner.debug_string(with_metrics=False)
+        if runner_debug_str:
+            messages += [runner_debug_str]
         executor_debug_str = runner.trial_executor.debug_string()
-        reporter.report(trials, done, sched_debug_str, executor_debug_str)
+        if executor_debug_str:
+            messages += [executor_debug_str]
+        reporter.report(trials, done, *messages)
 
 
 def run(

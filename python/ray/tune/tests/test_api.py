@@ -233,6 +233,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
+    def testTimeout(self):
+        def dummy_fn(config):
+            import time
+            for i in range(30):
+                time.sleep(0.5)
+                tune.report(time_so_far=0.1)
+
+        analysis = tune.run(dummy_fn, num_samples=10, time_budget_s=5)
+        for trial in analysis.trials:
+            self.assertEqual(trial.status, Trial.TERMINATED)
+            self.assertFalse(
+                trial.last_result.get(TRAINING_ITERATION, 0) > 10 + 2)
+
     def testBuiltInTrainableResources(self):
         class B(Trainable):
             @classmethod

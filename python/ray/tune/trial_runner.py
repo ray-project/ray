@@ -419,16 +419,20 @@ class TrialRunner:
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
-    def debug_string(self, delim="\n"):
-        result_keys = [
-            list(t.last_result) for t in self.get_trials() if t.last_result
-        ]
-        metrics = set().union(*result_keys)
-        messages = [
-            self._scheduler_alg.debug_string(),
-            self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics),
-        ]
+    def debug_string(self, with_metrics=True, delim="\n"):
+        messages = []
+        if self._time_budget_s < float("inf"):
+            messages += [
+                f"Time Left: {self._total_time:0.2f} / {self._time_budget_s} sec"
+            ]
+
+        if with_metrics:
+            result_keys = [
+                list(t.last_result) for t in self.get_trials() if t.last_result
+            ]
+            metrics = set().union(*result_keys)
+
+            messages += [trial_progress_str(self.get_trials(), metrics)]
         return delim.join(messages)
 
     def has_resources(self, resources):
@@ -439,7 +443,7 @@ class TrialRunner:
         """Stops all trials."""
 
         if self._time_budget_exceeded():
-            logger.info("Exceeded global time limit {} / {}".format(
+            logger.info("Exceeded time budget: {:0.2f} / {} s".format(
                 self._total_time, self._time_budget_s))
 
         fail_fast = self._fail_fast and self._has_errored
