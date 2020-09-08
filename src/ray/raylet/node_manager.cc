@@ -1875,7 +1875,7 @@ void NodeManager::HandleCancelResourceReserve(
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
   RAY_CHECK(it != bundle_state_map_.end())
       << "Cancel requests are received to raylet although it hasn't received any prepare "
-         "or commit reuqest. This must be an anomaly.";
+         "or commit requests. This must be an anomaly.";
   const auto &bundle_state = it->second;
   if (bundle_state->state == CommitState::PREPARED) {
     CommitBundle(cluster_resource_map_, bundle_spec);
