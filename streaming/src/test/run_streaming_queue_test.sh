@@ -53,7 +53,9 @@ STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
 GCS_SERVER_EXEC="$RAY_ROOT/bazel-bin/gcs_server"
 
 # clear env
+set +e
 pgrep "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_server|job_agent" | xargs kill -9 &> /dev/null
+set -e
 
 # Run tests.
 
