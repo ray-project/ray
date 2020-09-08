@@ -423,7 +423,8 @@ class TrialRunner:
         messages = []
         if self._time_budget_s < float("inf"):
             messages += [
-                f"Time Left: {self._total_time:0.2f} / {self._time_budget_s} sec"
+                f"Time Left: {self._total_time:0.2f} " +
+                f"/ {self._time_budget_s} sec"
             ]
 
         if with_metrics:
