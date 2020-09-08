@@ -6,8 +6,10 @@ from ray.tune.utils import flatten_dict
 
 try:
     import pandas as pd
+    from pandas import DataFrame
 except ImportError:
     pd = None
+    DataFrame = None
 
 from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
@@ -435,7 +437,7 @@ class ExperimentAnalysis(Analysis):
         return self.best_trial.last_result
 
     @property
-    def best_result_df(self):
+    def best_result_df(self) -> DataFrame:
         """Get the best result of the experiment as a pandas dataframe.
 
         The best trial is determined by comparing the last trial results
@@ -456,7 +458,7 @@ class ExperimentAnalysis(Analysis):
         return {trial.trial_id: trial.last_result for trial in self.trials}
 
     @property
-    def results_df(self):
+    def results_df(self) -> DataFrame:
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
                              "`pip install pandas`.")

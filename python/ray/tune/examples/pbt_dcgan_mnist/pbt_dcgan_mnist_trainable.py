@@ -160,6 +160,6 @@ if __name__ == "__main__":
 
     # demo of the trained Generators
     if not args.smoke_test:
-        logdirs = analysis.dataframe()["logdir"].tolist()
+        logdirs = analysis.results_df["logdir"].tolist()
         model_paths = [os.path.join(d, "exported_models") for d in logdirs]
         demo_gan(analysis, model_paths)
