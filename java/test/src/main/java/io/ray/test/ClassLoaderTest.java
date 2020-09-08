@@ -31,7 +31,6 @@ public class ClassLoaderTest extends BaseTest {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job resource path.
     System.setProperty("ray.job.resource-path", resourcePath);
-    System.out.println(resourcePath);
   }
 
   @AfterClass
