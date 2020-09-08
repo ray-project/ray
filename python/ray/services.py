@@ -1327,7 +1327,8 @@ def start_raylet(redis_address,
 
     include_java = False
     try:
-        java_proc = subprocess.run(["java", "-version"], capture_output=True)
+        java_proc = subprocess.run(
+            ["java", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if java_proc.returncode == 0:
             include_java = True
     except OSError:
