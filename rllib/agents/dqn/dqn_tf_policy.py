@@ -352,7 +352,7 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
         for j in range(1, n_step):
             if i + j < traj_length:
                 new_obs[i] = new_obs[i + j]
-                dones[i] = dones[i + j]
+                dones[i] = dones[i + j if i + j + 1 == traj_length else i + j + 1]
                 rewards[i] += gamma**j * rewards[i + j]
 
 
