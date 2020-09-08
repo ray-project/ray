@@ -149,7 +149,7 @@ class AnalysisSuite(unittest.TestCase):
 
     def testDataframe(self):
         analysis = Analysis(self.test_dir)
-        df = analysis.dataframe()
+        df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 
