@@ -475,7 +475,8 @@ def wrap_function(train_func, warn=True):
     if not any([use_checkpoint, use_config_single, use_reporter]):
         raise ValueError(
             "Unknown argument found in the Trainable function. "
-            "Arguments other than the 'config' arg must be one "
+            "The function args must include a 'config' positional "
+            "parameter. Any other args must be one "
             "of ['reporter', 'checkpoint_dir']. Found: {}".format(func_args))
 
     if use_config_single and not use_checkpoint:
