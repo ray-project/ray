@@ -1,16 +1,19 @@
 import logging
+from python.ray.util.iter import LocalIterator
+from rllib.evaluation.worker_set import WorkerSet
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +125,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -152,7 +155,8 @@ def validate_config(config):
                              "replay_sequence_length > 1.")
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
     if config.get("prioritized_replay"):
         prio_args = {
             "prioritized_replay_alpha": config["prioritized_replay_alpha"],
@@ -217,7 +221,7 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config):
+def calculate_rr_weights(config: TrainerConfigDict):
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
@@ -229,7 +233,7 @@ def calculate_rr_weights(config):
     return weights
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Policy:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
@@ -237,7 +241,7 @@ def get_policy_class(config):
         return DQNTFPolicy
 
 
-def get_simple_policy_class(config):
+def get_simple_policy_class(config: TrainerConfigDict) -> Policy:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy
