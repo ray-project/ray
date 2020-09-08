@@ -55,6 +55,7 @@ esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --redis-port=6379 --redis-password=123456 --include-java --job-resource-path=[\""$PWD/bazel-bin/java/all_tests_deploy.jar"\"]
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.redis.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.resource-path.0="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
+ray stop
 popd
 
 pushd "$ROOT_DIR"
