@@ -88,6 +88,7 @@ py_test_module_list(
     "test_mini.py",
     "test_node_manager.py",
     "test_numba.py",
+    "test_queue.py",
     "test_ray_init.py",
     "test_serialization.py",
     "test_tempfile.py",
