@@ -1,7 +1,6 @@
 package io.ray.test;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
