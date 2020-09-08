@@ -185,7 +185,6 @@
             <configLocation>checkstyle.xml</configLocation>
             <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
             <encoding>UTF-8</encoding>
-            <skip>true</skip>
             <consoleOutput>true</consoleOutput>
             <failsOnError>true</failsOnError>
             <failOnViolation>true</failOnViolation>
