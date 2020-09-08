@@ -1316,8 +1316,8 @@ def start_raylet(redis_address,
             Java worker.
         java_worker_options (list): The command options for Java worker.
         job_resource_path (list): resource path for worker. job_resource_path
-          is added to worker command in non-multi-tenancy mode and job_config
-           in multi-tenancy mode.
+            is added to worker command in non-multi-tenancy mode and job_config
+            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1438,12 +1438,9 @@ def start_raylet(redis_address,
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
-        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",
-        # noqa
-        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",
-        # noqa
-        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",
-        # noqa
+        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
+        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
+        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1482,15 +1479,6 @@ def start_raylet(redis_address,
         fate_share=fate_share)
 
     return process_info
-
-
-def is__multi_tenancy_enabled(conf):
-    """Return a bool flag to indicate whether multi_tenancy is enabled"""
-    enable_multi_tenancy = conf.get("enable_multi_tenancy", "False") == "True"
-    if not enable_multi_tenancy:
-        enable_multi_tenancy = "RAY_ENABLE_MULTI_TENANCY" in os.environ and \
-                               os.environ["RAY_ENABLE_MULTI_TENANCY"] == "1"
-    return enable_multi_tenancy
 
 
 def get_ray_jars_dir():
@@ -1661,7 +1649,7 @@ def determine_plasma_store_config(object_store_memory,
                     "any running plasma_store_server processes. If you are "
                     "inside a Docker container, you may need to pass an "
                     "argument with the flag '--shm-size' to 'docker run'.".
-                        format(ray.utils.get_user_temp_dir(), shm_avail))
+                    format(ray.utils.get_user_temp_dir(), shm_avail))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
@@ -1686,14 +1674,14 @@ def determine_plasma_store_config(object_store_memory,
     if object_store_memory < ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES:
         raise ValueError("Attempting to cap object store memory usage at {} "
                          "bytes, but the minimum allowed is {} bytes.".format(
-            object_store_memory,
-            ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
+                             object_store_memory,
+                             ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES))
 
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
         "using {}.".format(
-            round(object_store_memory / 10 ** 9, 2), plasma_directory))
+            round(object_store_memory / 10**9, 2), plasma_directory))
 
     return plasma_directory, object_store_memory
 
