@@ -490,12 +490,30 @@ def get_system_memory():
     return psutil_memory_in_bytes
 
 
+def _get_docker_cpus():
+    # 1. Try using CFS Quota (https://bugs.openjdk.java.net/browse/JDK-8146115)
+    # 2. Try Nproc (CPU sets)
+    cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+    num_cpus = 0
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(
+            cpu_quota_file_name):
+        with open(cpu_quota_file_name, "r") as f:
+            num_cpus = int(f.read())
+        if num_cpus != -1:
+            with open(cpu_share_file_name, "r") as f:
+                num_cpus /= int(f.read())
+            return num_cpus
+
+    return subprocess.check_output("nproc")
+
+
 def get_num_cpus():
     cpu_count = multiprocessing.cpu_count()
     try:
         # Not easy to get cpu count in docker, see:
         # https://bugs.python.org/issue36054
-        docker_count = subprocess.check_output("nproc")
+        docker_count = _get_docker_cpus()
         if docker_count != cpu_count:
             cpu_count = docker_count
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
@@ -507,8 +525,8 @@ def get_num_cpus():
                     "can set the environment variable: "
                     "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now.")
     except Exception:
-        # `nproc` is a linux-only utility. If docker only works on linux (will
-        # run in VM on other platforms) so this is fine.
+        # `nproc` and cgroup are linux-only. If docker only works on linux
+        # (will run in a linux VM on other platforms), so this is fine.
         pass
 
     return cpu_count
