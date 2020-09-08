@@ -224,6 +224,33 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
                            job_config->jvm_options().end());
   }
+  // For non-multi-tenancy mode, job code search path is embedded in worker_command.
+  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
+    std::string code_search_path_str;
+    for (int i = 0; i < job_config->code_search_path_size(); i++) {
+      auto path = job_config->code_search_path(i);
+      if (i != 0) {
+        code_search_path_str += ":";
+      }
+      code_search_path_str += path;
+    }
+    if (!code_search_path_str.empty()) {
+      switch (language) {
+      case Language::PYTHON: {
+        code_search_path_str = "--code-search-path=" + code_search_path_str;
+        break;
+      }
+      case Language::JAVA: {
+        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        break;
+      }
+      default:
+        RAY_LOG(FATAL) << "code_search_path is not supported for worker language "
+                       << language;
+      }
+      dynamic_options.push_back(code_search_path_str);
+    }
+  }
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;

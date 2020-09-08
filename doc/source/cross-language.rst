@@ -3,6 +3,25 @@ Cross-language programming
 
 This page will show you how to use Ray's cross-language programming feature.
 
+Setup the cluster
+-----------------
+
+We need to set the ``--code-search-path`` option on ``ray start`` command. The ``--code-search-path`` option instructs workers to load Java or Python code from the specified code search path.
+
+.. code-block:: bash
+
+  ray start ... --code-search-path=/path/to/code
+
+You can also provide multiple directories for this option.
+
+.. code-block:: bash
+
+  ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
+
+.. note:
+
+  If ``--code-search-path`` is specified, you can only run remote functions which can be found in ``--code-search-path``.
+
 Python calling Java
 -------------------
 
@@ -41,7 +60,7 @@ from the above Java class.
 
   import ray
 
-  ray.init(_load_code_from_local=True)
+  ray.init(address="auto")
 
   # Define a Java class.
   counter_class = ray.java_actor_class(
@@ -57,13 +76,13 @@ from the above Java class.
   # Define a Java function.
   add_function = ray.java_function(
         "io.ray.demo.Math", "add")
-  
+
   # Call the Java remote function.
   obj_ref3 = add_function.remote(1, 2)
   assert ray.get(obj_ref3) == 3
 
   ray.shutdown()
-  
+
 Java calling Python
 -------------------
 
@@ -92,7 +111,7 @@ Suppose we have a Python module as follows:
 
   * The function or class should be decorated by `@ray.remote`.
 
-Then, in Java, we can call the above Python remote function, or create an actor 
+Then, in Java, we can call the above Python remote function, or create an actor
 from the above Python class.
 
 .. code-block:: java
@@ -139,7 +158,7 @@ Cross-language data serialization
 
 The arguments and return values of ray call can be serialized & deserialized
 automatically if their types are the following:
-  
+
   - Primitive data types
       ===========   =======  =======
       MessagePack   Python   Java
@@ -168,7 +187,7 @@ automatically if their types are the following:
     float type to receive the input argument, the double precision Python data
     will be reduced to float precision in Java.
   * BigInteger can support max value of 2^64-1, please refer to:
-    https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family. 
+    https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family.
     If the value larger than 2^64-1, then transfer the BigInteger:
 
       - From Java to Python: *raise an exception*
@@ -272,7 +291,7 @@ Then, run the following code:
 
   import ray
 
-  ray.init(_load_code_from_local=True)
+  ray.init(address="auto")
 
   obj_ref = ray.java_function(
         "io.ray.demo.MyRayClass",

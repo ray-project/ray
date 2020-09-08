@@ -16,6 +16,8 @@ import io.ray.runtime.util.ResourceUtil;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,7 +75,7 @@ public class RayConfig {
   public int nodeManagerPort;
   public final Map<String, String> rayletConfigParameters;
 
-  public final String jobResourcePath;
+  public List<String> codeSearchPath;
   public final String pythonWorkerCommand;
 
   private static volatile RayConfig instance = null;
@@ -225,11 +227,12 @@ public class RayConfig {
       rayletConfigParameters.put(entry.getKey(), value == null ? "" : value.toString());
     }
 
-    // Job resource path.
-    if (config.hasPath("ray.job.resource-path")) {
-      jobResourcePath = config.getString("ray.job.resource-path");
+    // Job code search path.
+    if (config.hasPath("ray.job.code-search-path")) {
+      codeSearchPath = Arrays.asList(
+          config.getString("ray.job.code-search-path").split(":"));
     } else {
-      jobResourcePath = null;
+      codeSearchPath = Collections.emptyList();
     }
 
     boolean enableMultiTenancy = false;
@@ -311,7 +314,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.redis.address", redisAddress);
-    dynamic.put("ray.job.resource-path", jobResourcePath);
+    dynamic.put("ray.job.code-search-path", codeSearchPath);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

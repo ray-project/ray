@@ -3,7 +3,6 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.Ray;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -23,33 +22,31 @@ import org.testng.annotations.Test;
 
 public class ClassLoaderTest extends BaseTest {
 
-  private final String resourcePath = FileUtils.getTempDirectoryPath()
+  private final String codeSearchPath = FileUtils.getTempDirectoryPath()
       + "/ray_test/ClassLoaderTest";
 
   @BeforeClass
   public void setUp() {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
-    // scenario only occurs if the classes are loaded from the job resource path.
-    System.setProperty("ray.job.resource-path", resourcePath);
+    // scenario only occurs if the classes are loaded from the job code search path.
+    System.setProperty("ray.job.code-search-path", codeSearchPath);
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.job.resource-path");
+    System.clearProperty("ray.job.code-search-path");
   }
 
   @Test(groups = {"cluster"})
   public void testClassLoaderInMultiThreading() throws Exception {
-    Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
-
-    final String jobResourcePath = resourcePath + "/" + Ray.getRuntimeContext().getCurrentJobId();
-    File jobResourceDir = new File(jobResourcePath);
+    File jobResourceDir = new File(codeSearchPath);
     FileUtils.deleteQuietly(jobResourceDir);
     jobResourceDir.mkdirs();
     jobResourceDir.deleteOnExit();
 
-    // In this test case the class is expected to be loaded from the job resource path, so we need
-    // to put the compiled class file into the job resource path and load it later.
+    // In this test case the class is expected to be loaded from the job code search path,
+    // so we need to put the compiled class file into the job code search path and load it
+    // later.
     String testJavaFile = ""
         + "import java.lang.management.ManagementFactory;\n"
         + "import java.lang.management.RuntimeMXBean;\n"
@@ -85,14 +82,14 @@ public class ClassLoaderTest extends BaseTest {
         + "  }\n"
         + "}";
 
-    // Write the demo java file to the job resource path.
-    String javaFilePath = jobResourcePath + "/ClassLoaderTester.java";
+    // Write the demo java file to the job code search path.
+    String javaFilePath = codeSearchPath + "/ClassLoaderTester.java";
     Files.write(Paths.get(javaFilePath), testJavaFile.getBytes());
 
     // Compile the java file.
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     int result = compiler.run(null, null, null, "-d",
-        jobResourcePath, javaFilePath);
+        codeSearchPath, javaFilePath);
     if (result != 0) {
       throw new RuntimeException("Couldn't compile ClassLoaderTester.java.");
     }
