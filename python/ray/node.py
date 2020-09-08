@@ -276,13 +276,14 @@ class Node:
                                    key, params_dict[key], env_dict[key]))
             return num_cpus, num_gpus, memory, object_store_memory, result
 
-
         if not self._resource_spec:
             env_resources = {}
-            env_string = os.getenv(ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
+            env_string = os.getenv(
+                ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 env_resources = json.loads(env_string)
-                logger.info(f"Autosaler overriding resources: {env_resources}.")
+                logger.info(
+                    f"Autosaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
@@ -704,7 +705,6 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
-        print()
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
