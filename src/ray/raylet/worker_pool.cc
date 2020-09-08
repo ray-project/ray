@@ -224,36 +224,30 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
                            job_config->jvm_options().end());
   }
-  // For non-multi-tenancy mode, job resource path is embedded in worker_command.
+  // For non-multi-tenancy mode, job code search path is embedded in worker_command.
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     std::string code_search_path_str;
     for (int i = 0; i < job_config->code_search_path_size(); i++) {
       auto path = job_config->code_search_path(i);
+      if (i != 0) {
+        code_search_path_str += ":";
+      }
+      code_search_path_str += path;
+    }
+    if (!code_search_path_str.empty()) {
       switch (language) {
       case Language::PYTHON: {
-        if (i == 0) {
-          code_search_path_str += "--code-search-path=[";
-        }
-        code_search_path_str += "'" + path + "', ";
-        if (i == job_config->code_search_path_size() - 1) {
-          code_search_path_str += "]";
-        }
+        code_search_path_str = "--code-search-path=" + code_search_path_str;
         break;
       }
       case Language::JAVA: {
-        if (i != 0) {
-          code_search_path_str += " ";
-        }
-        code_search_path_str += "-Dray.job.code-search-path." + std::to_string(i);
-        code_search_path_str += "=" + path;
+        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
         break;
       }
       default:
         RAY_LOG(FATAL) << "code_search_path is not supported for worker language "
                        << language;
       }
-    }
-    if (!code_search_path_str.empty()) {
       dynamic_options.push_back(code_search_path_str);
     }
   }

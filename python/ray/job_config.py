@@ -10,7 +10,9 @@ class JobConfig:
         num_java_workers_per_process (int): The number of java workers per
             worker process.
         jvm_options (str[]): The jvm options for java workers of the job.
-        resource_path (str[]): The resource path for workers of the job.
+        code_search_path (str): A list of directories or jar files that specify
+            the search path for user code. This will be used as `CLASSPATH` in
+            Java and `PYTHONPATH` in Python.
     """
 
     def __init__(
@@ -18,7 +20,7 @@ class JobConfig:
             worker_env=None,
             num_java_workers_per_process=1,
             jvm_options=None,
-            resource_path=None,
+            code_search_path=None,
     ):
         if worker_env is None:
             self.worker_env = dict()
@@ -29,8 +31,8 @@ class JobConfig:
             self.jvm_options = []
         else:
             self.jvm_options = jvm_options
-        if resource_path is None:
-            self.resource_path = []
+        if code_search_path is None:
+            self.code_search_path = []
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
@@ -39,5 +41,5 @@ class JobConfig:
         job_config.num_java_workers_per_process = (
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
-        job_config.resource_path.extend(self.resource_path)
+        job_config.code_search_path.extend(self.code_search_path)
         return job_config.SerializeToString()

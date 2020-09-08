@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
 import org.apache.commons.io.filefilter.RegexFileFilter;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
@@ -61,7 +62,7 @@ public class FunctionManager {
   private final List<String> codeSearchPath;
 
   /**
-   * Construct a FunctionManager with the specified job resource path.
+   * Construct a FunctionManager with the specified code search path.
    *
    * @param codeSearchPath The specified job resource that can store the job's
    *                        resources.
@@ -120,6 +121,7 @@ public class FunctionManager {
       classLoader = getClass().getClassLoader();
     } else {
       URL[] urls = codeSearchPath.stream()
+          .filter(p -> StringUtils.isNotBlank(p) && Files.exists(Paths.get(p)))
           .flatMap(p -> {
             try {
               if (!Files.isDirectory(Paths.get(p))) {

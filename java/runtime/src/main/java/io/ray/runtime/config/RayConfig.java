@@ -227,15 +227,10 @@ public class RayConfig {
       rayletConfigParameters.put(entry.getKey(), value == null ? "" : value.toString());
     }
 
-    // Job resource path.
+    // Job code search path.
     if (config.hasPath("ray.job.code-search-path")) {
-      try {
-        codeSearchPath =  config.getStringList("ray.job.code-search-path");
-      } catch (ConfigException.WrongType e) {
-        config.getString("ray.job.code-search-path");
-        codeSearchPath = Arrays.asList(
-            config.getString("ray.job.code-search-path").split(File.pathSeparator));
-      }
+      codeSearchPath = Arrays.asList(
+          config.getString("ray.job.code-search-path").split(":"));
     } else {
       codeSearchPath = Collections.emptyList();
     }

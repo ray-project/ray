@@ -165,7 +165,7 @@ public class FunctionManagerTest {
     demoJavaFile += "  }\n";
     demoJavaFile += "}";
 
-    // Write the demo java file to the job resource path.
+    // Write the demo java file to the job code search path.
     String javaFilePath = codeSearchPath + "/DemoApp.java";
     Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
 

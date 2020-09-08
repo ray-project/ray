@@ -103,10 +103,10 @@ parser.add_argument(
 parser.add_argument(
     "--code-search-path",
     default=None,
-    type=json.loads,
-    help="A list of directories or jar files that specify the search path for "
-    "user code. This will be used as `CLASSPATH` in Java, and "
-    "`PYTHONPATH` in Python.")
+    type=str,
+    help="A list of directories or jar files separated by colon that specify "
+    "the search path for user code. This will be used as `CLASSPATH` in "
+    "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
     code_search_path = args.code_search_path
     if code_search_path is not None:
-        for p in code_search_path:
+        for p in code_search_path.split(":"):
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.append(p)
