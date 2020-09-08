@@ -224,37 +224,37 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
                            job_config->jvm_options().end());
   }
-  // For non-multi-tenancy mode, job_resource_path is embedded in worker_command.
+  // For non-multi-tenancy mode, job resource path is embedded in worker_command.
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
-    std::string job_resource_path_str;
-    for (int i = 0; i < job_config->job_resource_path_size(); i++) {
-      auto path = job_config->job_resource_path(i);
+    std::string resource_path_str;
+    for (int i = 0; i < job_config->resource_path_size(); i++) {
+      auto path = job_config->resource_path(i);
       switch (language) {
       case Language::PYTHON: {
         if (i == 0) {
-          job_resource_path_str += "--job-resource-path=[";
+          resource_path_str += "--job-resource-path=[";
         }
-        job_resource_path_str += "'" + path + "', ";
-        if (i == job_config->job_resource_path_size() - 1) {
-          job_resource_path_str += "]";
+        resource_path_str += "'" + path + "', ";
+        if (i == job_config->resource_path_size() - 1) {
+          resource_path_str += "]";
         }
         break;
       }
       case Language::JAVA: {
         if (i != 0) {
-          job_resource_path_str += " ";
+          resource_path_str += " ";
         }
-        job_resource_path_str += "-Dray.job.resource-path." + std::to_string(i);
-        job_resource_path_str += "=" + path;
+        resource_path_str += "-Dray.job.resource-path." + std::to_string(i);
+        resource_path_str += "=" + path;
         break;
       }
       default:
-        RAY_LOG(FATAL) << "job_resource_path is not supported for worker language "
+        RAY_LOG(FATAL) << "resource_path is not supported for worker language "
                        << language;
       }
     }
-    if (!job_resource_path_str.empty()) {
-      dynamic_options.push_back(job_resource_path_str);
+    if (!resource_path_str.empty()) {
+      dynamic_options.push_back(resource_path_str);
     }
   }
 

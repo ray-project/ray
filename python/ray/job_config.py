@@ -10,8 +10,7 @@ class JobConfig:
         num_java_workers_per_process (int): The number of java workers per
             worker process.
         jvm_options (str[]): The jvm options for java workers of the job.
-        job_resource_path (str[]): The job resource path for workers of the
-            job.
+        resource_path (str[]): The resource path for workers of the job.
     """
 
     def __init__(
@@ -19,7 +18,7 @@ class JobConfig:
             worker_env=None,
             num_java_workers_per_process=1,
             jvm_options=None,
-            job_resource_path=None,
+            resource_path=None,
     ):
         if worker_env is None:
             self.worker_env = dict()
@@ -40,5 +39,5 @@ class JobConfig:
         job_config.num_java_workers_per_process = (
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
-        job_config.job_resource_path.extend(self.job_resource_path)
+        job_config.resource_path.extend(self.job_resource_path)
         return job_config.SerializeToString()
