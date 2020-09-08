@@ -174,8 +174,7 @@ class TimeoutStopper(Stopper):
         else:
             raise ValueError(
                 "`timeout` parameter has to be either a number or a "
-                "`datetime.timedelta` object. Found: {}".format(
-                    type(timeout)))
+                "`datetime.timedelta` object. Found: {}".format(type(timeout)))
 
         # To account for setup overhead, set the start time only after
         # the first call to `stop_all()`.
