@@ -50,7 +50,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   }
 
   @org.testng.annotations.AfterSuite
-  public void suiteTearDown() throws Exception {
+  public void suiteTearDown() {
     LOGGER.warn("Do tear down");
   }
 
