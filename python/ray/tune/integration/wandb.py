@@ -19,17 +19,20 @@ WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
 
 
-def _clean_config(config):
+def _clean_log(obj):
     # Fixes https://github.com/ray-project/ray/issues/10631
-    new_config = {}
-    for k, v in config.items():
-        try:
-            pickle.dumps(v)
-            new_config[k] = v
-        except Exception:
-            # give up, similar to _SafeFallBackEncoder
-            new_config[k] = str(v)
-    return new_config
+    if isinstance(obj, dict):
+        return {k: _clean_log(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_log(v) for v in obj]
+
+    # Else
+    try:
+        pickle.dumps(obj)
+        return obj
+    except Exception:
+        # give up, similar to _SafeFallBackEncoder
+        return str(obj)
 
 
 def wandb_mixin(func):
@@ -318,7 +321,7 @@ class WandbLogger(Logger):
         wandb_group = wandb_config.pop("group", self.trial.trainable_name)
 
         # remove unpickleable items!
-        config = _clean_config(config)
+        config = _clean_log(config)
 
         wandb_init_kwargs = dict(
             id=trial_id,
@@ -340,6 +343,7 @@ class WandbLogger(Logger):
         self._wandb.start()
 
     def on_result(self, result):
+        result = _clean_log(result)
         self._queue.put(result)
 
     def close(self):
@@ -391,7 +395,7 @@ class WandbTrainableMixin:
         wandb_group = wandb_config.pop("group", default_group)
 
         # remove unpickleable items!
-        _config = _clean_config(_config)
+        _config = _clean_log(_config)
 
         wandb_init_kwargs = dict(
             id=trial_id,
