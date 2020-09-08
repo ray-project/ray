@@ -135,6 +135,8 @@ There are two steps needed to use Ray in a distributed setting:
 
           ray up cluster.yaml
 
+      To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. It's used to specify classpath for workers in the cluster. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes.
+
       You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh into the head node with ``ray attach cluster.yaml``.
 
     2. Specify the address of the Ray cluster when initializing Ray in your code. This causes Ray to connect to the existing cluster instead of starting a new one on the local node.
@@ -152,14 +154,11 @@ There are two steps needed to use Ray in a distributed setting:
 
           You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
 
-          You need to add the ``ray.job.code-search-path`` parameter as well. It's used to specify classpath for workers in the cluster. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
-
           To connect your program to the Ray cluster, run it like this:
 
               .. code-block:: bash
 
                   java -classpath /path/to/jars/ \
-                    -Dray.job.code-search-path=/path/to/jars/ \
                     -Dray.redis.address=<address> \
                     <classname> <args>
 
@@ -189,7 +188,7 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --address=<address>
 
-If you want to run a Java job, you need to specify the classpath via the ``--code-search-path`` option.
+If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option.
 
 .. code-block:: bash
 
