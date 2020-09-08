@@ -93,7 +93,7 @@ class HyperBandForBOHB(HyperBandScheduler):
         trial_runner.trial_executor.unpause_trial(trial)
         trial_runner._search_alg.searcher.on_unpause(trial.trial_id)
 
-    def choose_trial_to_run(self, trial_runner):
+    def choose_trial_to_run(self, trial_runner, allow_recurse=True):
         """Fair scheduling within iteration by completion percentage.
 
         List of trials not used since all trials are tracked as state
@@ -117,8 +117,17 @@ class HyperBandForBOHB(HyperBandScheduler):
                 for bracket in hyperband:
                     if bracket and any(trial.status == Trial.PAUSED
                                        for trial in bracket.current_trials()):
-                        # This will change the trial state and let the
-                        # trial runner retry.
+                        # This will change the trial state
                         self._process_bracket(trial_runner, bracket)
+
+                        # If there are pending trials now, suggest one.
+                        # This is because there might be both PENDING and
+                        # PAUSED trials now, and PAUSED trials will raise
+                        # an error before the trial runner tries again.
+                        if allow_recurse and any(
+                                trial.status == Trial.PENDING
+                                for trial in bracket.current_trials()):
+                            return self.choose_trial_to_run(
+                                trial_runner, allow_recurse=False)
         # MAIN CHANGE HERE!
         return None

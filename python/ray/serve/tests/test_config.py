@@ -81,11 +81,11 @@ def test_replica_config_validation():
         def __call__(self):
             pass
 
-    def function():
+    def function(_):
         pass
 
     @serve.accept_batch
-    def batch_function():
+    def batch_function(_):
         pass
 
     ReplicaConfig(Class)

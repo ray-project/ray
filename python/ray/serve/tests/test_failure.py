@@ -23,7 +23,7 @@ def request_with_retries(endpoint, timeout=30):
 def test_controller_failure(serve_instance):
     client = serve_instance
 
-    def function():
+    def function(_):
         return "hello1"
 
     client.create_backend("controller_failure:v1", function)
@@ -45,7 +45,7 @@ def test_controller_failure(serve_instance):
         response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello1"
 
-    def function():
+    def function(_):
         return "hello2"
 
     ray.kill(client._controller, no_restart=False)
@@ -57,7 +57,7 @@ def test_controller_failure(serve_instance):
         response = request_with_retries("/controller_failure", timeout=30)
         assert response.text == "hello2"
 
-    def function():
+    def function(_):
         return "hello3"
 
     ray.kill(client._controller, no_restart=False)
@@ -85,7 +85,7 @@ def _kill_routers(client):
 def test_http_proxy_failure(serve_instance):
     client = serve_instance
 
-    def function():
+    def function(_):
         return "hello1"
 
     client.create_backend("proxy_failure:v1", function)
@@ -100,7 +100,7 @@ def test_http_proxy_failure(serve_instance):
 
     _kill_routers(client)
 
-    def function():
+    def function(_):
         return "hello2"
 
     client.create_backend("proxy_failure:v2", function)
@@ -213,7 +213,7 @@ def test_worker_replica_failure(serve_instance):
 def test_create_backend_idempotent(serve_instance):
     client = serve_instance
 
-    def f():
+    def f(_):
         return "hello"
 
     controller = client._controller
@@ -236,7 +236,7 @@ def test_create_backend_idempotent(serve_instance):
 def test_create_endpoint_idempotent(serve_instance):
     client = serve_instance
 
-    def f():
+    def f(_):
         return "hello"
 
     client.create_backend("my_backend", f)

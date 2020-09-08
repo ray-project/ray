@@ -231,6 +231,15 @@ export type RayletInfoResponse = {
   actorGroups: {
     [groupKey: string]: ActorGroup;
   };
+  plasmaStats: {
+    [ip: string]: PlasmaStats;
+  };
+};
+
+export type PlasmaStats = {
+  object_store_num_local_objects: number;
+  object_store_available_memory: number;
+  object_store_used_memory: number;
 };
 
 export const getRayletInfo = () =>

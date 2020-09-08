@@ -436,14 +436,6 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
-# DYNATrainer
-py_test(
-    name = "test_dyna",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/dyna/tests/test_dyna.py"]
-)
-
 # ES
 py_test(
     name = "test_es",

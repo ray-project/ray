@@ -11,6 +11,8 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False):
 
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
+    # Uncomment the line below to turn on debug log for tests.
+    # os.environ["SERVE_LOG_DEBUG"] = "1"
     ray.init(
         num_cpus=36,
         _metrics_export_port=9999,

@@ -63,7 +63,7 @@ public class StreamingContext implements Serializable {
     jobGraph.printJobGraph();
     LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 
-    if (Ray.internal() == null) {
+    if (!Ray.isInitialized()) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
         Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
         ClusterStarter.startCluster(false, true);
@@ -102,7 +102,7 @@ public class StreamingContext implements Serializable {
   }
 
   public void stop() {
-    if (Ray.internal() != null) {
+    if (Ray.isInitialized()) {
       ClusterStarter.stopCluster(jobGraph.isCrossLanguageGraph());
     }
   }
