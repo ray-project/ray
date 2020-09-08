@@ -40,7 +40,7 @@ public class ClassLoaderTest extends BaseTest {
 
   @Test(groups = {"cluster"})
   public void testClassLoaderInMultiThreading() throws Exception {
-    Assert.assertTrue(TestUtils.getRuntime().getRayConfig().numWorkersPerProcess > 1);
+    Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
 
     final String jobResourcePath = resourcePath + "/" + Ray.getRuntimeContext().getCurrentJobId();
     File jobResourceDir = new File(jobResourcePath);
