@@ -8,6 +8,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -70,7 +71,7 @@ public abstract class BaseMultiLanguageTest {
         .filter(s -> !s.contains(" ") && s.contains("test"))
         .collect(Collectors.toList());
     // Start ray cluster.
-    List<String> startCommand = ImmutableList.of(
+    List<String> startCommand = Arrays.asList(
         "ray",
         "start",
         "--head",
@@ -82,9 +83,16 @@ public abstract class BaseMultiLanguageTest {
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
-        "--job-resource-path=" + new Gson().toJson(classpath),
         "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
+    if ("1".equals(System.getenv("RAY_ENABLE_MULTI_TENANCY"))) {
+      for (int i = 0; i < classpath.size(); i++) {
+        System.setProperty("ray.job.resource-path." + i, classpath.get(i));
+      }
+    } else {
+      startCommand.add("--job-resource-path=" + new Gson().toJson(classpath));
+    }
+
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }

@@ -40,5 +40,5 @@ class JobConfig:
         job_config.num_java_workers_per_process = (
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
-        job_config.job_resource_path = self.job_resource_path
+        job_config.job_resource_path.extend(self.job_resource_path)
         return job_config.SerializeToString()
