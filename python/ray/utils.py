@@ -500,7 +500,7 @@ def get_num_cpus():
             cpu_count = docker_count
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
                 logger.warning(
-                    "Detecting limited number of GPUs due to docker. In "
+                    "Detecting limited number of CPUs due to docker. In "
                     "previous versions of Ray, CPU detection in containers was "
                     "buggy. Please ensure that Ray has enough CPUs allocated. "
                     "This message will be removed in future version of Ray. You "
