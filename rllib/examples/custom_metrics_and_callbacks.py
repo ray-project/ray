@@ -80,8 +80,7 @@ if __name__ == "__main__":
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
             "framework": "tf",
-        },
-        return_trials=True)
+        }).trials
 
     # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]

@@ -10,7 +10,7 @@ static constexpr int TASK_OPTION_RETURN_NUM_0 = 0;
 static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 
 void Transport::Send(std::shared_ptr<LocalMemoryBuffer> buffer) {
-  STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
+  STREAMING_LOG(DEBUG) << "Transport::Send buffer size: " << buffer->Size();
   std::vector<ObjectID> return_ids;
   ray::streaming::SendInternal(peer_actor_id_, std::move(buffer), async_func_,
                                TASK_OPTION_RETURN_NUM_0, return_ids);

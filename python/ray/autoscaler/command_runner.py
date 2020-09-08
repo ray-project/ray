@@ -93,9 +93,10 @@ def _with_environment_variables(cmd: str,
 
 
 def _with_interactive(cmd):
-    force_interactive = ("true && source ~/.bashrc && "
-                         "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-    return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
+    force_interactive = (
+        f"true && source ~/.bashrc && "
+        f"export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({cmd})")
+    return ["bash", "--login", "-c", "-i", quote(force_interactive)]
 
 
 class CommandRunnerInterface:
@@ -170,7 +171,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
 
         self.log_prefix = log_prefix
         self.process_runner = process_runner
-        self.node_id = node_id
+        self.node_id = str(node_id)
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
 
@@ -215,18 +216,17 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 self.node_id,
                 "--",
             ]
-            cmd = _with_interactive(cmd)
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
-            final_cmd += _with_interactive(cmd)
+            cmd = _with_interactive(cmd)
+            final_cmd += cmd
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
                     return self.process_runner.check_output(
-                        " ".join(final_cmd), shell=True)
+                        final_cmd, shell=True)
                 else:
-                    self.process_runner.check_call(
-                        " ".join(final_cmd), shell=True)
+                    self.process_runner.check_call(final_cmd, shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
                     quoted_cmd = " ".join(final_cmd[:-1] +
@@ -445,6 +445,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             if not cli_logger.old_style and not with_output:
                 return run_cmd_redirected(
                     final_cmd,
+                    process_runner=self.process_runner,
                     silent=silent,
                     use_login_shells=is_using_login_shells())
             if with_output:

@@ -3,6 +3,124 @@ Advanced Usage
 
 This page will cover some more advanced examples of using Ray's flexible programming model.
 
+.. contents::
+  :local:
+
+Synchronization
+---------------
+
+Tasks or actors can often contend over the same resource or need to communicate with each other. Here are some standard ways to perform synchronization across Ray processes.
+
+Inter-process synchronization using FileLock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have several tasks or actors writing to the same file or downloading a file on a single node, you can use `FileLock <https://pypi.org/project/filelock/>`_ to synchronize.
+
+This often occurs for data loading and preprocessing.
+
+.. code-block:: python
+
+    import ray
+    from filelock import FileLock
+
+    @ray.remote
+    def write_to_file(text):
+        # Create a filelock object. Consider using an absolute path for the lock.
+        with FileLock("my_data.txt.lock"):
+            with open("my_data.txt","a") as f:
+                f.write(text)
+
+    ray.init()
+    ray.get([write_to_file.remote("hi there!\n") for i in range(3)])
+
+    with open("my_data.txt") as f:
+        print(f.read())
+
+    ## Output is:
+
+    # hi there!
+    # hi there!
+    # hi there!
+
+Multi-node synchronization using ``SignalActor``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you have multiple tasks that need to wait on some condition, you can use a ``SignalActor`` to coordinate.
+
+.. code-block:: python
+
+    # Also available via `from ray.test_utils import SignalActor`
+    import ray
+    import asyncio
+
+    @ray.remote(num_cpus=0)
+    class SignalActor:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        def send(self, clear=False):
+            self.ready_event.set()
+            if clear:
+                self.ready_event.clear()
+
+        async def wait(self, should_wait=True):
+            if should_wait:
+                await self.ready_event.wait()
+
+    @ray.remote
+    def wait_and_go(signal):
+        ray.get(signal.wait.remote())
+
+        print("go!")
+
+    ray.init()
+    signal = SignalActor.remote()
+    tasks = [wait_and_go.remote(signal) for _ in range(4)]
+    print("ready...")
+    # Tasks will all be waiting for the singals.
+    print("set..")
+    ray.get(signal.send.remote())
+
+    # Tasks are unblocked.
+    ray.get(tasks)
+
+    ##  Output is:
+    # ready...
+    # get set..
+
+    # (pid=77366) go!
+    # (pid=77372) go!
+    # (pid=77367) go!
+    # (pid=77358) go!
+
+
+Message passing using Ray Queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
+actors, you can use ``ray.experimental.queue.Queue`` (`source code <https://github.com/ray-project/ray/blob/master/python/ray/experimental/queue.py>`_).
+
+.. code-block:: python
+
+    import ray
+    from ray.experimental.queue import Queue
+
+    ray.init()
+    # You can pass this object around to different tasks/actors
+    queue = Queue(maxsize=100)
+
+    @ray.remote
+    def consumer(queue):
+        next_item = queue.get(block=True)
+        print(f"got work {next_item}")
+
+    consumers = [consumer.remote(queue) for _ in range(2)]
+
+    [queue.put(i) for i in range(10)]
+
+Ray's Queue API has similar API as Python's ``asyncio.Queue`` and ``queue.Queue``.
+
+
 Dynamic Remote Parameters
 -------------------------
 
@@ -101,6 +219,21 @@ load balancing, gang scheduling, and priority-based scheduling.
 .. autofunction:: ray.experimental.set_resource
     :noindex:
 
+
+Accelerator Types
+------------------
+
+Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"accelerator_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
+
+.. code-block:: python
+
+    from ray.accelerators import NVIDIA_TESLA_V100
+    
+    @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+    def train(data):
+        return "This function was run on a node with a Tesla V100 GPU"
+
+See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
 Nested Remote Functions

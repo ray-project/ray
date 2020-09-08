@@ -15,7 +15,7 @@ class JobConfig:
     def __init__(
             self,
             worker_env=None,
-            num_java_workers_per_process=10,
+            num_java_workers_per_process=1,
             jvm_options=None,
     ):
         if worker_env is None:

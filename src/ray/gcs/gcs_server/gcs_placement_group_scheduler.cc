@@ -287,7 +287,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
     const std::shared_ptr<BundleSpecification> &bundle,
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback &callback) {
   const auto lease_client = GetLeaseClientFromNode(node);
-  const auto &node_id = node->node_id();
+  const auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Preparing resource from node " << node_id
                 << " for a bundle: " << bundle->DebugString();
   lease_client->PrepareBundleResources(
@@ -311,7 +311,7 @@ void GcsPlacementGroupScheduler::CommitResources(
     const std::shared_ptr<ray::rpc::GcsNodeInfo> &node, const StatusCallback callback) {
   RAY_CHECK(node != nullptr);
   const auto lease_client = GetLeaseClientFromNode(node);
-  const auto &node_id = node->node_id();
+  const auto node_id = ClientID::FromBinary(node->node_id());
   RAY_LOG(INFO) << "Committing resource to a node " << node_id
                 << " for a bundle: " << bundle->DebugString();
   lease_client->CommitBundleResources(
