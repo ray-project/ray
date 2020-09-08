@@ -7,7 +7,7 @@
 #include "queue/queue_client.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
+#include "ring_buffer/ring_buffer.h"
 #include "test/queue_tests_base.h"
 
 using namespace std::placeholders;

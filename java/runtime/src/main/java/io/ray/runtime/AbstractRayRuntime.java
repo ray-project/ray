@@ -69,7 +69,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     setIsContextSet(rayConfig.workerMode == Common.WorkerType.DRIVER);
-    functionManager = new FunctionManager(rayConfig.jobResourcePath);
+    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     runtimeContext = new RuntimeContextImpl(this);
   }
 

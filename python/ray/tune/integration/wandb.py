@@ -60,7 +60,8 @@ def wandb_mixin(func):
     are used to configure the ``WandbTrainableMixin`` itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key_file (str): Path to file containing the Wandb API KEY. This
+            file must be on all nodes if using the `wandb_mixin`.
         api_key (str): Wandb API Key. Alternative to setting `api_key_file`.
 
     Wandb's ``group``, ``run_id`` and ``run_name`` are automatically selected
@@ -199,7 +200,9 @@ class WandbLogger(Logger):
     are used to configure the WandbLogger itself:
 
     Args:
-        api_key_file (str): Path to file containing the Wandb API KEY.
+        api_key_file (str): Path to file containing the Wandb API KEY. This
+            file only needs to be present on the node running the Tune script
+            if using the WandbLogger.
         api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
         excludes (list): List of metrics that should be excluded from
             the log.

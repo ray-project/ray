@@ -111,7 +111,7 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 extras = {
     "debug": [],
     "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "tune": ["tabulate", "tensorboardX", "pandas", "dataclasses"]
 }
 
 extras["rllib"] = extras["tune"] + [
