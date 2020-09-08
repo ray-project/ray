@@ -6,21 +6,21 @@ This page will show you how to use Ray's cross-language programming feature.
 Setup the cluster
 -----------------
 
-We need to set the ``--job-resource-path`` option on `ray start` command. The ``--job-resource-path`` instructs workers to load Java or Python code from the specified code search path.
+We need to set the ``--code-search-path`` option on `ray start` command. The ``--code-search-path`` option instructs workers to load Java or Python code from the specified code search path.
 
 .. code-block:: bash
 
-  ray start [ --head | --address ] --job-resource-path=/path/to/code
+  ray start ... --code-search-path=/path/to/code
 
 You can also provide multiple directories for this option.
 
 .. code-block:: bash
 
-  ray start [ --head | --address ] --job-resource-path=["/path/to/jars1","/path/to/jars2","/path/to/pys1","/path/to/pys2"]
+  ray start ... --code-search-path=["/path/to/jars1","/path/to/jars2","/path/to/pys1","/path/to/pys2"]
 
 .. note:
 
-  If ``--job-resource-path`` is specified, you can only run remote functions which can be found in ``--job-resource-path``.
+  If ``--code-search-path`` is specified, you can only run remote functions which can be found in ``--code-search-path``.
 
 Python calling Java
 -------------------

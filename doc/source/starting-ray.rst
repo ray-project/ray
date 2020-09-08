@@ -152,7 +152,7 @@ There are two steps needed to use Ray in a distributed setting:
 
           You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
 
-          You need to add the ``ray.job.code-search-path`` parameter as well. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
+          You need to add the ``ray.job.code-search-path`` parameter as well. It's used to specify classpath for workers in the cluster. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
 
           To connect your program to the Ray cluster, run it like this:
 
@@ -189,11 +189,11 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --address=<address>
 
-If you want to run a Java job, you need to specify the classpath via the ``--job-resource-path`` option.
+If you want to run a Java job, you need to specify the classpath via the ``--code-search-path`` option.
 
   .. code-block:: bash
 
-    $ ray start [--head | --address=...] --job-resource-path=/path/to/jars
+    $ ray start ... --code-search-path=/path/to/jars
 
 Local mode
 ----------
