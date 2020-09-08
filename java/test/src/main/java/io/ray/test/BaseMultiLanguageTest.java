@@ -83,15 +83,9 @@ public abstract class BaseMultiLanguageTest {
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
-        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
+        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
+        "--job-resource-path=" + new Gson().toJson(classpath)
     );
-    if ("1".equals(System.getenv("RAY_ENABLE_MULTI_TENANCY"))) {
-      for (int i = 0; i < classpath.size(); i++) {
-        System.setProperty("ray.job.resource-path." + i, classpath.get(i));
-      }
-    } else {
-      startCommand.add("--job-resource-path=" + new Gson().toJson(classpath));
-    }
 
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
