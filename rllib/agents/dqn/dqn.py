@@ -1,19 +1,19 @@
 import logging
-from python.ray.util.iter import LocalIterator
-from rllib.evaluation.worker_set import WorkerSet
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
