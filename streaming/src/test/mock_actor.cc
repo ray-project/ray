@@ -1,4 +1,5 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
+#include "common/status.h"
 #include "data_reader.h"
 #include "data_writer.h"
 #include "gtest/gtest.h"
@@ -8,8 +9,7 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
-#include "status.h"
+#include "ring_buffer/ring_buffer.h"
 using namespace std::placeholders;
 
 const uint32_t MESSAGE_BOUND_SIZE = 10000;
@@ -126,9 +126,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
         for (uint32_t j = 0; j < buffer_len; ++j) {
           data[j] = j % 128;
         }
-
+        STREAMING_LOG(DEBUG) << "Write data to queue, count=" << i
+                             << ", queue_id=" << q_id;
         writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
                                                 StreamingMessageType::Message);
+        if (i % 10 == 0) {
+          writer_client->BroadcastBarrier(i / 10, nullptr, 0);
+        }
       }
       ++i;
     }
@@ -159,7 +163,8 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     for (auto &q_id : queue_id_vec) {
       queue_last_cp_id[q_id] = 0;
     }
-    STREAMING_LOG(INFO) << "Start read message bundle";
+    STREAMING_LOG(INFO) << "Start read message bundle, queue_id_size="
+                        << queue_id_vec.size();
     while (true) {
       std::shared_ptr<DataBundle> msg;
       StreamingStatus st = reader_client->GetBundle(100, msg);
@@ -173,8 +178,13 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
           << "read null pointer message, queue id => " << msg->from.Hex();
 
       if (msg->meta->GetBundleType() == StreamingMessageBundleType::Barrier) {
-        STREAMING_LOG(DEBUG) << "barrier message recevied => "
-                             << msg->meta->GetMessageBundleTs();
+        StreamingBarrierHeader barrier_header;
+        StreamingMessage::GetBarrierIdFromRawData(msg->data + kMessageHeaderSize,
+                                                  &barrier_header);
+        STREAMING_LOG(DEBUG) << "barrier message recevied, time="
+                             << msg->meta->GetMessageBundleTs()
+                             << ", barrier_id=" << barrier_header.barrier_id
+                             << ", data=" << Util::Byte2hex(msg->data, msg->data_size);
         std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map;
         reader_client->GetOffsetInfo(offset_map);
 
@@ -206,12 +216,12 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;
 
-        EXPECT_EQ(buff_len, item->GetDataSize());
+        EXPECT_EQ(buff_len, item->PayloadSize());
         uint8_t *compared_data = new uint8_t[buff_len];
-        for (uint32_t j = 0; j < item->GetDataSize(); ++j) {
+        for (uint32_t j = 0; j < item->PayloadSize(); ++j) {
           compared_data[j] = j % 128;
         }
-        EXPECT_EQ(std::memcmp(compared_data, item->RawData(), item->GetDataSize()), 0);
+        EXPECT_EQ(std::memcmp(compared_data, item->Payload(), item->PayloadSize()), 0);
         delete[] compared_data;
       }
       STREAMING_LOG(DEBUG) << "Received message count => " << recevied_message_cnt;
@@ -478,37 +488,23 @@ class StreamingWorker {
                   int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
     // You must keep it same with `src/ray/core_worker/core_worker.h:CoreWorkerOptions`
-    CoreWorkerOptions options = {
-        WorkerType::WORKER,  // worker_type
-        Language::PYTHON,    // langauge
-        store_socket,        // store_socket
-        raylet_socket,       // raylet_socket
-        JobID::FromInt(1),   // job_id
-        gcs_options,         // gcs_options
-        true,                // enable_logging
-        "",                  // log_dir
-        true,                // install_failure_signal_handler
-        "127.0.0.1",         // node_ip_address
-        node_manager_port,   // node_manager_port
-        "127.0.0.1",         // raylet_ip_address
-        "",                  // driver_name
-        "",                  // stdout_file
-        "",                  // stderr_file
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7,
-                  _8),  // task_execution_callback
-        nullptr,        // check_signals
-        nullptr,        // gc_collect
-        nullptr,        // spill_objects
-        nullptr,        // restore_spilled_objects
-        nullptr,        // get_lang_stack
-        nullptr,        // kill_main
-        true,           // ref_counting_enabled
-        false,          // is_local_mode
-        1,              // num_workers
-        nullptr,        // terminate_asyncio_thread
-        "",             // serialized_job_config
-        -1,             // metrics_agent_port
-    };
+    CoreWorkerOptions options;
+    options.worker_type = WorkerType::WORKER;
+    options.language = Language::PYTHON;
+    options.store_socket = store_socket;
+    options.raylet_socket = raylet_socket;
+    options.job_id = JobID::FromInt(1);
+    options.gcs_options = gcs_options;
+    options.enable_logging = true;
+    options.install_failure_signal_handler = true;
+    options.node_ip_address = "127.0.0.1";
+    options.node_manager_port = node_manager_port;
+    options.raylet_ip_address = "127.0.0.1";
+    options.task_execution_callback =
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8);
+    options.ref_counting_enabled = true;
+    options.num_workers = 1;
+    options.metrics_agent_port = -1;
     CoreWorkerProcess::Initialize(options);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }

@@ -115,6 +115,13 @@ ray.available_resources
 
 .. autofunction:: ray.available_resources
 
+ray.cross_language
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.java_function
+
+.. autofunction:: ray.java_actor_class
+
 Experimental APIs
 -----------------
 

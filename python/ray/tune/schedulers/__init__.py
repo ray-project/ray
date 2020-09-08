@@ -10,8 +10,8 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
 
 def create_scheduler(
         scheduler,
-        metric="episode_reward_mean",
-        mode="max",
+        metric=None,
+        mode=None,
         **kwargs,
 ):
     """Instantiate a scheduler based on the given string.
