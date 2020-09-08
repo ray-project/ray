@@ -305,14 +305,10 @@ def test_dataset(ray_start_4_cpus):
     optimizer_creator = mlp_identity.optimizer_creator
     dataset_creator = mlp_identity.dataset_creator
 
-    class DatasetOperator(TrainingOperator):
-        def setup(self, config):
-            model = model_creator(config)
-            optimizer = optimizer_creator(model, config)
-            loss = nn.MSELoss()
-
-            self.model, self.optimizer, self.criterion = self.register(
-                models=model, optimizers=optimizer, criterion=loss)
+    DatasetOperator = TrainingOperator.from_creators(
+        model_creator=model_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.MSELoss)
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,
