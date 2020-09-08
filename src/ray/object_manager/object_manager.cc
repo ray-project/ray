@@ -230,10 +230,12 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
   if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
-    RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
-                   << " is trying to pull object " << object_id
-                   << " but the object table suggests that this object manager "
-                   << "already has the object. The object may have been evicted.";
+    RAY_LOG(WARNING) << "The object manager with ID " << self_node_id_
+                     << " is trying to pull object " << object_id
+                     << " but the object table suggests that this object manager "
+                     << "already has the object. The object may have been evicted. It is "
+                        "most likely due to memory pressure, object pull has been "
+                        "requested before object location is updated.";
     it->second.timer_set = false;
     return;
   }
@@ -248,10 +250,11 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   if (node_id == self_node_id_) {
     std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
     node_vector.pop_back();
-    RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
-                   << " is trying to pull object " << object_id
-                   << " but the object table suggests that this object manager "
-                   << "already has the object.";
+    RAY_LOG(WARNING)
+        << "The object manager with ID " << self_node_id_ << " is trying to pull object "
+        << object_id << " but the object table suggests that this object manager "
+        << "already has the object. It is most likely due to memory pressure, object "
+           "pull has been requested before object location is updated.";
     node_id = node_vector[node_index % node_vector.size()];
     RAY_CHECK(node_id != self_node_id_);
   }
