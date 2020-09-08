@@ -256,7 +256,7 @@ By setting ``TorchTrainer(wrap_ddp=False)``, you can change the parameters on th
 .. note:: Make sure to register the model before it is wrapped in DistributedDataParallel or a custom wrapper.
 
 .. code-block:: python
-    :emphasize-lines: 20
+    :emphasize-lines: 19
 
     from ray.util.sgd.torch import TrainingOperator
 
@@ -392,7 +392,7 @@ Mixed Precision (FP16) Training
 You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
 
 .. code-block:: python
-    :emphasize-lines: 7
+    :emphasize-lines: 4
 
     trainer = TorchTrainer(
         training_operator_cls=MyTrainingOperator,
@@ -405,7 +405,7 @@ you should not manually cast your model or data to ``.half()``. The flag informs
 To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the TorchTrainer constructor. Valid arguments can be found on the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
 
 .. code-block:: python
-    :emphasize-lines: 7-12
+    :emphasize-lines: 5-10
 
     trainer = TorchTrainer(
         training_operator_cls=MyTrainingOperator,
