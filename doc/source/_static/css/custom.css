@@ -32,7 +32,7 @@ th.tune-colab {
   padding: 8px;
 }
 
-/* Adjustment to Sphinx Book Theme's table format */
+/* Adjustment to Sphinx Book Theme */
 .table td {
   /* Remove row spacing */
   padding: 0;
@@ -41,4 +41,9 @@ th.tune-colab {
 table {
   /* Force full width for all table */
   width: 136% !important;
+}
+
+img.inline-figure {
+  /* Override the display: block for img */
+  display: inherit !important;
 }
