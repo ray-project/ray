@@ -170,6 +170,7 @@ automatically if their types are the following:
   * BigInteger can support max value of 2^64-1, please refer to:
     https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family. 
     If the value larger than 2^64-1, then transfer the BigInteger:
+
       - From Java to Python: *raise an exception*
       - From Java to Java: **OK**
 
