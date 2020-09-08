@@ -357,6 +357,10 @@ public class RunManager {
     File workerConfigFile = new File(rayConfig.sessionDir + "/java_worker.conf");
     FileUtils.write(workerConfigFile, rayConfig.render(), Charset.defaultCharset());
     cmd.add("-Dray.config-file=" + workerConfigFile.getAbsolutePath());
+    for (int i = 0; i < rayConfig.jobResourcePath.size(); i++) {
+      cmd.add(String.format(
+          "-Dray.job.code-search-path.%s=%s", i, rayConfig.jobResourcePath.get(i)));
+    }
 
     cmd.add("RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER");
 
