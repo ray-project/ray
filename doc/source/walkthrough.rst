@@ -434,7 +434,7 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
 
   .. group-tab:: Java
 
-    ``Ray.actor`` is used to create actors from regular Java classes. Unlike Python, multiple Java actors may share one JVM process, in order to reduce JVM's memory overhead. But this is transparent to normal users.
+    ``Ray.actor`` is used to create actors from regular Java classes.
 
     .. code-block:: java
 
