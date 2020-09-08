@@ -16,7 +16,7 @@ public class RayConfigTest {
       RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
       Assert.assertEquals(Collections.singletonList("path/to/ray/job/resource/path"),
-          rayConfig.jobResourcePath);
+          rayConfig.codeSearchPath);
     } finally {
       // Unset system properties.
       System.clearProperty("ray.job.code-search-path");

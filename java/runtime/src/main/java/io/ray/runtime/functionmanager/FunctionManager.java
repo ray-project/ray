@@ -58,16 +58,16 @@ public class FunctionManager {
   /**
    * The resource path which we can load the job's jar resources.
    */
-  private final List<String> jobResourcePath;
+  private final List<String> codeSearchPath;
 
   /**
    * Construct a FunctionManager with the specified job resource path.
    *
-   * @param jobResourcePath The specified job resource that can store the job's
+   * @param codeSearchPath The specified job resource that can store the job's
    *                        resources.
    */
-  public FunctionManager(List<String> jobResourcePath) {
-    this.jobResourcePath = jobResourcePath;
+  public FunctionManager(List<String> codeSearchPath) {
+    this.codeSearchPath = codeSearchPath;
   }
 
   /**
@@ -116,10 +116,10 @@ public class FunctionManager {
 
   private JobFunctionTable createJobFunctionTable(JobId jobId) {
     ClassLoader classLoader;
-    if (jobResourcePath == null || jobResourcePath.isEmpty()) {
+    if (codeSearchPath == null || codeSearchPath.isEmpty()) {
       classLoader = getClass().getClassLoader();
     } else {
-      URL[] urls = jobResourcePath.stream()
+      URL[] urls = codeSearchPath.stream()
           .flatMap(p -> {
             try {
               if (!Files.isDirectory(Paths.get(p))) {

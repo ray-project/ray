@@ -152,8 +152,8 @@ public class FunctionManagerTest {
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
     JobId jobId = JobId.fromInt(1);
-    final String jobResourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources/";
-    File jobResourceDir = new File(jobResourcePath);
+    final String codeSearchPath = FileUtils.getTempDirectoryPath() + "/ray_test_resources/";
+    File jobResourceDir = new File(codeSearchPath);
     FileUtils.deleteQuietly(jobResourceDir);
     jobResourceDir.mkdirs();
     jobResourceDir.deleteOnExit();
@@ -166,12 +166,12 @@ public class FunctionManagerTest {
     demoJavaFile += "}";
 
     // Write the demo java file to the job resource path.
-    String javaFilePath = jobResourcePath + "/DemoApp.java";
+    String javaFilePath = codeSearchPath + "/DemoApp.java";
     Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
 
     // Compile the java file.
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    int result = compiler.run(null, null, null, "-d", jobResourcePath, javaFilePath);
+    int result = compiler.run(null, null, null, "-d", codeSearchPath, javaFilePath);
     if (result != 0) {
       throw new RuntimeException("Couldn't compile Demo.java.");
     }
@@ -180,7 +180,7 @@ public class FunctionManagerTest {
     JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
         "DemoApp", "hello", "()Ljava/lang/String;");
     final FunctionManager functionManager = new FunctionManager(
-        Collections.singletonList(jobResourcePath));
+        Collections.singletonList(codeSearchPath));
     RayFunction func = functionManager.getFunction(jobId, descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
