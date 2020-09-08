@@ -316,7 +316,63 @@ class ExperimentAnalysis(Analysis):
             os.path.dirname(experiment_checkpoint_path), default_metric,
             default_mode)
 
-    def get_best_trial(self, metric=None, mode=None, scope="all"):
+    @property
+    def best_trial(self):
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_trial`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_trial(metric, mode)` method to set the metric "
+                "and mode explicitly.")
+        return self.get_best_trial(self.default_metric, self.default_mode)
+
+    @property
+    def best_config(self):
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_config`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_config(metric, mode)` method to set the metric "
+                "and mode explicitly.")
+        return self.get_best_config(self.default_metric, self.default_mode)
+
+    @property
+    def best_checkpoint(self):
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_checkpoint`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_checkpoint(trial, metric, mode)` method to set the "
+                "metric and mode explicitly.")
+        best_trial = self.best_trial
+        return self.get_best_checkpoint(
+            best_trial, self.default_metric, self.default_mode)
+
+    @property
+    def best_logdir(self):
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_logdir`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_logdir(metric, mode)` method to set the metric "
+                "and mode explicitly.")
+        return self.get_best_logdir(self.default_metric, self.default_mode)
+
+    @property
+    def results(self):
+        return self.trial_dataframes
+
+    @property
+    def best_dataframe(self):
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_result`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`.")
+        best_logdir = self.best_logdir
+        return self.trial_dataframes[best_logdir]
+
+
+    def get_best_trial(self, metric=None, mode=None, scope="last"):
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -380,7 +436,7 @@ class ExperimentAnalysis(Analysis):
                 "parameter?")
         return best_trial
 
-    def get_best_config(self, metric=None, mode=None, scope="all"):
+    def get_best_config(self, metric=None, mode=None, scope="last"):
         """Retrieve the best config corresponding to the trial.
 
         Compares all trials' scores on `metric`.
@@ -407,7 +463,7 @@ class ExperimentAnalysis(Analysis):
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
 
-    def get_best_logdir(self, metric=None, mode=None, scope="all"):
+    def get_best_logdir(self, metric=None, mode=None, scope="last"):
         """Retrieve the logdir corresponding to the best trial.
 
         Compares all trials' scores on `metric`.
