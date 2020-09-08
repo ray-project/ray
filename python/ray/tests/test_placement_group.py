@@ -616,15 +616,14 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster):
     wait_for_condition(is_placement_group_created)
 
 
-@pytest.mark.skip(reason="Not working yet")
 def test_atomic_creation(ray_start_cluster):
     # Setup cluster.
     cluster = ray_start_cluster
     bundle_cpu_size = 2
     bundle_per_node = 2
-    num_nodes = 5
+    num_nodes = 2
 
-    nodes = [
+    [
         cluster.add_node(num_cpus=bundle_cpu_size * bundle_per_node)
         for _ in range(num_nodes)
     ]
@@ -635,24 +634,29 @@ def test_atomic_creation(ray_start_cluster):
         def ping(self):
             pass
 
+    @ray.remote(num_cpus=3)
+    def bothering_task():
+        import time
+        time.sleep(1)
+        return True
+
+    # Schedule tasks to fail initial placement group creation.
+    tasks = [bothering_task.remote() for _ in range(2)]
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
     pg = ray.util.placement_group(
         name="name",
-        strategy="PACK",
+        strategy="SPREAD",
         bundles=[{
             "CPU": bundle_cpu_size
         } for _ in range(num_nodes * bundle_per_node)])
 
     # Create a placement group actor.
-    # This shouldn't be scheduled until placement group creation is done.
+    # This shouldn't be scheduled because atomic
+    # placement group creation should've failed.
     pg_actor = NormalActor.options(
         placement_group=pg,
         placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()
-    # Destroy some nodes to fail placement group creation.
-    nodes_to_kill = get_other_nodes(cluster, exclude_head=True)
-    for node_to_kill in nodes_to_kill:
-        cluster.remove_node(node_to_kill)
 
     # Wait on the placement group now. It should be unready
     # because normal actor takes resources that are required
@@ -660,23 +664,131 @@ def test_atomic_creation(ray_start_cluster):
     ready, unready = ray.wait([pg.ready()], timeout=0)
     assert len(ready) == 0
     assert len(unready) == 1
+    # Wait until all tasks are done.
+    assert all(ray.get(tasks))
 
-    # Add a node back to schedule placement group.
-    for _ in range(len(nodes_to_kill)):
-        nodes.append(
-            cluster.add_node(num_cpus=bundle_cpu_size * bundle_per_node))
-    # Wait on the placement group creation.
+    # Wait on the placement group creation. Since resources are now available,
+    # it should be ready soon.
     ready, unready = ray.wait([pg.ready()])
     assert len(ready) == 1
     assert len(unready) == 0
 
     # Confirm that the placement group actor is created. It will
-    # raise an exception if actor was scheduled before placement group was
-    # created.
-    # TODO(sang): This with statement should be removed after atomic creation
-    # is implemented. It will be done in the next PR.
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(pg_actor.ping.remote(), timeout=3.0)
+    # raise an exception if actor was scheduled before placement
+    # group was created thus it checks atomicity.
+    ray.get(pg_actor.ping.remote(), timeout=3.0)
+    ray.kill(pg_actor)
+
+    # Make sure atomic creation failure didn't impact resources.
+    @ray.remote(num_cpus=bundle_cpu_size)
+    def resource_check():
+        return True
+
+    # This should hang because every resources
+    # are claimed by placement group.
+    check_without_pg = [
+        resource_check.remote() for _ in range(bundle_per_node * num_nodes)
+    ]
+
+    # This all should scheduled on each bundle.
+    check_with_pg = [
+        resource_check.options(
+            placement_group=pg, placement_group_bundle_index=i).remote()
+        for i in range(bundle_per_node * num_nodes)
+    ]
+
+    # Make sure these are hanging.
+    ready, unready = ray.wait(check_without_pg, timeout=0)
+    assert len(ready) == 0
+    assert len(unready) == bundle_per_node * num_nodes
+
+    # Make sure these are all scheduled.
+    assert all(ray.get(check_with_pg))
+
+    ray.util.remove_placement_group(pg)
+
+    def pg_removed():
+        return ray.util.placement_group_table(pg)["state"] == "REMOVED"
+
+    wait_for_condition(pg_removed)
+
+    # Make sure check without pgs are all
+    # scheduled properly because resources are cleaned up.
+    assert all(ray.get(check_without_pg))
+
+
+def test_mini_integration(ray_start_cluster):
+    # Create bundles as many as number of gpus in the cluster.
+    # Do some random work and make sure all resources are properly recovered.
+
+    cluster = ray_start_cluster
+
+    num_nodes = 5
+    per_bundle_gpus = 2
+    gpu_per_node = 4
+    total_gpus = num_nodes * per_bundle_gpus * gpu_per_node
+    per_node_gpus = per_bundle_gpus * gpu_per_node
+
+    bundles_per_pg = 2
+    total_num_pg = total_gpus // (bundles_per_pg * per_bundle_gpus)
+
+    [
+        cluster.add_node(num_cpus=2, num_gpus=per_bundle_gpus * gpu_per_node)
+        for _ in range(num_nodes)
+    ]
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def random_tasks():
+        import time
+        import random
+        sleep_time = random.uniform(0.1, 0.2)
+        time.sleep(sleep_time)
+        return True
+
+    pgs = []
+    pg_tasks = []
+    # total bundle gpu usage = bundles_per_pg * total_num_pg * per_bundle_gpus
+    # Note this is half of total
+    for _ in range(total_num_pg):
+        pgs.append(
+            ray.util.placement_group(
+                name="name",
+                strategy="PACK",
+                bundles=[{
+                    "GPU": per_bundle_gpus
+                } for _ in range(bundles_per_pg)]))
+
+    # Schedule tasks.
+    for i in range(total_num_pg):
+        pg = pgs[i]
+        pg_tasks.append([
+            random_tasks.options(
+                placement_group=pg,
+                placement_group_bundle_index=bundle_index).remote()
+            for bundle_index in range(bundles_per_pg)
+        ])
+
+    # Make sure tasks are done and we remove placement groups.
+    num_removed_pg = 0
+    pg_indexes = [2, 3, 1, 7, 8, 9, 0, 6, 4, 5]
+    while num_removed_pg < total_num_pg:
+        index = pg_indexes[num_removed_pg]
+        pg = pgs[index]
+        assert all(ray.get(pg_tasks[index]))
+        ray.util.remove_placement_group(pg)
+        num_removed_pg += 1
+
+    @ray.remote(num_cpus=2, num_gpus=per_node_gpus)
+    class A:
+        def ping(self):
+            return True
+
+    # Make sure all resources are properly returned by scheduling
+    # actors that take up all existing resources.
+    actors = [A.remote() for _ in range(num_nodes)]
+    assert all(ray.get([a.ping.remote() for a in actors]))
 
 
 if __name__ == "__main__":
