@@ -147,7 +147,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             MyTrainableClass,
             name="test_example",
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=1,
             config={

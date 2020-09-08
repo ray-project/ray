@@ -1,11 +1,14 @@
 package io.ray.streaming.runtime.demo;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
 import io.ray.streaming.api.function.impl.MapFunction;
 import io.ray.streaming.api.function.impl.SinkFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
+import io.ray.streaming.runtime.util.EnvUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -42,6 +45,8 @@ public class HybridStreamTest {
   @Test(timeOut = 60000)
   public void testHybridDataStream() throws Exception {
     Ray.shutdown();
+    Preconditions.checkArgument(
+        EnvUtil.executeCommand(ImmutableList.of("ray", "stop"), 5));
     String sinkFileName = "/tmp/testHybridDataStream.txt";
     Files.deleteIfExists(Paths.get(sinkFileName));
 

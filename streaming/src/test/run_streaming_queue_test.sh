@@ -44,15 +44,24 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
-REDIS_MODULE="./bazel-bin/libray_redis_module.so"
-REDIS_SERVER_EXEC="./bazel-bin/external/com_github_antirez_redis/redis-server"
-STORE_EXEC="./bazel-bin/plasma_store_server"
-REDIS_CLIENT_EXEC="./bazel-bin/redis-cli"
-RAYLET_EXEC="./bazel-bin/raylet"
-STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/streaming_test_worker"
-GCS_SERVER_EXEC="./bazel-bin/gcs_server"
+REDIS_MODULE="$RAY_ROOT/bazel-bin/libray_redis_module.so"
+REDIS_SERVER_EXEC="$RAY_ROOT/bazel-bin/external/com_github_antirez_redis/redis-server"
+STORE_EXEC="$RAY_ROOT/bazel-bin/plasma_store_server"
+REDIS_CLIENT_EXEC="$RAY_ROOT/bazel-bin/redis-cli"
+RAYLET_EXEC="$RAY_ROOT/bazel-bin/raylet"
+STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
+GCS_SERVER_EXEC="$RAY_ROOT/bazel-bin/gcs_server"
 
-# Allow cleanup commands to fail.
+# clear env
+set +e
+pgrep "plasma|DefaultDriver|DefaultWorker|AppStarter|redis|http_server|job_agent" | xargs kill -9 &> /dev/null
+set -e
+
 # Run tests.
-./bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC "$RAYLET_PORT" $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC
+
+# to run specific test, add --gtest_filter, below is an example
+#$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
+
+# run all tests
+"$RAY_ROOT"/bazel-bin/streaming/streaming_queue_tests "$STORE_EXEC" "$RAYLET_EXEC" "$RAYLET_PORT" "$STREAMING_TEST_WORKER_EXEC" "$GCS_SERVER_EXEC" "$REDIS_SERVER_EXEC" "$REDIS_MODULE" "$REDIS_CLIENT_EXEC"
 sleep 1s
