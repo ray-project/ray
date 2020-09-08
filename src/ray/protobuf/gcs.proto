@@ -321,8 +321,8 @@ message JobConfig {
   uint32 num_java_workers_per_process = 2;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 3;
-  // job resource directories
-  repeated string resource_path = 4;
+  // Code search path of the job.
+  repeated string code_search_path = 4;
 }
 
 message JobTableData {

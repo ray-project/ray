@@ -30,12 +30,12 @@ public class ClassLoaderTest extends BaseTest {
   public void setUp() {
     // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
     // scenario only occurs if the classes are loaded from the job resource path.
-    System.setProperty("ray.job.resource-path", resourcePath);
+    System.setProperty("ray.job.code-search-path", resourcePath);
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.job.resource-path");
+    System.clearProperty("ray.job.code-search-path");
   }
 
   @Test(groups = {"cluster"})

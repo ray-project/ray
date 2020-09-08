@@ -1277,7 +1277,7 @@ def start_raylet(redis_address,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
                  object_spilling_config=None,
-                 job_resource_path=None):
+                 code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1315,7 +1315,7 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (list): The command options for Java worker.
-        job_resource_path (list): resource path for worker. job_resource_path
+        code_search_path (list): Code search path for worker. code_search_path
             is added to worker command in non-multi-tenancy mode and job_config
             in multi-tenancy mode.
     Returns:
@@ -1354,7 +1354,7 @@ def start_raylet(redis_address,
             raylet_name,
             redis_password,
             session_dir,
-            job_resource_path
+            code_search_path
         )
     else:
         java_worker_command = []
@@ -1381,9 +1381,9 @@ def start_raylet(redis_address,
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
-    if job_resource_path:
+    if code_search_path:
         start_worker_command.append(
-            f"--job-resource-path={json.dumps(job_resource_path)}")
+            f"--code-search-path={json.dumps(code_search_path)}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1501,7 +1501,7 @@ def build_java_worker_command(
         raylet_name,
         redis_password,
         session_dir,
-        job_resource_path
+        code_search_path
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1513,7 +1513,7 @@ def build_java_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
-        job_resource_path (list): Teh job resource path.
+        code_search_path (list): Teh job resource path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1534,9 +1534,9 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    for index in range(len(job_resource_path)):
-        path = job_resource_path[index]
-        pairs.append((f"ray.job.resource-path.{index}", path))
+    for index in range(len(code_search_path)):
+        path = code_search_path[index]
+        pairs.append((f"ray.job.code-search-path.{index}", path))
 
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 

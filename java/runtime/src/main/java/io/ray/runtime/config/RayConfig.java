@@ -228,13 +228,13 @@ public class RayConfig {
     }
 
     // Job resource path.
-    if (config.hasPath("ray.job.resource-path")) {
+    if (config.hasPath("ray.job.code-search-path")) {
       try {
-        jobResourcePath =  config.getStringList("ray.job.resource-path");
+        jobResourcePath =  config.getStringList("ray.job.code-search-path");
       } catch (ConfigException.WrongType e) {
-        config.getString("ray.job.resource-path");
+        config.getString("ray.job.code-search-path");
         jobResourcePath = Arrays.asList(
-            config.getString("ray.job.resource-path").split(File.pathSeparator));
+            config.getString("ray.job.code-search-path").split(File.pathSeparator));
       }
     } else {
       jobResourcePath = Collections.emptyList();
@@ -319,7 +319,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.redis.address", redisAddress);
-    dynamic.put("ray.job.resource-path", jobResourcePath);
+    dynamic.put("ray.job.code-search-path", jobResourcePath);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

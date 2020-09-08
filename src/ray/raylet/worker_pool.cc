@@ -226,35 +226,35 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   }
   // For non-multi-tenancy mode, job resource path is embedded in worker_command.
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
-    std::string resource_path_str;
-    for (int i = 0; i < job_config->resource_path_size(); i++) {
-      auto path = job_config->resource_path(i);
+    std::string code_search_path_str;
+    for (int i = 0; i < job_config->code_search_path_size(); i++) {
+      auto path = job_config->code_search_path(i);
       switch (language) {
       case Language::PYTHON: {
         if (i == 0) {
-          resource_path_str += "--job-resource-path=[";
+          code_search_path_str += "--code-search-path=[";
         }
-        resource_path_str += "'" + path + "', ";
-        if (i == job_config->resource_path_size() - 1) {
-          resource_path_str += "]";
+        code_search_path_str += "'" + path + "', ";
+        if (i == job_config->code_search_path_size() - 1) {
+          code_search_path_str += "]";
         }
         break;
       }
       case Language::JAVA: {
         if (i != 0) {
-          resource_path_str += " ";
+          code_search_path_str += " ";
         }
-        resource_path_str += "-Dray.job.resource-path." + std::to_string(i);
-        resource_path_str += "=" + path;
+        code_search_path_str += "-Dray.job.code-search-path." + std::to_string(i);
+        code_search_path_str += "=" + path;
         break;
       }
       default:
-        RAY_LOG(FATAL) << "resource_path is not supported for worker language "
+        RAY_LOG(FATAL) << "code_search_path is not supported for worker language "
                        << language;
       }
     }
-    if (!resource_path_str.empty()) {
-      dynamic_options.push_back(resource_path_str);
+    if (!code_search_path_str.empty()) {
+      dynamic_options.push_back(code_search_path_str);
     }
   }
 

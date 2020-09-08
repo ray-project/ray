@@ -101,10 +101,10 @@ parser.add_argument(
     default="",
     help="The configuration of object spilling. Only used by I/O workers.")
 parser.add_argument(
-    "--job-resource-path",
+    "--code-search-path",
     default=None,
     type=json.loads,
-    help="Specify job resource path.")
+    help="Additional import path for worker.")
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -141,9 +141,9 @@ if __name__ == "__main__":
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
 
-    job_resource_path = args.job_resource_path
-    if job_resource_path is not None:
-        for p in job_resource_path:
+    code_search_path = args.code_search_path
+    if code_search_path is not None:
+        for p in code_search_path:
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.append(p)

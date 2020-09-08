@@ -148,7 +148,7 @@ class RayParams:
                  metrics_export_port=None,
                  lru_evict=False,
                  object_spilling_config=None,
-                 job_resource_path=None):
+                 code_search_path=None):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -195,9 +195,9 @@ class RayParams:
         self._enable_object_reconstruction = enable_object_reconstruction
         self.object_spilling_config = object_spilling_config
         self._check_usage()
-        self.job_resource_path = job_resource_path
-        if job_resource_path is None:
-            self.job_resource_path = []
+        self.code_search_path = code_search_path
+        if code_search_path is None:
+            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:

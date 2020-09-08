@@ -355,7 +355,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--job-resource-path",
+    "--code-search-path",
     default=None,
     type=json.loads,
     help="Specify job resource path.")
@@ -396,7 +396,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, job_resource_path, load_code_from_local,
+          java_worker_options, code_search_path, load_code_from_local,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
@@ -509,7 +509,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
-        job_resource_path=job_resource_path,
+        code_search_path=code_search_path,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
