@@ -484,7 +484,6 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
-        job_resource_path=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -494,6 +493,7 @@ def init(
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
         _java_worker_options=None,
+        _job_resource_path=None,
         _temp_dir=None,
         _load_code_from_local=False,
         _lru_evict=False,
@@ -567,7 +567,6 @@ def init(
             is true.
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        job_resource_path (list): Job resource path.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -589,6 +588,7 @@ def init(
         _load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
+        _job_resource_path (list): Job resource path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -684,7 +684,7 @@ def init(
             temp_dir=_temp_dir,
             load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
-            job_resource_path=job_resource_path,
+            job_resource_path=_job_resource_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,

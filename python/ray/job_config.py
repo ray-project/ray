@@ -29,8 +29,8 @@ class JobConfig:
             self.jvm_options = []
         else:
             self.jvm_options = jvm_options
-        if job_resource_path is None:
-            self.job_resource_path = []
+        if resource_path is None:
+            self.resource_path = []
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
@@ -39,5 +39,5 @@ class JobConfig:
         job_config.num_java_workers_per_process = (
             self.num_java_workers_per_process)
         job_config.jvm_options.extend(self.jvm_options)
-        job_config.resource_path.extend(self.job_resource_path)
+        job_config.resource_path.extend(self.resource_path)
         return job_config.SerializeToString()
