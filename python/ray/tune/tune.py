@@ -428,8 +428,8 @@ def run(
     return ExperimentAnalysis(
         runner.checkpoint_file,
         trials=trials,
-        default_metric=None,
-        default_mode=None)
+        default_metric=metric,
+        default_mode=mode)
 
 
 def run_experiments(experiments,
