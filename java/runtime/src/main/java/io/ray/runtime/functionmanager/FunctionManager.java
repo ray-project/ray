@@ -3,6 +3,7 @@ package io.ray.runtime.functionmanager;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.JobId;
 import io.ray.runtime.util.LambdaUtils;
+import java.io.File;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -14,12 +15,17 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.DirectoryFileFilter;
+import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
@@ -114,12 +120,23 @@ public class FunctionManager {
       classLoader = getClass().getClassLoader();
     } else {
       URL[] urls = jobResourcePath.stream()
-          .map(p -> {
+          .flatMap(p -> {
             try {
-              if (!Files.isDirectory(Paths.get(p)) && !p.endsWith(".jar")) {
-                return Paths.get(p).getParent().toAbsolutePath().toUri().toURL();
+              if (!Files.isDirectory(Paths.get(p))) {
+                if (!p.endsWith(".jar")) {
+                  return Stream.of(Paths.get(p).getParent().toAbsolutePath().toUri().toURL());
+                } else {
+                  return Stream.of(Paths.get(p).toAbsolutePath().toUri().toURL());
+                }
               } else {
-                return Paths.get(p).toAbsolutePath().toUri().toURL();
+                List<URL> subUrls = new ArrayList<>();
+                subUrls.add(Paths.get(p).toAbsolutePath().toUri().toURL());
+                Collection<File> jars = FileUtils.listFiles(new File(p),
+                    new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+                for (File jar : jars) {
+                  subUrls.add(jar.toPath().toUri().toURL());
+                }
+                return subUrls.stream();
               }
             } catch (MalformedURLException e) {
               throw new RuntimeException(String.format("Illegal %s resource path", p));
