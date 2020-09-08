@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 
 from ray.util.sgd import TorchTrainer
+from ray.util.sgd.torch import TrainingOperator
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -67,12 +68,12 @@ def data_creator(config):
 
 
 def train_example(num_workers=1, use_gpu=False):
+    CustomTrainingOperator = TrainingOperator.from_creators(
+        model_creator=model_creator, optimizer_creator=optimizer_creator,
+        data_creator=data_creator, scheduler_creator=scheduler_creator,
+        loss_creator=nn.MSELoss)
     trainer1 = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.MSELoss,
-        scheduler_creator=scheduler_creator,
+        training_operator_cls=CustomTrainingOperator,
         num_workers=num_workers,
         use_gpu=use_gpu,
         config={
