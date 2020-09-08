@@ -8,7 +8,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -153,9 +152,7 @@ public class FunctionManagerTest {
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
     JobId jobId = JobId.fromInt(1);
-    final List<String> resourcePath =
-        Collections.singletonList(FileUtils.getTempDirectoryPath() + "/ray_test_resources");
-    final String jobResourcePath = resourcePath + "/" + jobId.toString();
+    final String jobResourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources/";
     File jobResourceDir = new File(jobResourcePath);
     FileUtils.deleteQuietly(jobResourceDir);
     jobResourceDir.mkdirs();
@@ -182,7 +179,8 @@ public class FunctionManagerTest {
     // Test loading the function.
     JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
         "DemoApp", "hello", "()Ljava/lang/String;");
-    final FunctionManager functionManager = new FunctionManager(resourcePath);
+    final FunctionManager functionManager = new FunctionManager(
+        Collections.singletonList(jobResourcePath));
     RayFunction func = functionManager.getFunction(jobId, descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }
