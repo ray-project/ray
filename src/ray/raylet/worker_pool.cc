@@ -367,7 +367,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     } else {
       // The worker failed to start. This is a fatal error.
       RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
-                    << ec.message();
+                     << ec.message();
     }
   }
   return child;
