@@ -9,7 +9,7 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.sample import sample_from
+from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
@@ -68,8 +68,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
-                new_config[key] = distribution.func(None) if isinstance(
-                    distribution, sample_from) else distribution()
+                new_config[key] = distribution.sample(None) if isinstance(
+                    distribution, Domain) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -96,8 +96,8 @@ def fill_config(config, attr, search_space):
     """Add attr to config by sampling from search_space."""
     if callable(search_space):
         config[attr] = search_space()
-    elif isinstance(search_space, sample_from):
-        config[attr] = search_space.func(None)
+    elif isinstance(search_space, Domain):
+        config[attr] = search_space.sample(None)
     elif isinstance(search_space, list):
         config[attr] = random.choice(search_space)
     elif isinstance(search_space, dict):
@@ -228,11 +228,11 @@ class PopulationBasedTraining(FIFOScheduler):
                  synch=False):
         for value in hyperparam_mutations.values():
             if not (isinstance(value,
-                               (list, dict, sample_from)) or callable(value)):
+                               (list, dict, Domain)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
-                                "callable.")
-            if type(value) is sample_from:
+                                "a callable.")
+            if isinstance(value, Function):
                 raise ValueError("arbitrary tune.sample_from objects are not "
                                  "supported for `hyperparam_mutation` values."
                                  "You must use other built in primitives like"

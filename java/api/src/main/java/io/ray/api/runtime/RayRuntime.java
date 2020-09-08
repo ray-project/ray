@@ -193,4 +193,9 @@ public interface RayRuntime {
    * @return The wrapped callable.
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
+
+  /**
+   * Intentionally exit the current actor.
+   */
+  void exitActor();
 }

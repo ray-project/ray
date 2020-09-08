@@ -9,6 +9,7 @@ import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayException;
+import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.gcs.RedisClient;
@@ -85,10 +86,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
-    loadConfigFromGCS(rayConfig);
+    loadConfigFromGcs(rayConfig);
   }
 
-  private static void loadConfigFromGCS(RayConfig rayConfig) {
+  private static void loadConfigFromGcs(RayConfig rayConfig) {
     if (rayConfig.getRedisAddress() != null) {
       GcsClient tempGcsClient =
           new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
@@ -243,6 +244,16 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetCoreWorker(((AsyncContext) asyncContext).workerId.getBytes());
     workerContext.setCurrentClassLoader(((AsyncContext) asyncContext).currentClassLoader);
     super.setAsyncContext(asyncContext);
+  }
+
+  @Override
+  public void exitActor() {
+    if (rayConfig.workerMode != WorkerType.WORKER || runtimeContext.getCurrentActorId().isNil()) {
+      throw new RuntimeException("This shouldn't be called on a non-actor worker.");
+    }
+    LOGGER.info("Actor {} is exiting.", runtimeContext.getCurrentActorId());
+    throw new RayIntentionalSystemExitException(
+        String.format("Actor %s is exiting.", runtimeContext.getCurrentActorId()));
   }
 
   @Override

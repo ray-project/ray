@@ -1,7 +1,7 @@
 package io.ray.streaming.runtime.master.resourcemanager;
 
 import io.ray.streaming.runtime.core.resource.Container;
-import io.ray.streaming.runtime.core.resource.ContainerID;
+import io.ray.streaming.runtime.core.resource.ContainerId;
 import java.util.List;
 import java.util.Map;
 
@@ -15,7 +15,7 @@ public class ViewBuilder {
   }
 
   public static ResourceAssignmentView buildResourceAssignmentView(List<Container> containers) {
-    Map<ContainerID, List<Integer>> assignmentView =
+    Map<ContainerId, List<Integer>> assignmentView =
         containers.stream().collect(java.util.stream.Collectors.toMap(Container::getId,
             Container::getExecutionVertexIds));
 

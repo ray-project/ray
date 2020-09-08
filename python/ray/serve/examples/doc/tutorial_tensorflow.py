@@ -68,9 +68,9 @@ class TFMnistModel:
 # __doc_define_servable_end__
 
 # __doc_deploy_begin__
-serve.init()
-serve.create_backend("tf:v1", TFMnistModel, "/tmp/mnist_model.h5")
-serve.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
+client = serve.start()
+client.create_backend("tf:v1", TFMnistModel, "/tmp/mnist_model.h5")
+client.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
 # __doc_deploy_end__
 
 # __doc_query_begin__

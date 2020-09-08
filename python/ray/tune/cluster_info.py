@@ -2,6 +2,15 @@ import getpass
 import os
 
 
+def is_ray_cluster():
+    """Checks if the bootstrap config file exists.
+
+    This will always exist if using an autoscaling cluster/started
+    with the ray cluster launcher.
+    """
+    return os.path.exists(os.path.expanduser("~/ray_bootstrap_config.yaml"))
+
+
 def get_ssh_user():
     """Returns ssh username for connecting to cluster workers."""
 

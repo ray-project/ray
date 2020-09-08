@@ -179,5 +179,5 @@ def _add_service_name_to_service_port(spec, svc_name):
 
     elif isinstance(spec, str):
         if "${RAY_POD_NAME}" in spec:
-            spec.replace("${RAY_POD_NAME}", svc_name)
+            spec = spec.replace("${RAY_POD_NAME}", svc_name)
     return spec

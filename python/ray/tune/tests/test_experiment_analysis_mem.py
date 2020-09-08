@@ -135,7 +135,6 @@ class AnalysisSuite(unittest.TestCase):
         run(MyTrainableClass,
             name=test_name,
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
@@ -156,7 +155,7 @@ class AnalysisSuite(unittest.TestCase):
 
     def testBestLogdir(self):
         analysis = Analysis(self.test_dir)
-        logdir = analysis.get_best_logdir(self.metric)
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_dir))
