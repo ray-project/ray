@@ -10,6 +10,7 @@ from typing import List
 import io
 import os
 from ray.serve.exceptions import RayServeException
+from collections import UserDict
 
 import requests
 import numpy as np
@@ -23,6 +24,14 @@ from ray.serve.http_util import build_flask_request
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
+class ServeMultiDict(UserDict):
+    """Compatible data structure to simulate Flask.Request.args API."""
+
+    def getlist(self, key):
+        """Return the list of items for a given key."""
+        return self.data.get(key, [])
+
+
 class ServeRequest:
     """The request object used in Python context.
 
@@ -33,7 +42,7 @@ class ServeRequest:
 
     def __init__(self, data, kwargs, headers, method):
         self._data = data
-        self._kwargs = kwargs
+        self._kwargs = ServeMultiDict(kwargs)
         self._headers = headers
         self._method = method
 
