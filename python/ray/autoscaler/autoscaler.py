@@ -141,16 +141,13 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        all_nodes = self.all_workers()
         nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
         # additional all_nodes are launched.
         num_pending = self.pending_launches.value
         self.load_metrics.prune_active_ips(
-            [self.provider.internal_ip(node_id) for node_id in all_nodes])
-        # Always work in terms of `nodes` which are managed workers.
-        del all_nodes
+            [self.provider.internal_ip(node_id) for node_id in self.all_workers()])
         target_workers = self.target_num_workers()
 
         if len(nodes) >= target_workers:

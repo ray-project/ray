@@ -636,6 +636,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {})
         autoscaler.update()
         self.waitForNodes(2)
+        # 1 CPU task cannot be scheduled.
         lm.update(unmanaged_ip, {"CPU": 0}, {"CPU": 0}, {"CPU": 1})
         autoscaler.update()
         self.waitForNodes(3)

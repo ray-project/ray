@@ -44,9 +44,9 @@ In some cases, adding special nodes without any resources (i.e. `num_cpus=0`) ma
 
 In order to manually add a node to an autoscaled cluster, the `ray-cluster-name` tag should be set and `ray-node-type` tag should be set to `unmanaged`.
 
-Unmanaged nodes **must have 0 resources**. If an unmanaged node has non-zero resources, the autoscaler may affect the accuracy of the autoscaler's decision making. 
+Unmanaged nodes **must have 0 resources**.
 
-If you are using the `available_node_types` field, you should create a custom node type with the proper `resources` field, and `max_workers: 0` to ensure the autoscaler behaves properly.
+If you are using the `available_node_types` field, you should create a custom node type with `resources: {}`, and `max_workers: 0` when configuring the autoscaler..
 
 The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes. 
 
