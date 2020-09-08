@@ -141,8 +141,8 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        all_nodes = self.workers()
-        nodes = self.managed_workers()
+        all_nodes = self.all_workers()
+        nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
         # additional all_nodes are launched.
@@ -179,7 +179,7 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
-            nodes = self.managed_workers()
+            nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
         # Terminate nodes if there are too many
@@ -193,7 +193,7 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
-            nodes = self.managed_workers()
+            nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
         # First let the resource demand scheduler launch nodes, if enabled.
@@ -219,7 +219,7 @@ class StandardAutoscaler:
             num_launches = min(max_allowed, target_workers - num_workers)
             self.launch_new_node(num_launches,
                                  self.config.get("worker_default_node_type"))
-            nodes = self.managed_workers()
+            nodes = self.workers()
             self.log_info_string(nodes, target_workers)
         elif self.load_metrics.num_workers_connected() >= target_workers:
             self.bringup = False
@@ -240,7 +240,7 @@ class StandardAutoscaler:
             # Mark the node as active to prevent the node recovery logic
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
-            nodes = self.managed_workers()
+            nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
         # Update nodes with out-of-date files.
@@ -503,10 +503,10 @@ class StandardAutoscaler:
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
 
-    def workers(self):
-        return self.managed_workers() + self.unmanaged_workers()
+    def all_workers(self):
+        return self.workers() + self.unmanaged_workers()
 
-    def managed_workers(self):
+    def workers(self):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
@@ -560,7 +560,7 @@ class StandardAutoscaler:
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
-        nodes = self.managed_workers()
+        nodes = self.workers()
         if nodes:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
