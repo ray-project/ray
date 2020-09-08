@@ -65,7 +65,6 @@
     <guava.version>27.0.1-jre</guava.version>
     <fst.version>2.57</fst.version>
   </properties>
-
   <profiles>
     <profile>
       <id>release</id>

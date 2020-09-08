@@ -11,4 +11,7 @@
   <suppress checks="ClassTypeParameterName" files="StreamTask.java"/>
   <!-- suppress check for flatbuffer-generated files. -->
   <suppress checks=".*" files="io[\\/]ray[\\/]streaming[\\/]runtime[\\/]generated[\\/]"/>
+
+  <!-- suppress indention check for lambdas-->
+  <suppress checks="Indentation" files="FailoverCoordinator.java"/>
 </suppressions>

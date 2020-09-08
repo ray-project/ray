@@ -151,7 +151,7 @@ Syncing
 -------
 
 Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>`.
-By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.run`` by providing either a function or a string.
+By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.SyncConfig`` by providing either a function or a string.
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
 
@@ -167,7 +167,9 @@ If a string is provided, then it must include replacement fields ``{source}`` an
     tune.run(
         MyTrainableClass,
         name="experiment_name",
-        sync_to_driver=custom_sync_func,
+        sync_config=tune.SyncConfig(
+            sync_to_driver=custom_sync_func
+        )
     )
 
 When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -259,7 +261,7 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``tune.run(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+You can also specify ``tune.run(sync_config=tune.SyncConfig(upload_dir=...))`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-fault-tol:
 
@@ -318,7 +320,8 @@ Below are some commonly used commands for submitting experiments. Please see the
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
-    # In `tune_experiment.py`, set `tune.run(upload_dir="s3://...")` to persist results
+    # In `tune_experiment.py`, set `tune.SyncConfig(upload_dir="s3://...")`
+    # and pass it to `tune.run(sync_config=...)` to persist results
     $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
     # To start or update your cluster:

@@ -28,7 +28,6 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from skopt import Optimizer
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -36,40 +35,40 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    config = {
+    # The config will be automatically converted to SkOpt's search space
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
         }
     }
-    optimizer = Optimizer([(0, 20), (-100, 100)])
-    previously_run_params = [[10, 0], [15, -20]]
+
+    # Optional: Pass the parameter space yourself
+    # space = {
+    #     "width": (0, 20),
+    #     "height": (-100, 100),
+    #     "activation": ["relu", "tanh"]
+    # }
+
+    previously_run_params = [[10, 0, "relu"], [15, -20, "tanh"]]
     known_rewards = [-189, -1144]
+
     algo = SkOptSearch(
-        optimizer, ["width", "height"],
+        # parameter_names=space.keys(),  # If you want to set the space
+        # parameter_ranges=space.values(), # If you want to set the space
         metric="mean_loss",
         mode="min",
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards)
+
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+
     tune.run(
         easy_objective,
         name="skopt_exp_with_warmstart",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
-
-    # Now run the experiment without known rewards
-
-    algo = SkOptSearch(
-        optimizer, ["width", "height"],
-        metric="mean_loss",
-        mode="min",
-        points_to_evaluate=previously_run_params)
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    tune.run(
-        easy_objective,
-        name="skopt_exp",
-        search_alg=algo,
-        scheduler=scheduler,
-        **config)
+        **tune_kwargs)

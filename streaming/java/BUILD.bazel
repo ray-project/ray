@@ -127,10 +127,12 @@ define_java_module(
         ":io_ray_ray_streaming-state",
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
+        "@maven//:commons_io_commons_io",
         "@ray_streaming_maven//:com_github_davidmoten_flatbuffers_java",
         "@ray_streaming_maven//:com_google_code_findbugs_jsr305",
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
+        "@ray_streaming_maven//:commons_collections_commons_collections",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
         "@ray_streaming_maven//:org_apache_commons_commons_lang3",
@@ -211,6 +213,8 @@ genrule(
         for f in $(locations //streaming/java:all_java_proto); do
             unzip -q -o "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/streaming/java/streaming-runtime/src/main/java"
         done
+        # remove third party protobuf
+        rm -rf $$WORK_DIR/streaming/java/streaming-runtime/src/main/java/com/google/protobuf/
         date > $@
     """,
     local = 1,
