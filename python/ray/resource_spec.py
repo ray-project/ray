@@ -107,7 +107,9 @@ class ResourceSpec(
         # Check types.
         for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
+                    or isinstance(resource_quantity, float)), (
+                        f"{resource_label} ({type(resource_quantity)}): "
+                        f"{resource_quantity}")
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(

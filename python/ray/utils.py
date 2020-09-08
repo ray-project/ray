@@ -505,8 +505,7 @@ def get_num_cpus():
                     "buggy. Please ensure that Ray has enough CPUs allocated. "
                     "This message will be removed in future version of Ray. You "
                     "can set the environment variable: "
-                    "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now."
-                )
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now.")
     except Exception:
         # `nproc` is a linux-only utility. If docker only works on linux (will
         # run in VM on other platforms) so this is fine.
