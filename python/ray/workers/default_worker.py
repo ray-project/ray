@@ -104,7 +104,9 @@ parser.add_argument(
     "--code-search-path",
     default=None,
     type=json.loads,
-    help="Additional import path for worker.")
+    help="A list of directories or jar files that specify the search path for "
+    "user code. This will be used as `CLASSPATH` in Java, and "
+    "`PYTHONPATH` in Python.")
 if __name__ == "__main__":
     args = parser.parse_args()
 

@@ -158,7 +158,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
               .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
               .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
               .putAllWorkerEnv(rayConfig.workerEnv)
-              .addAllCodeSearchPath(rayConfig.jobResourcePath);
+              .addAllCodeSearchPath(rayConfig.codeSearchPath);
       serializedJobConfig = jobConfigBuilder.build().toByteArray();
     }
 

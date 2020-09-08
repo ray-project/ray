@@ -12,11 +12,11 @@ public class RayConfigTest {
   @Test
   public void testCreateRayConfig() {
     try {
-      System.setProperty("ray.job.code-search-path", "path/to/ray/job/resource/path");
+      System.setProperty("ray.job.code-search-path.0", "path/to/ray/job/resource/path");
       RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
       Assert.assertEquals(Collections.singletonList("path/to/ray/job/resource/path"),
-          rayConfig.jobResourcePath);
+          rayConfig.codeSearchPath);
     } finally {
       // Unset system properties.
       System.clearProperty("ray.job.code-search-path");
