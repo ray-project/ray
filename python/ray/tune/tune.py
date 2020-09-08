@@ -75,6 +75,7 @@ def run(
         local_dir=None,
         search_alg=None,
         scheduler=None,
+        time_budget_s=None,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
         checkpoint_freq=0,
@@ -173,6 +174,9 @@ def run(
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options.
+        time_budget_s (float): Number of seconds before the experiment
+            is automatically stopped. All PENDING and RUNNING
+            trials will be marked as "TERMINATED". Must be > 0.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -318,6 +322,9 @@ def run(
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
+    if time_budget_s <= 0:
+        raise ValueError(f"time_budget_s must be > 0. Got: {time_budget_s}.")
+
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
 
@@ -345,6 +352,7 @@ def run(
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
+        time_budget_s=time_budget_s,
         trial_executor=trial_executor)
 
     if not runner.resumed:

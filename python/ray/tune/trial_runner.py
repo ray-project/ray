@@ -13,8 +13,7 @@ from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -130,6 +129,7 @@ class TrialRunner:
                  resume=False,
                  server_port=None,
                  fail_fast=False,
+                 time_budget_s=None,
                  verbose=True,
                  checkpoint_period=None,
                  trial_executor=None):
@@ -137,11 +137,6 @@ class TrialRunner:
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
 
-        # For debugging, it may be useful to halt trials after some time has
-        # elapsed. TODO(ekl) consider exposing this in the API.
-        self._global_time_limit = float(
-            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
-        self._total_time = 0
         self._iteration = 0
         self._has_errored = False
         self._fail_fast = fail_fast
@@ -196,6 +191,11 @@ class TrialRunner:
         else:
             logger.debug("Starting a new experiment.")
 
+        # it may be useful to halt trials after some time has
+        # elapsed.
+        self._time_budget_s = time_budget_s or float("inf")
+        self._total_time = 0
+        self._last_checked_time = time.time()
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
         if checkpoint_period is None:
@@ -347,13 +347,11 @@ class TrialRunner:
             else:
                 self.add_trial(trial)
 
+    def _time_budget_exceeded(self):
+        return self._total_time > self._time_budget_s
+
     def is_finished(self):
         """Returns whether all trials have finished running."""
-        if self._total_time > self._global_time_limit:
-            logger.warning("Exceeded global time limit {} / {}".format(
-                self._total_time, self._global_time_limit))
-            return True
-
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
@@ -367,6 +365,8 @@ class TrialRunner:
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
+            self._total_time += time.time() - self._last_checked_time
+            self._last_checked_time = time.time()
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
@@ -437,8 +437,14 @@ class TrialRunner:
 
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
+
+        if self._time_budget_exceeded():
+            logger.info("Exceeded global time limit {} / {}".format(
+                self._total_time, self._time_budget_s))
+
         fail_fast = self._fail_fast and self._has_errored
         if (self._stopper.stop_all() or fail_fast
+                or self._time_budget_exceeded()
                 or self._should_stop_experiment):
             self._search_alg.set_finished()
             [
@@ -523,8 +529,6 @@ class TrialRunner:
                 logger.debug("Trial finished without logging 'done'.")
                 result = trial.last_result
                 result.update(done=True)
-
-            self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
             if self._stopper(trial.trial_id,
@@ -827,5 +831,6 @@ class TrialRunner:
         self.__dict__.setdefault("_start_time", start_time)
 
         self.__dict__.update(state)
+        self.__dict__["_last_checked_time"] = time.time()
         if launch_web_server:
             self._server = TuneServer(self, self._server_port)
