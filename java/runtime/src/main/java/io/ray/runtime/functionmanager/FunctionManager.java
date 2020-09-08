@@ -116,7 +116,7 @@ public class FunctionManager {
       URL[] urls = jobResourcePath.stream()
           .map(p -> {
             try {
-              if (!Files.isDirectory(Paths.get(p))) {
+              if (!Files.isDirectory(Paths.get(p)) && !p.endsWith(".jar")) {
                 return Paths.get(p).getParent().toAbsolutePath().toUri().toURL();
               } else {
                 return Paths.get(p).toAbsolutePath().toUri().toURL();
