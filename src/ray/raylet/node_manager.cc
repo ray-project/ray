@@ -2080,8 +2080,8 @@ void NodeManager::CommitBundle(
   // once retry is implemented.
   const auto &bundle_id = bundle_spec.BundleId();
   auto it = bundle_state_map_.find(bundle_id);
-  // When bundle is committed, it should've been prepared already. We need to care this
-  // because it is currently not idempotent.
+  // When bundle is committed, it should've been prepared already.
+  // We don't need this check if commit becomes idempotent.
   RAY_CHECK(it != bundle_state_map_.end());
   const auto &bundle_state = it->second;
   bundle_state->state = CommitState::COMMITTED;
