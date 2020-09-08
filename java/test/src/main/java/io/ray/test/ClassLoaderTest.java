@@ -44,8 +44,9 @@ public class ClassLoaderTest extends BaseTest {
     jobResourceDir.mkdirs();
     jobResourceDir.deleteOnExit();
 
-    // In this test case the class is expected to be loaded from the job code search path, so we need
-    // to put the compiled class file into the job code search path and load it later.
+    // In this test case the class is expected to be loaded from the job code search path,
+    // so we need to put the compiled class file into the job code search path and load it
+    // later.
     String testJavaFile = ""
         + "import java.lang.management.ManagementFactory;\n"
         + "import java.lang.management.RuntimeMXBean;\n"
