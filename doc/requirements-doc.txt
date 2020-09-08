@@ -24,7 +24,8 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-sphinx-book-theme
+# TODO(simon): Use sphinx book theme released version
+git+https://github.com/executablebooks/sphinx-book-theme.git@b977856bfe050b5098f6db185ffad6b434b20cf2
 tabulate
 uvicorn
 werkzeug
