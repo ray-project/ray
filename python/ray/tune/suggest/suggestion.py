@@ -232,7 +232,7 @@ class Searcher:
             self.save(tmp_search_ckpt_path)
         except NotImplementedError:
             if log_once("suggest:save_to_dir"):
-                logger.warning(
+                logger.info(
                     "save not implemented for Searcher. Skipping save.")
             success = False
 

@@ -322,6 +322,8 @@ def run(
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
 
+    time_budget_s = time_budget_s or float("inf")
+
     if time_budget_s <= 0:
         raise ValueError(f"time_budget_s must be > 0. Got: {time_budget_s}.")
 
