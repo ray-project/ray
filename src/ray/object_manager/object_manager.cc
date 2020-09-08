@@ -234,8 +234,8 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
                      << " is trying to pull object " << object_id
                      << " but the object table suggests that this object manager "
                      << "already has the object. The object may have been evicted. It is "
-                        "most likely due to memory pressure, object pull has been "
-                        "requested before object location is updated.";
+                     << "most likely due to memory pressure, object pull has been "
+                     << "requested before object location is updated.";
     it->second.timer_set = false;
     return;
   }
@@ -254,7 +254,7 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
         << "The object manager with ID " << self_node_id_ << " is trying to pull object "
         << object_id << " but the object table suggests that this object manager "
         << "already has the object. It is most likely due to memory pressure, object "
-           "pull has been requested before object location is updated.";
+        << "pull has been requested before object location is updated.";
     node_id = node_vector[node_index % node_vector.size()];
     RAY_CHECK(node_id != self_node_id_);
   }
