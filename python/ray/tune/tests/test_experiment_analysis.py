@@ -57,7 +57,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         return nan_ea
 
     def testDataframe(self):
-        df = self.ea.dataframe()
+        df = self.ea.dataframe(self.metric, mode="max")
 
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
@@ -157,7 +157,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                 "height": tune.sample_from(
                     lambda spec: int(100 * random.random())),
             })
-        df = analysis.dataframe()
+        df = analysis.dataframe(self.metric, mode="max")
         self.assertEquals(df.shape[0], 1)
 
 
