@@ -357,10 +357,10 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--code-search-path",
     default=None,
-    type=json.loads,
-    help="A list of directories or jar files that specify the search path for "
-    "user code. This will be used as `CLASSPATH` in Java, and "
-    "`PYTHONPATH` in Python.")
+    type=str,
+    help="A list of directories or jar files separated by colon that specify "
+         "the search path for user code. This will be used as `CLASSPATH` in "
+         "Java `PYTHONPATH` in Python.")
 @click.option(
     "--system-config",
     default=None,

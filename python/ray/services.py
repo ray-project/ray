@@ -1376,8 +1376,7 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}"
     ]
     if code_search_path:
-        start_worker_command.append(
-            f"--code-search-path={json.dumps(code_search_path)}")
+        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1501,7 +1500,7 @@ def build_java_worker_command(java_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
-        code_search_path (list): Teh job resource path.
+        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1522,10 +1521,7 @@ def build_java_worker_command(java_worker_options, redis_address,
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    for index in range(len(code_search_path)):
-        path = code_search_path[index]
-        pairs.append((f"ray.job.code-search-path.{index}", path))
-
+    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]

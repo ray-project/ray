@@ -159,7 +159,7 @@ There are two steps needed to use Ray in a distributed setting:
               .. code-block:: bash
 
                   java -classpath /path/to/jars/ \
-                    -Dray.job.code-search-path.0=/path/to/jars/ \
+                    -Dray.job.code-search-path=/path/to/jars/ \
                     -Dray.redis.address=<address> \
                     <classname> <args>
 

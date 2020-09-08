@@ -61,7 +61,7 @@ public class FunctionManager {
   private final List<String> codeSearchPath;
 
   /**
-   * Construct a FunctionManager with the specified job resource path.
+   * Construct a FunctionManager with the specified code search path.
    *
    * @param codeSearchPath The specified job resource that can store the job's
    *                        resources.
