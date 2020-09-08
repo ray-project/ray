@@ -84,7 +84,7 @@ public abstract class BaseMultiLanguageTest {
         "--load-code-from-local",
         "--include-java",
         "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
-        "--code-search-path=" + new Gson().toJson(classpath)
+        "--code-search-path=" + String.join(":", classpath)
     );
 
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
