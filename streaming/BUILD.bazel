@@ -138,6 +138,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+	"exported_streaming_internal.so",
         "ray_common.so",
         "ray_util.so",
         ":streaming_config",
