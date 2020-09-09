@@ -144,7 +144,7 @@ class StandardAutoscaler:
         nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
-        # additional all_nodes are launched.
+        # additional nodes (managed and unmanaged) are launched.
         num_pending = self.pending_launches.value
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id)
