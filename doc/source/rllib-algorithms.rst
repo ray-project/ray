@@ -42,7 +42,7 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 ----------------------------- ---------------------------------------------------------------------------------------
 `Fully Independent Learning`_  Depends on bootstrapped algorithm
 ----------------------------- ---------------------------------------------------------------------------------------
-`Shared Critic Methods`_  Depends on bootstrapped algorithm
+`Shared Critic Methods`_       Depends on bootstrapped algorithm
 ============================= =======================================================================================
 
 
