@@ -26,6 +26,7 @@ matrix:
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
+        - java -version
         - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
