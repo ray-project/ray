@@ -281,12 +281,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     required=False,
     type=str,
     help="object store directory for memory mapped files")
-# TODO: Remove this.
-@click.option(
-    "--huge-pages",
-    is_flag=True,
-    default=False,
-    help="enable support for huge pages in the object store")
 @click.option(
     "--autoscaling-config",
     required=False,
@@ -314,12 +308,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process")
-# TODO: Remove
-@click.option(
-    "--include-java",
-    is_flag=True,
-    default=None,
-    help="Enable Java worker support.")
 @click.option(
     "--java-worker-options",
     required=False,
@@ -370,12 +358,12 @@ def start(node_ip_address, address, port,
           gcs_server_port, min_worker_port, max_worker_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
           head, include_dashboard, dashboard_host,
-          dashboard_port, block, plasma_directory, huge_pages,
+          dashboard_port, block, plasma_directory,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, code_search_path, load_code_from_local,
-          system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, log_style, log_color, verbose):
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          java_worker_options, load_code_from_local, system_config, lru_evict,
+          enable_object_reconstruction, metrics_export_port, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
@@ -428,11 +416,11 @@ def start(node_ip_address, address, port,
         num_gpus=num_gpus,
         resources=resources,
         plasma_directory=plasma_directory,
-        huge_pages=huge_pages,
+        huge_pages=False,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        include_java=include_java,
+        include_java=None,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -563,13 +551,6 @@ def start(node_ip_address, address, port,
             raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
-        if include_java is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-java"), cf.bold("--head"))
-
-            raise ValueError("--include-java should only be set for the head "
-                             "node.")
-
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
         services.wait_for_redis_to_start(
