@@ -601,7 +601,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
-                              "firewall settings other "
+                              "firewall settings and "
                               "network configuration."))
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
