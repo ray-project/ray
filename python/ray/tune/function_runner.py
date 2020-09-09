@@ -7,9 +7,9 @@ import threading
 import traceback
 import uuid
 
+from ray.tune.registry import parameter_registry
 from six.moves import queue
 
-import ray
 from ray.util.debug import log_once
 from ray.tune import TuneError, session
 from ray.tune.trainable import Trainable, TrainableUtil
@@ -510,9 +510,6 @@ def wrap_function(train_func, warn=True):
     return ImplicitFunc
 
 
-_parameter_registry = {}
-
-
 def with_parameters(fn, **kwargs):
     """Wrapper for function trainables to pass arbitrary large data objects.
 
@@ -545,14 +542,9 @@ def with_parameters(fn, **kwargs):
         )
 
     """
-    if not ray.is_initialized():
-        raise ValueError(
-            "`tune.with_parameters()` requires Ray to be initialized. Please "
-            "call `ray.init()` before invoking this function.")
-
     prefix = f"{str(fn)}_"
     for k, v in kwargs.items():
-        _parameter_registry[prefix + k] = ray.put(v)
+        parameter_registry.put(prefix + k, v)
 
     use_checkpoint = detect_checkpoint_function(fn)
 
@@ -567,7 +559,7 @@ def with_parameters(fn, **kwargs):
             fn_kwargs["checkpoint_dir"] = default
 
         for k in kwargs:
-            fn_kwargs[k] = ray.get(_parameter_registry[prefix + k])
+            fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 
     # Use correct function signature if no `checkpoint_dir` parameter is set
