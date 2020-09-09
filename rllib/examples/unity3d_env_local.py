@@ -66,7 +66,8 @@ parser.add_argument(
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init()
+    #TODO
+    ray.init(local_mode=True)
 
     args = parser.parse_args()
 
@@ -107,8 +108,14 @@ if __name__ == "__main__":
         },
         "model": {
             "fcnet_hiddens": [512, 512],
+            "use_lstm": args.env == "VisualHallway",
         },
-        "framework": "tf" if args.env != "Pyramids" else "torch",
+        # - Must use torch for curiosity tasks (Pyramids).
+        # - Should use torch for LSTM-requiring tasks (traj. view API;
+        #   VisualHallway).
+        # - otherwise use tf by default (but torch would work as well).
+        "framework": "tf" if args.env not in ["Pyramids",
+                                              "VisualHallway"] else "torch",
         "no_done_at_end": True,
     }
     # Switch on Curiosity based exploration for Pyramids env
