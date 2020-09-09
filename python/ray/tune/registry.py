@@ -8,14 +8,15 @@ from ray.experimental.internal_kv import _internal_kv_initialized, \
 from ray.tune.error import TuneError
 
 TRAINABLE_CLASS = "trainable_class"
+USER_PARAMETER = "user_parameter"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
-    TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR,
-    RLLIB_ACTION_DIST, TEST
+    TRAINABLE_CLASS, USER_PARAMETER, ENV_CREATOR, RLLIB_MODEL,
+    RLLIB_PREPROCESSOR, RLLIB_ACTION_DIST, TEST
 ]
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,18 @@ def register_trainable(name, trainable, warn=True):
         raise TypeError("Second argument must be convertable to Trainable",
                         trainable)
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
+
+
+def has_user_parameter(parameter_name):
+    return _global_registry.contains(USER_PARAMETER, parameter_name)
+
+
+def get_user_parameter(parameter_name):
+    return _global_registry.get(USER_PARAMETER, parameter_name)
+
+
+def put_user_parameter(parameter_name, obj):
+    _global_registry.register(USER_PARAMETER, parameter_name, obj)
 
 
 def register_env(name, env_creator):
