@@ -198,7 +198,7 @@ class TuneReporterBase(ProgressReporter):
 
     def _infer_user_metrics(self, trials, limit=4):
         """Try to infer the metrics to print out."""
-        if len(self._inferred_metrics) > limit:
+        if len(self._inferred_metrics) >= limit:
             return self._inferred_metrics
         self._inferred_metrics = {}
         for t in trials:
@@ -210,8 +210,8 @@ class TuneReporterBase(ProgressReporter):
                         if type(value) in self.VALID_SUMMARY_TYPES:
                             self._inferred_metrics[metric] = metric
 
-                if len(self._inferred_metrics) > limit:
-                    break
+                if len(self._inferred_metrics) >= limit:
+                    return self._inferred_metrics
         return self._inferred_metrics
 
 
