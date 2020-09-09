@@ -24,7 +24,8 @@ parser.add_argument("--stop-timesteps", type=int, default=100000)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    #TODO
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     ModelCatalog.register_custom_model(
         "rnn", TorchRNNModel if args.torch else RNNModel)
@@ -47,6 +48,10 @@ if __name__ == "__main__":
             "_time_major": args.torch,
             "max_seq_len": 20,
         },
+        # Have to manually enable it for torch as it only gets automatically
+        # enabled if we use the auto-LSTM wrapping, which we don't here (we
+        # use a custom model).
+        "_use_trajectory_view_api": args.torch,
         "framework": "torch" if args.torch else "tf",
     }
 
@@ -56,7 +61,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

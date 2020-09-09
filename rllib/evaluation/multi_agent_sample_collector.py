@@ -143,11 +143,6 @@ class _MultiAgentSampleCollector(_SampleCollector):
         return sum(a.timesteps_since_last_reset
                    for a in self.policy_sample_collectors.values())
 
-    def total(self):
-        # TODO: (sven) deprecate; use `self.total_env_steps`, instead.
-        #  Sampler is currently still using `total()`.
-        return self.total_env_steps()
-
     @override(_SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
