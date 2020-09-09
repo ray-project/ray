@@ -56,6 +56,12 @@ def get_function_descriptor_for_actor_method(
 
 
 def java_function(class_name, function_name):
+    """Define a Java function.
+
+    Args:
+        class_name (str): Java class name.
+        function_name (str): Java function name.
+    """
     from ray.remote_function import RemoteFunction
     return RemoteFunction(
         Language.JAVA,
@@ -66,6 +72,7 @@ def java_function(class_name, function_name):
         None,  # memory,
         None,  # object_store_memory,
         None,  # resources,
+        None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
         None,  # max_retries
@@ -75,6 +82,11 @@ def java_function(class_name, function_name):
 
 
 def java_actor_class(class_name):
+    """Define a Java actor class.
+
+    Args:
+        class_name (str): Java class name.
+    """
     from ray.actor import ActorClass
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,

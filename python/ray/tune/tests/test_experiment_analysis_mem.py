@@ -83,10 +83,10 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
             num_samples=1,
             config={"id": grid_search(list(range(5)))})
 
-        max_all = ea.get_best_trial("score",
-                                    "max").metric_analysis["score"]["max"]
-        min_all = ea.get_best_trial("score",
-                                    "min").metric_analysis["score"]["min"]
+        max_all = ea.get_best_trial("score", "max",
+                                    "all").metric_analysis["score"]["max"]
+        min_all = ea.get_best_trial("score", "min",
+                                    "all").metric_analysis["score"]["min"]
         max_last = ea.get_best_trial("score", "max",
                                      "last").metric_analysis["score"]["last"]
         max_avg = ea.get_best_trial("score", "max",
@@ -149,7 +149,7 @@ class AnalysisSuite(unittest.TestCase):
 
     def testDataframe(self):
         analysis = Analysis(self.test_dir)
-        df = analysis.dataframe()
+        df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 

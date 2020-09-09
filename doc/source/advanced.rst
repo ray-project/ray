@@ -98,12 +98,12 @@ Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
-actors, you can use ``ray.experimental.queue.Queue`` (`source code <https://github.com/ray-project/ray/blob/master/python/ray/experimental/queue.py>`_).
+actors, you can use :ref:`ray.util.queue.Queue <ray-queue-ref>`.
 
 .. code-block:: python
 
     import ray
-    from ray.experimental.queue import Queue
+    from ray.util.queue import Queue
 
     ray.init()
     # You can pass this object around to different tasks/actors
@@ -228,7 +228,7 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
 .. code-block:: python
 
     from ray.accelerators import NVIDIA_TESLA_V100
-    
+
     @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
     def train(data):
         return "This function was run on a node with a Tesla V100 GPU"

@@ -629,9 +629,11 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 24
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 24
 
 

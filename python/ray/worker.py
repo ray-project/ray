@@ -493,6 +493,7 @@ def init(
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
         _java_worker_options=None,
+        _code_search_path=None,
         _temp_dir=None,
         _load_code_from_local=False,
         _lru_evict=False,
@@ -587,6 +588,7 @@ def init(
         _load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
+        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -682,6 +684,7 @@ def init(
             temp_dir=_temp_dir,
             load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
+            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,

@@ -34,6 +34,7 @@ MOCK_MODULES = [
     "ax",
     "ax.service.ax_client",
     "blist",
+    "ConfigSpace",
     "gym",
     "gym.spaces",
     "horovod",
@@ -113,6 +114,8 @@ extensions = [
     'versionwarning.extension',
 ]
 
+versionwarning_admonition_type = "tip"
+
 versionwarning_messages = {
     "master": (
         "This document is for the master branch. "
@@ -124,7 +127,7 @@ versionwarning_messages = {
     ),
 }
 
-versionwarning_body_selector = "div.document"
+versionwarning_body_selector = "#main-content"
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples",
                       "tune/_tutorials"],  # path to example scripts
@@ -232,33 +235,38 @@ todo_include_todos = False
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-import sphinx_rtd_theme
-html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = "sphinx_book_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+html_theme_options = {
+    "repository_url": "https://github.com/ray-project/ray",
+    "use_repository_button": True,
+    "use_issues_button": True,
+    "use_edit_page_button": True,
+    "path_to_docs": "doc/source",
+    "home_page_in_toc": True,
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-#html_title = None
+html_title = f"Ray v{release}"
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 #html_short_title = None
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-#html_logo = None
+html_logo = "images/ray_logo.png"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
-#html_favicon = None
+html_favicon = "_static/favicon.ico"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -279,7 +287,7 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-html_sidebars = {'**': ['index.html']}
+# html_sidebars = {'**': ['index.html']}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

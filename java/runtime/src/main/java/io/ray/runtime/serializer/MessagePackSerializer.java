@@ -208,7 +208,15 @@ public class MessagePackSerializer {
         }
       }
     }
-    typePacker.pack(object, packer, javaSerializer);
+    try {
+      typePacker.pack(object, packer, javaSerializer);
+    } catch (Exception e) {
+      if (typePacker != EXTENSION_PACKER) {
+        EXTENSION_PACKER.pack(object, packer, javaSerializer);
+      } else {
+        throw e;
+      }
+    }
   }
 
   private static Object unpack(Value v, Class<?> type, JavaDeserializer javaDeserializer) {

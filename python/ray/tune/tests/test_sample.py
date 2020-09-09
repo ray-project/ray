@@ -258,6 +258,113 @@ class SearchSpaceTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertLess(trial.config["b"]["z"], 1e-2)
 
+    def testConvertBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+        import ConfigSpace
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = TuneBOHB.convert_search_space(config)
+        bohb_config = ConfigSpace.ConfigurationSpace()
+        bohb_config.add_hyperparameters([
+            ConfigSpace.CategoricalHyperparameter("a", [2, 3, 4]),
+            ConfigSpace.UniformIntegerHyperparameter(
+                "b/x", lower=0, upper=4, q=2),
+            ConfigSpace.UniformFloatHyperparameter(
+                "b/z", lower=1e-4, upper=1e-2, log=True)
+        ])
+
+        converted_config.seed(1234)
+        bohb_config.seed(1234)
+
+        searcher1 = TuneBOHB(space=converted_config)
+        searcher2 = TuneBOHB(space=bohb_config)
+
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = TuneBOHB(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
+    def testConvertDragonfly(self):
+        from ray.tune.suggest.dragonfly import DragonflySearch
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        with self.assertRaises(ValueError):
+            converted_config = DragonflySearch.convert_search_space(config)
+
+        config = {
+            "a": 4,
+            "b": {
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        dragonfly_config = [{
+            "name": "b/z",
+            "type": "float",
+            "min": 1e-4,
+            "max": 1e-2
+        }]
+        converted_config = DragonflySearch.convert_search_space(config)
+
+        np.random.seed(1234)
+        searcher1 = DragonflySearch(
+            optimizer="bandit",
+            domain="euclidean",
+            space=converted_config,
+            metric="none")
+
+        config1 = searcher1.suggest("0")
+
+        np.random.seed(1234)
+        searcher2 = DragonflySearch(
+            optimizer="bandit",
+            domain="euclidean",
+            space=dragonfly_config,
+            metric="none")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertLess(config2["point"], 1e-2)
+
+        searcher = DragonflySearch()
+        invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
+        with self.assertRaises(ValueError):
+            searcher.set_search_properties("none", "max", invalid_config)
+        invalid_config = {"a": {"b/c": tune.uniform(4.0, 8.0)}}
+        with self.assertRaises(ValueError):
+            searcher.set_search_properties("none", "max", invalid_config)
+
+        searcher = DragonflySearch(
+            optimizer="bandit", domain="euclidean", metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertLess(trial.config["point"], 1e-2)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
@@ -296,6 +403,48 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = HyperOptSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        assert trial.config["a"] in [2, 3, 4]
+
+    def testConvertNevergrad(self):
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = NevergradSearch.convert_search_space(config)
+        nevergrad_config = ng.p.Dict(
+            a=ng.p.Choice([2, 3, 4]),
+            b=ng.p.Dict(
+                x=ng.p.Scalar(lower=0, upper=5).set_integer_casting(),
+                z=ng.p.Log(lower=1e-4, upper=1e-2)))
+
+        searcher1 = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, space=converted_config)
+        searcher2 = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, space=nevergrad_config)
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne, metric="a", mode="max")
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
@@ -340,6 +489,90 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         assert trial.config["a"] in [2, 3, 4]
+
+    def testConvertSkOpt(self):
+        from ray.tune.suggest.skopt import SkOptSearch
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = SkOptSearch.convert_search_space(config)
+        skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
+
+        searcher1 = SkOptSearch(space=converted_config)
+        searcher2 = SkOptSearch(space=skopt_config)
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = SkOptSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
+    def testConvertZOOpt(self):
+        from ray.tune.suggest.zoopt import ZOOptSearch
+        from zoopt import ValueType
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5).quantized(2),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        # Does not support categorical variables
+        with self.assertRaises(ValueError):
+            converted_config = ZOOptSearch.convert_search_space(config)
+        config = {
+            "a": 2,
+            "b": {
+                "x": tune.sample.Integer(0, 5).uniform(),
+                "y": 4,
+                "z": tune.sample.Float(-3, 7).uniform().quantized(1e-4)
+            }
+        }
+        converted_config = ZOOptSearch.convert_search_space(config)
+
+        zoopt_config = {
+            "b/x": (ValueType.DISCRETE, [0, 5], True),
+            "b/z": (ValueType.CONTINUOUS, [-3, 7], 1e-4)
+        }
+
+        searcher1 = ZOOptSearch(dim_dict=converted_config, budget=5)
+        searcher2 = ZOOptSearch(dim_dict=zoopt_config, budget=5)
+
+        np.random.seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(-3, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 7)
+
+        searcher = ZOOptSearch(budget=5, metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertEqual(trial.config["b"]["y"], 4)
 
 
 if __name__ == "__main__":

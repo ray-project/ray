@@ -729,7 +729,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         time.sleep(1)
         ray.get(h.remote())
 
-    [g.remote() for _ in range(num_cpus * 4)]
+    [g.remote() for _ in range(num_cpus * 6)]
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
