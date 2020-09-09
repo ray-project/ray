@@ -157,15 +157,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="the IP address of this node")
 @click.option(
-    "--redis-address", required=False, type=str, help="same as --address")
-@click.option(
     "--address", required=False, type=str, help="the address to use for Ray")
-@click.option(
-    "--redis-port",
-    required=False,
-    type=str,
-    help="(DEPRECATED) the port to use for starting redis. "
-    "Please use --port instead now.")
 @click.option(
     "--port",
     required=False,
@@ -176,30 +168,35 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--num-redis-shards",
     required=False,
+    hidden=True,
     type=int,
     help=("the number of additional Redis shards to use in "
           "addition to the primary Redis shard"))
 @click.option(
     "--redis-max-clients",
     required=False,
+    hidden=True,
     type=int,
     help=("If provided, attempt to configure Redis with this "
           "maximum number of clients."))
 @click.option(
     "--redis-password",
     required=False,
+    hidden=True,
     type=str,
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="If provided, secure Redis ports with this password")
 @click.option(
     "--redis-shard-ports",
     required=False,
+    hidden=True,
     type=str,
     help="the port to use for the Redis shards other than the "
     "primary Redis shard")
 @click.option(
     "--object-manager-port",
     required=False,
+    hidden=True,
     type=int,
     help="the port to use for starting the object manager")
 @click.option(
@@ -241,6 +238,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--redis-max-memory",
     required=False,
+    hidden=True,
     type=int,
     help="The max amount of memory (in bytes) to allow redis to use. Once the "
     "limit is exceeded, redis will start LRU eviction of entries. This only "
@@ -268,20 +266,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     is_flag=True,
     default=False,
     help="provide this argument for the head node")
-@click.option(
-    "--include-webui",
-    default=None,
-    type=bool,
-    help="provide this argument if the UI should be started "
-    "(DEPRECATED: please use --include-dashboard.")
-@click.option(
-    "--webui-host",
-    required=False,
-    default="localhost",
-    help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default,"
-    " this is localhost."
-    " (DEPRECATED: please use --dashboard-host)")
 @click.option(
     "--include-dashboard",
     default=None,
@@ -311,6 +295,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     required=False,
     type=str,
     help="object store directory for memory mapped files")
+# TODO: Remove this.
 @click.option(
     "--huge-pages",
     is_flag=True,
@@ -343,6 +328,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--temp-dir",
     default=None,
     help="manually specify the root temporary dir of the Ray process")
+# TODO: Remove
 @click.option(
     "--include-java",
     is_flag=True,
@@ -364,16 +350,19 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--system-config",
     default=None,
+    hidden=True,
     type=json.loads,
     help="Override system configuration defaults.")
 @click.option(
     "--load-code-from-local",
     is_flag=True,
+    hidden=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
 @click.option(
     "--lru-evict",
     is_flag=True,
+    hidden=True,
     default=False,
     help="Specify whether LRU evict will be used for this cluster.")
 @click.option(
@@ -389,12 +378,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
 @add_click_options(logging_options)
-def start(node_ip_address, redis_address, address, redis_port, port,
+def start(node_ip_address, address, port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
           gcs_server_port, min_worker_port, max_worker_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, webui_host, include_dashboard, dashboard_host,
+          head, include_dashboard, dashboard_host,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
@@ -411,59 +400,11 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
 
-    if redis_address is not None:
-        cli_logger.abort("{} is deprecated. Use {} instead.",
-                         cf.bold("--redis-address"), cf.bold("--address"))
-
-        raise DeprecationWarning("The --redis-address argument is "
-                                 "deprecated. Please use --address instead.")
-    if redis_port is not None:
-        cli_logger.warning("{} is being deprecated. Use {} instead.",
-                           cf.bold("--redis-port"), cf.bold("--port"))
-        cli_logger.old_warning(
-            logger, "The --redis-port argument will be deprecated soon. "
-            "Please use --port instead.")
-        if port is not None and port != redis_port:
-            cli_logger.abort(
-                "Incompatible values for {} and {}. Use only {} instead.",
-                cf.bold("--port"), cf.bold("--redis-port"), cf.bold("--port"))
-
-            raise ValueError("Cannot specify both --port and --redis-port "
-                             "as port is a rename of deprecated redis-port")
-    if include_webui is not None:
-        cli_logger.warning("{} is being deprecated. Use {} instead.",
-                           cf.bold("--include-webui"),
-                           cf.bold("--include-dashboard"))
-        cli_logger.old_warning(
-            logger, "The --include-webui argument will be deprecated soon"
-            "Please use --include-dashboard instead.")
-        if include_dashboard is not None:
-            include_dashboard = include_webui
-
-    dashboard_host_default = "localhost"
-    if webui_host != dashboard_host_default:
-        cli_logger.warning("{} is being deprecated. Use {} instead.",
-                           cf.bold("--webui-host"),
-                           cf.bold("--dashboard-host"))
-        cli_logger.old_warning(
-            logger, "The --webui-host argument will be deprecated"
-            " soon. Please use --dashboard-host instead.")
-        if webui_host != dashboard_host and dashboard_host != "localhost":
-            cli_logger.abort(
-                "Incompatible values for {} and {}. Use only {} instead.",
-                cf.bold("--dashboard-host"), cf.bold("--webui-host"),
-                cf.bold("--dashboard-host"))
-
-            raise ValueError(
-                "Cannot specify both --webui-host and --dashboard-host,"
-                " please specify only the latter")
-        else:
-            dashboard_host = webui_host
-
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
+    redis_address = None
     if address is not None:
         (redis_address, redis_address_ip,
          redis_address_port) = services.validate_redis_address(address)
@@ -558,7 +499,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         cli_logger.old_info(logger, "Using IP address {} for this node.",
                             ray_params.node_ip_address)
         ray_params.update_if_absent(
-            redis_port=port or redis_port,
+            redis_port=port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
@@ -626,7 +567,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
-        if not (redis_port is None and port is None):
+        if not (port is None):
             cli_logger.abort("`{}/{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--redis-port"),
                              cf.bold("--head"))
@@ -658,12 +599,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
 
             raise Exception("If --head is not passed in, --redis-max-clients "
                             "must not be provided.")
-        if include_webui:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-web-ui"), cf.bold("--head"))
-
-            raise Exception("If --head is not passed in, the --include-webui"
-                            "flag is not relevant.")
         if include_dashboard:
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--include-dashboard"), cf.bold("--head"))
