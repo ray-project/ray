@@ -92,7 +92,7 @@ class ResourceDemandScheduler:
                     f"cluster config: {self.node_types} under entry available_node_types. This "
                     f"node's resources will be ignored. If you are using an "
                     f"unmanaged node, set the user_node_type tag manually in "
-                    f"your cloud provider.")
+                    f"your cloud provider's management console.")
                 return
             # Careful not to include the same dict object multiple times.
             node_resources.append(
