@@ -166,20 +166,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "{0}, falling back to a random port if {0} is "
     "not available".format(ray_constants.DEFAULT_PORT))
 @click.option(
-    "--num-redis-shards",
-    required=False,
-    hidden=True,
-    type=int,
-    help=("the number of additional Redis shards to use in "
-          "addition to the primary Redis shard"))
-@click.option(
-    "--redis-max-clients",
-    required=False,
-    hidden=True,
-    type=int,
-    help=("If provided, attempt to configure Redis with this "
-          "maximum number of clients."))
-@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -379,7 +365,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "Prometheus endpoint.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port,
-          num_redis_shards, redis_max_clients, redis_password,
+          redis_password,
           redis_shard_ports, object_manager_port, node_manager_port,
           gcs_server_port, min_worker_port, max_worker_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
@@ -458,30 +444,13 @@ def start(node_ip_address, address, port,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
     if head:
+        num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None:
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
-            if num_redis_shards is None:
-                num_redis_shards = len(redis_shard_ports)
-            # Check that the arguments match.
-            if len(redis_shard_ports) != num_redis_shards:
-                cli_logger.error(
-                    "`{}` must be a comma-separated list of ports, "
-                    "with length equal to `{}` (which defaults to {})",
-                    cf.bold("--redis-shard-ports"),
-                    cf.bold("--num-redis-shards"), cf.bold("1"))
-                cli_logger.abort(
-                    "Example: `{}`",
-                    cf.bold("--num-redis-shards 3 "
-                            "--redis_shard_ports 6380,6381,6382"))
-
-                raise Exception("If --redis-shard-ports is provided, it must "
-                                "have the form '6380,6381,6382', and the "
-                                "number of ports provided must equal "
-                                "--num-redis-shards (which is 1 if not "
-                                "provided)")
+            num_redis_shards = len(redis_shard_ports)
 
         if redis_address is not None:
             cli_logger.abort(
@@ -503,7 +472,7 @@ def start(node_ip_address, address, port,
             redis_shard_ports=redis_shard_ports,
             redis_max_memory=redis_max_memory,
             num_redis_shards=num_redis_shards,
-            redis_max_clients=redis_max_clients,
+            redis_max_clients=None,
             autoscaling_config=autoscaling_config,
             include_java=False,
         )
@@ -587,18 +556,6 @@ def start(node_ip_address, address, port,
 
             raise Exception("If --head is not passed in, --address must "
                             "be provided.")
-        if num_redis_shards is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--num-redis-shards"), cf.bold("--head"))
-
-            raise Exception("If --head is not passed in, --num-redis-shards "
-                            "must not be provided.")
-        if redis_max_clients is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--redis-max-clients"), cf.bold("--head"))
-
-            raise Exception("If --head is not passed in, --redis-max-clients "
-                            "must not be provided.")
         if include_dashboard:
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--include-dashboard"), cf.bold("--head"))
