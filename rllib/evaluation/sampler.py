@@ -1093,7 +1093,10 @@ def _process_observations_w_trajectory_view_api(
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
-            worker=worker, base_env=base_env, episode=episode)
+            worker=worker,
+            base_env=base_env,
+            episode=episode,
+            env_index=env_id)
 
         # Cut the batch if ...
         # - all-agents-done and not packing multiple episodes into one
