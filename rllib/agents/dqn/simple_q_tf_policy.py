@@ -5,7 +5,6 @@ from typing import List, Tuple, Type
 
 import gym
 import ray
-from gym.spaces import Discrete
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import (Categorical,
@@ -55,7 +54,7 @@ def build_q_models(policy: Policy, obs_space: gym.Space,
                    action_space: gym.Space,
                    config: TrainerConfigDict) -> ModelV2:
 
-    if not isinstance(action_space, Discrete):
+    if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
@@ -86,8 +85,8 @@ def get_distribution_inputs_and_class(
         q_model: ModelV2,
         obs_batch: TensorType,
         *,
-        explore: bool = True,
-        is_training: bool = True,
+        explore=True,
+        is_training=True,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
     q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
@@ -146,7 +145,7 @@ def build_q_losses(policy: Policy, model: ModelV2,
 def compute_q_values(policy: Policy,
                      model: ModelV2,
                      obs: TensorType,
-                     explore: bool,
+                     explore,
                      is_training=None) -> TensorType:
     model_out, _ = model({
         SampleBatch.CUR_OBS: obs,

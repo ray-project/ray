@@ -1,4 +1,5 @@
 import logging
+from typing import Type
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
@@ -233,7 +234,7 @@ def calculate_rr_weights(config: TrainerConfigDict):
     return weights
 
 
-def get_policy_class(config: TrainerConfigDict) -> Policy:
+def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
@@ -241,7 +242,7 @@ def get_policy_class(config: TrainerConfigDict) -> Policy:
         return DQNTFPolicy
 
 
-def get_simple_policy_class(config: TrainerConfigDict) -> Policy:
+def get_simple_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy

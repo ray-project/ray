@@ -1,15 +1,14 @@
 """Basic example of a DQN policy without any optimizations."""
 
 import logging
-from typing import Dict, List, Type
+from typing import Dict
 
 import gym
 import ray
 from ray.rllib.agents.dqn.simple_q_tf_policy import (
     build_q_models, compute_q_values, get_distribution_inputs_and_class)
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
-                                                      TorchDistributionWrapper)
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -44,8 +43,7 @@ def build_q_model_and_distribution(policy: Policy, obs_space: gym.Space,
         TorchCategorical
 
 
-def build_q_losses(policy: Policy, model: ModelV2,
-                   dist_class: Type[TorchDistributionWrapper],
+def build_q_losses(policy: Policy, model, dist_class,
                    train_batch: SampleBatch) -> TensorType:
     # q network evaluation
     q_t = compute_q_values(
@@ -89,10 +87,8 @@ def build_q_losses(policy: Policy, model: ModelV2,
     return loss
 
 
-def extra_action_out_fn(
-        policy: Policy, input_dict: Dict[str, TensorType],
-        state_batches: List[TensorType], model: ModelV2,
-        action_dist: TorchDistributionWrapper) -> Dict[str, TensorType]:
+def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
+                        action_dist) -> Dict[str, TensorType]:
     """Adds q-values to action out dict."""
     return {"q_values": policy.q_values}
 
