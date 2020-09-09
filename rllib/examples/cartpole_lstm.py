@@ -41,7 +41,7 @@ if __name__ == "__main__":
                 "use_lstm": True,
                 # Switch on time-major (and with that the usage of
                 # traj. view API).
-                "_time_major": args.torch,
+                #"_time_major": args.torch,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
             "framework": "torch" if args.torch else "tf",

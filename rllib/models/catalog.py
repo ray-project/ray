@@ -61,8 +61,11 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Whether to feed a_{t-1}, r_{t-1} to LSTM.
     "lstm_use_prev_action_reward": False,
     # Experimental (only works with `_use_trajectory_view_api`=True):
-    # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
-    "_time_major": False,
+    # Whether the RNN(s) inside the model use time-major (TxBx..) or
+    # batch-major (BxTx..).
+    # None: Automatically set time-major=True, if trajectory view API is used
+    # and `use_lstm`=True and `framework`=torch.
+    "_time_major": None,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs

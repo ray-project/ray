@@ -44,7 +44,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             initial_alpha (float): The initial value for the to-be-optimized
                 alpha parameter (default: 1.0).
             target_entropy (Optional[float]): An optional fixed value for the
-                SAC alpha loss term. None or "auto" for automatic calculation
+                SAC alpha loss term. None for automatic calculation
                 of this value according to [1] (cont. actions) or [2]
                 (discrete actions).
 

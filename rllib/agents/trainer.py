@@ -218,8 +218,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
+    # None (default): Automatically determine, whether the API should be used
+    #   or not.
     # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": "auto",
+    "_use_trajectory_view_api": None,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -1049,11 +1051,11 @@ class Trainer(Trainable):
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
         use_traj_view_api = config.get("_use_trajectory_view_api")
-        model_is_time_major = config.get("model", {}).get("_time_major")
-        # Enable trajectory view API iff "auto" and framework=torch and
-        # model=_time_major.
-        if use_traj_view_api == "auto":
-            if config.get("framework") == "torch" and model_is_time_major:
+        model_is_auto_lstm = config.get("model", {}).get("use_lstm")
+        # Enable trajectory view API iff None and framework=torch and
+        # model=auto-LSTM (meaning it's a time_major model).
+        if use_traj_view_api is None:
+            if config.get("framework") == "torch" and model_is_auto_lstm:
                 config["_use_trajectory_view_api"] = True
             else:
                 config["_use_trajectory_view_api"] = False
@@ -1061,9 +1063,11 @@ class Trainer(Trainable):
             raise ValueError(
                 "`_use_trajectory_view_api` only supported for PyTorch so "
                 "far!")
-        elif not use_traj_view_api and model_is_time_major:
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+
+        # Switch on time-major, iff trajectory view API and model is torch
+        # and auto-lstm.
+        if config["_use_trajectory_view_api"] and model_is_auto_lstm:
+            config["model"]["_time_major"] = True
 
         if type(config["input_evaluation"]) != list:
             raise ValueError(

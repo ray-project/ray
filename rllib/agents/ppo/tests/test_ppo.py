@@ -82,7 +82,7 @@ class TestPPO(unittest.TestCase):
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
-                    config["model"]["_time_major"] = fw == "torch" and lstm
+                    #config["model"]["_time_major"] = fw == "torch" and lstm
                     config["model"]["lstm_use_prev_action_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
