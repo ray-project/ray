@@ -21,10 +21,10 @@ before_install:
 matrix:
   include:
     - os: linux
+      jdk:
+        - oraclejdk8
+        - oraclejdk11
       env:
-        - JDK
-          - oraclejdk8
-          - oraclejdk11
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
@@ -39,7 +39,7 @@ matrix:
     - os: linux
       env:
         - TESTSUITE=streaming
-        - JDK=oraclejdk8
+        - jdk=oraclejdk8
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
