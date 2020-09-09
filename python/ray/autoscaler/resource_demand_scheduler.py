@@ -89,10 +89,12 @@ class ResourceDemandScheduler:
             if node_type not in self.node_types:
                 logger.warn(
                     f"Missing entry for node_type {node_type} in "
-                    f"cluster config: {self.node_types} under entry available_node_types. This "
-                    f"node's resources will be ignored. If you are using an "
-                    f"unmanaged node, set the user_node_type tag manually in "
-                    f"your cloud provider's management console.")
+                    f"cluster config: {self.node_types} under entry "
+                    f"available_node_types. This node's resources will be "
+                    f"ignored. If you are using an unmanaged node, manually "
+                    f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
+                    f"in unmanaged node, set the user_node_type tag manually"
+                    f"in your cloud provider's management console.")
                 return
             # Careful not to include the same dict object multiple times.
             node_resources.append(
