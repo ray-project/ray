@@ -1323,7 +1323,9 @@ def start_raylet(redis_address,
     has_java_command = False
     try:
         java_proc = subprocess.run(
-            ["java", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            ["java", "-version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
         if java_proc.returncode == 0:
             has_java_command = True
     except OSError:
