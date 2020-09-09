@@ -16,6 +16,15 @@ public interface BaseActorHandle {
 
   /**
    * Kill the actor immediately. This will cause any outstanding tasks submitted to the actor to
+   * fail and the actor to exit in the same way as if it crashed. The killed actor will not be
+   * restarted anymore.
+   */
+  default void kill() {
+    Ray.internal().killActor(this, true);
+  }
+
+  /**
+   * Kill the actor immediately. This will cause any outstanding tasks submitted to the actor to
    * fail and the actor to exit in the same way as if it crashed.
    *
    * @param noRestart If set to true, the killed actor will not be restarted anymore.

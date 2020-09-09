@@ -45,6 +45,7 @@ class Message {
   virtual void ToProtobuf(std::string *output) = 0;
 
   void FillMessageCommon(queue::protobuf::MessageCommon *common);
+
  protected:
   ActorID actor_id_;
   ActorID peer_actor_id_;
@@ -68,10 +69,13 @@ constexpr uint32_t kItemHeaderSize = kItemMetaHeaderSize + sizeof(uint64_t);
 class DataMessage : public Message {
  public:
   DataMessage(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
-              uint64_t seq_id, uint64_t msg_id_start, uint64_t msg_id_end, std::shared_ptr<LocalMemoryBuffer> buffer, bool raw)
-      : Message(actor_id, peer_actor_id, queue_id, buffer), seq_id_(seq_id), 
+              uint64_t seq_id, uint64_t msg_id_start, uint64_t msg_id_end,
+              std::shared_ptr<LocalMemoryBuffer> buffer, bool raw)
+      : Message(actor_id, peer_actor_id, queue_id, buffer),
+        seq_id_(seq_id),
         msg_id_start_(msg_id_start),
-        msg_id_end_(msg_id_end),raw_(raw) {}
+        msg_id_end_(msg_id_end),
+        raw_(raw) {}
   virtual ~DataMessage() {}
 
   static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
@@ -98,19 +102,19 @@ class DataMessage : public Message {
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                      const ObjectID &queue_id, uint64_t seq_id)
-      : Message(actor_id, peer_actor_id, queue_id), seq_id_(seq_id) {}
+                      const ObjectID &queue_id, uint64_t msg_id)
+      : Message(actor_id, peer_actor_id, queue_id), msg_id_(msg_id) {}
 
   virtual ~NotificationMessage() {}
 
   static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
 
-  inline uint64_t SeqId() { return seq_id_; }
+  inline uint64_t MsgId() { return msg_id_; }
   inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
-  uint64_t seq_id_;
+  uint64_t msg_id_;
   const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };

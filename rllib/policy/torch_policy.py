@@ -225,11 +225,12 @@ class TorchPolicy(Policy):
         """
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            state_out = []
-            actions, logp = self.action_sampler_fn(
+            state_out = state_batches
+            actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
-                input_dict[SampleBatch.CUR_OBS],
+                input_dict,
+                state_out,
                 explore=explore,
                 timestep=timestep)
         else:
@@ -363,6 +364,7 @@ class TorchPolicy(Policy):
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
+
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -394,7 +396,8 @@ class TorchPolicy(Policy):
 
                 grad_info["allreduce_latency"] += time.time() - start
 
-            # Step the optimizer.
+        # Step the optimizer
+        for i, opt in enumerate(self._optimizers):
             opt.step()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)

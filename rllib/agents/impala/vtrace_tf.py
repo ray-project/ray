@@ -372,13 +372,14 @@ def from_importance_weights(log_rhos,
             return delta_t + discount_t * c_t * acc
 
         initial_values = tf.zeros_like(bootstrap_value)
-        vs_minus_v_xs = tf.scan(
-            fn=scanfunc,
-            elems=sequences,
-            initializer=initial_values,
-            parallel_iterations=1,
-            back_prop=False,
-            name="scan")
+        vs_minus_v_xs = tf.nest.map_structure(
+            tf.stop_gradient,
+            tf.scan(
+                fn=scanfunc,
+                elems=sequences,
+                initializer=initial_values,
+                parallel_iterations=1,
+                name="scan"))
         # Reverse the results back to original order.
         vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0], name="vs_minus_v_xs")
 

@@ -15,7 +15,7 @@ def test_basic_task_api(ray_start_regular):
 
     # Test multiple return values.
 
-    @ray.remote(num_return_vals=3)
+    @ray.remote(num_returns=3)
     def f_multiple_returns():
         return 1, 2, 3
 

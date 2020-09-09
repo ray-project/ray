@@ -1,5 +1,6 @@
 package io.ray.runtime.serializer;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import org.apache.commons.lang3.tuple.Pair;
 import org.testng.Assert;
@@ -44,6 +45,19 @@ public class SerializerTest {
       ArrayList<String> bar = Serializer.decode(serialized.getLeft(), String[].class);
       Assert.assertFalse(serialized.getRight());
       Assert.assertEquals(foo.get(0), bar.get(0));
+    }
+    // Test BigInteger.
+    {
+      BigInteger bi = BigInteger.valueOf(Long.MAX_VALUE);
+      Pair<byte[], Boolean> serialized = Serializer.encode(bi);
+      BigInteger newBi = Serializer.decode(serialized.getLeft(), BigInteger.class);
+      Assert.assertTrue(serialized.getRight());
+      Assert.assertEquals(bi, newBi);
+      bi = bi.pow(2);
+      serialized = Serializer.encode(bi);
+      newBi = Serializer.decode(serialized.getLeft(), BigInteger.class);
+      Assert.assertFalse(serialized.getRight());
+      Assert.assertEquals(bi, newBi);
     }
   }
 }

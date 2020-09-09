@@ -40,8 +40,7 @@ class QueueMessageHandler {
   /// Construct a QueueMessageHandler instance.
   /// \param[in] actor_id actor id of current actor.
   QueueMessageHandler(const ActorID &actor_id)
-      : actor_id_(actor_id), queue_dummy_work_(queue_service_) {
-  }
+      : actor_id_(actor_id), queue_dummy_work_(queue_service_) {}
 
   virtual ~QueueMessageHandler() { Stop(); }
 
@@ -116,8 +115,8 @@ class QueueMessageHandler {
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id),
-  handler_service_dummy_worker_(handler_service_) {
+  UpstreamQueueMessageHandler(const ActorID &actor_id)
+      : QueueMessageHandler(actor_id), handler_service_dummy_worker_(handler_service_) {
     Start();
   }
   /// Create a upstream queue.
@@ -153,6 +152,7 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
       const ActorID &actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
   virtual void Start() override;
+
  private:
   bool CheckQueueSync(const ObjectID &queue_ids);
   virtual void Stop() override;
@@ -165,13 +165,13 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
   std::thread handle_service_thread_;
 };
 
-/// DownstreamQueueMessageHandler holds and manages all downstream queues of current actor.
+/// DownstreamQueueMessageHandler holds and manages all downstream queues of current
+/// actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamQueueMessageHandler(const ActorID &actor_id)
-      : QueueMessageHandler(actor_id) {
-          Start();
-      }
+  DownstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id) {
+    Start();
+  }
   /// Create a downstream queue.
   /// \param queue_id, queue id of the queue to be created.
   /// \param peer_actor_id, actor id of peer actor.

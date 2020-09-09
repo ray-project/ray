@@ -86,6 +86,13 @@ class CoreWorkerDirectTaskSubmitter {
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
                           bool force_kill);
 
+  /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
+  /// CheckNoSchedulingKeyEntries function after acquiring the lock.
+  bool CheckNoSchedulingKeyEntriesPublic() {
+    absl::MutexLock lock(&mu_);
+    return scheduling_key_entries_.empty();
+  }
+
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -122,9 +129,10 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Set up client state for newly granted worker lease.
-  void AddWorkerLeaseClient(const rpc::WorkerAddress &addr,
-                            std::shared_ptr<WorkerLeaseInterface> lease_client)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void AddWorkerLeaseClient(
+      const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
+      const SchedulingKey &scheduling_key) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
@@ -133,6 +141,11 @@ class CoreWorkerDirectTaskSubmitter {
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
+
+  /// Check that the scheduling_key_entries_ hashmap is empty.
+  bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return scheduling_key_entries_.empty();
+  }
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -178,31 +191,75 @@ class CoreWorkerDirectTaskSubmitter {
   /// (1) The lease client through which the worker should be returned
   /// (2) The expiration time of a worker's lease.
   /// (3) The number of tasks that are currently in flight to the worker
+  /// (4) The resources assigned to the worker
+  /// (5) The SchedulingKey assigned to tasks that will be sent to the worker
   struct LeaseEntry {
-    std::shared_ptr<WorkerLeaseInterface> lease_client_;
-    int64_t lease_expiration_time_;
-    uint32_t tasks_in_flight_;
+    std::shared_ptr<WorkerLeaseInterface> lease_client;
+    int64_t lease_expiration_time;
+    uint32_t tasks_in_flight;
+    google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
+    SchedulingKey scheduling_key;
 
-    LeaseEntry(std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
-               int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0)
-        : lease_client_(lease_client),
-          lease_expiration_time_(lease_expiration_time),
-          tasks_in_flight_(tasks_in_flight) {}
+    LeaseEntry(
+        std::shared_ptr<WorkerLeaseInterface> lease_client = nullptr,
+        int64_t lease_expiration_time = 0, uint32_t tasks_in_flight = 0,
+        google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
+            google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
+        SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
+                                                       ActorID::Nil()))
+        : lease_client(lease_client),
+          lease_expiration_time(lease_expiration_time),
+          tasks_in_flight(tasks_in_flight),
+          assigned_resources(assigned_resources),
+          scheduling_key(scheduling_key) {}
+
+    // Check whether the pipeline to the worker associated with a LeaseEntry is full.
+    bool PipelineToWorkerFull(uint32_t max_tasks_in_flight_per_worker) const {
+      return tasks_in_flight == max_tasks_in_flight_per_worker;
+    }
   };
 
   // Map from worker address to a LeaseEntry struct containing the lease's metadata.
   absl::flat_hash_map<rpc::WorkerAddress, LeaseEntry> worker_to_lease_entry_
       GUARDED_BY(mu_);
 
-  // Keeps track of pending worker lease requests to the raylet.
-  absl::flat_hash_map<SchedulingKey,
-                      std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID>>
-      pending_lease_requests_ GUARDED_BY(mu_);
+  struct SchedulingKeyEntry {
+    // Keep track of pending worker lease requests to the raylet.
+    std::pair<std::shared_ptr<WorkerLeaseInterface>, TaskID> pending_lease_request =
+        std::make_pair(nullptr, TaskID::Nil());
+    // Tasks that are queued for execution. We keep an individual queue per
+    // scheduling class to ensure fairness.
+    std::deque<TaskSpecification> task_queue = std::deque<TaskSpecification>();
+    // Keep track of the active workers, so that we can quickly check if one of them has
+    // room for more tasks in flight
+    absl::flat_hash_set<rpc::WorkerAddress> active_workers =
+        absl::flat_hash_set<rpc::WorkerAddress>();
+    // Keep track of how many tasks with this SchedulingKey are in flight, in total
+    uint32_t total_tasks_in_flight = 0;
 
-  // Tasks that are queued for execution. We keep individual queues per
-  // scheduling class to ensure fairness.
-  // Invariant: if a queue is in this map, it has at least one task.
-  absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
+    // Check whether it's safe to delete this SchedulingKeyEntry from the
+    // scheduling_key_entries_ hashmap.
+    bool CanDelete() const {
+      if (!pending_lease_request.first && task_queue.empty() &&
+          active_workers.size() == 0 && total_tasks_in_flight == 0) {
+        return true;
+      }
+
+      return false;
+    }
+
+    // Check whether the pipelines to the active workers associated with a
+    // SchedulingKeyEntry are all full.
+    bool AllPipelinesToWorkersFull(uint32_t max_tasks_in_flight_per_worker) const {
+      return total_tasks_in_flight ==
+             (active_workers.size() * max_tasks_in_flight_per_worker);
+    }
+  };
+
+  // For each Scheduling Key, scheduling_key_entries_ contains a SchedulingKeyEntry struct
+  // with the queue of tasks belonging to that SchedulingKey, together with the other
+  // fields that are needed to orchestrate the execution of those tasks by the workers.
+  absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_
       GUARDED_BY(mu_);
 
   // Tasks that were cancelled while being resolved.

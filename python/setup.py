@@ -110,8 +110,8 @@ if os.getenv("RAY_USE_NEW_GCS") == "on":
 # in this directory
 extras = {
     "debug": [],
-    "serve": ["uvicorn", "flask", "requests"],
-    "tune": ["tabulate", "tensorboardX", "pandas"]
+    "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
+    "tune": ["tabulate", "tensorboardX", "pandas", "dataclasses"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -132,6 +132,9 @@ extras["all"] = list(set(chain.from_iterable(extras.values())))
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements.txt
 install_requires = [
+    # TODO(alex) Pin the version once this PR is
+    # included in the stable release.
+    # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
     "aiohttp",
     "aiohttp_cors",
     "aioredis",

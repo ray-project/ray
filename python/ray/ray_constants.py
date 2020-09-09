@@ -36,6 +36,7 @@ REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
@@ -129,7 +130,7 @@ DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 
 # Used in gpu detection
-RESOURCE_CONSTRAINT_PREFIX = "GPUType:"
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
@@ -191,6 +192,13 @@ OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
+
+# A constant used as object metadata to indicate the object is an actor handle.
+# This value should be synchronized with the Java definition in
+# ObjectSerializer.java
+# TODO(fyrestone): Serialize the ActorHandle via the custom type feature
+# of XLANG.
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

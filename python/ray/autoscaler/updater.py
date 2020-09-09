@@ -10,7 +10,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler.command_runner import NODE_START_WAIT_S, ProcessRunnerError
+from ray.autoscaler.command_runner import NODE_START_WAIT_S, \
+    ProcessRunnerError, DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
@@ -25,7 +26,27 @@ READY_CHECK_INTERVAL = 5
 
 
 class NodeUpdater:
-    """A process for syncing files and running init commands on a node."""
+    """A process for syncing files and running init commands on a node.
+
+    Arguments:
+        node_id: the Node ID
+        provider_config: Provider section of autoscaler yaml
+        provider: NodeProvider Class
+        auth_config: Auth section of autoscaler yaml
+        cluster_name: the name of the cluster.
+        file_mounts: Map of remote to local paths
+        initialization_commands: Commands run before container launch
+        setup_commands: Commands run before ray starts
+        ray_start_commands: Commands to start ray
+        runtime_hash: Used to check for config changes
+        file_mounts_contents_hash: Used to check for changes to file mounts
+        is_head_node: Whether to use head start/setup commands
+        process_runner: the module to use to run the commands
+            in the CommandRunner. E.g., subprocess.
+        use_internal_ip: Wwhether the node_id belongs to an internal ip
+            or external ip.
+        docker_config: Docker section of autoscaler yaml
+    """
 
     def __init__(self,
                  node_id,
@@ -39,6 +60,7 @@ class NodeUpdater:
                  ray_start_commands,
                  runtime_hash,
                  file_mounts_contents_hash,
+                 is_head_node,
                  node_resources=None,
                  cluster_synced_files=None,
                  process_runner=subprocess,
@@ -68,6 +90,7 @@ class NodeUpdater:
         self.file_mounts_contents_hash = file_mounts_contents_hash
         self.cluster_synced_files = cluster_synced_files
         self.auth_config = auth_config
+        self.is_head_node = is_head_node
 
     def run(self):
         cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
@@ -158,10 +181,12 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                self.cmd_runner.run(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    run_env="host")
-                sync_cmd(local_path, remote_path)
+                if not isinstance(self.cmd_runner, DockerCommandRunner):
+                    # The DockerCommandRunner handles this internally
+                    self.cmd_runner.run(
+                        "mkdir -p {}".format(os.path.dirname(remote_path)),
+                        run_env="host")
+                sync_cmd(local_path, remote_path, file_mount=True)
 
                 if remote_path not in nolog_paths:
                     # todo: timed here?
@@ -202,6 +227,7 @@ class NodeUpdater:
                                              "{}Waiting for remote shell...",
                                              self.log_prefix)
 
+                        # Run outside of the container
                         self.cmd_runner.run("uptime", run_env="host")
                         cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
@@ -227,7 +253,7 @@ class NodeUpdater:
 
                         cli_logger.print(
                             "SSH still not available {}, "
-                            "retrying in {} seconds.", cf.gray(retry_str),
+                            "retrying in {} seconds.", cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
                         cli_logger.old_debug(logger,
                                              "{}Node not up, retrying: {}",
@@ -264,6 +290,12 @@ class NodeUpdater:
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
 
+            # When resuming from a stopped instance the runtime_hash may be the
+            # same, but the container will not be started.
+            if isinstance(self.cmd_runner, DockerCommandRunner):
+                self.cmd_runner.run_init(
+                    as_head=self.is_head_node, file_mounts=self.file_mounts)
+
         else:
             cli_logger.print(
                 "Updating cluster configuration.",
@@ -296,6 +328,7 @@ class NodeUpdater:
                                     # with a new SSHOptions class that uses
                                     # this ssh_private_key as its only __init__
                                     # argument.
+                                    # Run outside docker.
                                     self.cmd_runner.run(
                                         cmd,
                                         ssh_options_override_ssh_key=self.
@@ -314,7 +347,10 @@ class NodeUpdater:
                     cli_logger.print(
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
-
+                if isinstance(self.cmd_runner, DockerCommandRunner):
+                    self.cmd_runner.run_init(
+                        as_head=self.is_head_node,
+                        file_mounts=self.file_mounts)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
@@ -337,7 +373,8 @@ class NodeUpdater:
                                     _numbered=("()", i, total))
 
                                 try:
-                                    self.cmd_runner.run(cmd)
+                                    # Runs in the container if docker is in use
+                                    self.cmd_runner.run(cmd, run_env="auto")
                                 except ProcessRunnerError as e:
                                     if e.msg_type == "ssh_command_failed":
                                         cli_logger.error("Failed.")
@@ -365,8 +402,11 @@ class NodeUpdater:
                     try:
                         old_redirected = cmd_output_util.is_output_redirected()
                         cmd_output_util.set_output_redirected(False)
+                        # Runs in the container if docker is in use
                         self.cmd_runner.run(
-                            cmd, environment_variables=env_vars)
+                            cmd,
+                            environment_variables=env_vars,
+                            run_env="auto")
                         cmd_output_util.set_output_redirected(old_redirected)
                     except ProcessRunnerError as e:
                         if e.msg_type == "ssh_command_failed":
@@ -375,19 +415,23 @@ class NodeUpdater:
 
                         raise click.ClickException("Start command failed.")
 
-    def rsync_up(self, source, target):
+    def rsync_up(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_up(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_up(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (local) to {} (remote)",
                            cf.bold(source), cf.bold(target))
 
-    def rsync_down(self, source, target):
+    def rsync_down(self, source, target, file_mount=False):
         cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
                             source, target)
 
-        self.cmd_runner.run_rsync_down(source, target)
+        options = {}
+        options["file_mount"] = file_mount
+        self.cmd_runner.run_rsync_down(source, target, options=options)
         cli_logger.verbose("`rsync`ed {} (remote) to {} (local)",
                            cf.bold(source), cf.bold(target))
 

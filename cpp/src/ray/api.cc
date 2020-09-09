@@ -15,5 +15,7 @@ void Ray::Init() {
                  [] { runtime_ = AbstractRayRuntime::DoInit(RayConfig::GetInstance()); });
 }
 
+void Ray::Shutdown() { AbstractRayRuntime::DoShutdown(RayConfig::GetInstance()); }
+
 }  // namespace api
 }  // namespace ray

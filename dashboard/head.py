@@ -28,7 +28,8 @@ def gcs_node_info_to_dict(message):
 
 
 class DashboardHead:
-    def __init__(self, http_host, http_port, redis_address, redis_password):
+    def __init__(self, http_host, http_port, redis_address, redis_password,
+                 log_dir):
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
         self._gcs_rpc_error_counter = 0
@@ -37,6 +38,7 @@ class DashboardHead:
         self.http_port = http_port
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
+        self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
@@ -74,6 +76,22 @@ class DashboardHead:
         while True:
             try:
                 nodes = await self._get_nodes()
+
+                # Get correct node info by state,
+                #   1. The node is ALIVE if any ALIVE node info
+                #      of the hostname exists.
+                #   2. The node is DEAD if all node info of the
+                #      hostname are DEAD.
+                hostname_to_node_info = {}
+                for node in nodes:
+                    hostname = node["nodeManagerAddress"]
+                    assert node["state"] in ["ALIVE", "DEAD"]
+                    choose = hostname_to_node_info.get(hostname)
+                    if choose is not None and choose["state"] == "ALIVE":
+                        continue
+                    hostname_to_node_info[hostname] = node
+                nodes = hostname_to_node_info.values()
+
                 self._gcs_rpc_error_counter = 0
                 node_ips = [node["nodeManagerAddress"] for node in nodes]
                 node_hostnames = [
@@ -83,13 +101,11 @@ class DashboardHead:
                 agents = dict(DataSource.agents)
                 for node in nodes:
                     node_ip = node["nodeManagerAddress"]
-                    if node_ip not in agents:
-                        key = "{}{}".format(
-                            dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                            node_ip)
-                        agent_port = await self.aioredis_client.get(key)
-                        if agent_port:
-                            agents[node_ip] = json.loads(agent_port)
+                    key = "{}{}".format(
+                        dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_ip)
+                    agent_port = await self.aioredis_client.get(key)
+                    if agent_port:
+                        agents[node_ip] = json.loads(agent_port)
                 for ip in agents.keys() - set(node_ips):
                     agents.pop(ip, None)
 
@@ -99,8 +115,8 @@ class DashboardHead:
                     dict(zip(node_hostnames, node_ips)))
                 DataSource.ip_to_hostname.reset(
                     dict(zip(node_ips, node_hostnames)))
-            except aiogrpc.AioRpcError as ex:
-                logger.exception(ex)
+            except aiogrpc.AioRpcError:
+                logger.exception("Got AioRpcError when updating nodes.")
                 self._gcs_rpc_error_counter += 1
                 if self._gcs_rpc_error_counter > \
                         dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
@@ -109,8 +125,8 @@ class DashboardHead:
                         self._gcs_rpc_error_counter,
                         dashboard_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
                     sys.exit(-1)
-            except Exception as ex:
-                logger.exception(ex)
+            except Exception:
+                logger.exception("Error updating nodes.")
             finally:
                 await asyncio.sleep(
                     dashboard_consts.UPDATE_NODES_INTERVAL_SECONDS)
@@ -126,7 +142,7 @@ class DashboardHead:
             c = cls(self)
             dashboard_utils.ClassMethodRouteTable.bind(c)
             modules.append(c)
-        logger.info("Loaded {} modules.".format(len(modules)))
+        logger.info("Loaded %d modules.", len(modules))
         return modules
 
     async def run(self):
@@ -183,8 +199,8 @@ class DashboardHead:
                 co = await dashboard_utils.NotifyQueue.get()
                 try:
                     await co
-                except Exception as e:
-                    logger.exception(e)
+                except Exception:
+                    logger.exception(f"Error notifying coroutine {co}")
 
         async def _purge_data():
             """Purge data in datacenter."""
@@ -193,8 +209,8 @@ class DashboardHead:
                     dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
                 try:
                     await DataOrganizer.purge()
-                except Exception as e:
-                    logger.exception(e)
+                except Exception:
+                    logger.exception("Error purging data.")
 
         modules = self._load_modules()
 

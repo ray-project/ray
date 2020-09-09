@@ -8,6 +8,7 @@ import io.ray.streaming.api.partition.Partition;
  * @param <T> Type of the input record.
  */
 public class RoundRobinPartition<T> implements Partition<T> {
+
   private int seq;
   private int[] partitions = new int[1];
 

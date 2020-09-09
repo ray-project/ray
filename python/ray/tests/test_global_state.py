@@ -1,4 +1,3 @@
-import json
 import pytest
 try:
     import pytest_timeout
@@ -140,9 +139,9 @@ def test_load_report(shutdown_only, max_shapes):
     cluster = ray.init(
         num_cpus=1,
         resources={resource1: 1},
-        _internal_config=json.dumps({
+        _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
-        }))
+        })
     redis = ray.services.create_redis_client(
         cluster["redis_address"],
         password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)

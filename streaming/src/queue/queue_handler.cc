@@ -238,8 +238,8 @@ void UpstreamQueueMessageHandler::DispatchMessageInternal(
   } else if (msg->Type() ==
              queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType) {
     STREAMING_CHECK(false) << "Should not receive StreamingQueueCheckRspMsg";
-  } else if (msg->Type() == 
-            queue::protobuf::StreamingQueueMessageType::StreamingQueuePullRequestMsgType) {
+  } else if (msg->Type() == queue::protobuf::StreamingQueueMessageType::
+                                StreamingQueuePullRequestMsgType) {
     STREAMING_CHECK(callback) << "StreamingQueuePullRequestMsg "
                               << " qid: " << msg->QueueId() << " actorid "
                               << msg->ActorId()
@@ -260,7 +260,7 @@ void UpstreamQueueMessageHandler::OnNotify(
                            << queue::protobuf::StreamingQueueMessageType_Name(
                                   notify_msg->Type())
                            << ", maybe queue has been destroyed, ignore it."
-                           << " seq id: " << notify_msg->SeqId();
+                           << " msg id: " << notify_msg->MsgId();
     return;
   }
   queue->OnNotify(notify_msg);
@@ -330,8 +330,7 @@ std::shared_ptr<ReaderQueue> DownstreamQueueMessageHandler::CreateDownstreamQueu
 StreamingQueueStatus DownstreamQueueMessageHandler::PullQueue(
     const ObjectID &queue_id, uint64_t start_msg_id, bool &is_upstream_first_pull,
     uint64_t timeout_ms) {
-  STREAMING_LOG(INFO) << "PullQueue queue_id: "
-                      << queue_id
+  STREAMING_LOG(INFO) << "PullQueue queue_id: " << queue_id
                       << " start_msg_id: " << start_msg_id
                       << " is_upstream_first_pull: " << is_upstream_first_pull;
   uint64_t start_time = current_time_ms();
@@ -397,8 +396,8 @@ void DownstreamQueueMessageHandler::DispatchMessageInternal(
     if (callback != nullptr) {
       callback(check_result);
     }
-  } else if (msg->Type() ==
-             queue::protobuf::StreamingQueueMessageType::StreamingQueueResendDataMsgType) {
+  } else if (msg->Type() == queue::protobuf::StreamingQueueMessageType::
+                                StreamingQueueResendDataMsgType) {
     auto queue = downstream_queues_.find(msg->QueueId());
     if (queue == downstream_queues_.end()) {
       std::shared_ptr<ResendDataMessage> data_msg =
@@ -456,14 +455,14 @@ StreamingQueueStatus DownstreamQueueMessageHandler::PullPeerAsync(
   }
 
   std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
-  STREAMING_CHECK(result_msg->Type() ==
-                  queue::protobuf::StreamingQueueMessageType::StreamingQueuePullResponseMsgType);
+  STREAMING_CHECK(
+      result_msg->Type() ==
+      queue::protobuf::StreamingQueueMessageType::StreamingQueuePullResponseMsgType);
   std::shared_ptr<PullResponseMessage> response_msg =
       std::dynamic_pointer_cast<PullResponseMessage>(result_msg);
 
   STREAMING_LOG(INFO) << "PullPeerAsync error: "
-                      << queue::protobuf::StreamingQueueError_Name(
-                             response_msg->Error())
+                      << queue::protobuf::StreamingQueueError_Name(response_msg->Error())
                       << " start_msg_id: " << start_msg_id;
 
   is_upstream_first_pull = response_msg->IsUpstreamFirstPull();
@@ -471,8 +470,7 @@ StreamingQueueStatus DownstreamQueueMessageHandler::PullPeerAsync(
     STREAMING_LOG(INFO) << "Set queue " << queue_id << " expect_seq_id to "
                         << response_msg->SeqId();
     return StreamingQueueStatus::OK;
-  } else if (response_msg->Error() ==
-             queue::protobuf::StreamingQueueError::DATA_LOST) {
+  } else if (response_msg->Error() == queue::protobuf::StreamingQueueError::DATA_LOST) {
     return StreamingQueueStatus::DataLost;
   } else if (response_msg->Error() ==
              queue::protobuf::StreamingQueueError::NO_VALID_DATA) {

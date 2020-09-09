@@ -35,9 +35,7 @@ def test_hybrid_stream():
         load_code_from_local=True,
         include_java=True,
         java_worker_options=java_worker_options,
-        _internal_config=json.dumps({
-            "num_workers_per_process_java": 1
-        }))
+        _system_config={"num_workers_per_process_java": 1})
 
     sink_file = "/tmp/ray_streaming_test_hybrid_stream.txt"
     if os.path.exists(sink_file):

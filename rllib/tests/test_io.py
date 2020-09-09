@@ -261,13 +261,14 @@ class JsonIOTest(unittest.TestCase):
         for _ in range(100):
             writer.write(SAMPLES)
         num_files = len(os.listdir(self.test_dir))
-        # Magic numbers: 2: On travis, it seems to create only 2 files,
-        #                   but sometimes also 7.
-        #                12 or 13: Mac locally.
+
+        # Pagination can't really be predicted:
+        # On travis, it seems to create only 2 files, but sometimes also
+        # 6, or 7. 12 or 13 usually on a Mac locally.
         # Reasons: Different compressions, file-size interpretations,
-        #  json writers?
-        assert num_files in [2, 7, 12, 13], \
-            "Expected 2|7|12|13 files, but found {} ({})". \
+        # json writers?
+        assert num_files >= 2, \
+            "Expected >= 2 files, but found {} ({})". \
             format(num_files, os.listdir(self.test_dir))
 
     def test_read_write(self):

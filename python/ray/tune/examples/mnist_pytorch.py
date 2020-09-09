@@ -121,7 +121,7 @@ if __name__ == "__main__":
     else:
         ray.init(num_cpus=2 if args.smoke_test else None)
     sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration", metric="mean_accuracy")
+        time_attr="training_iteration", metric="mean_accuracy", mode="max")
     analysis = tune.run(
         train_mnist,
         name="exp",
@@ -141,4 +141,5 @@ if __name__ == "__main__":
             "use_gpu": int(args.cuda)
         })
 
-    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config is:",
+          analysis.get_best_config(metric="mean_accuracy", mode="max"))

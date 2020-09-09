@@ -18,7 +18,7 @@ Here are some example operations for obtaining a summary of your experiment:
 .. code-block:: python
 
     # Get a dataframe for the last reported results of all of the trials
-    df = analysis.dataframe()
+    df = analysis.results_df
 
     # Get a dataframe for the max accuracy seen for each trial
     df = analysis.dataframe(metric="mean_accuracy", mode="max")

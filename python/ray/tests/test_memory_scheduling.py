@@ -34,7 +34,7 @@ def train_oom(config, reporter):
 class TestMemoryScheduling(unittest.TestCase):
     def testMemoryRequest(self):
         try:
-            ray.init(num_cpus=1, memory=200 * MB)
+            ray.init(num_cpus=1, _memory=200 * MB)
             # fits first 2
             a = Actor.remote()
             b = Actor.remote()

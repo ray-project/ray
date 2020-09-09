@@ -291,9 +291,11 @@ class TestPPO(unittest.TestCase):
                 policy_sess = policy.get_session()
                 k, e, pl, v, tl = policy_sess.run(
                     [
-                        policy.loss_obj.mean_kl, policy.loss_obj.mean_entropy,
-                        policy.loss_obj.mean_policy_loss,
-                        policy.loss_obj.mean_vf_loss, policy.loss_obj.loss
+                        policy._mean_kl,
+                        policy._mean_entropy,
+                        policy._mean_policy_loss,
+                        policy._mean_vf_loss,
+                        policy._total_loss,
                     ],
                     feed_dict=policy._get_loss_inputs_dict(
                         train_batch, shuffle=False))
@@ -303,12 +305,11 @@ class TestPPO(unittest.TestCase):
                 check(v, np.mean(vf_loss), decimals=4)
                 check(tl, overall_loss, decimals=4)
             else:
-                check(policy.loss_obj.mean_kl, kl)
-                check(policy.loss_obj.mean_entropy, entropy)
-                check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
-                check(
-                    policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
-                check(policy.loss_obj.loss, overall_loss, decimals=4)
+                check(policy._mean_kl, kl)
+                check(policy._mean_entropy, entropy)
+                check(policy._mean_policy_loss, np.mean(-pg_loss))
+                check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
+                check(policy._total_loss, overall_loss, decimals=4)
             trainer.stop()
 
     def _ppo_loss_helper(self,

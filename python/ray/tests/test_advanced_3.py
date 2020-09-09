@@ -2,7 +2,6 @@
 import glob
 import logging
 import os
-import json
 import sys
 import socket
 import time
@@ -13,13 +12,14 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def attempt_to_load_balance(remote_function,
             [remote_function.remote(*args) for _ in range(total_tasks)])
         names = set(locations)
         counts = [locations.count(name) for name in names]
-        logger.info("Counts are {}.".format(counts))
+        logger.info(f"Counts are {counts}.")
         if (len(names) == num_nodes
                 and all(count >= minimum_count for count in counts)):
             break
@@ -61,6 +61,34 @@ def test_load_balancing(ray_start_cluster):
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
+
+
+def test_local_scheduling_first(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_cpus = 8
+    # Disable worker caching.
+    cluster.add_node(
+        num_cpus=num_cpus,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+        })
+    cluster.add_node(num_cpus=num_cpus)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f():
+        time.sleep(0.01)
+        return ray.worker.global_worker.node.unique_id
+
+    def local():
+        return ray.get(f.remote()) == ray.worker.global_worker.node.unique_id
+
+    # Wait for a worker to get started.
+    wait_for_condition(local)
+
+    # Check that we are scheduling locally while there are resources available.
+    for i in range(20):
+        assert local()
 
 
 def test_load_balancing_with_dependencies(ray_start_cluster):
@@ -94,21 +122,6 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 def test_global_state_api(shutdown_only):
-
-    error_message = ("The ray global state API cannot be used "
-                     "before ray.init has been called.")
-
-    with pytest.raises(Exception, match=error_message):
-        ray.objects()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.actors()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.nodes()
-
-    with pytest.raises(Exception, match=error_message):
-        ray.jobs()
 
     ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
@@ -260,23 +273,6 @@ def test_workers(shutdown_only):
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
 
-def test_specific_job_id():
-    dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
-
-    # in driver
-    assert dummy_driver_id == ray.worker.global_worker.current_job_id
-
-    # in worker
-    @ray.remote
-    def f():
-        return ray.worker.global_worker.current_job_id
-
-    assert dummy_driver_id == ray.get(f.remote())
-
-    ray.shutdown()
-
-
 def test_object_ref_properties():
     id_bytes = b"00112233445566778899"
     object_ref = ray.ObjectRef(id_bytes)
@@ -319,9 +315,7 @@ def test_wait_reconstruction(shutdown_only):
     ray.init(
         num_cpus=1,
         object_store_memory=int(10**8),
-        _internal_config=json.dumps({
-            "object_pinning_enabled": 0
-        }))
+        _system_config={"object_pinning_enabled": 0})
 
     @ray.remote
     def f():
@@ -351,6 +345,28 @@ def test_ray_setproctitle(ray_start_2_cpus):
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
     ray.get(unique_1.remote())
+
+
+def test_ray_task_name_setproctitle(ray_start_2_cpus):
+    method_task_name = "foo"
+
+    @ray.remote
+    class UniqueName:
+        def __init__(self):
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
+
+        def f(self):
+            assert setproctitle.getproctitle() == f"ray::{method_task_name}"
+
+    task_name = "bar"
+
+    @ray.remote
+    def unique_1():
+        assert task_name in setproctitle.getproctitle()
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.options(name=method_task_name).remote())
+    ray.get(unique_1.options(name=task_name).remote())
 
 
 @pytest.mark.skipif(
@@ -387,23 +403,6 @@ def test_ray_stack(ray_start_2_cpus):
                         "'ray stack'")
 
 
-def test_socket_dir_not_existing(shutdown_only):
-    if sys.platform != "win32":
-        random_name = ray.ObjectRef.from_random().hex()
-        temp_raylet_socket_dir = os.path.join(ray.utils.get_ray_temp_dir(),
-                                              "tests", random_name)
-        temp_raylet_socket_name = os.path.join(temp_raylet_socket_dir,
-                                               "raylet_socket")
-        ray.init(num_cpus=2, raylet_socket_name=temp_raylet_socket_name)
-
-        @ray.remote
-        def foo(x):
-            time.sleep(1)
-            return 2 * x
-
-        ray.get([foo.remote(i) for i in range(2)])
-
-
 def test_raylet_is_robust_to_random_messages(ray_start_regular):
     node_manager_address = None
     node_manager_port = None
@@ -434,15 +433,6 @@ def test_non_ascii_comment(ray_start_regular):
     assert ray.get(f.remote()) == 1
 
 
-def test_shutdown_disconnect_global_state():
-    ray.init(num_cpus=0)
-    ray.shutdown()
-
-    with pytest.raises(Exception) as e:
-        ray.objects()
-    assert str(e.value).endswith("ray.init has been called.")
-
-
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
@@ -463,13 +453,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert not ray.worker.global_worker.core_worker.object_exists(
         ray.ObjectRef(x_binary))
-
-    # weakref put
-    y_id = ray.put(obj, weakref=True)
-    for _ in range(10):
-        ray.put(np.zeros(10 * 1024 * 1024))
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(y_id)
 
 
 def test_decorated_function(ray_start_regular):
@@ -548,7 +531,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till first worker log file is created.
     while True:
-        log_file_paths = glob.glob("{}/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/worker*.out")
         if len(log_file_paths) == 0:
             time.sleep(0.2)
         else:
@@ -586,13 +569,13 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure no log files are in the "old" directory before the actors
     # are killed.
-    assert len(glob.glob("{}/old/worker*.out".format(logs_dir))) == 0
+    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
 
     # Now kill the actors so the files get moved to logs/old/.
     [a.__ray_terminate__.remote() for a in actors]
 
     while True:
-        log_file_paths = glob.glob("{}/old/worker*.out".format(logs_dir))
+        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
         if len(log_file_paths) > 0:
             with open(log_file_paths[0], "r") as f:
                 assert "function f finished\n" in f.readlines()
@@ -603,11 +586,7 @@ def test_move_log_files_to_old(shutdown_only):
 
 
 def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _internal_config=json.dumps({
-            "initial_reconstruction_timeout_milliseconds": 200
-        }))
+    ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
     assert len(ray.objects()) == 0
 
     @ray.remote
@@ -659,7 +638,8 @@ def test_ray_address_environment_variable(ray_start_cluster):
 def test_ray_resources_environment_variable(ray_start_cluster):
     address = ray_start_cluster.address
 
-    os.environ["RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2}"
+    os.environ[
+        "RAY_OVERRIDE_RESOURCES"] = "{\"custom1\":1, \"custom2\":2, \"CPU\":3}"
     ray.init(address=address, resources={"custom1": 3, "custom3": 3})
 
     cluster_resources = ray.cluster_resources()
@@ -667,6 +647,7 @@ def test_ray_resources_environment_variable(ray_start_cluster):
     assert cluster_resources["custom1"] == 1
     assert cluster_resources["custom2"] == 2
     assert cluster_resources["custom3"] == 3
+    assert cluster_resources["CPU"] == 3
 
 
 def test_gpu_info_parsing():
@@ -683,7 +664,7 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}V100".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}V100": 1,
     }
     assert constraints_dict == expected_dict
 
@@ -700,11 +681,59 @@ Blacklisted:     No
     """
     constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
-        "{}T4".format(ray_constants.RESOURCE_CONSTRAINT_PREFIX): 1
+        f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}T4": 1,
     }
     assert constraints_dict == expected_dict
 
     assert resource_spec._constraints_from_gpu_info(None) == {}
+
+
+def test_accelerator_type_api(shutdown_only):
+    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+    ray.init(num_cpus=4, resources={resource_name: 1})
+
+    quantity = 1
+
+    @ray.remote(accelerator_type=v100)
+    def decorated_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(decorated_func.remote(quantity))
+
+    def via_options_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
+
+    @ray.remote(accelerator_type=v100)
+    class DecoratedActor:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    class ActorWithOptions:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    decorated_actor = DecoratedActor.remote()
+    # Avoid a race condition where the actor hasn't been initialized and
+    # claimed the resources yet.
+    ray.get(decorated_actor.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
+
+    quantity = ray.available_resources()[resource_name]
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
+    ray.get(with_options.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
 
 
 if __name__ == "__main__":

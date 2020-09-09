@@ -37,7 +37,6 @@ struct ActorStats {
   int live_actors = 0;
   int dead_actors = 0;
   int restarting_actors = 0;
-  int max_num_handles = 0;
 };
 
 /// A helper function to return the statistical data of actors in this node manager.
@@ -51,9 +50,6 @@ ActorStats GetActorStatisticalData(
       item.restarting_actors += 1;
     } else {
       item.dead_actors += 1;
-    }
-    if (pair.second.NumHandles() > item.max_num_handles) {
-      item.max_num_handles = pair.second.NumHandles();
     }
   }
   return item;
@@ -143,7 +139,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers,
+          io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, gcs_client_, config.worker_commands,
@@ -156,12 +152,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           [this](const TaskID &task_id, const ObjectID &required_object_id) {
             HandleTaskReconstruction(task_id, required_object_id);
           },
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_, object_directory_),
-      task_dependency_manager_(
-          object_manager, reconstruction_policy_, io_service, self_node_id_,
-          RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_),
+          RayConfig::instance().object_timeout_milliseconds(), self_node_id_, gcs_client_,
+          object_directory_),
+      task_dependency_manager_(object_manager, reconstruction_policy_),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -773,7 +766,10 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
 
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+      << "monitor: GCS didn't receive heartbeats within timeout "
+      << RayConfig::instance().num_heartbeats_timeout() *
+             RayConfig::instance().raylet_heartbeat_timeout_milliseconds()
+      << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -919,7 +915,8 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   SchedulingResources &new_local_resources = cluster_resource_map_[self_node_id_];
 
   // SpillOver locally to figure out which infeasible tasks can be placed now
-  std::vector<TaskID> decision = scheduling_policy_.SpillOver(new_local_resources);
+  std::vector<TaskID> decision =
+      scheduling_policy_.SpillOverInfeasibleTasks(new_local_resources);
 
   std::unordered_set<TaskID> local_task_ids(decision.begin(), decision.end());
 
@@ -986,7 +983,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
 
   // Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(remote_resources);
+  auto decision = scheduling_policy_.SpillOver(remote_resources,
+                                               cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -1041,50 +1039,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // stop listening for the actor creation task. This is needed because we use
     // `ListenAndMaybeReconstruct` to reconstruct the actor.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
-    // The actor's location is now known. Dequeue any methods that were
-    // submitted before the actor's location was known.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    const auto &methods = local_queues_.GetTasks(TaskState::WAITING_FOR_ACTOR_CREATION);
-    std::unordered_set<TaskID> created_actor_method_ids;
-    for (const auto &method : methods) {
-      if (method.GetTaskSpecification().ActorId() == actor_id) {
-        created_actor_method_ids.insert(method.GetTaskSpecification().TaskId());
-      }
-    }
-    // Resubmit the methods that were submitted before the actor's location was
-    // known.
-    auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
-    for (const auto &method : created_actor_methods) {
-      // Maintain the invariant that if a task is in the
-      // MethodsWaitingForActorCreation queue, then it is subscribed to its
-      // respective actor creation task. Since the actor location is now known,
-      // we can remove the task from the queue and forget its dependency on the
-      // actor creation task.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(
-          method.GetTaskSpecification().TaskId()));
-      // The task's uncommitted lineage was already added to the local lineage
-      // cache upon the initial submission, so it's okay to resubmit it with an
-      // empty lineage this time.
-      SubmitTask(method);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::DEAD) {
-    // When an actor dies, loop over all of the queued tasks for that actor
-    // and treat them as failed.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      TreatTaskAsFailed(task, ErrorType::ACTOR_DIED);
-    }
-  } else if (actor_registration.GetState() == ActorTableData::RESTARTING) {
-    RAY_LOG(DEBUG) << "Actor is being restarted: " << actor_id;
-    // When an actor fails but can be restarted, resubmit all of the queued
-    // tasks for that actor. This will mark the tasks as waiting for actor
-    // creation.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForActor(actor_id);
-    auto removed_tasks = local_queues_.RemoveTasks(tasks_to_remove);
-    for (auto const &task : removed_tasks) {
-      SubmitTask(task);
-    }
   }
 }
 
@@ -1308,16 +1262,16 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   auto send_reply_callback = [this, client](int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
-    std::vector<std::string> internal_config_keys;
-    std::vector<std::string> internal_config_values;
+    std::vector<std::string> system_config_keys;
+    std::vector<std::string> system_config_values;
     for (auto kv : initial_config_.raylet_config) {
-      internal_config_keys.push_back(kv.first);
-      internal_config_values.push_back(kv.second);
+      system_config_keys.push_back(kv.first);
+      system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
-        string_vec_to_flatbuf(fbb, internal_config_keys),
-        string_vec_to_flatbuf(fbb, internal_config_values));
+        string_vec_to_flatbuf(fbb, system_config_keys),
+        string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
     client->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -1407,6 +1361,11 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
         local_queues_.GetTotalResourceLoad());
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
+  }
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the worker remains idle after scheduling, we may kill it to ensure the
+    // registered workers are in a reasonable size.
+    worker_pool_.TryKillingIdleWorker(worker);
   }
 }
 
@@ -1841,21 +1800,38 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   SubmitTask(task);
 }
 
-void NodeManager::HandleRequestResourceReserve(
-    const rpc::RequestResourceReserveRequest &request,
-    rpc::RequestResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
+void NodeManager::HandlePrepareBundleResources(
+    const rpc::PrepareBundleResourcesRequest &request,
+    rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO(sang): Port this onto the new scheduler.
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle lease request " << bundle_spec.BundleId().first
+  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
-  auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
-  if (resource_ids.AvailableResources().size() == 0) {
+  auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
+  if (!prepared) {
     reply->set_success(false);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     reply->set_success(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+  // Call task dispatch to assign work to the new group.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleCommitBundleResources(
+    const rpc::CommitBundleResourcesRequest &request,
+    rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
+
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "Received bundle commit request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
+  CommitBundle(cluster_resource_map_, bundle_spec);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
   // Call task dispatch to assign work to the new group.
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
@@ -1893,6 +1869,20 @@ void NodeManager::HandleCancelResourceReserve(
     worker->MarkDead();
     KillWorker(worker);
   }
+
+  // We should commit resources if it weren't because
+  // ReturnBundleResources requires resources to be committed when it is called.
+  auto it = bundle_state_map_.find(bundle_spec.BundleId());
+  RAY_CHECK(it != bundle_state_map_.end())
+      << "Cancel requests are received to raylet although it hasn't received any prepare "
+         "or commit requests. This must be an anomaly.";
+  const auto &bundle_state = it->second;
+  if (bundle_state->state == CommitState::PREPARED) {
+    CommitBundle(cluster_resource_map_, bundle_spec);
+  }
+  bundle_state_map_.erase(it);
+
+  // Return resources.
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
@@ -2047,30 +2037,66 @@ void NodeManager::ProcessSetResourceRequest(
   }
 }
 
-ResourceIdSet NodeManager::ScheduleBundle(
+bool NodeManager::PrepareBundle(
     std::unordered_map<ClientID, SchedulingResources> &resource_map,
     const BundleSpecification &bundle_spec) {
-  // If the resource map contains the local raylet, update load before calling policy.
+  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
+  // once retry is implemented. If the resource map contains the local raylet, update load
+  // before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
   // Invoke the scheduling policy.
   auto reserve_resource_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  ResourceIdSet acquired_resources;
+
+  auto bundle_state = std::make_shared<BundleState>();
   if (reserve_resource_success) {
-    acquired_resources =
+    // Register states.
+    const auto &bundle_id = bundle_spec.BundleId();
+    auto it = bundle_state_map_.find(bundle_id);
+    // Same bundle cannot be rescheduled.
+    RAY_CHECK(it == bundle_state_map_.end());
+
+    // Prepare resources. This shouldn't create formatted placement group resources
+    // because that'll be done at the commit phase.
+    bundle_state->acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-    for (auto resource : acquired_resources.AvailableResources()) {
-      local_available_resources_.AddBundleResourceIds(bundle_spec.PlacementGroupId(),
-                                                      bundle_spec.Index(), resource.first,
-                                                      resource.second);
-    }
-    resource_map[self_node_id_].TransferToBundleResources(
+    resource_map[self_node_id_].PrepareBundleResources(
         bundle_spec.PlacementGroupId(), bundle_spec.Index(),
         bundle_spec.GetRequiredResources());
+
+    // Register bundle state.
+    bundle_state->state = CommitState::PREPARED;
+    bundle_state_map_.emplace(bundle_id, bundle_state);
   }
-  return acquired_resources;
+  return bundle_state->acquired_resources.AvailableResources().size() > 0;
+}
+
+void NodeManager::CommitBundle(
+    std::unordered_map<ClientID, SchedulingResources> &resource_map,
+    const BundleSpecification &bundle_spec) {
+  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
+  // once retry is implemented.
+  const auto &bundle_id = bundle_spec.BundleId();
+  auto it = bundle_state_map_.find(bundle_id);
+  // When bundle is committed, it should've been prepared already.
+  // We don't need this check if commit becomes idempotent.
+  RAY_CHECK(it != bundle_state_map_.end());
+  const auto &bundle_state = it->second;
+  bundle_state->state = CommitState::COMMITTED;
+  const auto &acquired_resources = bundle_state->acquired_resources;
+  for (auto resource : acquired_resources.AvailableResources()) {
+    local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),
+                                                       bundle_spec.Index(),
+                                                       resource.first, resource.second);
+  }
+
+  resource_map[self_node_id_].CommitBundleResources(bundle_spec.PlacementGroupId(),
+                                                    bundle_spec.Index(),
+                                                    bundle_spec.GetRequiredResources());
+  RAY_CHECK(bundle_state->acquired_resources.AvailableResources().size() > 0)
+      << "Prepare should've been failed if there were no acquireable resources.";
 }
 
 void NodeManager::ScheduleTasks(
@@ -2160,18 +2186,6 @@ void NodeManager::ScheduleTasks(
   RAY_CHECK(local_queues_.GetTasks(TaskState::PLACEABLE).size() == 0);
 }
 
-bool NodeManager::CheckDependencyManagerInvariant() const {
-  std::vector<TaskID> pending_task_ids = task_dependency_manager_.GetPendingTasks();
-  // Assert that each pending task in the task dependency manager is in one of the queues.
-  for (const auto &task_id : pending_task_ids) {
-    if (!local_queues_.HasTask(task_id)) {
-      return false;
-    }
-  }
-  // TODO(atumanov): perform the check in the opposite direction.
-  return true;
-}
-
 void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
@@ -2228,11 +2242,11 @@ void NodeManager::MarkObjectsAsFailed(
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
-      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
+      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
              << " error code to object " << object_id << ". Anyone who's getting this"
              << " object may hang forever.";
       std::string error_message = stream.str();
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG(ERROR) << error_message;
       auto error_data_ptr =
           gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
@@ -2808,7 +2822,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
       local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
       local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
       local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
-      local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
 
       // Make sure that the remaining tasks are all WAITING or direct call
       // actors.
@@ -3069,7 +3082,6 @@ std::string NodeManager::DebugString() const {
   result << "\n- num live actors: " << statistical_data.live_actors;
   result << "\n- num restarting actors: " << statistical_data.restarting_actors;
   result << "\n- num dead actors: " << statistical_data.dead_actors;
-  result << "\n- max num handles: " << statistical_data.max_num_handles;
 
   result << "\nRemote node manager clients: ";
   for (const auto &entry : remote_node_manager_clients_) {
@@ -3207,6 +3219,7 @@ void NodeManager::FlushObjectsToFree() {
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_request,
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  reply->set_pid(getpid());
   for (const auto &task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       auto infeasible_task = reply->add_infeasible_tasks();
@@ -3271,6 +3284,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
     all_workers.push_back(driver);
     driver_ids.insert(driver->WorkerId());
   }
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
@@ -3280,7 +3297,9 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
                      const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
           auto worker_stats = reply->add_workers_stats();
           worker_stats->set_pid(worker->GetProcess().GetId());
+          worker_stats->set_worker_id(worker->WorkerId().Binary());
           worker_stats->set_is_driver(driver_ids.contains(worker->WorkerId()));
+          worker_stats->set_language(worker->GetLanguage());
           reply->set_num_workers(reply->num_workers() + 1);
           if (status.ok()) {
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
@@ -3453,18 +3472,12 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   worker_pool_.RecordMetrics();
   local_queues_.RecordMetrics();
-  reconstruction_policy_.RecordMetrics();
   task_dependency_manager_.RecordMetrics();
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
-  stats::ActorStats().Record(statistical_data.live_actors,
-                             {{stats::ValueTypeKey, "live_actors"}});
-  stats::ActorStats().Record(statistical_data.restarting_actors,
-                             {{stats::ValueTypeKey, "restarting_actors"}});
-  stats::ActorStats().Record(statistical_data.dead_actors,
-                             {{stats::ValueTypeKey, "dead_actors"}});
-  stats::ActorStats().Record(statistical_data.max_num_handles,
-                             {{stats::ValueTypeKey, "max_num_handles"}});
+  stats::LiveActors().Record(statistical_data.live_actors);
+  stats::RestartingActors().Record(statistical_data.restarting_actors);
+  stats::DeadActors().Record(statistical_data.dead_actors);
 }
 
 }  // namespace raylet
