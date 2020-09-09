@@ -110,6 +110,8 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
+   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
    -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
