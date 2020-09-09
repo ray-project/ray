@@ -615,7 +615,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             "    ray stop".format(
                 redis_address, " --redis-password='" + redis_password + "'"
                 if redis_password else "",
-                ", redis_password='" + redis_password + "'"
+                ", _redis_password='" + redis_password + "'"
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
@@ -1459,7 +1459,7 @@ def memory(address, redis_password):
     if not address:
         address = services.find_redis_address_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address, redis_password=redis_password)
+    ray.init(address=address, _redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
 

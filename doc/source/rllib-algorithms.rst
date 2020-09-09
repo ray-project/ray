@@ -13,6 +13,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 =================== ========== ======================= ================== =========== =============================================================
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
+`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
@@ -547,16 +548,44 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 .. _marwil:
 
-Advantage Re-Weighted Imitation Learning (MARWIL)
--------------------------------------------------
+Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
+-----------------------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning. MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__
+
+MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data.
+When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
+MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/agents/marwil/marwil.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+.. _bc:
+
+Behavior Cloning (BC; derived from MARWIL implementation)
+---------------------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/bc.py>`__
+
+Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
+with the only difference being the ``beta`` parameter force-set to 0.0. This makes
+BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
+BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-bc.yaml>`__
+
+**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/marwil/bc.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

@@ -44,6 +44,8 @@ if __name__ == "__main__":
     from ray.tune.schedulers import ASHAScheduler
     tune.run(
         train_breast_cancer,
+        metric="binary_error",
+        mode="min",
         config=config,
         num_samples=2,
-        scheduler=ASHAScheduler(metric="binary_error", mode="min"))
+        scheduler=ASHAScheduler())
