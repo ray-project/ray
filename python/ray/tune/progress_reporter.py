@@ -1,10 +1,12 @@
 from __future__ import print_function
 
 import collections
+import numpy as np
 import time
 
 from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
-                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
+                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                             AUTO_RESULT_KEYS)
 from ray.tune.utils import unflattened_lookup
 
 try:
@@ -87,6 +89,7 @@ class TuneReporterBase(ProgressReporter):
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
+        self._metrics_override = metric_columns is not None
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS.copy()
         self._parameter_columns = parameter_columns or []
         self._max_progress_rows = max_progress_rows
@@ -110,6 +113,7 @@ class TuneReporterBase(ProgressReporter):
             representation (str): Representation to use in table. Defaults to
                 `metric`.
         """
+        self._metrics_override = True
         if metric in self._metric_columns:
             raise ValueError("Column {} already exists.".format(metric))
 
@@ -161,6 +165,9 @@ class TuneReporterBase(ProgressReporter):
             fmt (str): Table format. See `tablefmt` in tabulate API.
             delim (str): Delimiter between messages.
         """
+        if not self._metrics_override:
+            user_metrics = self._infer_user_metrics(trials)
+            self._metric_columns.update(user_metrics)
         messages = ["== Status ==", memory_debug_str(), *sys_info]
         if done:
             max_progress = None
@@ -177,6 +184,31 @@ class TuneReporterBase(ProgressReporter):
                 max_rows=max_progress))
         messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
         return delim.join(messages) + delim
+
+    def _infer_user_metrics(self, trials, limit=4):
+        VALID_SUMMARY_TYPES = {
+            int, float, np.float32, np.float64, np.int32, np.int64,
+            type(None)
+        }
+        metric_types = collections.defaultdict(set)
+        for t in trials:
+            if not t.last_result:
+                continue
+            for metric, value in t.last_result.items():
+                if metric not in self.DEFAULT_COLUMNS and (
+                        metric not in AUTO_RESULT_KEYS):
+                    metric_types[metric].add(type(value))
+
+        all_metrics = {}
+        for k, all_types in metric_types.items():
+            if any(type_ not in VALID_SUMMARY_TYPES for type_ in all_types):
+                continue
+            else:
+                all_metrics[k] = k
+            if len(all_metrics) > limit:
+                break
+        print("ALL METRICS", all_metrics)
+        return all_metrics
 
 
 class JupyterNotebookReporter(TuneReporterBase):
