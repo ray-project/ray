@@ -1,7 +1,6 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 import os
-import numpy as np
 import argparse
 from filelock import FileLock
 import torch
