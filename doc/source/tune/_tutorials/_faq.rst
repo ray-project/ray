@@ -220,18 +220,17 @@ of 4 machines with 1 GPU each, the trial will never be scheduled.
 In other words, you will have to make sure that your Ray cluster
 has machines that can actually fulfill your resource requests.
 
-How can I pass further values to my trainable function?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can I pass further parameter values to my trainable function?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune expects your trainable functions to accept only up to two parameters,
 ``config`` and ``checkpoint_dir``. But sometimes there are cases where
 you want to pass constant arguments, like the number of epochs to run,
 or a dataset to train on. Ray Tune offers a wrapper function to achieve
-just that, called ``with_parameters``:
+just that, called ``tune.with_parameters()``:
 
 .. code-block:: python
 
     from ray import tune
-    from ray.tune.function_runner import with_parameters
 
     import numpy as np
 
@@ -244,7 +243,7 @@ just that, called ``with_parameters``:
     data = np.random.random(size=100000000)
 
     tune.run(
-        with_parameters(train, num_epochs=10, data=data))
+        tune.with_parameters(train, num_epochs=10, data=data))
 
 
 This function works similarly to ``functools.partial``, but it stores

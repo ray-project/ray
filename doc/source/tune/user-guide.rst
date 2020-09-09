@@ -211,14 +211,13 @@ Handling Large Datasets
 
 You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
 
-Tune provides a wrapper function ``with_parameters`` that allows you to broadcast large objects to your trainable.
+Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
 Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
 and passed to your trainable as a parameter.
 
 .. code-block:: python
 
     from ray import tune
-    from ray.tune.function_runner import with_parameters
 
     import numpy as np
 
@@ -228,7 +227,7 @@ and passed to your trainable as a parameter.
 
     data = np.random.random(size=100000000)
 
-    tune.run(with_parameters(f, data=data))
+    tune.run(tune.with_parameters(f, data=data))
 
 .. _tune-stopping:
 

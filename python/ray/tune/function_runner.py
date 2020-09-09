@@ -527,19 +527,19 @@ def with_parameters(fn, **kwargs):
 
     .. code-block:: python
 
-    from ray.tune.function_runner import with_parameters
+        from ray import tune
 
-    def train(config, data=None):
-        for sample in data:
-            # ...
-            tune.report(loss=loss)
+        def train(config, data=None):
+            for sample in data:
+                # ...
+                tune.report(loss=loss)
 
-    data = HugeDataset(download=True)
+        data = HugeDataset(download=True)
 
-    tune.run(
-        with_parameters(train, data=data),
-        #...
-    )
+        tune.run(
+            tune.with_parameters(train, data=data),
+            #...
+        )
 
     """
     prefix = f"{str(fn)}_"
