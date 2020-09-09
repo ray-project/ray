@@ -137,28 +137,28 @@ test_python() {
   if [ "${OSTYPE}" = msys ]; then
     pathsep=";"
     args+=(
-      # python/ray/tests/...
+      python/ray/tests/...
       python/ray/serve/...
-      # -python/ray/tests:test_advanced_2
-      # -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
-      # -python/ray/tests:test_autoscaler_aws
-      # -python/ray/tests:test_component_failures
-      # -python/ray/tests:test_cython
-      # -python/ray/tests:test_failure
-      # -python/ray/tests:test_global_gc
-      # -python/ray/tests:test_job
-      # -python/ray/tests:test_memstat
-      # -python/ray/tests:test_metrics
-      # -python/ray/tests:test_multi_node
-      # -python/ray/tests:test_multi_node_2
-      # -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
-      # -python/ray/tests:test_node_manager
-      # -python/ray/tests:test_object_manager
-      # -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
-      # -python/ray/tests:test_resource_demand_scheduler
-      # -python/ray/tests:test_stress  # timeout
-      # -python/ray/tests:test_stress_sharded  # timeout
-      # -python/ray/tests:test_webui
+      -python/ray/tests:test_advanced_2
+      -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
+      -python/ray/tests:test_autoscaler_aws
+      -python/ray/tests:test_component_failures
+      -python/ray/tests:test_cython
+      -python/ray/tests:test_failure
+      -python/ray/tests:test_global_gc
+      -python/ray/tests:test_job
+      -python/ray/tests:test_memstat
+      -python/ray/tests:test_metrics
+      -python/ray/tests:test_multi_node
+      -python/ray/tests:test_multi_node_2
+      -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
+      -python/ray/tests:test_node_manager
+      -python/ray/tests:test_object_manager
+      -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
+      -python/ray/tests:test_resource_demand_scheduler
+      -python/ray/tests:test_stress  # timeout
+      -python/ray/tests:test_stress_sharded  # timeout
+      -python/ray/tests:test_webui
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
