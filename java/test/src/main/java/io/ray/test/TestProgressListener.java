@@ -23,19 +23,24 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
 
   private String previousTestClass;
 
+  private void runCommand(String... args) {
+    ProcessBuilder builder = new ProcessBuilder(args);
+    builder.redirectOutput(Redirect.INHERIT);
+    builder.redirectError(Redirect.INHERIT);
+    try {
+      builder.start().waitFor();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
   @Override
   public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {
     printInfo("BEFORE METHOD", getFullTestName(testResult));
     if (previousTestClass != testResult.getTestClass().getName()) {
       previousTestClass = testResult.getTestClass().getName();
-      ProcessBuilder builder = new ProcessBuilder("bash", "-c", "rm -rf /tmp/ray");
-      builder.redirectOutput(Redirect.INHERIT);
-      builder.redirectError(Redirect.INHERIT);
-      try {
-        builder.start().waitFor();
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
+      runCommand("df", "-h");
+      runCommand("bash", "-c", "rm -rf /tmp/ray");
     }
   }
 
