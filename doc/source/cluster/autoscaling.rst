@@ -46,7 +46,7 @@ In order to manually add a node to an autoscaled cluster, the `ray-cluster-name`
 
 Unmanaged nodes **must have 0 resources**.
 
-If you are using the `available_node_types` field, you should create a custom node type with `resources: {}`, and `max_workers: 0` when configuring the autoscaler..
+If you are using the `available_node_types` field, you should create a custom node type with `resources: {}`, and `max_workers: 0` when configuring the autoscaler.
 
 The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes. 
 
