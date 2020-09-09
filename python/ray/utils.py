@@ -505,7 +505,7 @@ def _get_docker_cpus():
                 num_cpus /= int(f.read())
             return num_cpus
 
-    return subprocess.check_output("nproc")
+    return int(subprocess.check_output("nproc"))
 
 
 def get_num_cpus():
@@ -519,10 +519,10 @@ def get_num_cpus():
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
                 logger.warning(
                     "Detecting limited number of CPUs due to docker. In "
-                    "previous versions of Ray, CPU detection in containers was "
-                    "buggy. Please ensure that Ray has enough CPUs allocated. "
-                    "This message will be removed in future version of Ray. You "
-                    "can set the environment variable: "
+                    "previous versions of Ray, CPU detection in containers "
+                    "was buggy. Please ensure that Ray has enough CPUs "
+                    "allocated. This message will be removed in future "
+                    "version of Ray. You can set the environment variable: "
                     "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now.")
     except Exception:
         # `nproc` and cgroup are linux-only. If docker only works on linux
