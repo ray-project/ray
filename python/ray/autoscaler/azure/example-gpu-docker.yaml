@@ -81,7 +81,7 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 # NOTE: rayproject/ray:0.8.7 has ray 0.8.7 bundled
 # setup_commands:
-#     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+#     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.0.0-cp37-cp37m-manylinux1_x86_64.whl
  
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

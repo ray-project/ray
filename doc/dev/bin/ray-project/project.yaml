@@ -19,7 +19,7 @@ commands:
       ./pip_download_test.sh
     params:
     - name: ray_version # Ray version string.
-      default: "0.9.0.dev0"
+      default: "1.0.0"
 
     - name: commit # Ray commit SHA string.
       default: "FILL ME IN"

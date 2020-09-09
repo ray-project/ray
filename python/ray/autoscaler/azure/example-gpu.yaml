@@ -108,7 +108,7 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - echo 'conda activate py37_pytorch' >> ~/.bashrc
     - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.0.0-cp37-cp37m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
