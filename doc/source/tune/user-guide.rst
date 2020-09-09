@@ -209,26 +209,26 @@ disable cross-node syncing:
 Handling Large Datasets
 -----------------------
 
-You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
+
+Tune provides a wrapper function ``with_parameters`` that allows you to broadcast large objects to your trainable.
+Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
+and passed to your trainable as a parameter.
 
 .. code-block:: python
 
-    import ray
     from ray import tune
-    from ray.tune.utils import pin_in_object_store, get_pinned_object
+    from ray.tune.function_runner import with_parameters
 
     import numpy as np
 
-    ray.init()
+    def f(config, data=None):
+        pass
+        # use data
 
-    # X_id can be referenced in closures
-    X_id = pin_in_object_store(np.random.random(size=100000000))
+    data = np.random.random(size=100000000)
 
-    def f(config):
-        X = get_pinned_object(X_id)
-        # use X
-
-    tune.run(f)
+    tune.run(with_parameters(f, data=data))
 
 .. _tune-stopping:
 
