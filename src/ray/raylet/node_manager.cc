@@ -2242,11 +2242,11 @@ void NodeManager::MarkObjectsAsFailed(
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
-      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
+      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
              << " error code to object " << object_id << ". Anyone who's getting this"
              << " object may hang forever.";
       std::string error_message = stream.str();
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG(ERROR) << error_message;
       auto error_data_ptr =
           gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
