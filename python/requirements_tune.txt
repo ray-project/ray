@@ -26,7 +26,7 @@ timm
 torch>=1.5.0
 torchvision>=0.6.0
 transformers
-tune-sklearn==0.0.5
+git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 wandb
 xgboost
 zoopt>=0.4.0

@@ -29,5 +29,5 @@ git+https://github.com/executablebooks/sphinx-book-theme.git@0a87d26e214c419d2e6
 tabulate
 uvicorn
 werkzeug
-tune-sklearn==0.0.5
+git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 scikit-optimize

@@ -68,6 +68,8 @@ def _report_progress(runner, reporter, done=False):
 def run(
         run_or_experiment,
         name=None,
+        metric=None,
+        mode=None,
         stop=None,
         time_budget_s=None,
         config=None,
@@ -147,6 +149,12 @@ def run(
             will need to first register the function:
             ``tune.register_trainable("lambda_id", lambda x: ...)``. You can
             then use ``tune.run("lambda_id")``.
+        metric (str): Metric to optimize. This metric should be reported
+            with `tune.report()`. If set, will be passed to the search
+            algorithm and scheduler.
+        mode (str): Must be one of [min, max]. Determines whether objective is
+            minimizing or maximizing the metric attribute. If set, will be
+            passed to the search algorithm and scheduler.
         name (str): Name of experiment.
         stop (dict | callable | :class:`Stopper`): Stopping criteria. If dict,
             the keys may be any field in the return result of 'train()',
@@ -276,6 +284,11 @@ def run(
             "sync_config=SyncConfig(...)`. See `ray.tune.SyncConfig` for "
             "more details.")
 
+    if mode and mode not in ["min", "max"]:
+        raise ValueError(
+            "The `mode` parameter passed to `tune.run()` has to be one of "
+            "['min', 'max']")
+
     config = config or {}
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
@@ -329,8 +342,7 @@ def run(
     if not search_alg:
         search_alg = BasicVariantGenerator()
 
-    # TODO (krfricke): Introduce metric/mode as top level API
-    if config and not search_alg.set_search_properties(None, None, config):
+    if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
@@ -339,9 +351,17 @@ def run(
                 "does not contain any more parameter definitions - include "
                 "them in the search algorithm's search space if necessary.")
 
+    scheduler = scheduler or FIFOScheduler()
+    if not scheduler.set_search_properties(metric, mode):
+        raise ValueError(
+            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "the scheduler you are using was already instantiated with their "
+            "own `metric` and `mode` parameters. Either remove the arguments "
+            "from your scheduler or from your call to `tune.run()`")
+
     runner = TrialRunner(
         search_alg=search_alg,
-        scheduler=scheduler or FIFOScheduler(),
+        scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_config.sync_to_cloud,
@@ -413,8 +433,8 @@ def run(
     return ExperimentAnalysis(
         runner.checkpoint_file,
         trials=trials,
-        default_metric=None,
-        default_mode=None)
+        default_metric=metric,
+        default_mode=mode)
 
 
 def run_experiments(experiments,

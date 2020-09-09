@@ -87,12 +87,13 @@ class NevergradSearch(Searcher):
     def __init__(self,
                  optimizer=None,
                  space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_concurrent=None,
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(NevergradSearch, self).__init__(
             metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs)
