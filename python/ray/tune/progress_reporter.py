@@ -53,6 +53,10 @@ class ProgressReporter:
 class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters.
 
+    If metric_columns is not overriden, Tune will attempt to automatically
+    infer the metrics being outputted, up to 'infer_limit' number of
+    metrics.
+
     Args:
         metric_columns (dict[str, str]|list[str]): Names of metrics to
             include in progress table. If this is a dict, the keys should
@@ -88,12 +92,14 @@ class TuneReporterBase(ProgressReporter):
                  parameter_columns=None,
                  max_progress_rows=20,
                  max_error_rows=20,
-                 max_report_frequency=5):
+                 max_report_frequency=5,
+                 infer_limit=3):
         self._metrics_override = metric_columns is not None
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS.copy()
         self._parameter_columns = parameter_columns or []
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
+        self._infer_limit = infer_limit
 
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
@@ -166,7 +172,7 @@ class TuneReporterBase(ProgressReporter):
             delim (str): Delimiter between messages.
         """
         if not self._metrics_override:
-            user_metrics = self._infer_user_metrics(trials)
+            user_metrics = self._infer_user_metrics(trials, self._infer_limit)
             self._metric_columns.update(user_metrics)
         messages = ["== Status ==", memory_debug_str(), *sys_info]
         if done:
@@ -186,28 +192,23 @@ class TuneReporterBase(ProgressReporter):
         return delim.join(messages) + delim
 
     def _infer_user_metrics(self, trials, limit=4):
+        """Try to infer the metrics to print out."""
         VALID_SUMMARY_TYPES = {
             int, float, np.float32, np.float64, np.int32, np.int64,
             type(None)
         }
-        metric_types = collections.defaultdict(set)
+        all_metrics = {}
         for t in trials:
             if not t.last_result:
                 continue
             for metric, value in t.last_result.items():
-                if metric not in self.DEFAULT_COLUMNS and (
-                        metric not in AUTO_RESULT_KEYS):
-                    metric_types[metric].add(type(value))
+                if metric not in self.DEFAULT_COLUMNS:
+                    if metric not in AUTO_RESULT_KEYS:
+                        if type(metric) in VALID_SUMMARY_TYPES:
+                            all_metrics[metric] = metric
 
-        all_metrics = {}
-        for k, all_types in metric_types.items():
-            if any(type_ not in VALID_SUMMARY_TYPES for type_ in all_types):
-                continue
-            else:
-                all_metrics[k] = k
-            if len(all_metrics) > limit:
-                break
-        print("ALL METRICS", all_metrics)
+                if len(all_metrics) > limit:
+                    break
         return all_metrics
 
 
