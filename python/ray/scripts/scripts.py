@@ -175,14 +175,12 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--redis-shard-ports",
     required=False,
-    hidden=True,
     type=str,
     help="the port to use for the Redis shards other than the "
     "primary Redis shard")
 @click.option(
     "--object-manager-port",
     required=False,
-    hidden=True,
     type=int,
     help="the port to use for starting the object manager")
 @click.option(
@@ -212,6 +210,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--memory",
     required=False,
+    hidden=True,
     type=int,
     help="The amount of memory (in bytes) to make available to workers. "
     "By default, this is set to the available memory on the node.")
@@ -306,17 +305,20 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="manually specify the socket path of the raylet process")
 @click.option(
     "--temp-dir",
+    hidden=True,
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
     "--java-worker-options",
     required=False,
+    hidden=True,
     default=None,
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
     "--code-search-path",
     default=None,
+    hidden=True,
     type=str,
     help="A list of directories or jar files separated by colon that specify "
     "the search path for user code. This will be used as `CLASSPATH` in "
@@ -343,11 +345,13 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--enable-object-reconstruction",
     is_flag=True,
     default=False,
+    hidden=True,
     help="Specify whether object reconstruction will be used for this cluster."
 )
 @click.option(
     "--metrics-export-port",
     type=int,
+    hidden=True,
     default=None,
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
