@@ -191,6 +191,7 @@ class _Bracket():
         return action
 
     def debug_str(self):
+        # TODO: fix up the output for this
         iters = " | ".join([
             "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
             for milestone, recorded in self._rungs

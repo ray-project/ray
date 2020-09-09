@@ -11,6 +11,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.dragonfly import DragonflySearch
 
@@ -70,12 +71,14 @@ if __name__ == "__main__":
         optimizer="bandit",
         domain="euclidean",
         # space=space,  # If you want to set the space manually
-        metric="objective",
-        mode="max")
+    )
+    df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
-    scheduler = AsyncHyperBandScheduler(metric="objective", mode="max")
+    scheduler = AsyncHyperBandScheduler()
     tune.run(
         objective,
+        metric="objective",
+        mode="max",
         name="dragonfly_search",
         search_alg=df_search,
         scheduler=scheduler,
