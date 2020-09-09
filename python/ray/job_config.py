@@ -33,6 +33,8 @@ class JobConfig:
             self.jvm_options = jvm_options
         if code_search_path is None:
             self.code_search_path = []
+        else
+            self.code_search_path = code_search_path
 
     def serialize(self):
         job_config = ray.gcs_utils.JobConfig()
