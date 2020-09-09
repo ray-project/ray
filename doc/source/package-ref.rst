@@ -87,6 +87,14 @@ ray.util.ActorPool
 .. autoclass:: ray.util.ActorPool
    :members:
 
+ray.util.queue.Queue
+~~~~~~~~~~~~~~~~~~~~
+
+.. _ray-queue-ref:
+
+.. autoclass:: ray.util.queue.Queue
+   :members:
+
 .. _ray-nodes-ref:
 
 ray.nodes

@@ -1,6 +1,7 @@
 package io.ray.streaming.runtime.util;
 
 import com.sun.management.OperatingSystemMXBean;
+import io.ray.api.id.UniqueId;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ContainerId;
 import java.io.BufferedInputStream;

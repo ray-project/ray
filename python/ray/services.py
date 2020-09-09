@@ -1256,6 +1256,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 plasma_directory,
+                 object_store_memory,
                  min_worker_port=None,
                  max_worker_port=None,
                  object_manager_port=None,
@@ -1270,7 +1272,6 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
@@ -1457,8 +1458,6 @@ def start_raylet(redis_address,
             subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
-        plasma_directory, object_store_memory = determine_plasma_store_config(
-            resource_spec.object_store_memory, plasma_directory, huge_pages)
         command += [
             f"--object_store_memory={object_store_memory}",
             f"--plasma_directory={plasma_directory}",
@@ -1653,8 +1652,8 @@ def determine_plasma_store_config(object_store_memory,
                 "than the total available memory.")
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.warning("WARNING: object_store_memory is not verified when "
-                       "plasma_directory is set.")
+        logger.info("object_store_memory is not verified when "
+                    "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(f"The file {plasma_directory} does not "
@@ -1680,10 +1679,11 @@ def determine_plasma_store_config(object_store_memory,
 
 
 def start_plasma_store(resource_spec,
+                       plasma_directory,
+                       object_store_memory,
                        plasma_store_socket_name,
                        stdout_file=None,
                        stderr_file=None,
-                       plasma_directory=None,
                        keep_idle=False,
                        huge_pages=False,
                        fate_share=None,
@@ -1712,8 +1712,6 @@ def start_plasma_store(resource_spec,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    plasma_directory, object_store_memory = determine_plasma_store_config(
-        resource_spec.object_store_memory, plasma_directory, huge_pages)
 
     command = [
         PLASMA_STORE_EXECUTABLE,

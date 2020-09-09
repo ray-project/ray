@@ -121,7 +121,7 @@ if __name__ == "__main__":
     else:
         ray.init(num_cpus=2 if args.smoke_test else None)
     sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration", metric="mean_accuracy")
+        time_attr="training_iteration", metric="mean_accuracy", mode="max")
     analysis = tune.run(
         train_mnist,
         name="exp",

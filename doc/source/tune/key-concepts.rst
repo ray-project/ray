@@ -219,15 +219,23 @@ Analysis
 
     analysis = tune.run(trainable, search_alg=algo, stop={"training_iteration": 20})
 
-    # Get the best hyperparameters
-    best_hyperparameters = analysis.get_best_config()
+    best_trial = analysis.best_trial  # Get best trial
+    best_config = analysis.best_config  # Get best trial's hyperparameters
+    best_logdir = analysis.best_logdir  # Get best trial's logdir
+    best_checkpoint = analysis.best_checkpoint  # Get best trial's best checkpoint
+    best_result = analysis.best_result  # Get best trial's last results
+    best_result_df = analysis.best_result_df  # Get best result as pandas dataframe
 
 This object can also retrieve all training runs as dataframes, allowing you to do ad-hoc data analysis over your results.
 
 .. code-block:: python
 
-    # Get a dataframe for the max score seen for each trial
+    # Get a dataframe with the last results for each trial
+    df_results = analysis.results_df
+
+    # Get a dataframe of results for a specific score or mode
     df = analysis.dataframe(metric="score", mode="max")
+
 
 What's Next?
 -------------
