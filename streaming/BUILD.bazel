@@ -150,7 +150,7 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
             # TODO(mehrdadn): This is to resolve symbols on Windows for now. Should remove this later. (See d7f8d18.)
             "//:core_worker_lib",
-            "//:exported_streaming_internal"
+            "//:exported_streaming_internal",
         ],
         "//conditions:default": [
             "core_worker_lib.so",
