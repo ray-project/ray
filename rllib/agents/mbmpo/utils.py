@@ -1,5 +1,16 @@
 import numpy as np
 import scipy
+from typing import Union
+
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    TensorType
+
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class LinearFeatureBaseline():
@@ -66,3 +77,50 @@ def discount_cumsum(x, discount):
         """
     return scipy.signal.lfilter(
         [1], [1, float(-discount)], x[::-1], axis=0)[::-1]
+
+
+class MBMPOExploration(Exploration):
+    """An exploration that simply samples from a distribution.
+
+    The sampling can be made deterministic by passing explore=False into
+    the call to `get_exploration_action`.
+    Also allows for scheduled parameters for the distributions, such as
+    lowering stddev, temperature, etc.. over time.
+    """
+
+    def __init__(self, action_space, *, framework: str, model: ModelV2,
+                 **kwargs):
+        """Initializes a StochasticSampling Exploration object.
+
+        Args:
+            action_space (Space): The gym action space used by the environment.
+            framework (str): One of None, "tf", "torch".
+        """
+        assert framework is not None
+        self.timestep = 0
+        self.worker_index = kwargs["worker_index"]
+        super().__init__(
+            action_space, model=model, framework=framework, **kwargs)
+
+    @override(Exploration)
+    def get_exploration_action(self,
+                               *,
+                               action_distribution: ActionDistribution,
+                               timestep: Union[int, TensorType],
+                               explore: bool = True):
+        assert self.framework == "torch"
+        return self._get_torch_exploration_action(action_distribution, explore)
+
+    def _get_torch_exploration_action(self, action_dist, explore):
+        action = action_dist.sample()
+        logp = action_dist.sampled_action_logp()
+
+        batch_size = action.size()[0]
+
+        # Initial Random Exploration for Real Env Interaction
+        if self.worker_index == 0 and self.timestep < 8000:
+            print("Using Random")
+            action = [self.action_space.sample() for _ in range(batch_size)]
+            logp = [0.0 for _ in range(batch_size)]
+        self.timestep += batch_size
+        return action, logp

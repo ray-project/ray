@@ -1,5 +1,5 @@
-halfcheetah-mbmpo:
-    env: ray.rllib.examples.env.mbmpo_env.HalfCheetahWrapper
+hopper-mbmpo:
+    env: ray.rllib.examples.env.mbmpo_env.HopperWrapper
     run: MBMPO
     stop:
         training_iteration: 500
