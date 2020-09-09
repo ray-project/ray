@@ -95,7 +95,7 @@ class ResourceDemandScheduler:
                     f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
                     f"in unmanaged node, set the user_node_type tag manually"
                     f"in your cloud provider's management console.")
-                return
+                return None
             # Careful not to include the same dict object multiple times.
             node_resources.append(
                 copy.deepcopy(self.node_types[node_type]["resources"]))
