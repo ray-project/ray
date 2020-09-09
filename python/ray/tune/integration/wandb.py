@@ -9,7 +9,7 @@ from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
 from ray.tune.utils import flatten_dict
 
-from yaml.representer import BaseRepresenter
+import yaml
 
 try:
     import wandb
@@ -19,8 +19,6 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
-
-_yaml_representer = BaseRepresenter()
 
 
 def _clean_log(obj):
@@ -33,9 +31,15 @@ def _clean_log(obj):
     # Else
     try:
         pickle.dumps(obj)
-        _yaml_representer.represent(obj)
+        yaml.dump(
+            obj,
+            Dumper=yaml.SafeDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            encoding="utf-8")
         return obj
-    except Exception:
+    except Exception as e:
+        print(f"EXCEPTION {e}")
         # give up, similar to _SafeFallBackEncoder
         return str(obj)
 
