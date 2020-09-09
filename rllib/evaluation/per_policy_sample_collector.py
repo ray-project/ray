@@ -403,7 +403,7 @@ class _PerPolicySampleCollector:
                 t_ = type(data)
                 dtype = np.float32 if t_ == float else \
                     np.int32 if t_ == int else np.bool_ \
-                        if t_ == bool else np.unicode_
+                    if t_ == bool else np.unicode_
                 self.buffers[col] = np.zeros(shape=base_shape, dtype=dtype)
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:

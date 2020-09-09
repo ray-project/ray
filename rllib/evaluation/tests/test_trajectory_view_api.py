@@ -130,7 +130,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ traj. view API (and time-major)")
             config["_use_trajectory_view_api"] = True
-            #config["model"]["_time_major"] = True
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_w = 0.0
             sampler_perf = {}
@@ -157,7 +156,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             print("w/o traj. view API (and w/o time-major)")
             config["_use_trajectory_view_api"] = False
-            #config["model"]["_time_major"] = False
             trainer = ppo.PPOTrainer(config=config, env="ma_env")
             learn_time_wo = 0.0
             sampler_perf = {}
@@ -208,7 +206,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "_use_trajectory_view_api": True,
                 "model": {
                     "use_lstm": True,
-                    #"_time_major": True,
                     "max_seq_len": max_seq_len,
                 },
             },

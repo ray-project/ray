@@ -140,7 +140,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             self.inference_view_requirements.update(
                 dict(
                     **{
-                        #SampleBatch.OBS: ViewRequirement(shift=0),
                         SampleBatch.PREV_REWARDS: ViewRequirement(
                             SampleBatch.REWARDS, shift=-1),
                         SampleBatch.PREV_ACTIONS: ViewRequirement(
