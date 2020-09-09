@@ -958,6 +958,12 @@ def rsync(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
+    is_file_mount = False
+    for remote_mount in config.get("file_mounts", {}).keys():
+        if remote_mount in (source if down else target):
+            is_file_mount = True
+            break
+
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = []
@@ -997,7 +1003,7 @@ def rsync(config_file: str,
                 cmd_output_util.set_output_redirected(False)
                 set_rsync_silent(False)
 
-                rsync(source, target)
+                rsync(source, target, is_file_mount)
             else:
                 updater.sync_file_mounts(rsync)
 

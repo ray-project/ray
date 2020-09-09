@@ -130,15 +130,16 @@ class DragonflySearch(Searcher):
                  optimizer=None,
                  domain=None,
                  space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
             `pip install dragonfly-opt`."""
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(DragonflySearch, self).__init__(
             metric=metric, mode=mode, **kwargs)

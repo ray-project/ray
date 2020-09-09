@@ -95,11 +95,12 @@ class TuneBOHB(Searcher):
                  space=None,
                  bohb_config=None,
                  max_concurrent=10,
-                 metric="neg_mean_loss",
-                 mode="max"):
+                 metric=None,
+                 mode=None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, "HpBandSter must be installed!"
-        assert mode in ["min", "max"], "`mode` must be in [min, max]!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
         self.running = set()
