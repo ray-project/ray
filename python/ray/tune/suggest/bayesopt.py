@@ -101,8 +101,8 @@ class BayesOptSearch(Searcher):
 
     def __init__(self,
                  space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  utility_kwargs=None,
                  random_state=42,
                  random_search_steps=10,
@@ -144,7 +144,8 @@ class BayesOptSearch(Searcher):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self.max_concurrent = max_concurrent
         self._config_counter = defaultdict(int)
         self._patience = patience

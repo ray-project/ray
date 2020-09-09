@@ -350,6 +350,13 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
+    "--code-search-path",
+    default=None,
+    type=str,
+    help="A list of directories or jar files separated by colon that specify "
+    "the search path for user code. This will be used as `CLASSPATH` in "
+    "Java and `PYTHONPATH` in Python.")
+@click.option(
     "--system-config",
     default=None,
     type=json.loads,
@@ -386,9 +393,9 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          java_worker_options, load_code_from_local, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, log_style,
-          log_color, verbose):
+          java_worker_options, code_search_path, load_code_from_local,
+          system_config, lru_evict, enable_object_reconstruction,
+          metrics_export_port, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
@@ -498,6 +505,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
+        code_search_path=code_search_path,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,

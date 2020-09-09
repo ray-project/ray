@@ -726,7 +726,8 @@ class Node:
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job,
-            object_spilling_config=self._ray_params.object_spilling_config)
+            object_spilling_config=self._ray_params.object_spilling_config,
+            code_search_path=self._ray_params.code_search_path)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

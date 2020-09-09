@@ -73,7 +73,7 @@ public class ExitActorTest extends BaseTest {
   }
 
   public void testExitActorInMultiWorker() {
-    Assert.assertTrue(TestUtils.getRuntime().getRayConfig().numWorkersPerProcess > 1);
+    Assert.assertTrue(TestUtils.getNumWorkersPerProcess() > 1);
     ActorHandle<ExitingActor> actor1 = Ray.actor(ExitingActor::new)
         .setMaxRestarts(10000).remote();
     int pid = actor1.task(ExitingActor::getPid).remote().get();

@@ -1,4 +1,5 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
+#include "common/status.h"
 #include "data_reader.h"
 #include "data_writer.h"
 #include "gtest/gtest.h"
@@ -8,8 +9,7 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ring_buffer.h"
-#include "status.h"
+#include "ring_buffer/ring_buffer.h"
 using namespace std::placeholders;
 
 const uint32_t MESSAGE_BOUND_SIZE = 10000;
@@ -126,9 +126,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
         for (uint32_t j = 0; j < buffer_len; ++j) {
           data[j] = j % 128;
         }
-
+        STREAMING_LOG(DEBUG) << "Write data to queue, count=" << i
+                             << ", queue_id=" << q_id;
         writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
                                                 StreamingMessageType::Message);
+        if (i % 10 == 0) {
+          writer_client->BroadcastBarrier(i / 10, nullptr, 0);
+        }
       }
       ++i;
     }
@@ -159,7 +163,8 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     for (auto &q_id : queue_id_vec) {
       queue_last_cp_id[q_id] = 0;
     }
-    STREAMING_LOG(INFO) << "Start read message bundle";
+    STREAMING_LOG(INFO) << "Start read message bundle, queue_id_size="
+                        << queue_id_vec.size();
     while (true) {
       std::shared_ptr<DataBundle> msg;
       StreamingStatus st = reader_client->GetBundle(100, msg);
@@ -173,8 +178,13 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
           << "read null pointer message, queue id => " << msg->from.Hex();
 
       if (msg->meta->GetBundleType() == StreamingMessageBundleType::Barrier) {
-        STREAMING_LOG(DEBUG) << "barrier message recevied => "
-                             << msg->meta->GetMessageBundleTs();
+        StreamingBarrierHeader barrier_header;
+        StreamingMessage::GetBarrierIdFromRawData(msg->data + kMessageHeaderSize,
+                                                  &barrier_header);
+        STREAMING_LOG(DEBUG) << "barrier message recevied, time="
+                             << msg->meta->GetMessageBundleTs()
+                             << ", barrier_id=" << barrier_header.barrier_id
+                             << ", data=" << Util::Byte2hex(msg->data, msg->data_size);
         std::unordered_map<ray::ObjectID, ConsumerChannelInfo> *offset_map;
         reader_client->GetOffsetInfo(offset_map);
 
@@ -206,12 +216,12 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
         uint32_t buff_len = i % DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE;
         if (i > MESSAGE_BOUND_SIZE) break;
 
-        EXPECT_EQ(buff_len, item->GetDataSize());
+        EXPECT_EQ(buff_len, item->PayloadSize());
         uint8_t *compared_data = new uint8_t[buff_len];
-        for (uint32_t j = 0; j < item->GetDataSize(); ++j) {
+        for (uint32_t j = 0; j < item->PayloadSize(); ++j) {
           compared_data[j] = j % 128;
         }
-        EXPECT_EQ(std::memcmp(compared_data, item->RawData(), item->GetDataSize()), 0);
+        EXPECT_EQ(std::memcmp(compared_data, item->Payload(), item->PayloadSize()), 0);
         delete[] compared_data;
       }
       STREAMING_LOG(DEBUG) << "Received message count => " << recevied_message_cnt;

@@ -8,6 +8,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -66,12 +67,11 @@ public abstract class BaseMultiLanguageTest {
     // jars in the `ray` wheel doesn't contains test classes, so we add test classes explicitly.
     // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
     // with `test` included in the name, we can check classpath `test` to filter out test classes.
-    String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
+    List<String> classpath = Stream.of(System.getProperty("java.class.path").split(":"))
         .filter(s -> !s.contains(" ") && s.contains("test"))
-        .collect(Collectors.joining(":"));
-    String workerOptions = new Gson().toJson(ImmutableList.of("-classpath", classpath));
+        .collect(Collectors.toList());
     // Start ray cluster.
-    List<String> startCommand = ImmutableList.of(
+    List<String> startCommand = Arrays.asList(
         "ray",
         "start",
         "--head",
@@ -82,9 +82,10 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--java-worker-options=" + workerOptions,
-        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
+        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
+        "--code-search-path=" + String.join(":", classpath)
     );
+
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }

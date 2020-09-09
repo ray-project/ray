@@ -11,16 +11,15 @@ import socket
 import subprocess
 import sys
 import time
-import redis
 
 import colorama
+import colorful as cf
+import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-import psutil
-
+import redis
 from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 resource = None
 if sys.platform != "win32":
@@ -1257,7 +1256,8 @@ def start_raylet(redis_address,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None):
+                 object_spilling_config=None,
+                 code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1293,6 +1293,9 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         java_worker_options (list): The command options for Java worker.
+        code_search_path (list): Code search path for worker. code_search_path
+            is added to worker command in non-multi-tenancy mode and job_config
+            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1349,6 +1352,7 @@ def start_raylet(redis_address,
             raylet_name,
             redis_password,
             session_dir,
+            code_search_path,
         )
     else:
         java_worker_command = []
@@ -1375,6 +1379,8 @@ def start_raylet(redis_address,
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
+    if code_search_path:
+        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1388,6 +1394,9 @@ def start_raylet(redis_address,
 
     if max_worker_port is None:
         max_worker_port = 0
+
+    if code_search_path is not None and len(code_search_path) > 0:
+        load_code_from_local = True
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
@@ -1484,15 +1493,10 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(
-        java_worker_options,
-        redis_address,
-        node_manager_port,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-):
+def build_java_worker_command(java_worker_options, redis_address,
+                              node_manager_port, plasma_store_name,
+                              raylet_name, redis_password, session_dir,
+                              code_search_path):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1503,6 +1507,7 @@ def build_java_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1523,7 +1528,7 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-
+    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
