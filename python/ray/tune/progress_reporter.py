@@ -86,6 +86,10 @@ class TuneReporterBase(ProgressReporter):
         TIMESTEPS_TOTAL: "ts",
         EPISODE_REWARD_MEAN: "reward",
     })
+    VALID_SUMMARY_TYPES = {
+        int, float, np.float32, np.float64, np.int32, np.int64,
+        type(None)
+    }
 
     def __init__(self,
                  metric_columns=None,
@@ -95,6 +99,7 @@ class TuneReporterBase(ProgressReporter):
                  max_report_frequency=5,
                  infer_limit=3):
         self._metrics_override = metric_columns is not None
+        self._inferred_metrics = {}
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS.copy()
         self._parameter_columns = parameter_columns or []
         self._max_progress_rows = max_progress_rows
@@ -193,23 +198,21 @@ class TuneReporterBase(ProgressReporter):
 
     def _infer_user_metrics(self, trials, limit=4):
         """Try to infer the metrics to print out."""
-        VALID_SUMMARY_TYPES = {
-            int, float, np.float32, np.float64, np.int32, np.int64,
-            type(None)
-        }
-        all_metrics = {}
+        if len(self._inferred_metrics) > limit:
+            return self._inferred_metrics
+        self._inferred_metrics = {}
         for t in trials:
             if not t.last_result:
                 continue
             for metric, value in t.last_result.items():
                 if metric not in self.DEFAULT_COLUMNS:
                     if metric not in AUTO_RESULT_KEYS:
-                        if type(metric) in VALID_SUMMARY_TYPES:
-                            all_metrics[metric] = metric
+                        if type(value) in self.VALID_SUMMARY_TYPES:
+                            self._inferred_metrics[metric] = metric
 
-                if len(all_metrics) > limit:
+                if len(self._inferred_metrics) > limit:
                     break
-        return all_metrics
+        return self._inferred_metrics
 
 
 class JupyterNotebookReporter(TuneReporterBase):
