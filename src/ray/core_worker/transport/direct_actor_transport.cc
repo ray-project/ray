@@ -128,9 +128,10 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts <= queue->second.num_restarts) {
+  if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
+    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
     return;
   }
 
@@ -168,9 +169,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts < queue->second.num_restarts && !dead) {
+  if (num_restarts <= queue->second.num_restarts && !dead) {
     // This message is about an old version of the actor that has already been
     // restarted successfully. Skip the message handling.
+    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
     return;
   }
 
@@ -348,7 +350,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     if (objects_valid) {
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::ForTaskReturn(task_spec.TaskId(), /*index=*/i + 1);
+        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
         // The object is nullptr if it already existed in the object store.

@@ -88,7 +88,7 @@ class Monitor:
         """
         self.primary_subscribe_client.psubscribe(pattern)
 
-    def handle_resource_demands(self, resource_load_by_shape):
+    def parse_resource_demands(self, resource_load_by_shape):
         """Handle the message.resource_load_by_shape protobuf for the demand
         based autoscaling. Catch and log all exceptions so this doesn't
         interfere with the utilization based autoscaler until we're confident
@@ -98,17 +98,21 @@ class Monitor:
             resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
                 in protobuf form or None.
         """
+        waiting_bundles, infeasible_bundles = [], []
         try:
-            if not self.autoscaler:
-                return
-            bundles = []
-            for resource_demand_pb in list(
-                    resource_load_by_shape.resource_demands):
-                request_shape = dict(resource_demand_pb.shape)
-                bundles.append(request_shape)
-            self.autoscaler.request_resources(bundles)
+            if self.autoscaler:
+                for resource_demand_pb in list(
+                        resource_load_by_shape.resource_demands):
+                    request_shape = dict(resource_demand_pb.shape)
+                    for _ in range(
+                            resource_demand_pb.num_ready_requests_queued):
+                        waiting_bundles.append(request_shape)
+                    for _ in range(
+                            resource_demand_pb.num_infeasible_requests_queued):
+                        infeasible_bundles.append(request_shape)
         except Exception as e:
             logger.exception(e)
+        return waiting_bundles, infeasible_bundles
 
     def xray_heartbeat_batch_handler(self, unused_channel, data):
         """Handle an xray heartbeat batch message from Redis."""
@@ -125,16 +129,19 @@ class Monitor:
             for resource in total_resources:
                 available_resources.setdefault(resource, 0.0)
 
+            waiting_bundles, infeasible_bundles = \
+                self.parse_resource_demands(message.resource_load_by_shape)
+
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
-                                         available_resources, resource_load)
+                                         available_resources, resource_load,
+                                         waiting_bundles, infeasible_bundles)
             else:
                 logger.warning(
                     f"Monitor: could not find ip for client {client_id}")
-            self.handle_resource_demands(message.resource_load_by_shape)
 
     def xray_job_notification_handler(self, unused_channel, data):
         """Handle a notification that a job has been added or removed.
@@ -153,7 +160,9 @@ class Monitor:
                             binary_to_hex(job_id)))
 
     def autoscaler_resource_request_handler(self, _, data):
-        """Handle a notification of a resource request for the autoscaler.
+        """Handle a notification of a resource request for the autoscaler. This channel
+        and method are only used by the manual
+        `ray.autoscaler.commands.request_resources` api.
 
         Args:
             channel: unused

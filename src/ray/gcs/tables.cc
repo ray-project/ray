@@ -834,7 +834,9 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
         std::make_shared<ActorCheckpointIdData>(data);
     copy->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
     copy->add_checkpoint_ids(checkpoint_id.Binary());
-    auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
+    // TODO(swang): This is a temporary value while we deprecate the actor
+    // checkpoint table.
+    auto num_to_keep = 20;
     while (copy->timestamps().size() > num_to_keep) {
       // Delete the checkpoint from actor checkpoint table.
       const auto &to_delete = ActorCheckpointID::FromBinary(copy->checkpoint_ids(0));

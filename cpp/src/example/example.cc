@@ -33,7 +33,7 @@ int main() {
 
   /// put and get object
   auto obj = Ray::Put(123);
-  auto getRsult = obj.Get();
+  auto get_result = obj.Get();
 
   /// general function remote call（args passed by value）
   auto r0 = Ray::Task(Return1).Remote();

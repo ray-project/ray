@@ -1,6 +1,7 @@
 import { TableRow } from "@material-ui/core";
 import React from "react";
 import { MemoryTableEntry } from "../../../api";
+import { formatByteAmount } from "../../../common/formatUtils";
 import { StyledTableCell } from "../../../common/TableCell";
 
 type Props = {
@@ -13,7 +14,7 @@ export const MemoryTableRow = (props: Props) => {
   const object_size =
     memoryTableEntry.object_size === -1
       ? "?"
-      : `${memoryTableEntry.object_size}  B`;
+      : formatByteAmount(memoryTableEntry.object_size, "mebibyte");
   const memoryTableEntryValues = [
     memoryTableEntry.node_ip_address,
     memoryTableEntry.pid,

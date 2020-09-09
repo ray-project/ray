@@ -64,14 +64,14 @@ class WorkerSet:
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]})
 
-            # Always create a local worker
+            # Create a number of remote workers.
+            self._remote_workers = []
+            self.add_workers(num_workers)
+
+            # Always create a local worker.
             self._local_worker = self._make_worker(RolloutWorker, env_creator,
                                                    self._policy_class, 0,
                                                    self._local_config)
-
-            # Create a number of remote workers
-            self._remote_workers = []
-            self.add_workers(num_workers)
 
     def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""
@@ -98,9 +98,10 @@ class WorkerSet:
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
-            "memory": self._remote_config["memory_per_worker"],
-            "object_store_memory": self._remote_config[
-                "object_store_memory_per_worker"],
+            # memory=0 is an error, but memory=None means no limits.
+            "memory": self._remote_config["memory_per_worker"] or None,
+            "object_store_memory": self.
+            _remote_config["object_store_memory_per_worker"] or None,
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote

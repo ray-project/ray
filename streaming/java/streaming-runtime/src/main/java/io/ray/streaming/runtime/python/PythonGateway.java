@@ -23,15 +23,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Gateway for streaming python api.
- * All calls on DataStream in python will be mapped to DataStream call in java by this
- * PythonGateway using ray calls.
- * <p>
- * Note: this class needs to be in sync with `GatewayClient` in
- * `streaming/python/runtime/gateway_client.py`
+ * Gateway for streaming python api. All calls on DataStream in python will be mapped to DataStream
+ * call in java by this PythonGateway using ray calls. this class needs to be in sync with
+ * GatewayClient in `streaming/python/runtime/gateway_client.py`
  */
 @SuppressWarnings("unchecked")
 public class PythonGateway {
+
   private static final Logger LOG = LoggerFactory.getLogger(PythonGateway.class);
   private static final String REFERENCE_ID_PREFIX = "__gateway_reference_id__";
   private static MsgPackSerializer serializer = new MsgPackSerializer();
@@ -169,8 +167,9 @@ public class PythonGateway {
         .toArray(Class[]::new);
     Optional<Method> any = methods.stream()
         .filter(m -> {
-          boolean exactMatch = Arrays.equals(m.getParameterTypes(), paramsTypes) ||
-              Arrays.equals(m.getParameterTypes(), unwrappedTypes);
+          boolean exactMatch =
+              Arrays.equals(m.getParameterTypes(), paramsTypes) ||
+                  Arrays.equals(m.getParameterTypes(), unwrappedTypes);
           if (exactMatch) {
             return true;
           } else if (paramsTypes.length == m.getParameterTypes().length) {

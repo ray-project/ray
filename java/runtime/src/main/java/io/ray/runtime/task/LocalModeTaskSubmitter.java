@@ -29,6 +29,7 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.placementgroup.PlacementGroupId;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -165,6 +166,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   public BaseActorHandle createActor(
       FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions options) throws IllegalArgumentException {
+    if (options != null) {
+      if (options.group != null) {
+        PlacementGroupImpl group = (PlacementGroupImpl)options.group;
+        Preconditions.checkArgument(options.bundleIndex >= 0
+                && options.bundleIndex < group.getBundleCount(),
+            String.format("Bundle index %s is invalid", options.bundleIndex));
+      }
+    }
+
     ActorId actorId = ActorId.fromRandom();
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
         .setNumReturns(1)
@@ -215,7 +225,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl();
+    return new PlacementGroupImpl(PlacementGroupId.fromRandom(), bundles.size());
   }
 
   @Override

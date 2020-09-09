@@ -1,5 +1,6 @@
 package io.ray.runtime.util;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -33,5 +34,16 @@ public class SystemUtil {
     }
     return pid;
 
+  }
+
+  public static boolean isProcessAlive(int pid) {
+    Process process;
+    try {
+      process = Runtime.getRuntime().exec(new String[]{"ps", "-p", String.valueOf(pid)});
+      process.waitFor();
+    } catch (InterruptedException | IOException e) {
+      throw new RuntimeException(e);
+    }
+    return process.exitValue() == 0;
   }
 }

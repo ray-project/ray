@@ -75,10 +75,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("source", sourceExecutionVertex)
-      .add("target", targetExecutionVertex)
-      .add("partition", partition)
-      .add("index", executionEdgeIndex)
-      .toString();
+        .add("source", sourceExecutionVertex)
+        .add("target", targetExecutionVertex)
+        .add("partition", partition)
+        .add("index", executionEdgeIndex)
+        .toString();
   }
 }

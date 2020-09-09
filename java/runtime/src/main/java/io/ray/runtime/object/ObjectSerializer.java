@@ -1,11 +1,13 @@
 package io.ray.runtime.object;
 
-import io.ray.api.exception.RayActorException;
-import io.ray.api.exception.RayTaskException;
-import io.ray.api.exception.RayWorkerException;
-import io.ray.api.exception.UnreconstructableException;
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.generated.Gcs.ErrorType;
+import io.ray.runtime.actor.NativeActorHandle;
+import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayTaskException;
+import io.ray.runtime.exception.RayWorkerException;
+import io.ray.runtime.exception.UnreconstructableException;
+import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -34,6 +36,10 @@ public class ObjectSerializer {
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
+  // A constant used as object metadata to indicate the object is an actor handle.
+  // This value should be synchronized with the Python definition in ray_constants.py
+  // TODO(fyrestone): Serialize the ActorHandle via the custom type feature of XLANG.
+  public static final byte[] OBJECT_METADATA_TYPE_ACTOR_HANDLE = "ACTOR_HANDLE".getBytes();
 
   // When an outer object is being serialized, the nested ObjectRefs are all
   // serialized and the writeExternal method of the nested ObjectRefs are
@@ -70,7 +76,24 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        return Serializer.decode(data, objectType);
+        // Serialization logic of task execution exception: an instance of
+        // `io.ray.runtime.exception.RayTaskException`
+        //    -> a `RayException` protobuf message
+        //    -> protobuf-serialized bytes
+        //    -> MessagePack-serialized bytes.
+        // So here the `data` variable is MessagePack-serialized bytes, and the `serialized`
+        // variable is protobuf-serialized bytes. They are not the same.
+        byte[] serialized = Serializer.decode(data, byte[].class);
+        try {
+          return RayTaskException.fromBytes(serialized);
+        } catch (InvalidProtocolBufferException e) {
+          throw new IllegalArgumentException(
+              "Can't deserialize RayTaskException object: " + objectId
+                  .toString());
+        }
+      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE)) {
+        byte[] serialized = Serializer.decode(data, byte[].class);
+        return NativeActorHandle.fromBytes(serialized);
       } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
         throw new IllegalArgumentException("Can't deserialize Python object: " + objectId
             .toString());
@@ -107,8 +130,20 @@ public class ObjectSerializer {
       }
       return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_RAW);
     } else if (object instanceof RayTaskException) {
-      byte[] serializedBytes = Serializer.encode(object).getLeft();
+      RayTaskException taskException = (RayTaskException) object;
+      byte[] serializedBytes = Serializer.encode(taskException.toBytes()).getLeft();
+      // serializedBytes is MessagePack serialized bytes
+      // taskException.toBytes() is protobuf serialized bytes
+      // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
+      // any other type should be the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
+    } else if (object instanceof NativeActorHandle) {
+      NativeActorHandle actorHandle = (NativeActorHandle)object;
+      byte[] serializedBytes = Serializer.encode(actorHandle.toBytes()).getLeft();
+      // serializedBytes is MessagePack serialized bytes
+      // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
+      // any other type should be the MessagePack serialized bytes.
+      return new NativeRayObject(serializedBytes, OBJECT_METADATA_TYPE_ACTOR_HANDLE);
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);

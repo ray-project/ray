@@ -215,6 +215,15 @@ export type RayletInfoResponse = {
   actors: {
     [actorId: string]: ActorInfo;
   };
+  plasmaStats: {
+    [ip: string]: PlasmaStats;
+  };
+};
+
+export type PlasmaStats = {
+  object_store_num_local_objects: number;
+  object_store_available_memory: number;
+  object_store_used_memory: number;
 };
 
 export const getRayletInfo = () =>
@@ -355,7 +364,7 @@ export type MemoryTableSummary = {
   total_object_size: number;
   total_pinned_in_memory: number;
   total_used_by_pending_task: number;
-} | null;
+};
 
 export type MemoryTableEntry = {
   node_ip_address: string;
@@ -384,12 +393,12 @@ export type MemoryTableResponse = {
 // This doesn't return anything.
 export type StopMemoryTableResponse = {};
 
-export const getMemoryTable = (shouldObtainMemoryTable: boolean) => {
-  if (shouldObtainMemoryTable) {
-    return get<MemoryTableResponse>("/api/memory_table", {});
-  } else {
-    return null;
-  }
+export type MemoryGroupByKey = "node" | "stack_trace" | "";
+
+export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
+  return get<MemoryTableResponse>("/api/memory_table", {
+    group_by: groupByKey,
+  });
 };
 
 export const stopMemoryTableCollection = () =>

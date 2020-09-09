@@ -385,10 +385,7 @@ class TrialRunnerTest3(unittest.TestCase):
         assert trials[0].status == Trial.ERROR
         del runner
 
-        new_runner = TrialRunner(
-            run_errored_only=False,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+        new_runner = TrialRunner(resume=True, local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
@@ -418,9 +415,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            run_errored_only=True,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
@@ -764,6 +759,33 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter2.on_trial_complete("test_1", {"result": 3})
         limiter2.on_trial_complete("test_2", {"result": 3})
         assert limiter2.suggest("test_3")["score"] == 3
+
+    def testBatchLimiter(self):
+        ray.init(num_cpus=4)
+
+        class TestSuggestion(Searcher):
+            def __init__(self, index):
+                self.index = index
+                self.returned_result = []
+                super().__init__(metric="result", mode="max")
+
+            def suggest(self, trial_id):
+                self.index += 1
+                return {"score": self.index}
+
+            def on_trial_complete(self, trial_id, result=None, **kwargs):
+                self.returned_result.append(result)
+
+        searcher = TestSuggestion(0)
+        limiter = ConcurrencyLimiter(searcher, max_concurrent=2, batch=True)
+        assert limiter.suggest("test_1")["score"] == 1
+        assert limiter.suggest("test_2")["score"] == 2
+        assert limiter.suggest("test_3") is None
+
+        limiter.on_trial_complete("test_1", {"result": 3})
+        assert limiter.suggest("test_3") is None
+        limiter.on_trial_complete("test_2", {"result": 3})
+        assert limiter.suggest("test_3") is not None
 
 
 class ResourcesTest(unittest.TestCase):

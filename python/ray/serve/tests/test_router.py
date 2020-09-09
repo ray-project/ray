@@ -4,8 +4,7 @@ import pytest
 import ray
 
 from ray.serve.controller import TrafficPolicy
-from ray.serve.router import Router, Query
-from ray.serve.request_params import RequestMetadata
+from ray.serve.router import Router, Query, RequestMetadata
 from ray.serve.utils import get_random_letters
 from ray.test_utils import SignalActor
 from ray.serve.config import BackendConfig
@@ -49,7 +48,7 @@ def task_runner_mock_actor():
 
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
 
     q.set_traffic.remote("svc", TrafficPolicy({"backend-single-prod": 1.0}))
     q.add_new_worker.remote("backend-single-prod", "replica-1",
@@ -61,32 +60,32 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
     # Make sure it's the right request
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 1
-    assert got_work.request_kwargs == {}
+    assert got_work.args[0] == 1
+    assert got_work.kwargs == {}
 
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
 
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-alter": 1}))
     await q.add_new_worker.remote("backend-alter", "replica-1",
                                   task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 1
+    assert got_work.args[0] == 1
 
     await q.set_traffic.remote("svc", TrafficPolicy({"backend-alter-2": 1}))
     await q.add_new_worker.remote("backend-alter-2", "replica-1",
                                   task_runner_mock_actor)
     await q.enqueue_request.remote(RequestMetadata("svc", None), 2)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args[0] == 2
+    assert got_work.args[0] == 2
 
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
 
     await q.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -106,7 +105,7 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
         await runner.get_recent_call.remote()
         for runner in (runner_1, runner_2)
     ]
-    assert [g.request_args[0] for g in got_work] == [1, 1]
+    assert [g.args[0] for g in got_work] == [1, 1]
 
 
 async def test_queue_remove_replicas(serve_instance):
@@ -116,7 +115,7 @@ async def test_queue_remove_replicas(serve_instance):
 
     temp_actor = mock_task_runner()
     q = ray.remote(TestRouter).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
     await q.add_new_worker.remote("backend-remove", "replica-1", temp_actor)
     await q.remove_worker.remote("backend-remove", "replica-1")
     assert ray.get(q.worker_queue_size.remote("backend")) == 0
@@ -124,7 +123,7 @@ async def test_queue_remove_replicas(serve_instance):
 
 async def test_shard_key(serve_instance, task_runner_mock_actor):
     q = ray.remote(Router).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
 
     num_backends = 5
     traffic_dict = {}
@@ -146,7 +145,7 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
     for i, runner in enumerate(runners):
         calls = await runner.get_all_calls.remote()
         for call in calls:
-            runner_shard_keys[i].add(call.request_args[0])
+            runner_shard_keys[i].add(call.args[0])
         await runner.clear_calls.remote()
 
     # Send queries with the same shard keys a second time.
@@ -158,16 +157,10 @@ async def test_shard_key(serve_instance, task_runner_mock_actor):
     for i, runner in enumerate(runners):
         calls = await runner.get_all_calls.remote()
         for call in calls:
-            assert call.request_args[0] in runner_shard_keys[i]
+            assert call.args[0] in runner_shard_keys[i]
 
 
 async def test_router_use_max_concurrency(serve_instance):
-    # The VisibleRouter::get_queues method needs to pickle queries
-    # so we register serializer here. In regular code path, query
-    # serialization is done by Serve manually for performance.
-    ray.register_custom_serializer(Query, Query.ray_serialize,
-                                   Query.ray_deserialize)
-
     signal = SignalActor.remote()
 
     @ray.remote
@@ -185,9 +178,9 @@ async def test_router_use_max_concurrency(serve_instance):
 
     worker = MockWorker.remote()
     q = ray.remote(VisibleRouter).remote()
-    await q.setup.remote("")
+    await q.setup.remote("", serve_instance._controller_name)
     backend_name = "max-concurrent-test"
-    config = BackendConfig({"max_concurrent_queries": 1})
+    config = BackendConfig(max_concurrent_queries=1)
     await q.set_traffic.remote("svc", TrafficPolicy({backend_name: 1.0}))
     await q.add_new_worker.remote(backend_name, "replica-tag", worker)
     await q.set_backend_config.remote(backend_name, config)
@@ -197,7 +190,7 @@ async def test_router_use_max_concurrency(serve_instance):
     second_query = q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     # Neither queries should be available
-    with pytest.raises(ray.exceptions.RayTimeoutError):
+    with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get([first_query, second_query], timeout=0.2)
 
     # Let's retrieve the router internal state

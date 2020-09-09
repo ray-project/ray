@@ -1,5 +1,6 @@
 import copy
 import logging
+import os
 import inspect
 import threading
 import time
@@ -96,9 +97,9 @@ class UtilMonitor(Thread):
 
 
 def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value, weakref=False) instead."""
+    """Deprecated, use ray.put(value) instead."""
 
-    obj_ref = ray.put(obj, weakref=False)
+    obj_ref = ray.put(obj)
     _pinned_objects.append(obj_ref)
     return obj_ref
 
@@ -150,6 +151,17 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+
+def env_integer(key, default):
+    # TODO(rliaw): move into ray.constants
+    if key in os.environ:
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+        raise ValueError(f"Found {key} in environment, but value must "
+                         f"be an integer. Got: {value}.")
+    return default
 
 
 def merge_dicts(d1, d2):
@@ -215,20 +227,43 @@ def deep_update(original,
     return original
 
 
-def flatten_dict(dt, delimiter="/"):
+def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
     dt = copy.deepcopy(dt)
+    if prevent_delimiter and any(delimiter in key for key in dt):
+        # Raise if delimiter is any of the keys
+        raise ValueError(
+            "Found delimiter `{}` in key when trying to flatten array."
+            "Please avoid using the delimiter in your specification.")
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
             if isinstance(value, dict):
                 for subkey, v in value.items():
+                    if prevent_delimiter and delimiter in subkey:
+                        # Raise  if delimiter is in any of the subkeys
+                        raise ValueError(
+                            "Found delimiter `{}` in key when trying to "
+                            "flatten array. Please avoid using the delimiter "
+                            "in your specification.")
                     add[delimiter.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflatten_dict(dt, delimiter="/"):
+    """Unflatten dict. Does not support unflattening lists."""
+    out = defaultdict(dict)
+    for key, val in dt.items():
+        path = key.split(delimiter)
+        item = out
+        for k in path[:-1]:
+            item = item[k]
+        item[path[-1]] = val
+    return dict(out)
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
@@ -398,6 +433,50 @@ def validate_save_restore(trainable_cls,
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
+
+
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargspec(train_func).args
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use reporter if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) works."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
 
 
 if __name__ == "__main__":

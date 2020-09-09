@@ -32,15 +32,16 @@ const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
-    const ray::rpc::Address &address, const ray::RayFunction &function,
+    const std::string name, const TaskID &current_task_id, const int task_index,
+    const TaskID &caller_id, const ray::rpc::Address &address,
+    const ray::RayFunction &function,
     const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::PlacementGroupID &placement_group_id) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
-      task_id, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, placement_group_id);
   // Set task arguments.
@@ -51,7 +52,7 @@ void BuildCommonTaskSpec(
   // Compute return IDs.
   return_ids->resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] = ObjectID::ForTaskReturn(task_id, i + 1);
+    (*return_ids)[i] = ObjectID::FromIndex(task_id, i + 1);
   }
 }
 
@@ -302,11 +303,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   int assigned_port;
-  std::unordered_map<std::string, std::string> internal_config;
+  std::unordered_map<std::string, std::string> system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
-      options_.node_ip_address, &local_raylet_id, &assigned_port, &internal_config,
+      options_.node_ip_address, &local_raylet_id, &assigned_port, &system_config,
       options_.serialized_job_config));
   connected_ = true;
 
@@ -316,7 +317,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
          "start'.";
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
-  RayConfig::instance().initialize(internal_config);
+  RayConfig::instance().initialize(system_config);
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server_ = std::unique_ptr<rpc::GrpcServer>(
@@ -811,8 +812,8 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
-  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex());
+  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
+                                   worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
       /*is_reconstructable=*/false, ClientID::FromBinary(rpc_address_.raylet_id()));
@@ -858,8 +859,8 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           const std::vector<ObjectID> &contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
-  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex());
+  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
+                                   worker_context_.GetNextPutIndex());
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(data_size) <
@@ -1044,55 +1045,26 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
 
   absl::flat_hash_set<ObjectID> ready;
-  // Wait from both store providers with timeout set to 0. This is to avoid the case
-  // where we might use up the entire timeout on trying to get objects from one store
-  // provider before even trying another (which might have all of the objects available).
-  if (memory_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(memory_store_->Wait(
-        memory_object_ids,
-        std::min(static_cast<int>(memory_object_ids.size()), num_objects),
-        /*timeout_ms=*/0, worker_context_, &ready));
-    RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                              plasma_object_ids, ready);
-  }
+  int64_t start_time = current_time_ms();
+  RAY_RETURN_NOT_OK(memory_store_->Wait(
+      memory_object_ids,
+      std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
+      worker_context_, &ready));
+  RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                            plasma_object_ids, ready);
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+  if (timeout_ms > 0) {
+    timeout_ms =
+        std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+  }
   if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
         plasma_object_ids,
         std::min(static_cast<int>(plasma_object_ids.size()),
                  num_objects - static_cast<int>(ready.size())),
-        /*timeout_ms=*/0, worker_context_, &ready));
+        timeout_ms, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-
-  if (timeout_ms != 0 && static_cast<int>(ready.size()) < num_objects) {
-    // Clear the ready set and retry. We clear it so that we can compute the number of
-    // objects to fetch from the memory store easily below.
-    ready.clear();
-
-    int64_t start_time = current_time_ms();
-    if (memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_->Wait(
-          memory_object_ids,
-          std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
-          worker_context_, &ready));
-      RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                                plasma_object_ids, ready);
-    }
-    RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-    if (timeout_ms > 0) {
-      timeout_ms =
-          std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
-    }
-    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids,
-          std::min(static_cast<int>(plasma_object_ids.size()),
-                   num_objects - static_cast<int>(ready.size())),
-          timeout_ms, worker_context_, &ready));
-    }
-    RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-  }
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
@@ -1297,8 +1269,11 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
   const std::unordered_map<std::string, double> required_resources;
+  auto task_name = task_options.name.empty()
+                       ? function.GetFunctionDescriptor()->DefaultTaskName()
+                       : task_options.name;
   // TODO(ekl) offload task building onto a thread pool for performance
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
@@ -1339,16 +1314,21 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   auto new_resource = AddPlacementGroupConstraint(
       actor_creation_options.resources, actor_creation_options.placement_options.first,
       actor_creation_options.placement_options.second);
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
+  const auto actor_name = actor_creation_options.name;
+  const auto task_name =
+      actor_name.empty()
+          ? function.GetFunctionDescriptor()->DefaultTaskName()
+          : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options.first);
-  builder.SetActorCreationTaskSpec(
-      actor_id, actor_creation_options.max_restarts,
-      actor_creation_options.dynamic_worker_options,
-      actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_creation_options.name, actor_creation_options.is_asyncio, extension_data);
+  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.max_concurrency,
+                                   actor_creation_options.is_detached, actor_name,
+                                   actor_creation_options.is_asyncio, extension_data);
 
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
@@ -1369,7 +1349,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     if (task_spec.IsDetachedActor()) {
       // Since local mode doesn't pass GCS actor management code path,
       // it just register actor names in memory.
-      local_mode_named_actor_registry_.emplace(actor_creation_options.name, actor_id);
+      local_mode_named_actor_registry_.emplace(actor_name, actor_id);
     }
     ExecuteTaskLocalMode(task_spec);
   } else {
@@ -1441,7 +1421,10 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
   const std::unordered_map<std::string, double> required_resources;
-  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
+  const auto task_name = task_options.name.empty()
+                             ? function.GetFunctionDescriptor()->DefaultTaskName()
+                             : task_options.name;
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, return_ids, PlacementGroupID::Nil());
@@ -1465,8 +1448,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill) {
-  if (!object_id.CreatedByTask() ||
-      actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
+  if (actor_manager_->CheckActorHandleExists(object_id.TaskId().ActorId())) {
     return Status::Invalid("Actor task cancellation is not supported.");
   }
   rpc::Address obj_addr;
@@ -1717,8 +1699,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
   status = options_.task_execution_callback(
-      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
-      arg_reference_ids, return_ids, return_objects);
+      task_type, task_spec.GetName(), func,
+      task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
+      return_ids, return_objects);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
@@ -2173,9 +2156,11 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_current_task_name(current_task_.GetName());
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
+  stats->set_job_id(worker_context_.GetCurrentJobID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {

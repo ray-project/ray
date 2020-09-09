@@ -41,7 +41,7 @@ from ray import import_thread
 from ray import profiling
 
 from ray.exceptions import (
-    RayConnectionError,
+    RaySystemError,
     RayError,
     RayTaskError,
     ObjectStoreFullError,
@@ -107,7 +107,6 @@ class Worker:
         self.actors = {}
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
-        self.actor_task_counter = 0
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -203,8 +202,8 @@ class Worker:
           Exception: An exception is raised if the worker is not connected.
         """
         if not self.connected:
-            raise RayConnectionError("Ray has not been started yet. You can "
-                                     "start Ray with 'ray.init()'.")
+            raise RaySystemError("Ray has not been started yet. You can "
+                                 "start Ray with 'ray.init()'.")
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -296,8 +295,8 @@ class Worker:
         for object_ref in object_refs:
             if not isinstance(object_ref, ObjectRef):
                 raise TypeError(
-                    "Attempting to call `get` on the value {}, "
-                    "which is not an ray.ObjectRef.".format(object_ref))
+                    f"Attempting to call `get` on the value {object_ref}, "
+                    "which is not an ray.ObjectRef.")
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
@@ -374,7 +373,7 @@ class Worker:
         sys.exit(0)
 
 
-def get_gpu_ids(as_str=False):
+def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -385,6 +384,8 @@ def get_gpu_ids(as_str=False):
     Returns:
         A list of GPU IDs.
     """
+    worker = global_worker
+    worker.check_connected()
 
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
@@ -406,16 +407,6 @@ def get_gpu_ids(as_str=False):
             max_gpus = global_worker.node.get_resource_spec().num_gpus
             assigned_ids = global_worker.original_gpu_ids[:max_gpus]
 
-    if not as_str:
-        from ray.util.debug import log_once
-        if log_once("ray.get_gpu_ids.as_str"):
-            logger.warning(
-                "ray.get_gpu_ids() will return a list of strings by default"
-                " in a future version of Ray for compatibility with CUDA. "
-                "To enable the forward-compatible behavior, use "
-                "`ray.get_gpu_ids(as_str=True)`.")
-        assigned_ids = [int(assigned_id) for assigned_id in assigned_ids]
-
     return assigned_ids
 
 
@@ -427,6 +418,9 @@ def get_resource_ids():
         each pair consists of the ID of a resource and the fraction of that
         resource reserved for this worker.
     """
+    worker = global_worker
+    worker.check_connected()
+
     if _mode() == LOCAL_MODE:
         raise RuntimeError("ray.get_resource_ids() currently does not work in "
                            "local_mode.")
@@ -434,16 +428,16 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-def get_webui_url():
-    """Get the URL to access the web UI.
+def get_dashboard_url():
+    """Get the URL to access the Ray dashboard.
 
-    Note that the URL does not specify which node the web UI is on.
+    Note that the URL does not specify which node the dashboard is on.
 
     Returns:
-        The URL of the web UI as a string.
+        The URL of the dashboard as a string.
     """
-    if _global_node is None:
-        raise RuntimeError("Ray has not been initialized/connected.")
+    worker = global_worker
+    worker.check_connected()
     return _global_node.webui_url
 
 
@@ -465,57 +459,47 @@ def print_failed_task(task_status):
         task_status (Dict): A dictionary containing the name, operationid, and
             error message for a failed task.
     """
-    logger.error("""
+    logger.error(f"""
       Error: Task failed
-        Function Name: {}
-        Task ID: {}
-        Error Message: \n{}
-    """.format(task_status["function_name"], task_status["operationid"],
-               task_status["error_message"]))
+        Function Name: {task_status["function_name"]}
+        Task ID: {task_status["operationid"]}
+        Error Message: \n{task_status["error_message"]}
+    """)
 
 
-def init(address=None,
-         redis_address=None,
-         redis_port=None,
-         num_cpus=None,
-         num_gpus=None,
-         memory=None,
-         object_store_memory=None,
-         resources=None,
-         driver_object_store_memory=None,
-         redis_max_memory=None,
-         log_to_driver=True,
-         node_ip_address=ray_constants.NODE_DEFAULT_IP,
-         object_ref_seed=None,
-         local_mode=False,
-         redirect_worker_output=None,
-         redirect_output=None,
-         ignore_reinit_error=False,
-         num_redis_shards=None,
-         redis_max_clients=None,
-         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-         plasma_directory=None,
-         huge_pages=False,
-         include_java=False,
-         include_dashboard=None,
-         dashboard_host="localhost",
-         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
-         job_id=None,
-         job_config=None,
-         configure_logging=True,
-         logging_level=logging.INFO,
-         logging_format=ray_constants.LOGGER_FORMAT,
-         plasma_store_socket_name=None,
-         raylet_socket_name=None,
-         temp_dir=None,
-         load_code_from_local=False,
-         java_worker_options=None,
-         use_pickle=True,
-         _internal_config=None,
-         lru_evict=False,
-         enable_object_reconstruction=False,
-         _metrics_export_port=None,
-         object_spilling_config=None):
+def init(
+        address=None,
+        *,
+        num_cpus=None,
+        num_gpus=None,
+        resources=None,
+        object_store_memory=None,
+        local_mode=False,
+        ignore_reinit_error=False,
+        include_dashboard=None,
+        dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
+        dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        job_config=None,
+        configure_logging=True,
+        logging_level=logging.INFO,
+        logging_format=ray_constants.LOGGER_FORMAT,
+        log_to_driver=True,
+        # The following are unstable parameters and their use is discouraged.
+        _enable_object_reconstruction=False,
+        _redis_max_memory=None,
+        _node_ip_address=ray_constants.NODE_DEFAULT_IP,
+        _driver_object_store_memory=None,
+        _memory=None,
+        _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        _include_java=False,
+        _java_worker_options=None,
+        _code_search_path=None,
+        _temp_dir=None,
+        _load_code_from_local=False,
+        _lru_evict=False,
+        _metrics_export_port=None,
+        _object_spilling_config=None,
+        _system_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -548,53 +532,19 @@ def init(address=None,
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
             specify a specific node address.
-        redis_address (str): Deprecated; same as address.
-        redis_port (int): The port that the primary Redis shard should listen
-            to. If None, then a random port will be chosen.
         num_cpus (int): Number of CPUs the user wishes to assign to each
-            raylet.
+            raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
-            raylet.
+            raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
-        memory: The amount of memory (in bytes) that is available for use by
-            workers requesting memory resources. By default, this is
-            automatically set based on available system memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
-            available system memory, subject to a 20GB cap.
-        redis_max_memory: The max amount of memory (in bytes) to allow each
-            redis shard to use. Once the limit is exceeded, redis will start
-            LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables).  By default, this is
-            autoset based on available system memory, subject to a 10GB cap.
-        log_to_driver (bool): If true, the output from all of the worker
-            processes on all nodes will be directed to the driver.
-        node_ip_address (str): The IP address of the node that we are on.
-        object_ref_seed (int): Used to seed the deterministic generation of
-            object refs. The same value can be used across multiple runs of the
-            same driver in order to generate the object refs in a consistent
-            manner. However, the same ID should not be used for different
-            drivers.
+            available system memory.
         local_mode (bool): If true, the code will be executed serially. This
             is useful for debugging.
-        driver_object_store_memory (int): Limit the amount of memory the driver
-            can use in the object store for creating objects. By default, this
-            is autoset based on available system memory, subject to a 20GB cap.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
-        num_redis_shards: The number of Redis shards to start in addition to
-            the primary Redis shard.
-        redis_max_clients: If provided, attempt to configure Redis with this
-            maxclients number.
-        redis_password (str): Prevents external clients without the password
-            from connecting to Redis if provided.
-        plasma_directory: A directory where the Plasma memory mapped files
-            will be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        include_java: Boolean flag indicating whether or not to enable java
-            workers.
         include_dashboard: Boolean flag indicating whether or not to start the
             Ray dashboard, which displays the status of the Ray
             cluster. If this argument is None, then the UI will be started if
@@ -605,7 +555,6 @@ def init(address=None,
             external machines.
         dashboard_port: The port to bind the dashboard server to. Defaults to
             8265.
-        job_id: The ID of this job.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -616,36 +565,43 @@ def init(address=None,
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        plasma_store_socket_name (str): If provided, specifies the socket
-            name used by the plasma store.
-        raylet_socket_name (str): If provided, specifies the socket path
-            used by the raylet process.
-        temp_dir (str): If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
-        load_code_from_local: Whether code should be loaded from a local
-            module or from the GCS.
-        java_worker_options: Overwrite the options to start Java workers.
-        use_pickle: Deprecated.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
-        lru_evict (bool): If True, when an object store is full, it will evict
-            objects in LRU order to make more space and when under memory
-            pressure, ray.UnreconstructableError may be thrown. If False, then
-            reference counting will be used to decide which objects are safe
-            to evict and when under memory pressure, ray.ObjectStoreFullError
-            may be thrown.
-        enable_object_reconstruction (bool): If True, when an object stored in
+        log_to_driver (bool): If true, the output from all of the worker
+            processes on all nodes will be directed to the driver.
+        _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
             created the object. Arguments to the task will be recursively
-            reconstructed. If False, then ray.UnreconstructableError will be
+            reconstructed. If False, then ray.ObjectLostError will be
             thrown.
+        _redis_max_memory: Redis max memory.
+        _node_ip_address (str): The IP address of the node that we are on.
+        _driver_object_store_memory (int): Limit the amount of memory the
+            driver can use in the object store for creating objects.
+        _memory: Amount of reservable memory resource to create.
+        _redis_password (str): Prevents external clients without the password
+            from connecting to Redis if provided.
+        _include_java: Boolean flag indicating whether or not to enable java
+            workers.
+        _temp_dir (str): If provided, specifies the root temporary
+            directory for the Ray process. Defaults to an OS-specific
+            conventional location, e.g., "/tmp/ray".
+        _load_code_from_local: Whether code should be loaded from a local
+            module or from the GCS.
+        _java_worker_options: Overwrite the options to start Java workers.
+        _code_search_path (list): Java classpath or python import path.
+        _lru_evict (bool): If True, when an object store is full, it will evict
+            objects in LRU order to make more space and when under memory
+            pressure, ray.ObjectLostError may be thrown. If False, then
+            reference counting will be used to decide which objects are safe
+            to evict and when under memory pressure, ray.ObjectStoreFullError
+            may be thrown.
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        object_spilling_config (str): The configuration json string for object
+        _object_spilling_config (str): The configuration json string for object
             spilling I/O worker.
+        _system_config (str): JSON configuration for overriding
+            RayConfig defaults. For testing purposes ONLY.
 
     Returns:
         Address information about the started processes.
@@ -655,15 +611,8 @@ def init(address=None,
             arguments is passed in.
     """
 
-    if not use_pickle:
-        raise DeprecationWarning("The use_pickle argument is deprecated.")
-
-    if redis_address is not None:
-        raise DeprecationWarning("The redis_address argument is deprecated. "
-                                 "Please use address instead.")
-
     if "RAY_ADDRESS" in os.environ:
-        if redis_address is None and (address is None or address == "auto"):
+        if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
         else:
             raise RuntimeError(
@@ -673,12 +622,17 @@ def init(address=None,
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
-    if redis_address is not None or address is not None:
-        redis_address, _, _ = services.validate_redis_address(
-            address, redis_address)
+    if address:
+        redis_address, _, _ = services.validate_redis_address(address)
+    else:
+        redis_address = None
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
+
+    if redis_address is not None:
+        logger.info(
+            f"Connecting to existing Ray cluster at address: {redis_address}")
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -696,53 +650,47 @@ def init(address=None,
                                "'ignore_reinit_error=True' or by calling "
                                "'ray.shutdown()' prior to 'ray.init()'.")
 
-    # Convert hostnames to numerical IP address.
-    if node_ip_address is not None:
-        node_ip_address = services.address_to_ip(node_ip_address)
-
-    raylet_ip_address = node_ip_address
-
-    _internal_config = (json.loads(_internal_config)
-                        if _internal_config else {})
+    _system_config = _system_config or {}
+    if not isinstance(_system_config, dict):
+        raise TypeError("The _system_config must be a dict.")
 
     global _global_node
     if redis_address is None:
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            redis_port=redis_port,
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
-            object_ref_seed=object_ref_seed,
+            node_ip_address=None,
+            raylet_ip_address=None,
+            object_ref_seed=None,
             driver_mode=driver_mode,
-            redirect_worker_output=redirect_worker_output,
-            redirect_output=redirect_output,
+            redirect_worker_output=None,
+            redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
-            num_redis_shards=num_redis_shards,
-            redis_max_clients=redis_max_clients,
-            redis_password=redis_password,
-            plasma_directory=plasma_directory,
-            huge_pages=huge_pages,
-            include_java=include_java,
+            num_redis_shards=None,
+            redis_max_clients=None,
+            redis_password=_redis_password,
+            plasma_directory=None,
+            huge_pages=None,
+            include_java=_include_java,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
-            memory=memory,
+            memory=_memory,
             object_store_memory=object_store_memory,
-            redis_max_memory=redis_max_memory,
-            plasma_store_socket_name=plasma_store_socket_name,
-            raylet_socket_name=raylet_socket_name,
-            temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
-            java_worker_options=java_worker_options,
+            redis_max_memory=_redis_max_memory,
+            plasma_store_socket_name=None,
+            temp_dir=_temp_dir,
+            load_code_from_local=_load_code_from_local,
+            java_worker_options=_java_worker_options,
+            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
-            _internal_config=_internal_config,
-            lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            _system_config=_system_config,
+            lru_evict=_lru_evict,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
-            object_spilling_config=object_spilling_config)
+            object_spilling_config=_object_spilling_config)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -761,62 +709,32 @@ def init(address=None,
         if resources is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "resources must not be provided.")
-        if num_redis_shards is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "num_redis_shards must not be provided.")
-        if redis_max_clients is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "redis_max_clients must not be provided.")
-        if memory is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "memory must not be provided.")
         if object_store_memory is not None:
             raise ValueError("When connecting to an existing cluster, "
                              "object_store_memory must not be provided.")
-        if redis_max_memory is not None:
+        if _system_config is not None and len(_system_config) != 0:
             raise ValueError("When connecting to an existing cluster, "
-                             "redis_max_memory must not be provided.")
-        if plasma_directory is not None:
+                             "_system_config must not be provided.")
+        if _lru_evict:
             raise ValueError("When connecting to an existing cluster, "
-                             "plasma_directory must not be provided.")
-        if huge_pages:
-            raise ValueError("When connecting to an existing cluster, "
-                             "huge_pages must not be provided.")
-        if temp_dir is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "temp_dir must not be provided.")
-        if plasma_store_socket_name is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "plasma_store_socket_name must not be provided.")
-        if raylet_socket_name is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "raylet_socket_name must not be provided.")
-        if java_worker_options is not None:
-            raise ValueError("When connecting to an existing cluster, "
-                             "java_worker_options must not be provided.")
-        if _internal_config is not None and len(_internal_config) != 0:
-            raise ValueError("When connecting to an existing cluster, "
-                             "_internal_config must not be provided.")
-        if lru_evict:
-            raise ValueError("When connecting to an existing cluster, "
-                             "lru_evict must not be provided.")
-        if enable_object_reconstruction:
+                             "_lru_evict must not be provided.")
+        if _enable_object_reconstruction:
             raise ValueError(
                 "When connecting to an existing cluster, "
-                "enable_object_reconstruction must not be provided.")
+                "_enable_object_reconstruction must not be provided.")
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=node_ip_address,
-            raylet_ip_address=raylet_ip_address,
+            node_ip_address=None,
+            raylet_ip_address=None,
             redis_address=redis_address,
-            redis_password=redis_password,
-            object_ref_seed=object_ref_seed,
-            temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local,
-            _internal_config=_internal_config,
-            lru_evict=lru_evict,
-            enable_object_reconstruction=enable_object_reconstruction,
+            redis_password=_redis_password,
+            object_ref_seed=None,
+            temp_dir=_temp_dir,
+            load_code_from_local=_load_code_from_local,
+            _system_config=_system_config,
+            lru_evict=_lru_evict,
+            enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
         _global_node = ray.node.Node(
             ray_params,
@@ -830,8 +748,8 @@ def init(address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
-        driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id,
+        driver_object_store_memory=_driver_object_store_memory,
+        job_id=None,
         job_config=job_config)
 
     for hook in _post_init_hooks:
@@ -844,7 +762,7 @@ def init(address=None,
 _post_init_hooks = []
 
 
-def shutdown(exiting_interpreter=False):
+def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -858,16 +776,16 @@ def shutdown(exiting_interpreter=False):
     will need to reload the module.
 
     Args:
-        exiting_interpreter (bool): True if this is called by the atexit hook
+        _exiting_interpreter (bool): True if this is called by the atexit hook
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
-    if exiting_interpreter and global_worker.mode == SCRIPT_MODE:
+    if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
         time.sleep(0.5)
 
-    disconnect(exiting_interpreter)
+    disconnect(_exiting_interpreter)
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
@@ -1062,7 +980,7 @@ def print_logs(redis_client, threads_stopped, job_id):
                         file=print_file)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("print_logs: {}".format(e))
+        logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1097,10 +1015,9 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             if threads_stopped.is_set():
                 break
         if t < last_task_error_raise_time + UNCAUGHT_ERROR_GRACE_PERIOD:
-            logger.debug("Suppressing error from worker: {}".format(error))
+            logger.debug(f"Suppressing error from worker: {error}")
         else:
-            logger.error(
-                "Possible unhandled error from worker: {}".format(error))
+            logger.error(f"Possible unhandled error from worker: {error}")
 
 
 def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
@@ -1156,7 +1073,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error("listen_error_messages_raylet: {}".format(e))
+        logger.error(f"listen_error_messages_raylet: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1314,7 +1231,7 @@ def connect(node,
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
-            "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
+            f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -1418,50 +1335,7 @@ def _changeproctitle(title, next_title):
         setproctitle.setproctitle(next_title)
 
 
-def register_custom_serializer(cls,
-                               serializer,
-                               deserializer,
-                               use_pickle=False,
-                               use_dict=False,
-                               class_id=None):
-    """Registers custom functions for efficient object serialization.
-
-    The serializer and deserializer are used when transferring objects of
-    `cls` across processes and nodes. This can be significantly faster than
-    the Ray default fallbacks. Wraps `register_custom_serializer` underneath.
-
-    Args:
-        cls (type): The class that ray should use this custom serializer for.
-        serializer: The custom serializer that takes in a cls instance and
-            outputs a serialized representation. use_pickle and use_dict
-            must be False if provided.
-        deserializer: The custom deserializer that takes in a serialized
-            representation of the cls and outputs a cls instance. use_pickle
-            and use_dict must be False if provided.
-        use_pickle: Deprecated.
-        use_dict: Deprecated.
-        class_id (str): Unique ID of the class. Autogenerated if None.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    if use_pickle:
-        raise DeprecationWarning(
-            "`use_pickle` is no longer a valid parameter and will be removed "
-            "in future versions of Ray. If this breaks your application, "
-            "see `SerializationContext.register_custom_serializer`.")
-    if use_dict:
-        raise DeprecationWarning(
-            "`use_pickle` is no longer a valid parameter and will be removed "
-            "in future versions of Ray. If this breaks your application, "
-            "see `SerializationContext.register_custom_serializer`.")
-    assert serializer is not None and deserializer is not None
-    context = global_worker.get_serialization_context()
-    context.register_custom_serializer(
-        cls, serializer, deserializer, class_id=class_id)
-
-
-def show_in_webui(message, key="", dtype="text"):
+def show_in_dashboard(message, key="", dtype="text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1480,8 +1354,8 @@ def show_in_webui(message, key="", dtype="text"):
     worker.check_connected()
 
     acceptable_dtypes = {"text", "html"}
-    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
-        acceptable_dtypes)
+    assert dtype in acceptable_dtypes, (
+        f"dtype accepts only: {acceptable_dtypes}")
 
     message_wrapped = {"message": message, "dtype": dtype}
     message_encoded = json.dumps(message_wrapped).encode()
@@ -1493,7 +1367,7 @@ def show_in_webui(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
-def get(object_refs, timeout=None):
+def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ref is
@@ -1516,7 +1390,7 @@ def get(object_refs, timeout=None):
         A Python object or a list of Python objects.
 
     Raises:
-        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+        GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
@@ -1550,7 +1424,7 @@ def get(object_refs, timeout=None):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
-                if isinstance(value, ray.exceptions.UnreconstructableError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
@@ -1566,17 +1440,13 @@ def get(object_refs, timeout=None):
         return values
 
 
-def put(value, weakref=False):
+def put(value):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
-        weakref: If set, allows the object to be evicted while a reference
-            to the returned ID exists. You might want to set this if putting
-            a lot of objects that you might not need in the future.
-            It allows Ray to more aggressively reclaim memory.
 
     Returns:
         The object ref assigned to this value.
@@ -1585,7 +1455,7 @@ def put(value, weakref=False):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, pin_object=not weakref)
+            object_ref = worker.put_object(value, pin_object=True)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1598,7 +1468,7 @@ def put(value, weakref=False):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, num_returns=1, timeout=None):
+def wait(object_refs, *, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1632,6 +1502,7 @@ def wait(object_refs, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+    worker.check_connected()
 
     if hasattr(worker,
                "core_worker") and worker.core_worker.current_actor_is_asyncio(
@@ -1649,18 +1520,17 @@ def wait(object_refs, num_returns=1, timeout=None):
             "ray.ObjectRef")
 
     if not isinstance(object_refs, list):
-        raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got {}".format(
-                type(object_refs)))
+        raise TypeError("wait() expected a list of ray.ObjectRef, "
+                        f"got {type(object_refs)}")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
-                         "Received {}".format(timeout))
+                         f"Received {timeout}")
 
     for object_ref in object_refs:
         if not isinstance(object_ref, ObjectRef):
             raise TypeError("wait() expected a list of ray.ObjectRef, "
-                            "got list containing {}".format(type(object_ref)))
+                            f"got list containing {type(object_ref)}")
 
     worker.check_connected()
     # TODO(swang): Check main thread.
@@ -1704,10 +1574,13 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
-    return ray.util.named_actors._get_actor(name)
+    worker = global_worker
+    worker.check_connected()
+    handle = worker.core_worker.get_named_actor_handle(name)
+    return handle
 
 
-def kill(actor, no_restart=True):
+def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
@@ -1725,15 +1598,15 @@ def kill(actor, no_restart=True):
         no_restart (bool): Whether or not this actor should be restarted if
             it's a restartable actor.
     """
+    worker = global_worker
+    worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError("ray.kill() only supported for actors. "
                          "Got: {}.".format(type(actor)))
-    worker = ray.worker.global_worker
-    worker.check_connected()
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, force=False):
+def cancel(object_ref, *, force=False):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1745,7 +1618,8 @@ def cancel(object_ref, force=False):
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
 
-    Calling ray.get on a canceled task will raise a RayCancellationError.
+    Calling ray.get on a canceled task will raise a TaskCancelledError or a
+    WorkerCrashedError if ``force=True``.
 
     Args:
         object_ref (ObjectRef): ObjectRef returned by the task
@@ -1761,7 +1635,7 @@ def cancel(object_ref, force=False):
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            "Got: {}.".format(type(object_ref)))
+            f"Got: {type(object_ref)}.")
     return worker.core_worker.cancel_task(object_ref, force)
 
 
@@ -1776,12 +1650,13 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def make_decorator(num_return_vals=None,
+def make_decorator(num_returns=None,
                    num_cpus=None,
                    num_gpus=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   accelerator_type=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1799,24 +1674,48 @@ def make_decorator(num_return_vals=None,
             if max_task_retries is not None:
                 raise ValueError("The keyword 'max_task_retries' is not "
                                  "allowed for remote functions.")
-
+            if num_returns is not None and (not isinstance(num_returns, int)
+                                            or num_returns < 0):
+                raise ValueError(
+                    "The keyword 'num_returns' only accepts 0 or a"
+                    " positive integer")
+            if max_retries is not None and (not isinstance(max_retries, int)
+                                            or max_retries < -1):
+                raise ValueError(
+                    "The keyword 'max_retries' only accepts 0, -1 or a"
+                    " positive integer")
+            if max_calls is not None and (not isinstance(max_calls, int)
+                                          or max_calls < 0):
+                raise ValueError(
+                    "The keyword 'max_calls' only accepts 0 or a positive"
+                    " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_return_vals,
-                max_calls, max_retries, placement_group,
+                memory, object_store_memory, resources, accelerator_type,
+                num_returns, max_calls, max_retries, placement_group,
                 placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
-            if num_return_vals is not None:
-                raise TypeError("The keyword 'num_return_vals' is not "
+            if num_returns is not None:
+                raise TypeError("The keyword 'num_returns' is not "
                                 "allowed for actors.")
             if max_calls is not None:
                 raise TypeError("The keyword 'max_calls' is not "
                                 "allowed for actors.")
-
+            if max_restarts is not None and (not isinstance(max_restarts, int)
+                                             or max_restarts < -1):
+                raise ValueError(
+                    "The keyword 'max_restarts' only accepts -1, 0 or a"
+                    " positive integer")
+            if max_task_retries is not None and (not isinstance(
+                    max_task_retries, int) or max_task_retries < -1):
+                raise ValueError(
+                    "The keyword 'max_task_retries' only accepts -1, 0 or a"
+                    " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts, max_task_retries)
+                                        accelerator_type, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1843,7 +1742,7 @@ def remote(*args, **kwargs):
 
     It can also be used with specific keyword arguments:
 
-    * **num_return_vals:** This is only for *remote functions*. It specifies
+    * **num_returns:** This is only for *remote functions*. It specifies
       the number of object refs returned by the remote function invocation.
     * **num_cpus:** The quantity of CPU cores to reserve for this task or for
       the lifetime of the actor.
@@ -1852,6 +1751,9 @@ def remote(*args, **kwargs):
     * **resources:** The quantity of various custom resources to reserve for
       this task or for the lifetime of the actor. This is a dictionary mapping
       strings (resource names) to numbers.
+    * **accelerator_type:** If specified, requires that the task or actor run
+      on a node with the specified type of accelerator. See `ray.accelerators`
+      for accelerator types.
     * **max_calls:** Only for *remote functions*. This specifies the maximum
       number of times that a given worker can execute the given remote function
       before it must exit (this can be used to address memory leaks in
@@ -1885,7 +1787,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
 
@@ -1900,7 +1802,7 @@ def remote(*args, **kwargs):
 
     .. code-block:: python
 
-        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
         g = f.options(num_gpus=2, max_calls=None)
@@ -1926,20 +1828,21 @@ def remote(*args, **kwargs):
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
-                    "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
+                    "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
                     "'max_calls', or 'max_restarts', like "
-                    "'@ray.remote(num_return_vals=2, "
+                    "'@ray.remote(num_returns=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals",
+            "num_returns",
             "num_cpus",
             "num_gpus",
             "memory",
             "object_store_memory",
             "resources",
+            "accelerator_type",
             "max_calls",
             "max_restarts",
             "max_task_retries",
@@ -1953,14 +1856,15 @@ def remote(*args, **kwargs):
     resources = kwargs.get("resources")
     if not isinstance(resources, dict) and resources is not None:
         raise TypeError("The 'resources' keyword argument must be a "
-                        "dictionary, but received type {}.".format(
-                            type(resources)))
+                        f"dictionary, but received type {type(resources)}.")
     if resources is not None:
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
+    accelerator_type = kwargs.get("accelerator_type")
+
     # Handle other arguments.
-    num_return_vals = kwargs.get("num_return_vals")
+    num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
     max_restarts = kwargs.get("max_restarts")
     max_task_retries = kwargs.get("max_task_retries")
@@ -1969,12 +1873,13 @@ def remote(*args, **kwargs):
     max_retries = kwargs.get("max_retries")
 
     return make_decorator(
-        num_return_vals=num_return_vals,
+        num_returns=num_returns,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        accelerator_type=accelerator_type,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,

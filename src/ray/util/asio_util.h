@@ -16,8 +16,9 @@
 
 #include <boost/asio.hpp>
 
-inline void execute_after(boost::asio::io_context &io_context,
-                          const std::function<void()> &fn, uint32_t delay_milliseconds) {
+inline std::shared_ptr<boost::asio::deadline_timer> execute_after(
+    boost::asio::io_context &io_context, const std::function<void()> &fn,
+    uint32_t delay_milliseconds) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);
   timer->expires_from_now(boost::posix_time::milliseconds(delay_milliseconds));
   timer->async_wait([timer, fn](const boost::system::error_code &error) {
@@ -25,4 +26,5 @@ inline void execute_after(boost::asio::io_context &io_context,
       fn();
     }
   });
+  return timer;
 }

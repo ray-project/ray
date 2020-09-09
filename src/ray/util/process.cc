@@ -30,6 +30,8 @@
 #include <unistd.h>
 #endif
 
+#include <string.h>
+
 #include <algorithm>
 #include <atomic>
 #include <fstream>
@@ -38,6 +40,7 @@
 
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
 #include "ray/util/util.h"
 
 #ifdef __APPLE__
@@ -45,10 +48,10 @@ extern char **environ;
 
 // macOS dosn't come with execvpe.
 // https://stackoverflow.com/questions/7789750/execve-with-path-search
-int execvpe(const char *program, char **argv, char **envp) {
+int execvpe(const char *program, char *const argv[], char *const envp[]) {
   char **saved = environ;
   int rc;
-  environ = envp;
+  environ = const_cast<char **>(envp);
   rc = execvp(program, argv);
   environ = saved;
   return rc;
@@ -56,6 +59,23 @@ int execvpe(const char *program, char **argv, char **envp) {
 #endif
 
 namespace ray {
+
+bool EnvironmentVariableLess::operator()(char a, char b) const {
+  // TODO(mehrdadn): This is only used on Windows due to current lack of Unicode support.
+  // It should be changed when Process adds Unicode support on Windows.
+  return std::less<char>()(tolower(a), tolower(b));
+}
+
+bool EnvironmentVariableLess::operator()(const std::string &a,
+                                         const std::string &b) const {
+  bool result;
+#ifdef _WIN32
+  result = std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), *this);
+#else
+  result = a < b;
+#endif
+  return result;
+}
 
 class ProcessFD {
   pid_t pid_;
@@ -76,40 +96,25 @@ class ProcessFD {
 
   // Fork + exec combo. Returns -1 for the PID on failure.
   static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
-                            const std::map<std::string, std::string> &env) {
+                            const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
     pid_t pid;
-#ifdef _WIN32
-    LPTCH env_strings = GetEnvironmentStrings();
-    RAY_CHECK(env_strings) << GetLastError();
-    std::vector<char> new_env_vector;
-    // Copy parent process environment variables
-    LPTSTR env_pointer = env_strings;
-    while (*env_pointer) {
-      LPTSTR env_pointer2 = env_pointer;
-      while (*env_pointer2) {
-        new_env_vector.push_back(*env_pointer2);
-        env_pointer2++;
-      }
-      new_env_vector.push_back('\0');
-      env_pointer2++;
-      env_pointer = env_pointer2;
+    ProcessEnvironment new_env;
+    for (char *const *e = environ; *e; ++e) {
+      RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+      const char *key_end = strchr(*e + 1 /* +1 is needed for Windows */, '=');
+      RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+      new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
     }
-    RAY_CHECK(FreeEnvironmentStrings(env_strings)) << GetLastError();
-    // Add additional environment variables
     for (const auto &item : env) {
-      for (const char &ch : item.first) {
-        new_env_vector.push_back(ch);
-      }
-      new_env_vector.push_back('=');
-      for (const char &ch : item.second) {
-        new_env_vector.push_back(ch);
-      }
-      new_env_vector.push_back('\0');
+      new_env[item.first] = item.second;
     }
-    new_env_vector.push_back('\0');
-    auto new_env_strings = new_env_vector.data();
+    std::string new_env_block;
+    for (const auto &item : new_env) {
+      new_env_block += item.first + '=' + item.second + '\0';
+    }
+#ifdef _WIN32
 
     (void)decouple;  // Windows doesn't require anything particular for decoupling.
     std::vector<std::string> args;
@@ -132,8 +137,10 @@ class ProcessFD {
         (void)cmd.c_str();  // We'll need this to be null-terminated (but mutable) below
         TCHAR *cmdline = &*cmd.begin();
         STARTUPINFO si = {sizeof(si)};
-        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, new_env_strings, NULL,
-                           &si, &pi)) {
+        RAY_UNUSED(
+            new_env_block.c_str());  // Ensure there's a final terminator for Windows
+        char *const envp = &new_env_block[0];
+        if (CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, envp, NULL, &si, &pi)) {
           succeeded = true;
           break;
         }
@@ -149,26 +156,12 @@ class ProcessFD {
       pid = -1;
     }
 #else
-    size_t environ_size = 0;
-    char **env_pointer = environ;
-    while (*env_pointer) {
-      environ_size++;
-      env_pointer++;
+    std::vector<char *> new_env_ptrs;
+    for (size_t i = 0; i < new_env_block.size(); i += strlen(&new_env_block[i]) + 1) {
+      new_env_ptrs.push_back(&new_env_block[i]);
     }
-    const char *envp[environ_size + env.size() + 1];
-    // Copy parent process environment variables
-    for (size_t i = 0; i < environ_size; i++) {
-      envp[i] = *(environ + i);
-    }
-    // Add additional environment variables
-    std::vector<std::string> env_strings;
-    for (const auto &item : env) {
-      env_strings.emplace_back(item.first + "=" + item.second);
-    }
-    for (size_t i = 0; i < env_strings.size(); i++) {
-      envp[environ_size + i] = env_strings[i].c_str();
-    }
-    envp[environ_size + env.size()] = NULL;
+    new_env_ptrs.push_back(static_cast<char *>(NULL));
+    char **envp = &new_env_ptrs[0];
 
     // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
     // file descriptors into the child process, as that can be problematic.
@@ -195,7 +188,8 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvpe(argv[0], const_cast<char **>(argv), const_cast<char **>(envp));
+        execvpe(argv[0], const_cast<char *const *>(argv),
+                const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -343,7 +337,7 @@ Process &Process::operator=(Process other) {
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
 Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
-                 const std::map<std::string, std::string> &env) {
+                 const ProcessEnvironment &env) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
@@ -352,7 +346,7 @@ Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,
-                              const std::map<std::string, std::string> &env) {
+                              const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());
@@ -389,9 +383,10 @@ bool Process::IsNull() const { return !p_; }
 
 bool Process::IsValid() const { return GetId() != -1; }
 
-std::pair<Process, std::error_code> Process::Spawn(
-    const std::vector<std::string> &args, bool decouple, const std::string &pid_file,
-    const std::map<std::string, std::string> &env) {
+std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
+                                                   bool decouple,
+                                                   const std::string &pid_file,
+                                                   const ProcessEnvironment &env) {
   std::vector<const char *> argv;
   for (size_t i = 0; i != args.size(); ++i) {
     argv.push_back(args[i].c_str());

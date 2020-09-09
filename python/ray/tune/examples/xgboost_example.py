@@ -6,11 +6,7 @@ from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
 from ray import tune
-
-
-def XGBCallback(env):
-    # After every training iteration, report loss to Tune
-    tune.report(**dict(env.evaluation_result_list))
+from ray.tune.integration.xgboost import TuneReportCallback
 
 
 def train_breast_cancer(config):
@@ -28,7 +24,7 @@ def train_breast_cancer(config):
         train_set,
         evals=[(test_set, "eval")],
         verbose_eval=False,
-        callbacks=[XGBCallback])
+        callbacks=[TuneReportCallback()])
     # Predict labels for the test set
     preds = bst.predict(test_set)
     pred_labels = np.rint(preds)

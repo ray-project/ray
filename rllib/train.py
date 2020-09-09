@@ -70,16 +70,6 @@ def create_parser(parser_creator=None):
         type=int,
         help="Emulate multiple cluster nodes for debugging.")
     parser.add_argument(
-        "--ray-redis-max-memory",
-        default=None,
-        type=int,
-        help="--redis-max-memory to use if starting a new cluster.")
-    parser.add_argument(
-        "--ray-memory",
-        default=None,
-        type=int,
-        help="--memory to use if starting a new cluster.")
-    parser.add_argument(
         "--ray-object-store-memory",
         default=None,
         type=int,
@@ -204,25 +194,25 @@ def run(args, parser):
             cluster.add_node(
                 num_cpus=args.ray_num_cpus or 1,
                 num_gpus=args.ray_num_gpus or 0,
-                object_store_memory=args.ray_object_store_memory,
-                memory=args.ray_memory,
-                redis_max_memory=args.ray_redis_max_memory)
+                object_store_memory=args.ray_object_store_memory)
         ray.init(address=cluster.address)
     else:
         ray.init(
             include_dashboard=not args.no_ray_ui,
             address=args.ray_address,
             object_store_memory=args.ray_object_store_memory,
-            memory=args.ray_memory,
-            redis_max_memory=args.ray_redis_max_memory,
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
 
+    if not args.queue_trials:
+        # TODO: this should be eventually removed as an arg
+        # because it is already autodetected on an autoscaling cluster.
+        os.environ["TUNE_DISABLE_QUEUE_TRIALS"] = "1"
+
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials,
         resume=args.resume,
         verbose=verbose,
         concurrent=True)

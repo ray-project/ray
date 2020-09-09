@@ -139,11 +139,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         const CObjectID Nil()
 
         @staticmethod
-        CObjectID ForPut(const CTaskID &task_id, int64_t index,
-                         int64_t transport_type)
-
-        @staticmethod
-        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index)
+        CObjectID FromIndex(const CTaskID &task_id, int64_t index)
 
         @staticmethod
         size_t Size()
