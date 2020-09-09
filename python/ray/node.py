@@ -824,7 +824,7 @@ class Node:
                 resource_spec.object_store_memory,
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
-        )
+            )
         self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
         if "RAY_USE_NEW_DASHBOARD" not in os.environ:
