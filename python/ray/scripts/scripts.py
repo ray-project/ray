@@ -356,18 +356,16 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
 @add_click_options(logging_options)
-def start(node_ip_address, address, port,
-          redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port,
-          gcs_server_port, min_worker_port, max_worker_port, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_dashboard, dashboard_host,
-          dashboard_port, block, plasma_directory,
-          autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir,
-          java_worker_options, load_code_from_local, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, log_style,
-          log_color, verbose):
+def start(node_ip_address, address, port, redis_password, redis_shard_ports,
+          object_manager_port, node_manager_port, gcs_server_port,
+          min_worker_port, max_worker_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head,
+          include_dashboard, dashboard_host, dashboard_port, block,
+          plasma_directory, autoscaling_config, no_redirect_worker_output,
+          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
+          temp_dir, java_worker_options, load_code_from_local, system_config,
+          lru_evict, enable_object_reconstruction, metrics_export_port,
+          log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
