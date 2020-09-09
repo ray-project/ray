@@ -67,6 +67,13 @@ cc_binary(
     deps = ["//:core_worker_lib"],
 )
 
+cc_binary(
+    name = "exported_streaming_internal.so",
+    copts = COPTS,
+    linkshared = 1,
+    deps = ["//:exported_streaming_internal"],
+)
+
 cc_library(
     name = "streaming_util",
     srcs = glob([
@@ -146,6 +153,7 @@ cc_library(
         ],
         "//conditions:default": [
             "core_worker_lib.so",
+            "exported_streaming_internal.so",
         ],
     }),
 )
@@ -233,6 +241,7 @@ cc_library(
 )
 
 test_common_deps = [
+    "//:exported_streaming_internal",
     ":streaming_lib",
     "//:ray_common",
     "//:ray_util",
@@ -348,6 +357,7 @@ genrule(
         GENERATED_DIR="streaming/python/generated"
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
+        # Use this `sed` command to change the import path in the generated file.
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         sed -i -E 's/from protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
