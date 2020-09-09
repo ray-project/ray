@@ -166,7 +166,7 @@ analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 # __run_analysis_begin__
 import os
 
-df = analysis.dataframe()
+df = analysis.results_df
 logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
 state_dict = torch.load(os.path.join(logdir, "model.pth"))
 

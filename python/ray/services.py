@@ -11,16 +11,15 @@ import socket
 import subprocess
 import sys
 import time
-import redis
 
 import colorama
+import colorful as cf
+import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-import psutil
-
+import redis
 from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 resource = None
 if sys.platform != "win32":
@@ -70,11 +69,6 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
-
-DEFAULT_JAVA_WORKER_CLASSPATH = [
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
-]
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -1262,6 +1256,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 plasma_directory,
+                 object_store_memory,
                  min_worker_port=None,
                  max_worker_port=None,
                  object_manager_port=None,
@@ -1276,13 +1272,13 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None):
+                 object_spilling_config=None,
+                 code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1320,6 +1316,9 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (list): The command options for Java worker.
+        code_search_path (list): Code search path for worker. code_search_path
+            is added to worker command in non-multi-tenancy mode and job_config
+            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1348,16 +1347,15 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     if include_java is True:
-        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options)
-            if java_worker_options else ["-classpath", default_cp],
+            json.loads(java_worker_options) if java_worker_options else [],
             redis_address,
             node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
             session_dir,
+            code_search_path,
         )
     else:
         java_worker_command = []
@@ -1384,6 +1382,8 @@ def start_raylet(redis_address,
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
+    if code_search_path:
+        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1397,6 +1397,9 @@ def start_raylet(redis_address,
 
     if max_worker_port is None:
         max_worker_port = 0
+
+    if code_search_path is not None and len(code_search_path) > 0:
+        load_code_from_local = True
 
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
@@ -1455,8 +1458,6 @@ def start_raylet(redis_address,
             subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
-        plasma_directory, object_store_memory = determine_plasma_store_config(
-            resource_spec.object_store_memory, plasma_directory, huge_pages)
         command += [
             f"--object_store_memory={object_store_memory}",
             f"--plasma_directory={plasma_directory}",
@@ -1493,15 +1494,10 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(
-        java_worker_options,
-        redis_address,
-        node_manager_port,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-):
+def build_java_worker_command(java_worker_options, redis_address,
+                              node_manager_port, plasma_store_name,
+                              raylet_name, redis_password, session_dir,
+                              code_search_path):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1512,6 +1508,7 @@ def build_java_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1532,7 +1529,7 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-
+    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
@@ -1655,8 +1652,8 @@ def determine_plasma_store_config(object_store_memory,
                 "than the total available memory.")
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.warning("WARNING: object_store_memory is not verified when "
-                       "plasma_directory is set.")
+        logger.info("object_store_memory is not verified when "
+                    "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
         raise ValueError(f"The file {plasma_directory} does not "
@@ -1682,10 +1679,11 @@ def determine_plasma_store_config(object_store_memory,
 
 
 def start_plasma_store(resource_spec,
+                       plasma_directory,
+                       object_store_memory,
                        plasma_store_socket_name,
                        stdout_file=None,
                        stderr_file=None,
-                       plasma_directory=None,
                        keep_idle=False,
                        huge_pages=False,
                        fate_share=None,
@@ -1714,8 +1712,6 @@ def start_plasma_store(resource_spec,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    plasma_directory, object_store_memory = determine_plasma_store_config(
-        resource_spec.object_store_memory, plasma_directory, huge_pages)
 
     command = [
         PLASMA_STORE_EXECUTABLE,

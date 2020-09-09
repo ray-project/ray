@@ -493,6 +493,7 @@ def init(
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _include_java=False,
         _java_worker_options=None,
+        _code_search_path=None,
         _temp_dir=None,
         _load_code_from_local=False,
         _lru_evict=False,
@@ -587,6 +588,7 @@ def init(
         _load_code_from_local: Whether code should be loaded from a local
             module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
+        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -682,6 +684,7 @@ def init(
             temp_dir=_temp_dir,
             load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
+            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -1653,6 +1656,7 @@ def make_decorator(num_returns=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   accelerator_type=None,
                    max_calls=None,
                    max_retries=None,
                    max_restarts=None,
@@ -1687,8 +1691,9 @@ def make_decorator(num_returns=None,
                     " integer")
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
-                memory, object_store_memory, resources, num_returns, max_calls,
-                max_retries, placement_group, placement_group_bundle_index)
+                memory, object_store_memory, resources, accelerator_type,
+                num_returns, max_calls, max_retries, placement_group,
+                placement_group_bundle_index)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1709,7 +1714,8 @@ def make_decorator(num_returns=None,
                     " positive integer")
             return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
                                         memory, object_store_memory, resources,
-                                        max_restarts, max_task_retries)
+                                        accelerator_type, max_restarts,
+                                        max_task_retries)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -1745,6 +1751,9 @@ def remote(*args, **kwargs):
     * **resources:** The quantity of various custom resources to reserve for
       this task or for the lifetime of the actor. This is a dictionary mapping
       strings (resource names) to numbers.
+    * **accelerator_type:** If specified, requires that the task or actor run
+      on a node with the specified type of accelerator. See `ray.accelerators`
+      for accelerator types.
     * **max_calls:** Only for *remote functions*. This specifies the maximum
       number of times that a given worker can execute the given remote function
       before it must exit (this can be used to address memory leaks in
@@ -1833,6 +1842,7 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "accelerator_type",
             "max_calls",
             "max_restarts",
             "max_task_retries",
@@ -1851,6 +1861,8 @@ def remote(*args, **kwargs):
         assert "CPU" not in resources, "Use the 'num_cpus' argument."
         assert "GPU" not in resources, "Use the 'num_gpus' argument."
 
+    accelerator_type = kwargs.get("accelerator_type")
+
     # Handle other arguments.
     num_returns = kwargs.get("num_returns")
     max_calls = kwargs.get("max_calls")
@@ -1867,6 +1879,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        accelerator_type=accelerator_type,
         max_calls=max_calls,
         max_restarts=max_restarts,
         max_task_retries=max_task_retries,

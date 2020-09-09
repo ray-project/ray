@@ -104,15 +104,16 @@ class AxSearch(Searcher):
 
     def __init__(self,
                  space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  parameter_constraints=None,
                  outcome_constraints=None,
                  ax_client=None,
                  use_early_stopped_trials=None,
                  max_concurrent=None):
         assert ax is not None, "Ax must be installed!"
-        assert mode in ["min", "max"], "`mode` must be one of ['min', 'max']"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(AxSearch, self).__init__(
             metric=metric,

@@ -313,9 +313,10 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
-        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        default_object_store_memory, default_resources,
+        default_accelerator_type, runtime_num_cpus, runtime_num_gpus,
+        runtime_memory, runtime_object_store_memory, runtime_resources,
+        runtime_accelerator_type):
     """Determine a task's resource requirements.
 
     Args:
@@ -365,15 +366,23 @@ def resources_from_resource_arguments(
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
 
-    memory = default_memory or runtime_memory
-    object_store_memory = (default_object_store_memory
-                           or runtime_object_store_memory)
+    # Order of arguments matter for short circuiting.
+    memory = runtime_memory or default_memory
+    object_store_memory = (runtime_object_store_memory
+                           or default_object_store_memory)
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(
             memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
+
+    if runtime_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{runtime_accelerator_type}"] = 0.001
+    elif default_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{default_accelerator_type}"] = 0.001
 
     return resources
 

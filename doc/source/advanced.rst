@@ -98,12 +98,12 @@ Message passing using Ray Queue
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Sometimes just using one signal to synchronize is not enough. If you need to send data among many tasks or
-actors, you can use ``ray.experimental.queue.Queue`` (`source code <https://github.com/ray-project/ray/blob/master/python/ray/experimental/queue.py>`_).
+actors, you can use :ref:`ray.util.queue.Queue <ray-queue-ref>`.
 
 .. code-block:: python
 
     import ray
-    from ray.experimental.queue import Queue
+    from ray.util.queue import Queue
 
     ray.init()
     # You can pass this object around to different tasks/actors
@@ -219,6 +219,21 @@ load balancing, gang scheduling, and priority-based scheduling.
 .. autofunction:: ray.experimental.set_resource
     :noindex:
 
+
+Accelerator Types
+------------------
+
+Ray supports resource specific accelerator types. The `accelerator_type` field can be used to force to a task to run on a node with a specific type of accelerator. Under the hood, the accelerator type option is implemented as a custom resource demand of ``"accelerator_type:<type>": 0.001``. This forces the task to be placed on a node with that particular accelerator type available. This also lets the multi-node-type autoscaler know that there is demand for that type of resource, potentially triggering the launch of new nodes providing that accelerator.
+
+.. code-block:: python
+
+    from ray.accelerators import NVIDIA_TESLA_V100
+
+    @ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+    def train(data):
+        return "This function was run on a node with a Tesla V100 GPU"
+
+See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
 Nested Remote Functions
