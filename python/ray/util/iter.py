@@ -1042,6 +1042,7 @@ class LocalIterator(Generic[T]):
             pull_counts = [0] * len(active)
             while True:
                 yield_counts = [0] * len(active)
+                removed_iter_indices = []
                 for i, (weight, it) in enumerate(list(active)):
                     if weight == "*":
                         max_pull = MAX_PULL
@@ -1059,7 +1060,6 @@ class LocalIterator(Generic[T]):
                                 yield_counts[i] += 1
                                 yield item
                     except StopIteration:
-                        active.remove((weight, it))
                         fix_weights = [
                             w != "*" for w in round_robin_weights
                         ]
@@ -1068,6 +1068,10 @@ class LocalIterator(Generic[T]):
                             yield_counts[i] < expected_yield_counts and
                             pull_counts[i] >= MAX_PULL):
                             raise
+                        else:
+                            removed_iter_indices.append(i)
+                            active.remove((weight, it))
+                pull_counts = [c for j, c in enumerate(pull_counts) if j not in removed_iter_indices]
                 if not active:
                     break
 

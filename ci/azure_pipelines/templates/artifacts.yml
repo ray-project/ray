@@ -31,7 +31,7 @@ steps:
   condition: always()
   inputs:
     pathToPublish: $(Build.ArtifactStagingDirectory)
-    artifactName: Logs
+    artifactName: 'Logs for $(System.JobDisplayName)-$(System.JobAttempt)'
   displayName: 'Publishing artifacts'
   timeoutInMinutes: 5
   continueOnError: true

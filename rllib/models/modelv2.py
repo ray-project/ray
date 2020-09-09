@@ -343,6 +343,32 @@ def _unpack_obs(obs, space, tensorlib=tf):
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
+    def unpack_obs_item(batch_dims, offset, p):
+        obs_slice = None
+        if tensorlib == tf and tf.VERSION.startswith("1"):
+            # The following expression works also in TF
+            # obs_slice = obs[..., offset:offset + p.size]
+            # but it does not work for TF Lite 1.X because
+            # elipsis are not supported there.
+            # Here we are doing the equivalent to the elipsis.
+            slice_start = [0] * (obs.shape.rank - 1)
+            slice_start += [offset]
+            slice_end = [0] * (obs.shape.rank - 1)
+            slice_end += [offset + p.size]
+            slice_stride = [1] * obs.shape.rank
+            begin_end_mask = ((2 ** obs.shape.rank) - 1) & (~(1 << (obs.shape.rank - 1)))
+            shrink_axis_mask = 1 << (obs.shape.rank - 1)
+            obs_slice = tf.strided_slice(obs, slice_start, slice_end, slice_stride,
+                                         begin_end_mask, begin_end_mask, 0, 0,
+                                         shrink_axis_mask)
+        else:
+            obs_slice = obs[..., offset:offset + p.size]
+        unpacked_obs = _unpack_obs(
+            tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
+            v,
+            tensorlib=tensorlib)
+        return unpacked_obs
+
     if (isinstance(space, gym.spaces.Dict)
             or isinstance(space, gym.spaces.Tuple)
             or isinstance(space, Repeated)):
@@ -368,25 +394,17 @@ def _unpack_obs(obs, space, tensorlib=tf):
                 (len(prep.preprocessors) == len(space.spaces))
             u = []
             for p, v in zip(prep.preprocessors, space.spaces):
-                obs_slice = obs[..., offset:offset + p.size]
+                unpacked_obs_item = unpack_obs_item(batch_dims, offset, p)
                 offset += p.size
-                u.append(
-                    _unpack_obs(
-                        tensorlib.reshape(obs_slice,
-                                          batch_dims + list(p.shape)),
-                        v,
-                        tensorlib=tensorlib))
+                u.append(unpacked_obs_item)
         elif isinstance(space, gym.spaces.Dict):
             assert len(prep.preprocessors) == len(space.spaces), \
                 (len(prep.preprocessors) == len(space.spaces))
             u = OrderedDict()
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
-                obs_slice = obs[..., offset:offset + p.size]
+                unpacked_obs_item = unpack_obs_item(batch_dims, offset, p)
                 offset += p.size
-                u[k] = _unpack_obs(
-                    tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
-                    v,
-                    tensorlib=tensorlib)
+                u[k] = unpacked_obs_item
         elif isinstance(space, Repeated):
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
