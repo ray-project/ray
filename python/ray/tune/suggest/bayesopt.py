@@ -285,8 +285,10 @@ class BayesOptSearch(Searcher):
             analysis (ExperimentAnalysis): Optionally, the previous analysis
                 to integrate.
         """
-        for (_, report), params in zip(analysis.dataframe().iterrows(),
-                                       analysis.get_all_configs().values()):
+        for (_, report), params in zip(
+                analysis.dataframe(metric=self._metric,
+                                   mode=self._mode).iterrows(),
+                analysis.get_all_configs().values()):
             # We add the obtained results to the
             # gaussian process optimizer
             self._register_result(params, report)

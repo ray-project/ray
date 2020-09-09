@@ -1,11 +1,17 @@
 import json
 import logging
 import os
+from typing import Dict
+
+from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.utils import flatten_dict
 
 try:
     import pandas as pd
+    from pandas import DataFrame
 except ImportError:
     pd = None
+    DataFrame = None
 
 from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
@@ -80,6 +86,9 @@ class Analysis:
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
         """
+        metric = self._validate_metric(metric)
+        mode = self._validate_mode(mode)
+
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
         for path, config in all_configs.items():
@@ -227,6 +236,9 @@ class Analysis:
         mode = self._validate_mode(mode)
 
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
+        if not checkpoint_paths:
+            logger.error(f"No checkpoints have been found for trial {trial}.")
+            return None
         if mode == "max":
             return max(checkpoint_paths, key=lambda x: x[1])[0]
         else:
@@ -316,7 +328,150 @@ class ExperimentAnalysis(Analysis):
             os.path.dirname(experiment_checkpoint_path), default_metric,
             default_mode)
 
-    def get_best_trial(self, metric=None, mode=None, scope="all"):
+    @property
+    def best_trial(self) -> Trial:
+        """Get the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_trial(metric, mode, scope)` instead.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_trial`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_trial(metric, mode)` method to set the metric "
+                "and mode explicitly.")
+        return self.get_best_trial(self.default_metric, self.default_mode)
+
+    @property
+    def best_config(self) -> Dict:
+        """Get the config of the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_config(metric, mode, scope)` instead.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_config`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_config(metric, mode)` method to set the metric "
+                "and mode explicitly.")
+        return self.get_best_config(self.default_metric, self.default_mode)
+
+    @property
+    def best_checkpoint(self) -> Checkpoint:
+        """Get the checkpoint of the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_checkpoint(trial, metric, mode)` instead.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_checkpoint`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_checkpoint(trial, metric, mode)` method to set the "
+                "metric and mode explicitly.")
+        best_trial = self.best_trial
+        return self.get_best_checkpoint(best_trial, self.default_metric,
+                                        self.default_mode)
+
+    @property
+    def best_logdir(self) -> str:
+        """Get the logdir of the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_logdir(metric, mode)` instead.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_logdir`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use the "
+                "`get_best_logdir(metric, mode, scope)` method to set the "
+                "metric and mode explicitly.")
+        return self.get_best_logdir(self.default_metric, self.default_mode)
+
+    @property
+    def best_dataframe(self) -> DataFrame:
+        """Get the full result dataframe of the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_logdir(metric, mode)` and use it to look for the dataframe
+        in the `self.trial_dataframes` dict.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_result`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`.")
+        best_logdir = self.best_logdir
+        return self.trial_dataframes[best_logdir]
+
+    @property
+    def best_result(self) -> Dict:
+        """Get the last result of the best trial of the experiment
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_trial(metric, mode, scope).last_result` instead.
+        """
+        if not self.default_metric or not self.default_mode:
+            raise ValueError(
+                "To fetch the `best_result`, pass a `metric` and `mode` "
+                "parameter to `tune.run()`. Alternatively, use "
+                "`get_best_trial(metric, mode).last_result` to set "
+                "the metric and mode explicitly and fetch the last result.")
+        return self.best_trial.last_result
+
+    @property
+    def best_result_df(self) -> DataFrame:
+        """Get the best result of the experiment as a pandas dataframe.
+
+        The best trial is determined by comparing the last trial results
+        using the `metric` and `mode` parameters passed to `tune.run()`.
+
+        If you didn't pass these parameters, use
+        `get_best_trial(metric, mode, scope).last_result` instead.
+        """
+        if not pd:
+            raise ValueError("`best_result_df` requires pandas. Install with "
+                             "`pip install pandas`.")
+        best_result = flatten_dict(self.best_result, delimiter=".")
+        return pd.DataFrame.from_records([best_result], index="trial_id")
+
+    @property
+    def results(self) -> Dict[str, Dict]:
+        """Get the last result of the all trials of the experiment"""
+        return {trial.trial_id: trial.last_result for trial in self.trials}
+
+    @property
+    def results_df(self) -> DataFrame:
+        if not pd:
+            raise ValueError("`best_result_df` requires pandas. Install with "
+                             "`pip install pandas`.")
+        return pd.DataFrame.from_records(
+            [
+                flatten_dict(trial.last_result, delimiter=".")
+                for trial in self.trials
+            ],
+            index="trial_id")
+
+    def get_best_trial(self, metric=None, mode=None, scope="last"):
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -380,7 +535,7 @@ class ExperimentAnalysis(Analysis):
                 "parameter?")
         return best_trial
 
-    def get_best_config(self, metric=None, mode=None, scope="all"):
+    def get_best_config(self, metric=None, mode=None, scope="last"):
         """Retrieve the best config corresponding to the trial.
 
         Compares all trials' scores on `metric`.
@@ -407,7 +562,7 @@ class ExperimentAnalysis(Analysis):
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
 
-    def get_best_logdir(self, metric=None, mode=None, scope="all"):
+    def get_best_logdir(self, metric=None, mode=None, scope="last"):
         """Retrieve the logdir corresponding to the best trial.
 
         Compares all trials' scores on `metric`.

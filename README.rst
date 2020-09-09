@@ -120,7 +120,7 @@ This example runs a parallel grid search to optimize an example objective functi
     print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
     # Get a dataframe for analyzing trial results.
-    df = analysis.dataframe()
+    df = analysis.results_df
 
 If TensorBoard is installed, automatically visualize all trial results:
 
