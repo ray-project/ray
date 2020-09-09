@@ -8,7 +8,8 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
-from ray.tune.stopper import FunctionStopper, Stopper
+from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
+    TimeoutStopper
 from ray.tune.utils import detect_checkpoint_function
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ class Experiment:
                  name,
                  run,
                  stop=None,
+                 time_budget_s=None,
                  config=None,
                  resources_per_trial=None,
                  num_samples=1,
@@ -158,6 +160,13 @@ class Experiment:
         else:
             raise ValueError("Invalid stop criteria: {}. Must be a "
                              "callable or dict".format(stop))
+
+        if time_budget_s:
+            if self._stopper:
+                self._stopper = CombinedStopper(self._stopper,
+                                                TimeoutStopper(time_budget_s))
+            else:
+                self._stopper = TimeoutStopper(time_budget_s)
 
         _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
