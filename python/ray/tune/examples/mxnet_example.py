@@ -66,8 +66,7 @@ def tune_mnist_mxnet(num_samples=10, num_epochs=10):
         reduction_factor=2)
 
     reporter = CLIReporter(
-        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
-        metric_columns=["loss", "mean_accuracy", "training_iteration"])
+        parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"])
 
     tune.run(
         partial(train_mnist_mxnet, mnist=mnist_data, num_epochs=num_epochs),
