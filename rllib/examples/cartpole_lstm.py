@@ -38,10 +38,8 @@ if __name__ == "__main__":
         configs[args.run], **{
             "env": StatelessCartPole,
             "model": {
+                # Switch on auto-LSTM wrapping.
                 "use_lstm": True,
-                # Switch on time-major (and with that the usage of
-                # traj. view API).
-                #"_time_major": args.torch,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
             },
             "framework": "torch" if args.torch else "tf",
