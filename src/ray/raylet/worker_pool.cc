@@ -133,6 +133,10 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
 void WorkerPool::Start(int num_workers) {
   RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
   for (auto &entry : states_by_lang_) {
+    if (entry.first == Language::JAVA) {
+      // Disable initial workers for Java.
+      continue;
+    }
     auto &state = entry.second;
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));

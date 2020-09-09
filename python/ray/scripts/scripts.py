@@ -344,11 +344,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
-    "--include-java",
-    is_flag=True,
-    default=None,
-    help="Enable Java worker support.")
-@click.option(
     "--java-worker-options",
     required=False,
     default=None,
@@ -397,7 +392,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           head, include_webui, webui_host, include_dashboard, dashboard_host,
           dashboard_port, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
-          plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
           java_worker_options, code_search_path, load_code_from_local,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, log_style, log_color, verbose):
@@ -505,7 +500,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        include_java=include_java,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -564,7 +558,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             autoscaling_config=autoscaling_config,
-            include_java=False,
         )
 
         node = ray.node.Node(
@@ -671,12 +664,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
-        if include_java is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-java"), cf.bold("--head"))
-
-            raise ValueError("--include-java should only be set for the head "
-                             "node.")
 
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.

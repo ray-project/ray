@@ -68,7 +68,6 @@ class ClusterStarter {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java",
         "--java-worker-options=" + workerOptions,
         "--system-config=" + new Gson().toJson(config)
     );
