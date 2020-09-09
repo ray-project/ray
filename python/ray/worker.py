@@ -491,7 +491,6 @@ def init(
         _driver_object_store_memory=None,
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-        _include_java=False,
         _java_worker_options=None,
         _code_search_path=None,
         _temp_dir=None,
@@ -580,8 +579,6 @@ def init(
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        _include_java: Boolean flag indicating whether or not to enable java
-            workers.
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
@@ -673,7 +670,6 @@ def init(
             redis_password=_redis_password,
             plasma_directory=None,
             huge_pages=None,
-            include_java=_include_java,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,

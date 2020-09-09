@@ -23,11 +23,13 @@ VERSION_1.0 {
         *ray*TaskID*;
         *ray*ActorID*;
         *ray*ObjectID*;
+        *ray*ObjectReference*;
         # Others
         *ray*CoreWorker*;
         *PyInit*;
         *init_raylet*;
         *Java*;
         *JNI_*;
+        *ray*streaming*;
     local: *;
 };
