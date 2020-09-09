@@ -47,3 +47,8 @@ img.inline-figure {
   /* Override the display: block for img */
   display: inherit !important;
 }
+
+#version-warning-banner {
+  /* Make version warning clickable */
+  z-index: 1;
+}

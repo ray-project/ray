@@ -114,6 +114,8 @@ extensions = [
     'versionwarning.extension',
 ]
 
+versionwarning_admonition_type = "tip"
+
 versionwarning_messages = {
     "master": (
         "This document is for the master branch. "
