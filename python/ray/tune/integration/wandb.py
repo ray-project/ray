@@ -38,8 +38,7 @@ def _clean_log(obj):
             allow_unicode=True,
             encoding="utf-8")
         return obj
-    except Exception as e:
-        print(f"EXCEPTION {e}")
+    except Exception:
         # give up, similar to _SafeFallBackEncoder
         return str(obj)
 
