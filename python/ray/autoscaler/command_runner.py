@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 
 from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
@@ -164,6 +165,14 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
+    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
+        """Currently used by DockerCommandRunner to run initialization commands.
+
+        Args:
+            as_head (bool): Run as head image or worker.
+            file_mounts (dict): Files to copy to the head and worker nodes.
+        """
+        pass
 
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
@@ -250,19 +259,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
         except Exception as e:
-            logger.warning(self.log_prefix +
+            warnings.warn(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e))
-            self.run_cp_up(source, target)
-
-    def run_cp_up(self, source, target):
-        if target.startswith("~"):
-            target = "/root" + target[1:]
-
-        self.process_runner.check_call(self.kubectl + [
-            "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
-                                            target)
-        ])
+                           .format(e), UserWarning)
+            if target.startswith("~"):
+                target = "/root" + target[1:]
+    
+            self.process_runner.check_call(self.kubectl + [
+                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                                target)
+            ])
 
     def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
@@ -276,19 +282,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 target,
             ])
         except Exception as e:
-            logger.warning(self.log_prefix +
+            warnings.warn(self.log_prefix +
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e))
-            self.run_cp_down(source, target)
-
-    def run_cp_down(self, source, target):
-        if target.startswith("~"):
-            target = "/root" + target[1:]
-
-        self.process_runner.check_call(self.kubectl + [
-            "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
-            target
-        ])
+                           .format(e), UserWarning)
+            if target.startswith("~"):
+                target = "/root" + target[1:]
+    
+            self.process_runner.check_call(self.kubectl + [
+                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+                target
+            ])
 
     def remote_shell_command_str(self):
         return "{} exec -it {} bash".format(" ".join(self.kubectl),

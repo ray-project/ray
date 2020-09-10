@@ -11,7 +11,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.command_runner import NODE_START_WAIT_S, \
-    ProcessRunnerError, DockerCommandRunner
+    ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
@@ -181,11 +181,9 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                if not isinstance(self.cmd_runner, DockerCommandRunner):
-                    # The DockerCommandRunner handles this internally
-                    self.cmd_runner.run(
-                        "mkdir -p {}".format(os.path.dirname(remote_path)),
-                        run_env="host")
+                self.cmd_runner.run(
+                    "mkdir -p {}".format(os.path.dirname(remote_path)),
+                    run_env="host")
                 sync_cmd(local_path, remote_path, file_mount=True)
 
                 if remote_path not in nolog_paths:
@@ -292,9 +290,8 @@ class NodeUpdater:
 
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
-            if isinstance(self.cmd_runner, DockerCommandRunner):
-                self.cmd_runner.run_init(
-                    as_head=self.is_head_node, file_mounts=self.file_mounts)
+            self.cmd_runner.run_init(
+                as_head=self.is_head_node, file_mounts=self.file_mounts)
 
         else:
             cli_logger.print(
@@ -347,10 +344,9 @@ class NodeUpdater:
                     cli_logger.print(
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
-                if isinstance(self.cmd_runner, DockerCommandRunner):
-                    self.cmd_runner.run_init(
-                        as_head=self.is_head_node,
-                        file_mounts=self.file_mounts)
+                self.cmd_runner.run_init(
+                    as_head=self.is_head_node,
+                    file_mounts=self.file_mounts)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
