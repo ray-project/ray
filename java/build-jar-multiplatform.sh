@@ -135,6 +135,7 @@ prepare_native() {
 }
 
 check_native() {
+  local os
   for os in 'darwin' 'linux'; do
     native_dirs=()
     native_dirs+=("$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os")
