@@ -29,7 +29,10 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
   if (log_dir_.back() != '/') {
     log_dir_ += '/';
   }
-  boost::filesystem::create_directories(log_dir_);
+
+  // generate file name, if the soucrce type is RAYLET or GCS, the file name would like
+  // event_GCS.log, event_RAYLET.log other condition would like
+  // event_CORE_WOREKER_{pid}.log
   file_name_ = "event_" + Event_SourceType_Name(source_type);
   if (source_type == rpc::Event_SourceType::Event_SourceType_CORE_WORKER ||
       source_type == rpc::Event_SourceType::Event_SourceType_COMMON) {
@@ -39,6 +42,9 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
 
   std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
   log_sink_ = spdlog::get(log_sink_key);
+  // If the file size is over {rotate_max_file_size_} MB, this file would be renamed
+  // for example event_GCS.0.log, event_GCS.1.log, event_GCS.2.log ...
+  // We alow to rotate for {rotate_max_file_num_} times.
   if (log_sink_ == nullptr) {
     log_sink_ =
         spdlog::rotating_logger_mt(log_sink_key, log_dir_ + file_name_,
@@ -85,6 +91,11 @@ std::string LogEventReporter::EventToString(const rpc::Event &event) {
 
   std::stringstream ss;
   boost::property_tree::json_parser::write_json(ss, pt, false);
+
+  // the final string is like:
+  // {"time_stamp":"2020-08-29 14:18:15.998084","severity":"INFO","label":"label
+  // 1","event_id":"de150792ceb151c815d359d4b675fcc6266a","source_type":"CORE_WORKER","host_name":"Macbool.local","pid":"20830","message":"send
+  // message 1","custom_fields":{"task_id":"task 1","job_id":"job 1","node_id":"node 1"}}
 
   return ss.str();
 }

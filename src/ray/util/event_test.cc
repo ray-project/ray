@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/util/event.h"
+#include <boost/filesystem.hpp>
 #include <fstream>
 #include <set>
 #include <thread>
@@ -294,7 +295,7 @@ TEST(EVENT_TEST, LOG_ROTATE) {
   ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir, true, 1, 20));
 
-  int print_times = 100000;
+  int print_times = 10000;
   for (int i = 1; i <= print_times; ++i) {
     RAY_EVENT(INFO, "label " + std::to_string(i)) << "send message " + std::to_string(i);
   }

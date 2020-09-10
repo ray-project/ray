@@ -15,7 +15,6 @@
 #pragma once
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <cmath>
@@ -48,7 +47,7 @@ class BaseEventReporter {
 
   virtual std::string GetReporterKey() = 0;
 };
-
+// responsible for writing event to specific file
 class LogEventReporter : public BaseEventReporter {
  public:
   LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
