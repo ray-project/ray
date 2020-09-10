@@ -608,19 +608,6 @@ class AutoscalingTest(unittest.TestCase):
     def testEmptyDocker(self):
         config = MULTI_WORKER_CLUSTER.copy()
         del config["docker"]
-        from pprint import pprint
-        pprint(config)
-        # config["available_node_types"]["p2.8xlarge"]["docker"] = {
-        #     "worker_image": "p2.8x_image:latest",
-        #     "worker_run_options": ["p2.8x-run-options"]
-        # }
-        # config["available_node_types"]["p2.xlarge"]["docker"] = {
-        #     "worker_image": "p2x_image:nightly"
-        # }
-        # config["docker"]["worker_run_options"] = ["standard-run-options"]
-        # config["docker"]["image"] = "default-image:nightly"
-        # config["docker"]["worker_image"] = "default-image:nightly"
-        # Commenting out this line causes the test case to fail?!?!
         config["min_workers"] = 0
         config["max_workers"] = 10
         config_path = self.write_config(config)
