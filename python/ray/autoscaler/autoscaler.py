@@ -54,7 +54,6 @@ class StandardAutoscaler:
     StandardAutoscaler is also used to bootstrap clusters (by adding workers
     until the target cluster size is met).
     """
-    provider = None
 
     def __init__(self,
                  config_path,
@@ -65,6 +64,9 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
+        # Keep this before self.reset (self.provider needs to be created
+        # exactly once).
+        self.provider = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
