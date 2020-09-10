@@ -81,7 +81,7 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 Install Ray With Maven
 ----------------------
 
-The latest Ray java release can be found in `ray-api <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray java release in your application, add the following entries in your ``pom.xml``:
+The latest Ray java release can be found in `central repository <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray java release in your application, add the following entries in your ``pom.xml``:
 
 .. code-block:: xml
 
@@ -96,7 +96,7 @@ The latest Ray java release can be found in `ray-api <https://mvnrepository.com/
       <version>${ray.version}</version>
     </dependency>
 
-The latest Ray Java snapshot can be found in `sonatype <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
+The latest Ray Java snapshot can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
 
 .. code-block:: xml
 
@@ -113,6 +113,7 @@ The latest Ray Java snapshot can be found in `sonatype <https://oss.sonatype.org
       </snapshots>
     </repository>
   </repositories>
+  
   <dependencies>
     <dependency>
       <groupId>io.ray</groupId>
