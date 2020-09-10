@@ -33,7 +33,6 @@ from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
@@ -843,6 +842,7 @@ def exec_cluster(config_file: str,
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
+        docker_config = config.get("docker")
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
@@ -856,18 +856,15 @@ def exec_cluster(config_file: str,
             runtime_hash="",
             file_mounts_contents_hash="",
             is_head_node=True,
-            docker_config=config.get("docker"))
+            docker_config=docker_config)
 
-        is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
-
+        is_docker = docker_config and docker_config["container_name"] != ""
         if cmd and stop:
             cmd += "; ".join([
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
             ])
-            if is_docker and run_env == "docker":
-                updater.cmd_runner.shutdown_after_next_cmd()
-            else:
+            if not (is_docker and run_env == "docker"):
                 cmd += "; sudo shutdown -h now"
 
         result = _exec(

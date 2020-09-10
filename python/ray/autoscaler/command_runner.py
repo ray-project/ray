@@ -681,9 +681,6 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "following commands to 'initialization_commands':\n" +
                 "\n".join(install_commands))
 
-    def _shutdown_after_next_cmd(self):
-        self.shutdown = True
-
     def _check_container_status(self):
         if self.initialized:
             return True
