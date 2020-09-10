@@ -37,14 +37,14 @@ Views
 
 Machine View
 ~~~~~~~~~~~~
-.. image:: ./images/dashboard/machine-view-overview.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/machine-view-overview.png
    :align: center
 
 The machine view lets you see resource utilization information on a per-node and per-worker basis. This also shows the assignment of GPU resources to specific actors or tasks.
 
 In addition, the machine view lets you see **logs** and **error messages**. You can see messages for the whole cluster, or drill down into a specific node or worker.
 
-.. image:: ./images/dashboard/machine-view-logs.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/machine-view-logs.png
     :align: center
 
 Finally, you can see the task that each worker is currently performing.
@@ -52,19 +52,19 @@ Finally, you can see the task that each worker is currently performing.
 
 Logical View
 ~~~~~~~~~~~~
-.. image:: ./images/dashboard/logical-view-overview.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-overview.png
     :align: center
 
 The logical view lets you monitor the actors running on your Ray cluster. For each actor class defined in your program, the logical view allows you to see how many of that class are running, how many tasks they've executed, and more.
 
 In addition, it will warn you if you have an actor that cannot be created because your cluster has insufficient resources to satisfy its requirements.
 
-.. image:: ./images/dashboard/logical-view-warning.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-warning.png
     :align: center
 
 You can expand the panel for a class to see more detailed information about individual actors. You can profile these, view their logs, and see information about their arguments.
 
-.. image:: ./images/dashboard/logical-view-expanded-actors.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-expanded-actors.png
     :align: center
 
 Memory View
@@ -77,9 +77,9 @@ The memory view lets you see information about the data stored in the Ray Object
 
 You can group the memory view by node, or by the stack trace that created the memory being used. The latter is particularly helpful for tracking down the **line of code where a memory leak occurs**. See more below in `Debugging ObjectStoreFullError and Memory Leaks`_.
 
-.. image:: ./images/dashboard/memory-view-stack-trace.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/memory-view-stack-trace.png
     :align: center
-.. image:: ./images/dashboard/memory-view-expanded.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/memory-view-expanded.png
     :align: center
 
 .. note::
@@ -123,10 +123,10 @@ are shown in yellow.
 
 Below is an example.
 
-.. image:: ./images/dashboard/logical-view-overview.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-overview.png
     :align: center
 
-.. image:: ./images/dashboard/logical-view-warning.png
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-warning.png
     :align: center
 
 
