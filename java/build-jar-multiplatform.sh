@@ -137,8 +137,8 @@ prepare_native() {
 check_native() {
   for os in 'darwin' 'linux'; do
     native_dirs=()
-    native_dirs[0]+="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
-    native_dirs[0]+="$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os"
+    native_dirs+=("$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os")
+    native_dirs+=("$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os")
     for native_dir in "${native_dirs[@]}"; do
       if [ ! -d "$native_dir" ]; then
         echo "$native_dir doesn't exist"
@@ -188,4 +188,3 @@ deploy) # Deploy jars to maven repository.
   "$@"
   ;;
 esac
-
