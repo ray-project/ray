@@ -1,7 +1,3 @@
-Commands running under a login shell can produce more output than special processing can handle\.
-Thus, the output from subcommands will be logged as is\.
-Consider using --use-normal-shells, if you tested your workflow and it is compatible\.
-
 Cluster configuration valid
 Cluster: test-cli
 
