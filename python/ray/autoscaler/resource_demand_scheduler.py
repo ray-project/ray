@@ -93,7 +93,7 @@ class ResourceDemandScheduler:
                     f"available_node_types. This node's resources will be "
                     f"ignored. If you are using an unmanaged node, manually "
                     f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
-                    f"in unmanaged node, set the user_node_type tag manually"
+                    
                     f"in your cloud provider's management console.")
                 return None
             # Careful not to include the same dict object multiple times.
