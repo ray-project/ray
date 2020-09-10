@@ -466,6 +466,8 @@ class StandardAutoscaler:
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
                       node_resources, docker_config):
+        logger.info(f"Creating new (spawn_updater) updater thread for node"
+                    f" {node_id}.")
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
