@@ -455,8 +455,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
-    cmd = "tail -n {} -f /tmp/ray/session_latest/logs/monitor*".format(
-        num_lines)
+    cmd = f"tail -n {num_lines} -f /tmp/ray/session_latest/logs/monitor*"
     exec_cluster(
         cluster_config_file,
         cmd=cmd,
