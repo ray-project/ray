@@ -152,6 +152,8 @@ check_native() {
 # This function assume all multiplatform binaries are prepared already.
 deploy_jars() {
   if [ "${TRAVIS-}" = true ]; then
+    mkdir -p ~/.m2
+    echo "<settings><servers><server><id>ossrh</id><username>${OSSRH_KEY}</username><password>${OSSRH_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
     if [[ "$TRAVIS_REPO_SLUG" != "ray-project/ray" ||
      "$TRAVIS_PULL_REQUEST" != "false" || "$TRAVIS_BRANCH" != "master" ]]; then
       echo "Skip deploying jars when this build is from a pull request or
