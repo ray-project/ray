@@ -960,7 +960,8 @@ def rsync(config_file: str,
 
     is_file_mount = False
     for remote_mount in config.get("file_mounts", {}).keys():
-        if remote_mount in (source if down else target):
+        if ((source or "")
+                if down else (target or "")).startswith(remote_mount):
             is_file_mount = True
             break
 
