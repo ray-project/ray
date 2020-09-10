@@ -32,6 +32,11 @@ However, there are some caveats with using this. You should not do this if:
 1. If your application depends on setting environment variables per process
 2. If your application has recursive actor calls
 3. If your remote actor/task sets any sort of process-level global variables
+4. If you use are using async actors
+
+If you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
+variable to `` ``.
+
 
 
 Tip 3: Sharing the ray cluster across tests if possible

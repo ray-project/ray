@@ -215,7 +215,14 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
         -Dray.local-mode=true \
         <classname> <args>
 
-Note that some behavior such as setting global process variables may not work as expected.
+Note that there are some known issues with local mode. Avoid using it if:
+1. If your application depends on setting environment variables per process
+2. If your application has recursive actor calls
+3. If your remote actor/task sets any sort of process-level global variables
+4. If you use are using async actors
+
+Also note, if you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
+variable to `` ``.
 
 .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 

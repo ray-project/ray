@@ -376,6 +376,9 @@ This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
+Note that the actor will still be garbage-collected if no handles to it
+exist. See `Actor Lifetimes`_ for more details.
+
 
 .. tabs::
 
@@ -469,3 +472,24 @@ Actor Pool
   .. group-tab:: Java
 
     Actor pool hasn't been implemented in Java yet.
+
+
+Actors, Workers and Resources
+-----------------------------------------
+With a single actor occupying a single worker process for its lifetime,
+the difference between an actor and worker can be hazy. This will spell out the differences.
+
+When Ray starts on a machine, it is allocated a certain amount of resources (which you can specify with arguments to ray.init ). One idle ray worker starts in the cluster per CPU by default.
+
+Each of these workers is able to perform tasks or actors. For an actor, the actor runs on a worker and occupies that workers capacity as long as the actor is alive.
+
+If you have a bunch of tasks that need, for example, 2 cpus each (which you can specify in the args to @ray.remote ), and 16 CPUs, you will end up with 8 of your 16 workers idling.
+
+An actor of a given class does not always get launched to the same worker process, but once an actor is instantiated, all of its methods will run on the same resources.
+
+To maximally utilize your resources, then, you want to maximize the time that
+your actors are working. You also want to allocate enough cluster resources 
+so that both all of your needed actors can run and any other tasks you
+define can run. This also implies that tasks are scheduled more flexibly,
+and that if you don't need the stateful part of an actor, you're mostly
+better off using tasks.
