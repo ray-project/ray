@@ -190,8 +190,8 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
         - bash ./java/build-jar-multiplatform.sh linux
-        #- bash ./java/build-jar-multiplatform.sh multiplatform
-        #- bash ./java/build-jar-multiplatform.sh deploy
+        - bash ./java/build-jar-multiplatform.sh multiplatform
+        - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
 
     # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
