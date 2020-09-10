@@ -63,8 +63,7 @@ def test_log_and_error_messages(ray_start_with_dashboard):
     assert len(client_stats) == 1, "Client stats is not available."
     ip = client_stats[0]["ip"]
 
-    wait_for_condition(
-        lambda: len(node_stats.get_logs(ip, pid)[pid]) == 3)
+    wait_for_condition(lambda: len(node_stats.get_logs(ip, pid)[pid]) == 3)
 
     @ray.remote
     class Actor:
@@ -77,5 +76,4 @@ def test_log_and_error_messages(ray_start_with_dashboard):
     actor = Actor.remote()
     pid = str(ray.get(actor.get_pid.remote()))
     actor.generate_error.remote()
-    wait_for_condition(
-        lambda: len(node_stats.get_errors(ip, pid)[pid]) == 1)
+    wait_for_condition(lambda: len(node_stats.get_errors(ip, pid)[pid]) == 1)
