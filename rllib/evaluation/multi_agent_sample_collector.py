@@ -248,7 +248,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
             policy_batches[pid] = rc.get_train_sample_batch_and_reset(
                 view_reqs)
 
-        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.env_steps_across_all_agents_since_last_reset)
+        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.count)
         # Reset our across-all-agents env step count.
-        self.env_steps_across_all_agents_since_last_reset = 0
+        self.count = 0
         return ma_batch

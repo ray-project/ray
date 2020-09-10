@@ -887,10 +887,14 @@ def _process_observations(
                 episode=episode,
                 env_index=env_id,
             )
+            # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
+            # Env actually ended OR horizon hit and no soft horizon ->
+            # Try hard env-reset.
             else:
+                # Remove episode from active ones.
                 del active_episodes[env_id]
                 resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
                     env_id)
@@ -1147,6 +1151,7 @@ def _process_observations_w_trajectory_view_api(
                 episode=episode,
                 env_index=env_id,
             )
+            # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
