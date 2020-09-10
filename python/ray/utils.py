@@ -516,6 +516,7 @@ def get_num_cpus():
             "This method of CPU detection is buggy when used inside docker. "
             "To correctly detect CPUs remove the enivronment variable: "
             "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
+        return cpu_count
     try:
         # Not easy to get cpu count in docker, see:
         # https://bugs.python.org/issue36054
