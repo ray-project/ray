@@ -455,7 +455,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
-    cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
+    cmd = f"tail -n {num_lines} -f /tmp/ray/session_latest/logs/monitor*"
     exec_cluster(
         cluster_config_file,
         cmd=cmd,
@@ -717,7 +717,7 @@ def get_or_create_head_node(config,
                 logger, "get_or_create_head_node: "
                 "Head node up-to-date, IP address is: {}", head_node_ip)
 
-        monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
+        monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
