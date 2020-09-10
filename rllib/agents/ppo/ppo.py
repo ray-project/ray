@@ -284,4 +284,5 @@ PPOTrainer = build_trainer(
     validate_config=validate_config,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+)

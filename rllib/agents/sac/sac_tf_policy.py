@@ -1,3 +1,7 @@
+"""
+TensorFlow policy class used for SAC.
+"""
+
 from gym.spaces import Box, Discrete
 import logging
 
