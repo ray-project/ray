@@ -104,7 +104,7 @@ download_jars() {
           echo "Waiting $url to be ready for $wait_time seconds..."
           sleep $sleep_time_units
           wait_time=$((wait_time + sleep_time_units))
-          if [[ wait_time == $((sleep_time_units * 10)) ]]; then
+          if [[ wait_time == $((sleep_time_units * 100)) ]]; then
             echo "Download $url timeout"
             return 1
           fi

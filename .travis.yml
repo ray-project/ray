@@ -176,14 +176,12 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - bash ./java/build-jar-multiplatform.sh darwin
 
-    # Build Linux wheels and multi-platform jars.
+    # Build Linux wheels and  jars.
     - os: linux
       env:
-        - LINUX_WHEELS=1 MULTIPLATFORM_JARS=1
+        - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-        secure: "Un2SGOCdD/RiqbO47vtkwn5dPbGbwHi/TKunyNJLKcGILwJc0sZL9uf8pkffyYGbt7ejnYwV9tPgoAlFxcuJYgbmkt84AxDF8oskJmFKYjkxOtEFkqskhTb0u9/usjq23OXrmGN4NqvzLEdbf7Z3wyMxXpzgDKPUgDAFUfB2Ya8OapXuPdt/5KDlDBS0Bj9sKqI+0keYovfRY8dO2/Vd0Ojqkmz1PWHTQP0TrC1X+juciDdoRnU1rO8mxhQW4HKICexwAr1rsAqALpuDlfyhG7I+aicVjK3uiQuviGJOoI813f00YlTOAoXW2YPpblExp0uoTQN2zaYvpp1zUx7V/rVaAoXmFI7ELQ+nr8oAJbImWe1bCNO3UsxpzGamGlTIx7hAiJ0CwFU6qW/+NKWIlhH1iBxUZHw/F8Ixsqtdwx3yhR/rj86sdItAM9CkK6URVdWk2U4VimyDzzJpUWWFsjUZ2V8jNxYPrWg52ciC4k7tp32qrKYrBa+mJduE68/xjFeeZdYUxzg1AT3Lh3rA0ebMIELT7OBz6DRjUmRgO6+VJIRfbPszHEG2X+aPHtSj+Fsc4AacVtiIUUpXMeUx9nxM7oD1lXr8I59vq5+6EhohKBmc4DkpkWLnsCMTnJ1HQ37zKxRSE5jDwyNTJ8x2l8bbK/pqTRZPWUeKL3Is8NE="
-        secure: "IrNncc7RpiSnU/3fB72bG/Vyt/w50uTIVMIdgy64eNw0TgDf15/0IuwzCZDrjTAwq2meGAYFq1KNb7W538UDn+zJs6YIrcEF+2c53alCRASrafFEgAQmbvTpFtxAcHfTFK3c3neVXGiCeOSn64ymV5vQKjLCGvlEpmA10EUmdIE3wIgYRYMTzpzV9A4HmJbAgkBslhIw17BottFbfrL9Z4LlBJjOSP/t9cbGn8QVuM7V4dR+lo5j1Ns8XaVCkNvVqQdJEsp8xeMMn3pvFDxBBEn4zQ2xEGN4QvKquiACaVZLTnNCTkan5pRbswy25hOTnt/zNovJK8TBNuyWTBJNJo+f6vkuQXNR9iRkOQ+FAInjvEVYUWstuc6+opp8yV9cMdOsOMQRX/V6qo5pE2uERU0Fr6WtAhSvZDcGinpfoYkbMXxPdI8E7gmCJKrQ91hVU1ExokztbNesy7YWic/GZPzoBGMSPnNJ8chaydvmeq74P6F0cGI1LU/Tea7Ewf9MbJjWiVZ2C9G1Po3a6vu0ElE1NSIotBZFfpp2P8IeqP5/pZ84E93yRpT4Pt2kBsEjUqiNqLduXDPJnoBHHRzuNovT7sHJoZZAaBipuiNdj4ZQLgA+1WVysaHIDlzlcOMAxNNRMuT6+GATEvtsK8llh0qEzKShbOST54DDp1jST4w="
       install:
         - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
@@ -192,6 +190,19 @@ matrix:
         - . ./ci/travis/ci.sh test_wheels
         - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
         - bash ./java/build-jar-multiplatform.sh linux
+      cache: false
+
+    # Build and deploy multi-platform jars.
+    - os: linux
+      env:
+        - MULTIPLATFORM_JARS=1
+        - PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
+        secure: "Un2SGOCdD/RiqbO47vtkwn5dPbGbwHi/TKunyNJLKcGILwJc0sZL9uf8pkffyYGbt7ejnYwV9tPgoAlFxcuJYgbmkt84AxDF8oskJmFKYjkxOtEFkqskhTb0u9/usjq23OXrmGN4NqvzLEdbf7Z3wyMxXpzgDKPUgDAFUfB2Ya8OapXuPdt/5KDlDBS0Bj9sKqI+0keYovfRY8dO2/Vd0Ojqkmz1PWHTQP0TrC1X+juciDdoRnU1rO8mxhQW4HKICexwAr1rsAqALpuDlfyhG7I+aicVjK3uiQuviGJOoI813f00YlTOAoXW2YPpblExp0uoTQN2zaYvpp1zUx7V/rVaAoXmFI7ELQ+nr8oAJbImWe1bCNO3UsxpzGamGlTIx7hAiJ0CwFU6qW/+NKWIlhH1iBxUZHw/F8Ixsqtdwx3yhR/rj86sdItAM9CkK6URVdWk2U4VimyDzzJpUWWFsjUZ2V8jNxYPrWg52ciC4k7tp32qrKYrBa+mJduE68/xjFeeZdYUxzg1AT3Lh3rA0ebMIELT7OBz6DRjUmRgO6+VJIRfbPszHEG2X+aPHtSj+Fsc4AacVtiIUUpXMeUx9nxM7oD1lXr8I59vq5+6EhohKBmc4DkpkWLnsCMTnJ1HQ37zKxRSE5jDwyNTJ8x2l8bbK/pqTRZPWUeKL3Is8NE="
+        secure: "IrNncc7RpiSnU/3fB72bG/Vyt/w50uTIVMIdgy64eNw0TgDf15/0IuwzCZDrjTAwq2meGAYFq1KNb7W538UDn+zJs6YIrcEF+2c53alCRASrafFEgAQmbvTpFtxAcHfTFK3c3neVXGiCeOSn64ymV5vQKjLCGvlEpmA10EUmdIE3wIgYRYMTzpzV9A4HmJbAgkBslhIw17BottFbfrL9Z4LlBJjOSP/t9cbGn8QVuM7V4dR+lo5j1Ns8XaVCkNvVqQdJEsp8xeMMn3pvFDxBBEn4zQ2xEGN4QvKquiACaVZLTnNCTkan5pRbswy25hOTnt/zNovJK8TBNuyWTBJNJo+f6vkuQXNR9iRkOQ+FAInjvEVYUWstuc6+opp8yV9cMdOsOMQRX/V6qo5pE2uERU0Fr6WtAhSvZDcGinpfoYkbMXxPdI8E7gmCJKrQ91hVU1ExokztbNesy7YWic/GZPzoBGMSPnNJ8chaydvmeq74P6F0cGI1LU/Tea7Ewf9MbJjWiVZ2C9G1Po3a6vu0ElE1NSIotBZFfpp2P8IeqP5/pZ84E93yRpT4Pt2kBsEjUqiNqLduXDPJnoBHHRzuNovT7sHJoZZAaBipuiNdj4ZQLgA+1WVysaHIDlzlcOMAxNNRMuT6+GATEvtsK8llh0qEzKShbOST54DDp1jST4w="
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+      script:
         - bash ./java/build-jar-multiplatform.sh multiplatform
         - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
@@ -488,7 +499,7 @@ deploy:
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
 
   - provider: s3
     edge: true # This supposedly opts in to deploy v2.
@@ -504,5 +515,5 @@ deploy:
     on:
       repo: ray-project/ray
       branch: master
-      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1
+      condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
 
