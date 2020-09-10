@@ -82,6 +82,7 @@ Install Ray With Maven
 ---------------
 The latest Ray java release can be found in `ray-api <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray java release in your application, add the following entries in your ``pom.xml``:
 .. code-block:: xml
+
     <dependency>
       <groupId>io.ray</groupId>
       <artifactId>ray-api</artifactId>
