@@ -510,6 +510,12 @@ def _get_docker_cpus():
 
 def get_num_cpus():
     cpu_count = multiprocessing.cpu_count()
+    if "RAY_USE_MULTIPROCESSING_CPU_COUNT" in os.environ:
+        logger.info(
+            "Using multiprocessing.cpu_count() to detect the number of CPUs. "
+            "This method of CPU detection is buggy when used inside docker. "
+            "To correctly detect CPUs remove the enivronment variable: "
+            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
     try:
         # Not easy to get cpu count in docker, see:
         # https://bugs.python.org/issue36054
@@ -524,6 +530,7 @@ def get_num_cpus():
                     "allocated. This message will be removed in future "
                     "version of Ray. You can set the environment variable: "
                     "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now.")
+
     except Exception:
         # `nproc` and cgroup are linux-only. If docker only works on linux
         # (will run in a linux VM on other platforms), so this is fine.
