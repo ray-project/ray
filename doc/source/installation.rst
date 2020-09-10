@@ -77,6 +77,47 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-0.9.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
+
+Install Ray With Maven
+---------------
+Latest ray java release can be found in `ray-api <https://mvnrepository.com/artifact/io.ray>`__. To use latest ray java release in your application, use following entries in your ``pom.xml``:
+.. code-block:: xml
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+
+Latest ray java snapshot can be found in `sonatype <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use latest ray java snapshot in your application, use following entries in your ``pom.xml``:
+.. code-block:: xml
+  <!-- only needed for snapshot version of ray -->
+  <repositories>
+    <repository>
+      <id>oss-sonatype</id>
+      <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+  <dependencies>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-api</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ray</groupId>
+      <artifactId>ray-runtime</artifactId>
+      <version>${ray.version}</version>
+    </dependency>
+  </dependencies>
+
 .. _windows-support:
 
 Windows Support
