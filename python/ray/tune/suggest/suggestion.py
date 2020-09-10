@@ -56,8 +56,8 @@ class Searcher:
     CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
         if use_early_stopped_trials is False:
@@ -69,6 +69,13 @@ class Searcher:
                 "DeprecationWarning: `max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
+
+        self._metric = metric
+        self._mode = mode
+
+        if not mode or not metric:
+            # Early return to avoid assertions
+            return
 
         assert isinstance(
             metric, type(mode)), "metric and mode must be of the same type"
@@ -82,9 +89,6 @@ class Searcher:
                        mode), "All of mode must be 'min' or 'max' or 'obs'!"
         else:
             raise ValueError("Mode most either be a list or string")
-
-        self._metric = metric
-        self._mode = mode
 
     def set_search_properties(self, metric, mode, config):
         """Pass search properties to searcher.
@@ -362,3 +366,6 @@ class ConcurrencyLimiter(Searcher):
 
     def on_unpause(self, trial_id):
         self.searcher.on_unpause(trial_id)
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)

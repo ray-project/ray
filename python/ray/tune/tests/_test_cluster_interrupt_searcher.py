@@ -1,3 +1,4 @@
+import os
 import argparse
 
 from ray.tune import run
@@ -44,9 +45,9 @@ if __name__ == "__main__":
     algo = ConcurrencyLimiter(algo, max_concurrent=1)
     from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)
+    os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
     run("trainable",
         search_alg=algo,
-        global_checkpoint_period=0,
         resume=args.resume,
         verbose=0,
         num_samples=20,

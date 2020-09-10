@@ -4,7 +4,6 @@
 #include <ray/util/logging.h>
 #include <cstdlib>
 
-using namespace std::placeholders;
 using namespace ray::api;
 
 /// general function of user code

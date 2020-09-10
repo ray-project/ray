@@ -3,7 +3,6 @@
 #include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
 
-using namespace std::placeholders;
 using namespace ray::api;
 
 int main(int argc, char **argv) {

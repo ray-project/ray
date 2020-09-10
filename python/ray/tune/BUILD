@@ -148,6 +148,14 @@ py_test(
 )
 
 py_test(
+    name = "test_sample",
+    size = "small",
+    srcs = ["tests/test_sample.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],

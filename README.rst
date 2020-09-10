@@ -6,7 +6,7 @@
 |
 
 
-**Ray provides a simple and universal API for building distributed applications.**
+**Ray provides a simple, universal API for building distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -120,7 +120,7 @@ This example runs a parallel grid search to optimize an example objective functi
     print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
     # Get a dataframe for analyzing trial results.
-    df = analysis.dataframe()
+    df = analysis.results_df
 
 If TensorBoard is installed, automatically visualize all trial results:
 

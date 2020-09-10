@@ -216,8 +216,8 @@ class PopulationBasedTraining(FIFOScheduler):
     def __init__(self,
                  time_attr="time_total_s",
                  reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
                  quantile_fraction=0.25,
@@ -253,7 +253,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 "perturbation_interval must be a positive number greater "
                 "than 0. Current value: '{}'".format(perturbation_interval))
 
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         if reward_attr is not None:
             mode = "max"
@@ -265,9 +266,11 @@ class PopulationBasedTraining(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._metric = metric
-        if mode == "max":
+        self._mode = mode
+        self._metric_op = None
+        if self._mode == "max":
             self._metric_op = 1.
-        elif mode == "min":
+        elif self._mode == "min":
             self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
@@ -285,7 +288,33 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
+    def set_search_properties(self, metric, mode):
+        if self._metric and metric:
+            return False
+        if self._mode and mode:
+            return False
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = 1.
+        elif self._mode == "min":
+            self._metric_op = -1.
+
+        return True
+
     def on_trial_add(self, trial_runner, trial):
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
+
         self._trial_state[trial] = PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():

@@ -436,14 +436,6 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
-# DYNATrainer
-py_test(
-    name = "test_dyna",
-    tags = ["agents_dir"],
-    size = "medium",
-    srcs = ["agents/dyna/tests/test_dyna.py"]
-)
-
 # ES
 py_test(
     name = "test_es",
@@ -474,6 +466,16 @@ py_test(
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
+)
+
+# BCTrainer (sub-type of MARWIL)
+py_test(
+    name = "test_bc",
+    tags = ["agents_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["agents/marwil/tests/test_bc.py"]
 )
 
 # MAMLTrainer

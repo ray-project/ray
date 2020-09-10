@@ -34,7 +34,7 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
+      : WorkerPool(io_service, 0, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, nullptr,
                    worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
@@ -273,13 +273,10 @@ TEST_P(WorkerPoolTest, StartupJavaWorkerProcessCount) {
 TEST_P(WorkerPoolTest, InitialWorkerProcessCount) {
   if (!RayConfig::instance().enable_multi_tenancy()) {
     worker_pool_->Start(1);
-    // Here we try to start only 1 worker for each worker language. But since each Java
-    // worker process contains exactly NUM_WORKERS_PER_PROCESS_JAVA (3) workers here,
-    // it's expected to see 3 workers for Java and 1 worker for Python, instead of 1 for
-    // each worker language.
-    ASSERT_NE(worker_pool_->NumWorkersStarting(), 1 * LANGUAGES.size());
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1 + NUM_WORKERS_PER_PROCESS_JAVA);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), LANGUAGES.size());
+    // Here we try to start only 1 worker for each worker language. But since we disabled
+    // initial workers for Java, we expect to see only 1 worker which is a Python worker.
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 1);
   } else {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);

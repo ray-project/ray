@@ -167,3 +167,6 @@ class Repeater(Searcher):
 
     def set_state(self, state):
         self.__dict__.update(state)
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)

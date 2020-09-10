@@ -128,7 +128,8 @@ def create_or_update_cluster(config_file: str,
         cli_logger.newline()
 
     def handle_yaml_error(e):
-        cli_logger.error("Cluster config invalid\n")
+        cli_logger.error("Cluster config invalid")
+        cli_logger.newline()
         cli_logger.error("Failed to load YAML file " + cf.bold("{}"),
                          config_file)
         cli_logger.newline()
@@ -164,7 +165,7 @@ def create_or_update_cluster(config_file: str,
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid\n")
+    cli_logger.success("Cluster configuration valid")
 
     printed_overrides = False
 
@@ -322,7 +323,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
                 cli_logger.print(
                     "{} random worker nodes will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold(min_workers),
+                    cf.dimmed("(due to {})"), cf.bold(min_workers),
                     cf.bold("--keep-min-workers"))
                 cli_logger.old_info(logger,
                                     "teardown_cluster: Keeping {} nodes...",
@@ -334,7 +335,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             if workers_only:
                 cli_logger.print(
                     "The head node will not be shut down. " +
-                    cf.gray("(due to {})"), cf.bold("--workers-only"))
+                    cf.dimmed("(due to {})"), cf.bold("--workers-only"))
 
                 return workers
 
@@ -454,7 +455,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
-    cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
+    cmd = f"tail -n {num_lines} -f /tmp/ray/session_latest/logs/monitor*"
     exec_cluster(
         cluster_config_file,
         cmd=cmd,
@@ -716,7 +717,7 @@ def get_or_create_head_node(config,
                 logger, "get_or_create_head_node: "
                 "Head node up-to-date, IP address is: {}", head_node_ip)
 
-        monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
+        monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
@@ -957,6 +958,12 @@ def rsync(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
+    is_file_mount = False
+    for remote_mount in config.get("file_mounts", {}).keys():
+        if remote_mount in (source if down else target):
+            is_file_mount = True
+            break
+
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = []
@@ -996,7 +1003,7 @@ def rsync(config_file: str,
                 cmd_output_util.set_output_redirected(False)
                 set_rsync_silent(False)
 
-                rsync(source, target)
+                rsync(source, target, is_file_mount)
             else:
                 updater.sync_file_mounts(rsync)
 
