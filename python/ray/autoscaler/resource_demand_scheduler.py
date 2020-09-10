@@ -62,6 +62,8 @@ class ResourceDemandScheduler:
             logger.info("No resource demands")
             return []
 
+        logger.info("Available resources: {}".format(usage_by_ip))
+
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes, usage_by_ip)
 
@@ -88,16 +90,18 @@ class ResourceDemandScheduler:
         node_resources = []
         node_type_counts = collections.defaultdict(int)
 
-        def add_node(node_type, existing_resource_usages=None):
+        def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                raise RuntimeError("Missing entry for node_type {} in "
+                raise RuntimeError("Mising entry for node_type {} in "
                                    "available_node_types config: {}".format(
                                        node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
-            if existing_resource_usages:
-                for resource, used in existing_resource_usages.items():
-                    available[resource] -= used
+            # If available_resources is None this might be because the node is
+            # no longer pending, but the raylet hasn't sent a heartbeat to gcs
+            # yet.
+            if available_resources is not None:
+                available = copy.deepcopy(available_resources)
 
             node_resources.append(available)
             node_type_counts[node_type] += 1
@@ -106,9 +110,10 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
                 ip = self.provider.internal_ip(node_id)
-                resources = usage_by_ip.get(ip, {})
-                add_node(node_type, resources)
+                available_resources = usage_by_ip.get(ip)
+                add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():
             for _ in range(count):
