@@ -532,12 +532,8 @@ void CoreWorker::Shutdown() {
 }
 
 void CoreWorker::Disconnect() {
-  io_service_.stop();
   if (connected_) {
     connected_ = false;
-    if (gcs_client_) {
-      gcs_client_->Disconnect();
-    }
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
@@ -629,6 +625,9 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
 void CoreWorker::WaitForShutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
+  }
+  if (gcs_client_) {
+    gcs_client_->Disconnect();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());
@@ -2093,7 +2092,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   // Do force kill after reply callback sent
   if (success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
-    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    Disconnect();
     if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
@@ -2122,7 +2121,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
     if (request.no_restart()) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+      Disconnect();
     }
     if (options_.num_workers > 1) {
       // TODO (kfstorm): Should we add some kind of check before sending the killing
