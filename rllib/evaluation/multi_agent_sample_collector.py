@@ -98,7 +98,11 @@ class _MultiAgentSampleCollector(_SampleCollector):
         self.agent_to_policy = {}
         # Number of "inference" steps taken in the environment.
         # Regardless of the number of agents involved in each of these steps.
-        self.count = 0
+        # Most general example:
+        # n vectorized envs, with m agents each (mapping to p policies, where
+        # p <= m).
+        #
+        self.env_steps_across_all_agents_since_last_reset = 0
 
         # Data columns that are added to a SampleBatch via postprocessing.
         self.data_cols_added_in_postprocessing = set()
@@ -173,14 +177,15 @@ class _MultiAgentSampleCollector(_SampleCollector):
                     other_batches = agent_batches.copy()
                     del other_batches[agent_key]
 
-                agent_batches[agent_key] = policy.postprocess_trajectory(
-                    batch, other_batches, episode)
+                print("postprocessing agent {} batch of size {}".format(agent_key[0], batch.count))
+
                 # Call the Policy's Exploration's postprocess method.
                 if getattr(policy, "exploration", None) is not None:
-                    agent_batches[
-                        agent_key] = policy.exploration.postprocess_trajectory(
-                            policy, agent_batches[agent_key],
-                            getattr(policy, "_sess", None))
+                    batch = policy.exploration.postprocess_trajectory(
+                        policy, batch, getattr(policy, "_sess", None))
+
+                agent_batches[agent_key] = policy.postprocess_trajectory(
+                    batch, other_batches, episode)
 
                 # Add new columns' data to buffers.
                 self.data_cols_added_in_postprocessing.update(
@@ -235,7 +240,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
     @override(_SampleCollector)
     def get_multi_agent_batch_and_reset(self):
-        self.postprocess_trajectories_so_far()
+        #self.postprocess_trajectories_so_far()
         policy_batches = {}
         for pid, rc in self.policy_sample_collectors.items():
             policy = self.policy_map[pid]
@@ -243,7 +248,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
             policy_batches[pid] = rc.get_train_sample_batch_and_reset(
                 view_reqs)
 
-        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.count)
+        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, self.env_steps_across_all_agents_since_last_reset)
         # Reset our across-all-agents env step count.
-        self.count = 0
+        self.env_steps_across_all_agents_since_last_reset = 0
         return ma_batch

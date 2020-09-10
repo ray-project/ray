@@ -198,10 +198,14 @@ class MultiAgentSampleBatchBuilder:
                     "from a single trajectory.", pre_batch)
             # Call the Policy's Exploration's postprocess method.
             post_batches[agent_id] = pre_batch
+            print(
+                "postprocessing agent {} batch of size {}".format(agent_id,
+                                                                  pre_batch.count))
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
                     policy, post_batches[agent_id],
                     getattr(policy, "_sess", None))
+
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 

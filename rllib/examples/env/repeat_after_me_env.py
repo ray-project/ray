@@ -12,9 +12,12 @@ class RepeatAfterMeEnv(gym.Env):
         self.delay = config.get("repeat_delay", 1)
         assert self.delay >= 1, "`repeat_delay` must be at least 1!"
         self.history = []
+        self.episode_len = config.get("episode_len", 100)
+        self.num_steps = 0
 
     def reset(self):
         self.history = [0] * self.delay
+        self.num_steps = 0
         return self._next_obs()
 
     def step(self, action):
@@ -22,7 +25,8 @@ class RepeatAfterMeEnv(gym.Env):
             reward = 1
         else:
             reward = -1
-        done = len(self.history) > 100
+        self.num_steps += 1
+        done = self.num_steps >= self.episode_len
         return self._next_obs(), reward, done, {}
 
     def _next_obs(self):

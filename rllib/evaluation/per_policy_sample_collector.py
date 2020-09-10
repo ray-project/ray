@@ -372,7 +372,7 @@ class _PerPolicySampleCollector:
         self.slot_to_agent_key = [None] * self.num_agents
         self.agent_key_to_timestep.clear()
         self.timesteps_since_last_reset = 0
-        self.forward_pass_size = 0
+        #self.forward_pass_size = 0
         self.sample_batch_offset = self.agent_slot_cursor
 
         for args in new_chunk_args:

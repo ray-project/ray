@@ -1072,7 +1072,7 @@ def _process_observations_w_trajectory_view_api(
                     "actions": prev_policy_outputs[policy_id][0][eval_idx],
                     # Reward received after taking a at timestep t.
                     "rewards": rewards[env_id][agent_id],
-                    # After taking a, did we reach terminal?
+                    # After taking action=a, did we reach terminal?
                     "dones": (False if (no_done_at_end
                                         or (hit_horizon and soft_horizon)) else
                               agent_done),
@@ -1109,25 +1109,28 @@ def _process_observations_w_trajectory_view_api(
                 _sample_collector.check_missing_dones(
                     episode_id=episode.episode_id)
 
-        # Reached end of episode and we are not allowed to pack the
-        # next episode into the same SampleBatch -> Build the SampleBatch
-        # and add it to "outputs".
-        if (all_agents_done and not multiple_episodes_in_batch) or \
-                _sample_collector.count >= rollout_fragment_length:
-            # TODO: (sven) Case: rollout_fragment_length reached: Do not
-            #  store any data in `episode` anymore
-            #  (useless for get_view_requirements when t<<-1, e.g.
-            #  attention), but keep last episode data around in
-            #  SampleBatchBuilder
-            #  to be able to still reference into it
-            #  should a model require this.
-            outputs.append(_sample_collector.get_multi_agent_batch_and_reset())
+        # Episode is done for all agents
+        # (dones[__all__] == True or hit horizon).
         # Make sure postprocessor stays within one episode.
-        elif all_agents_done:
+        if all_agents_done:
             _sample_collector.postprocess_trajectories_so_far(episode)
 
-        # Episode is done.
-        if all_agents_done:
+        ## Reached end of episode and we are not allowed to pack the
+        ## next episode into the same SampleBatch -> Build the SampleBatch
+        ## and add it to "outputs".
+        #if (all_agents_done and not multiple_episodes_in_batch) or \
+        #        _sample_collector.count >= rollout_fragment_length:
+        #    # TODO: (sven) Case: rollout_fragment_length reached: Do not
+        #    #  store any data in `episode` anymore
+        #    #  (useless for get_view_requirements when t<<-1, e.g.
+        #    #  attention), but keep last episode data around in
+        #    #  SampleBatchBuilder
+        #    #  to be able to still reference into it
+        #    #  should a model require this.
+        #    outputs.append(_sample_collector.get_multi_agent_batch_and_reset())
+
+        ## Episode is done.
+        #if all_agents_done:
             # Call each policy's Exploration.on_episode_end method.
             for p in policies.values():
                 if getattr(p, "exploration", None) is not None:
@@ -1160,28 +1163,43 @@ def _process_observations_w_trajectory_view_api(
             elif resetted_obs != ASYNC_RESET_RETURN:
                 # Creates a new episode if this is not async return.
                 # If reset is async, we will get its result in some future poll
-                episode: MultiAgentEpisode = active_episodes[env_id]
+                new_episode: MultiAgentEpisode = active_episodes[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
                         worker=worker,
                         base_env=base_env,
                         policies=policies,
-                        episode=episode)
+                        episode=new_episode)
                 # type: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
-                    policy_id: PolicyID = episode.policy_for(agent_id)
+                    policy_id: PolicyID = new_episode.policy_for(agent_id)
                     prep_obs: EnvObsType = _get_or_raise(
                         preprocessors, policy_id).transform(raw_obs)
                     filtered_obs: EnvObsType = _get_or_raise(
                         obs_filters, policy_id)(prep_obs)
-                    episode._set_last_observation(agent_id, filtered_obs)
+                    new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(episode.episode_id,
+                    _sample_collector.add_init_obs(new_episode.episode_id,
                                                    agent_id, env_id, policy_id,
                                                    filtered_obs)
                     to_eval.add(policy_id)
+
+        # Reached end of episode and we are not allowed to pack the
+        # next episode into the same SampleBatch -> Build the SampleBatch
+        # and add it to "outputs".
+        if (all_agents_done and not multiple_episodes_in_batch) or \
+                _sample_collector.count >= rollout_fragment_length:
+            # TODO: (sven) Case: rollout_fragment_length reached: Do not
+            #  store any data in `episode` anymore
+            #  (useless for get_view_requirements when t<<-1, e.g.
+            #  attention), but keep last episode data around in
+            #  SampleBatchBuilder to be able to still reference into it
+            #  should a model require this.
+            _sample_collector.postprocess_trajectories_so_far(episode)
+            sample_batch = _sample_collector.get_multi_agent_batch_and_reset()
+            outputs.append(sample_batch)
 
     return active_envs, to_eval, outputs
 
