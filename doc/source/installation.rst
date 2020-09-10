@@ -98,8 +98,11 @@ Latest ray java snapshot can be found in `sonatype <https://oss.sonatype.org/#ne
   <!-- only needed for snapshot version of ray -->
   <repositories>
     <repository>
-      <id>oss-sonatype</id>
+      <id>sonatype</id>
       <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
