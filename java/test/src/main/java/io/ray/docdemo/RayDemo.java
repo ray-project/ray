@@ -33,24 +33,33 @@ public class RayDemo {
   }
 
   public static void main(String[] args) {
+    // Intialize Ray runtime.
     Ray.init();
     {
       List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
+      // Invoke the `f` method 4 times remotely as Ray tasks.
+      // The tasks will run in parallel in the background.
       for (int i = 0; i < 4; i++) {
         objectRefList.add(Ray.task(RayDemo::f, i).remote());
       }
+      // Get the actual results of the tasks with `get`.
       System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
     }
 
     {
       List<ActorHandle<Counter>> counters = new ArrayList<>();
+      // Create 4 actors from the `Counter` class.
+      // They will run in remote worker processes.
       for (int i = 0; i < 4; i++) {
         counters.add(Ray.actor(Counter::new).remote());
       }
 
+      // Invoke the `increment` method on each actor.
+      // This will send an actor task to each remote actor.
       for (ActorHandle<Counter> counter : counters) {
         counter.task(Counter::increment).remote();
       }
+      // Invoke the `read` method on each actor, and print the results.
       List<ObjectRef<Integer>> objectRefList = counters.stream()
           .map(counter -> counter.task(Counter::read).remote())
           .collect(Collectors.toList());
