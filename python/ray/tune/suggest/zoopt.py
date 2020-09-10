@@ -109,12 +109,13 @@ class ZOOptSearch(Searcher):
                  algo="asracos",
                  budget=None,
                  dim_dict=None,
-                 metric="episode_reward_mean",
-                 mode="min",
+                 metric=None,
+                 mode=None,
                  **kwargs):
         assert zoopt is not None, "Zoopt not found - please install zoopt."
         assert budget is not None, "`budget` should not be None!"
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         _algo = algo.lower()
         assert _algo in ["asracos", "sracos"
                          ], "`algo` must be in ['asracos', 'sracos'] currently"

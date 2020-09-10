@@ -62,16 +62,21 @@ void DataWriter::Run() {
 uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
                                               uint32_t data_size,
                                               StreamingMessageType message_type) {
-  STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
-                       << " data_size: " << data_size
-                       << ", message_type=" << static_cast<uint32_t>(message_type)
-                       << ", data=" << Util::Byte2hex(data, data_size);
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   // Write message id stands for current lastest message id and differs from
   // channel.current_message_id if it's barrier message.
   uint64_t &write_message_id = channel_info.current_message_id;
-  write_message_id++;
+  if (message_type == StreamingMessageType::Message) {
+    write_message_id++;
+  }
+
+  STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
+                       << " data_size: " << data_size
+                       << ", message_type=" << static_cast<uint32_t>(message_type)
+                       << ", data=" << Util::Byte2hex(data, data_size)
+                       << ", current_message_id=" << write_message_id;
+
   auto &ring_buffer_ptr = channel_info.writer_ring_buffer;
   while (ring_buffer_ptr->IsFull() &&
          runtime_context_->GetRuntimeStatus() == RuntimeStatus::Running) {
@@ -345,8 +350,6 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
                            << static_cast<uint32_t>(message_ptr->GetMessageType());
       break;
     }
-    // ClassBytesSize = DataSize + MetaDataSize
-    // bundle_buffer_size += message_ptr->GetDataSize();
     bundle_buffer_size += message_total_size;
     message_list.push_back(message_ptr);
     buffer_ptr->Pop();

@@ -7,7 +7,7 @@ import ray
 import torch
 from ray.exceptions import RayActorError
 from ray.util.sgd.torch.distributed_torch_runner import \
-    LocalDistributedRunner, DistributedTorchRunner, DeactivatedRunner
+    LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
 from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
@@ -81,14 +81,6 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             RemoteRunner.remote(**params) for _ in range(num_workers)
         ]
 
-    def _setup_components(self):
-        # Runs the creator functions.
-        remote_component_setup = [
-            worker.setup_components.remote()
-            for i, worker in enumerate(self.remote_workers)
-        ]
-        return remote_component_setup
-
     def _setup_process_group(self, address, timeout_s, num_workers):
         # Setup the process group among all workers.
         remote_pgroup_setups = [
@@ -101,7 +93,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
     def _setup_operator(self):
         # Runs code that requires all creator functions to have run.
         remote_operator_setups = [
-            worker.setup_ddp_and_operator.remote()
+            worker.setup_operator.remote()
             for worker in self.remote_workers
         ]
         return remote_operator_setups
@@ -120,7 +112,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
                 num_gpus=int(use_gpu))(TorchRunner)
             self.remote_workers = [RemoteRunner.remote(**params)]
             self.num_workers = num_workers
-            ray.get(self.remote_workers[0].setup.remote())
+            ray.get(self.remote_workers[0].setup_operator.remote())
         else:
             self._init_workers(num_workers, params, num_cpus_per_worker,
                                use_gpu)
@@ -130,8 +122,6 @@ class RemoteWorkerGroup(BaseWorkerGroup):
                 self.apply_all_workers(initialization_hook)
 
             address = setup_address()
-
-            ray.get(self._setup_components())
 
             ray.get(
                 self._setup_process_group(address, timeout_s,
@@ -224,7 +214,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
         return cleanup
 
-    def _shutdown(self, cleanup):
+    def _terminate_remote_workers(self, cleanup):
         try:
             ray.get(cleanup)
             [
@@ -238,32 +228,11 @@ class RemoteWorkerGroup(BaseWorkerGroup):
 
     def shutdown(self, force=False):
         if not force:
-            cleanup = self._shutdown_remote_workers()
-            self._shutdown(cleanup)
+            cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
+            self._terminate_remote_workers(cleanup)
         else:
             self._reset()
         self.remote_workers = []
-        # if not force:
-        #     cleanup = self._shutdown_remote_workers()
-        #     try:
-        #         ray.get(cleanup)
-        #         [
-        #             worker.__ray_terminate__.remote()
-        #             for worker in self.remote_workers
-        #         ]
-        #     except RayActorError:
-        #         logger.warning(
-        #             "Failed to shutdown gracefully, forcing a shutdown.")
-        #
-        #         for worker in self.remote_workers:
-        #             logger.warning(f"Killing worker {worker}.")
-        #             ray.kill(worker)
-        # else:
-        #     for worker in self.remote_workers:
-        #         logger.debug(f"Killing worker {worker}.")
-        #         ray.kill(worker)
-        #
-        # self.remote_workers = []
 
     def _reset(self):
         for worker in self.remote_workers:
@@ -321,7 +290,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
 
 class LocalWorkerGroup(BaseWorkerGroup):
     def __init__(self):
-        self.local_worker = DeactivatedRunner()
+        self.local_worker = None
         self.remote_worker_group = RemoteWorkerGroup()
         self.num_workers = 0
 
@@ -340,7 +309,7 @@ class LocalWorkerGroup(BaseWorkerGroup):
             self.local_worker = TorchRunner(**params)
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
-            self.local_worker.setup()
+            self.local_worker.setup_operator()
         else:
             # Start local worker
             self.local_worker = LocalDistributedRunner(
@@ -353,10 +322,6 @@ class LocalWorkerGroup(BaseWorkerGroup):
             # Compute URL for initializing distributed PyTorch
             address = setup_address()
 
-            remote_components = self.remote_worker_group._setup_components()
-            self.local_worker.setup_components()
-            ray.get(remote_components)
-
             remote_pgs = self.remote_worker_group._setup_process_group(
                 address, timeout_s, num_workers)
             self.local_worker.setup_process_group(address, num_workers - 1,
@@ -365,7 +330,7 @@ class LocalWorkerGroup(BaseWorkerGroup):
             ray.get(remote_pgs)
 
             remote_operators = self.remote_worker_group._setup_operator()
-            self.local_worker.setup_ddp_and_operator()
+            self.local_worker.setup_operator()
             ray.get(remote_operators)
 
     def apply_all_operators(self, fn):
@@ -404,9 +369,9 @@ class LocalWorkerGroup(BaseWorkerGroup):
     def _reset(self):
         """Terminates models without giving up local resource reservation."""
         self.local_worker.shutdown(cleanup=False)
-        self.remote_worker_group.reset()
+        self.remote_worker_group._reset()
 
-        self.local_worker = DeactivatedRunner()
+        self.local_worker = None
         self.remote_worker_group = RemoteWorkerGroup()
 
     def resize_workers(self, max_retries=10):
@@ -457,7 +422,6 @@ class LocalWorkerGroup(BaseWorkerGroup):
         if success:
             return success, [local_worker_stats] + ray.get(remote_worker_stats)
 
-        self._num_failures += 1
         return success, None
 
     def validate(self, num_steps=None, profile=False, info=None):
@@ -469,40 +433,23 @@ class LocalWorkerGroup(BaseWorkerGroup):
         return worker_stats
 
     def shutdown(self, force=False):
-        self.remote_worker_group.shutdown(force=force)
-        self.local_worker.shutdown()
+        if not force:
+            cleanup = self.remote_worker_group._shutdown_remote_workers()
+            self.local_worker.shutdown()
+            self.remote_worker_group._terminate_remote_workers(cleanup)
+        else:
+            self.local_worker.shutdown()
+            self.remote_worker_group._reset()
 
-        self.local_worker = DeactivatedRunner()
+        self.local_worker = None
         self.remote_worker_group = RemoteWorkerGroup()
-        # if not force:
-        #     cleanup = [
-        #         worker.shutdown.remote() for worker in
-        #         self.remote_worker_group.remote_workers
-        #     ]
-        #     #self.local_worker.shutdown()
-        #     try:
-        #         ray.get(cleanup)
-        #         terminate = [
-        #             worker.__ray_terminate__.remote()
-        #             for worker in self.remote_worker_group.remote_workers
-        #         ]
-        #     except RayActorError:
-        #         logger.warning(
-        #             "Failed to shutdown gracefully, forcing a shutdown.")
-        #
-        #         for worker in self.remote_worker_group.remote_workers:
-        #             logger.warning(f"Killing worker {worker}.")
-        #             ray.kill(worker)
-        #     self.local_worker.shutdown()
-        # else:
-        #     self.local_worker.shutdown()
-        #     for worker in self.remote_workers:
-        #         logger.debug(f"Killing worker {worker}.")
-        #         ray.kill(worker)
-        #
-        # self.local_worker = DeactivatedRunner()
-        # #self.remote_worker_group.remote_workers = []
-        # self.remote_worker_group = RemoteWorkerGroup()
 
     def get_num_workers(self):
         return self.remote_worker_group.get_num_workers() + 1
+
+class DeactivatedWorkerGroup:
+    def __getattr__(self, *args, **kwargs):
+        raise RuntimeError(
+            "This TorchTrainer is not active (it is likely shutdown already). "
+            "Create a new TorchTrainer.")
+

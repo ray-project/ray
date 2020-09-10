@@ -1,6 +1,8 @@
 import argparse
 import json
 import time
+import sys
+import os
 
 import ray
 import ray.actor
@@ -98,7 +100,13 @@ parser.add_argument(
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.")
-
+parser.add_argument(
+    "--code-search-path",
+    default=None,
+    type=str,
+    help="A list of directories or jar files separated by colon that specify "
+    "the search path for user code. This will be used as `CLASSPATH` in "
+    "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -134,6 +142,13 @@ if __name__ == "__main__":
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
+
+    code_search_path = args.code_search_path
+    if code_search_path is not None:
+        for p in code_search_path.split(":"):
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.append(p)
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,

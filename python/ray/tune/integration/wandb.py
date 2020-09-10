@@ -1,5 +1,5 @@
 import os
-
+import pickle
 from multiprocessing import Process, Queue
 from numbers import Number
 
@@ -9,6 +9,8 @@ from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
 from ray.tune.utils import flatten_dict
 
+import yaml
+
 try:
     import wandb
 except ImportError:
@@ -17,6 +19,28 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+
+
+def _clean_log(obj):
+    # Fixes https://github.com/ray-project/ray/issues/10631
+    if isinstance(obj, dict):
+        return {k: _clean_log(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_log(v) for v in obj]
+
+    # Else
+    try:
+        pickle.dumps(obj)
+        yaml.dump(
+            obj,
+            Dumper=yaml.SafeDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            encoding="utf-8")
+        return obj
+    except Exception:
+        # give up, similar to _SafeFallBackEncoder
+        return str(obj)
 
 
 def wandb_mixin(func):
@@ -304,6 +328,9 @@ class WandbLogger(Logger):
         # Grouping
         wandb_group = wandb_config.pop("group", self.trial.trainable_name)
 
+        # remove unpickleable items!
+        config = _clean_log(config)
+
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
@@ -324,6 +351,7 @@ class WandbLogger(Logger):
         self._wandb.start()
 
     def on_result(self, result):
+        result = _clean_log(result)
         self._queue.put(result)
 
     def close(self):
@@ -373,6 +401,9 @@ class WandbTrainableMixin:
         else:
             default_group = type(self).__name__
         wandb_group = wandb_config.pop("group", default_group)
+
+        # remove unpickleable items!
+        _config = _clean_log(_config)
 
         wandb_init_kwargs = dict(
             id=trial_id,

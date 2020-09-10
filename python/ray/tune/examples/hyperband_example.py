@@ -3,16 +3,15 @@
 import argparse
 import json
 import os
-import random
 
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run, sample_from
+from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 
 
-class MyTrainableClass(Trainable):
+class MyTrainableClass(tune.Trainable):
     """Example agent whose learning curve is a random sigmoid.
 
     The dummy hyperparameters "width" and "height" determine the slope and
@@ -58,13 +57,14 @@ if __name__ == "__main__":
         mode="max",
         max_t=200)
 
-    run(MyTrainableClass,
+    tune.run(
+        MyTrainableClass,
         name="hyperband_test",
         num_samples=20,
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
-            "width": sample_from(lambda spec: 10 + int(90 * random.random())),
-            "height": sample_from(lambda spec: int(100 * random.random()))
+            "width": tune.randint(10, 90),
+            "height": tune.randint(0, 100)
         },
         scheduler=hyperband,
         fail_fast=True)

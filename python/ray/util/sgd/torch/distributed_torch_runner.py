@@ -4,7 +4,6 @@ import os
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
@@ -43,9 +42,6 @@ class DistributedTorchRunner(TorchRunner):
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
 
-    def setup(self):
-        raise RuntimeError("Need to call setup commands separately.")
-
     def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.
 
@@ -60,7 +56,7 @@ class DistributedTorchRunner(TorchRunner):
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
 
-    def setup_ddp_and_operator(self):
+    def setup_operator(self):
         """Runs distributed coordination components.
 
         This helps avoid timeouts due to creator functions (perhaps
@@ -70,29 +66,18 @@ class DistributedTorchRunner(TorchRunner):
         if self.use_gpu and torch.cuda.is_available():
             device_ids = self.get_device_ids()
 
-        # Wrap dataloaders
-        self._wrap_dataloaders()
-
-        training_models = self.models
-        if self.wrap_ddp:
-            # This needs to happen after apex
-            training_models = [
-                DistributedDataParallel(model, device_ids=device_ids)
-                for model in self.models
-            ]
         self.training_operator = self.training_operator_cls(
             self.config,
-            models=training_models,
-            optimizers=self.optimizers,
-            criterion=self.criterion,
-            train_loader=self.train_loader,
-            validation_loader=self.validation_loader,
             world_rank=self.world_rank,
-            schedulers=self.schedulers,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
-            use_tqdm=self.use_tqdm)
+            use_tqdm=self.use_tqdm,
+            apex_args=self.apex_args,
+            wrap_ddp=self.wrap_ddp,
+            wrap_distributed_sampler=True,
+            add_dist_sampler=self.add_dist_sampler,
+            scheduler_step_freq=self.scheduler_step_freq)
 
     def get_device_ids(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
@@ -361,10 +346,3 @@ class LocalDistributedRunner(DistributedTorchRunner):
     def is_actor(self):
         actor_id = ray.worker.global_worker.actor_id
         return actor_id != actor_id.nil()
-
-
-class DeactivatedRunner:
-    def __getattr__(self, *args, **kwargs):
-        raise RuntimeError(
-            "This TorchTrainer is not active (it is likely shutdown already). "
-            "Create a new TorchTrainer.")

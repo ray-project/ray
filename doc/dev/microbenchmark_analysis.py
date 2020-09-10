@@ -44,7 +44,6 @@ def main():
                 task_type = get_task_type(line)
                 task_performance = get_task_performance(line)
                 task_standard_deviation = get_task_std(line)
-
                 task_info[task_type].append(task_performance)
                 task_std_info[task_type].append(task_standard_deviation)
 
