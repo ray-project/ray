@@ -1,6 +1,5 @@
 package io.ray.test;
 
-import java.lang.ProcessBuilder.Redirect;
 import java.time.LocalDateTime;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
@@ -21,27 +20,8 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
             + " ============");
   }
 
-  private String previousTestClass;
-
-  private void runCommand(String... args) {
-    ProcessBuilder builder = new ProcessBuilder(args);
-    builder.redirectOutput(Redirect.INHERIT);
-    builder.redirectError(Redirect.INHERIT);
-    try {
-      builder.start().waitFor();
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-  }
-
   @Override
   public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {
-    printInfo("BEFORE METHOD", getFullTestName(testResult));
-    if (previousTestClass != testResult.getTestClass().getName()) {
-      previousTestClass = testResult.getTestClass().getName();
-      runCommand("df", "-h");
-      runCommand("bash", "-c", "rm -rf /tmp/ray");
-    }
   }
 
   @Override
