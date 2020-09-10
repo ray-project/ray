@@ -6,6 +6,8 @@ import pickle
 import json
 import numpy as np
 import requests
+import os
+import tempfile
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -32,7 +34,8 @@ model.fit(train_x, train_y)
 print("MSE:", mean_squared_error(model.predict(val_x), val_y))
 
 # Save the model and label to file
-MODEL_PATH = os.path.join(tempfile.gettempdir(), "iris_model_logistic_regression.pkl")
+MODEL_PATH = os.path.join(tempfile.gettempdir(),
+                          "iris_model_logistic_regression.pkl")
 LABEL_PATH = os.path.join(tempfile.gettempdir(), "iris_labels.json")
 
 with open(MODEL_PATH, "wb") as f:
