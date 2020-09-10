@@ -12,7 +12,7 @@ Next steps
     import ray
     ray\.init\(address='auto', _redis_password='.+'\)
 
-  If connection fails, check your firewall settings other network configuration.
+  If connection fails, check your firewall settings and network configuration.
 
   To terminate the Ray runtime, run
     ray stop
