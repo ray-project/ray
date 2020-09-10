@@ -75,9 +75,12 @@ build_jars_multiplatform() {
       return
     fi
   fi
-  download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"
-  prepare_native
-  build_jars multiplatform false
+  if download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"; then
+    prepare_native
+    build_jars multiplatform false
+  else
+    echo "download_jars failed, skip building multiplatform jars"
+  fi
 }
 
 # Download darwin/windows ray-related jar from s3
@@ -101,9 +104,9 @@ download_jars() {
           echo "Waiting $url to be ready for $wait_time seconds..."
           sleep $sleep_time_units
           wait_time=$((wait_time + sleep_time_units))
-          if [[ wait_time == $((60 * 120)) ]]; then
+          if [[ wait_time == $((sleep_time_units * 10)) ]]; then
             echo "Download $url timeout"
-            exit 1
+            return 1
           fi
         else
           echo "Download $url to $dest_file succeed"
@@ -131,6 +134,20 @@ prepare_native() {
   done
 }
 
+check_native() {
+  for os in 'darwin' 'linux'; do
+    native_dirs=()
+    native_dirs[0]+="$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os"
+    native_dirs[0]+="$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os"
+    for native_dir in "${native_dirs[@]}"; do
+      if [ ! -d "$native_dir" ]; then
+        echo "$native_dir doesn't exist"
+        return 1
+      fi
+    done
+  done
+}
+
 # This function assume all multiplatform binaries are prepared already.
 deploy_jars() {
   if [ "${TRAVIS-}" = true ]; then
@@ -142,11 +159,15 @@ deploy_jars() {
     fi
   fi
   echo "Start deploying jars"
-  cd "$WORKSPACE_DIR/java"
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  cd "$WORKSPACE_DIR/streaming/java"
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  echo "Finished deploying jars"
+  if check_native; then
+    cd "$WORKSPACE_DIR/java"
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    cd "$WORKSPACE_DIR/streaming/java"
+    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    echo "Finished deploying jars"
+  else
+    echo "Native bianries/libraries are not ready, skip deploying jars."
+  fi
 }
 
 case "$1" in
