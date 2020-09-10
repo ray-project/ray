@@ -14,7 +14,7 @@ import collections
 from typing import List, Dict, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
 
 logger = logging.getLogger(__name__)
 
