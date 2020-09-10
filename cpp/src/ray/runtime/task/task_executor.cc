@@ -23,7 +23,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(const InvocationSpec &invocation
 };
 
 Status TaskExecutor::ExecuteTask(
-    TaskType task_type, const RayFunction &ray_function,
+    TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<RayObject>> &args,
     const std::vector<ObjectID> &arg_reference_ids,

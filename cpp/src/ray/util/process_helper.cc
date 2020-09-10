@@ -6,7 +6,6 @@
 
 namespace ray {
 namespace api {
-std::shared_ptr<ProcessHelper> ProcessHelper::ProcessHelper_ = nullptr;
 
 static std::string GetSessionDir(std::string redis_ip, int port, std::string password) {
   redisContext *context = redisConnect(redis_ip.c_str(), port);

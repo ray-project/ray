@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
   auto obj = Ray::Put(123);
   auto get_result = *(obj.Get());
 
-  RAY_LOG(INFO) << "Get result: " << get_result
+  RAY_LOG(INFO) << "Get result: " << get_result;
 
   /// general function remote call（args passed by reference）
   // auto r3 = Ray::Task(Return1).Remote();

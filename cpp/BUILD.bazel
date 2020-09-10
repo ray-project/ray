@@ -144,7 +144,6 @@ cc_binary(
         "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
-    linkstatic = False,
     deps = [
         "ray_api",
     ],

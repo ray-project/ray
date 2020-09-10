@@ -63,8 +63,6 @@ class AbstractRayRuntime : public RayRuntime {
 
   static void DoShutdown(std::shared_ptr<RayConfig> config);
 
-  static void DoShutdown(std::shared_ptr<RayConfig> config);
-
   void Execute(const TaskSpecification &task_spec);
 
   // InvocationSpec BuildInvocationSpec(TaskType task_type,
