@@ -93,6 +93,10 @@ class NodeUpdater:
         self.node_resources = node_resources
         self.runtime_hash = runtime_hash
         self.file_mounts_contents_hash = file_mounts_contents_hash
+        # TODO (Alex): This makes the assumption that $HOME on the head and
+        # worker nodes is the same. Also note that `cluster_synced_files` is
+        # set on the head -> worker updaters only (so `expanduser` is only run
+        # on the head node).
         if cluster_synced_files:
             self.cluster_synced_files = [
                 os.path.expanduser(path) for path in cluster_synced_files
