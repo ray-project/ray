@@ -174,6 +174,7 @@ class CommandRunnerInterface:
         """
         pass
 
+
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
@@ -259,12 +260,13 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
         except Exception as e:
-            warnings.warn(self.log_prefix +
-                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e), UserWarning)
+            warnings.warn(
+                self.log_prefix +
+                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
+                UserWarning)
             if target.startswith("~"):
                 target = "/root" + target[1:]
-    
+
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
                                                 target)
@@ -282,12 +284,13 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 target,
             ])
         except Exception as e:
-            warnings.warn(self.log_prefix +
-                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e), UserWarning)
+            warnings.warn(
+                self.log_prefix +
+                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
+                UserWarning)
             if target.startswith("~"):
                 target = "/root" + target[1:]
-    
+
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
                 target

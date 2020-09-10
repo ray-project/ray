@@ -345,8 +345,7 @@ class NodeUpdater:
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
                 self.cmd_runner.run_init(
-                    as_head=self.is_head_node,
-                    file_mounts=self.file_mounts)
+                    as_head=self.is_head_node, file_mounts=self.file_mounts)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
