@@ -363,9 +363,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, load_code_from_local, code_search_path, system_config,
-          lru_evict, enable_object_reconstruction, metrics_export_port,
-          log_style, log_color, verbose):
+          temp_dir, java_worker_options, load_code_from_local,
+          code_search_path, system_config, lru_evict,
+          enable_object_reconstruction, metrics_export_port, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.log_style = log_style
     cli_logger.color_mode = log_color
