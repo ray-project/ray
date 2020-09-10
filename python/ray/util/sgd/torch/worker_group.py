@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class BaseWorkerGroup:
-    def start_workers(self, num_workers, params,
-                      dist_params, initialization_hook,
-                      timeout_s, num_cpus_per_worker, use_gpu):
+    def start_workers(self, num_workers, params, dist_params,
+                      initialization_hook, timeout_s, num_cpus_per_worker,
+                      use_gpu):
         raise NotImplementedError
 
     def apply_all_operators(self, fn):
@@ -94,14 +94,13 @@ class RemoteWorkerGroup(BaseWorkerGroup):
     def _setup_operator(self):
         # Runs code that requires all creator functions to have run.
         remote_operator_setups = [
-            worker.setup_operator.remote()
-            for worker in self.remote_workers
+            worker.setup_operator.remote() for worker in self.remote_workers
         ]
         return remote_operator_setups
 
-    def start_workers(self, num_workers, params,
-                      dist_params, initialization_hook,
-                      timeout_s, num_cpus_per_worker, use_gpu):
+    def start_workers(self, num_workers, params, dist_params,
+                      initialization_hook, timeout_s, num_cpus_per_worker,
+                      use_gpu):
         self.num_workers = num_workers
         self.params = params
         self.dist_params = dist_params
@@ -117,9 +116,10 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             self.num_workers = num_workers
             ray.get(self.remote_workers[0].setup_operator.remote())
         else:
-            self._init_workers(num_workers, {**params, **dist_params},
-                num_cpus_per_worker,
-                               use_gpu)
+            self._init_workers(num_workers, {
+                **params,
+                **dist_params
+            }, num_cpus_per_worker, use_gpu)
             self.num_workers = num_workers
 
             if initialization_hook:
@@ -222,17 +222,19 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         try:
             ray.get(cleanup)
             [
-                worker.__ray_terminate__.remote() for worker in self.remote_workers
+                worker.__ray_terminate__.remote()
+                for worker in self.remote_workers
             ]
         except RayActorError:
             logger.warning("Failed to shutdown gracefully, forcing a "
                            "shutdown.")
             self._reset()
 
-
     def shutdown(self, force=False):
         if not force:
-            cleanup = [worker.shutdown.remote() for worker in self.remote_workers]
+            cleanup = [
+                worker.shutdown.remote() for worker in self.remote_workers
+            ]
             self._terminate_remote_workers(cleanup)
         else:
             self._reset()
@@ -273,13 +275,14 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             new_remote_workers = self._check_potential_remote_workers_size()
             if new_remote_workers:
                 self._last_resize = time.time()
-                self.start_workers(int(new_remote_workers),
-                                   params=self.params,
-                                   dist_params=self.dist_params,
-                                   initialization_hook=self.initialization_hook,
-                                   num_cpus_per_worker=self.num_cpus_per_worker,
-                                   use_gpu=self.use_gpu,
-                                   timeout_s=self.timeout_s)
+                self.start_workers(
+                    int(new_remote_workers),
+                    params=self.params,
+                    dist_params=self.dist_params,
+                    initialization_hook=self.initialization_hook,
+                    num_cpus_per_worker=self.num_cpus_per_worker,
+                    use_gpu=self.use_gpu,
+                    timeout_s=self.timeout_s)
                 self.load_state_dict(self.state_dict())
                 return
             else:
@@ -299,9 +302,9 @@ class LocalWorkerGroup(BaseWorkerGroup):
         self.remote_worker_group = RemoteWorkerGroup()
         self.num_workers = 0
 
-    def start_workers(self, num_workers, params,
-                      dist_params, initialization_hook,
-                      timeout_s, num_cpus_per_worker, use_gpu):
+    def start_workers(self, num_workers, params, dist_params,
+                      initialization_hook, timeout_s, num_cpus_per_worker,
+                      use_gpu):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
 
         self.num_workers = num_workers
@@ -321,11 +324,16 @@ class LocalWorkerGroup(BaseWorkerGroup):
 
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=num_cpus_per_worker, num_gpus=int(use_gpu),
-                **{**params, **dist_params})
-            self.remote_worker_group._init_workers(
-                num_workers - 1, {**params, **dist_params},
-                    num_cpus_per_worker, use_gpu)
+                num_cpus=num_cpus_per_worker,
+                num_gpus=int(use_gpu),
+                **{
+                    **params,
+                    **dist_params
+                })
+            self.remote_worker_group._init_workers(num_workers - 1, {
+                **params,
+                **dist_params
+            }, num_cpus_per_worker, use_gpu)
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
 
@@ -393,13 +401,14 @@ class LocalWorkerGroup(BaseWorkerGroup):
                 self.remote_worker_group._check_potential_remote_workers_size()
             if new_remote_workers:
                 self.remote_worker_group._last_resize = time.time()
-                self.start_workers(int(new_remote_workers) + 1,
-                                   params=self.params,
-                                   dist_params=self.dist_params,
-                                   initialization_hook=self.initialization_hook,
-                                   num_cpus_per_worker=self.num_cpus_per_worker,
-                                   use_gpu=self.use_gpu,
-                                   timeout_s=self.timeout_s)
+                self.start_workers(
+                    int(new_remote_workers) + 1,
+                    params=self.params,
+                    dist_params=self.dist_params,
+                    initialization_hook=self.initialization_hook,
+                    num_cpus_per_worker=self.num_cpus_per_worker,
+                    use_gpu=self.use_gpu,
+                    timeout_s=self.timeout_s)
                 self.load_state_dict(self.state_dict())
                 return
             else:
@@ -463,9 +472,9 @@ class LocalWorkerGroup(BaseWorkerGroup):
     def remote_workers(self):
         return self.remote_worker_group.remote_workers
 
+
 class DeactivatedWorkerGroup:
     def __getattr__(self, *args, **kwargs):
         raise RuntimeError(
             "This TorchTrainer is not active (it is likely shutdown already). "
             "Create a new TorchTrainer.")
-

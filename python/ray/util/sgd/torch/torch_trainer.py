@@ -545,7 +545,6 @@ class TorchTrainer:
                     num_cpus_this_worker = 1
                     use_gpu_this_worker = False
 
-
                 return Resources(
                     cpu=num_cpus_this_worker,
                     gpu=int(use_gpu_this_worker),
