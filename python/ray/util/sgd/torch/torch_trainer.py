@@ -530,25 +530,25 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
-                num_cpus = config.get("num_cpus_per_worker",
-                                      kwargs.get("num_cpus_per_worker", 1))
+                num_cpus_per_worker = config.get("num_cpus_per_worker",
+                                        kwargs.get("num_cpus_per_worker", 1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
                 use_local = config.get("use_local",
                                        kwargs.get("use_local", False))
 
                 if use_local:
                     remote_worker_count = num_workers - 1
-                    num_cpus_this_worker = num_cpus
+                    local_cpus = 1
                     use_gpu_this_worker = use_gpu
                 else:
                     remote_worker_count = num_workers
-                    num_cpus_this_worker = 1
+                    local_cpus = 0
                     use_gpu_this_worker = False
 
                 return Resources(
-                    cpu=num_cpus_this_worker,
+                    cpu=int(local_cpus * num_cpus_per_worker),
                     gpu=int(use_gpu_this_worker),
-                    extra_cpu=int(remote_worker_count),
+                    extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
             def _create_trainer(self, tune_config):

@@ -52,6 +52,7 @@ class DistributedTorchRunner(TorchRunner):
             timeout (timedelta): Seconds for process group
                 operations to timeout.
         """
+        logger.info(f"Setting up process group for: {url} [rank={world_rank}]")
         self.world_rank = world_rank
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)

@@ -125,7 +125,8 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
 
-            address = setup_address()
+            address = ray.get(
+                self.remote_workers[0].setup_address.remote())
 
             ray.get(
                 self._setup_process_group(address, timeout_s,
@@ -338,7 +339,8 @@ class LocalWorkerGroup(BaseWorkerGroup):
                 self.apply_all_workers(initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
-            address = setup_address()
+            head_worker = self.remote_worker_group.remote_workers[0]
+            address = ray.get(head_worker.setup_address.remote())
 
             remote_pgs = self.remote_worker_group._setup_process_group(
                 address, timeout_s, num_workers)

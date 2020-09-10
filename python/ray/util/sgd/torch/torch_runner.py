@@ -5,6 +5,7 @@ import torch
 
 import ray
 from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
+from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -57,13 +58,8 @@ class TorchRunner:
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
-    def get_node_ip(self):
-        """Returns the IP address of the current node."""
-        return ray.services.get_node_ip_address()
-
-    def find_free_port(self):
-        """Finds a free port on the current node."""
-        return utils.find_free_port()
+    def setup_address(self):
+        return setup_address()
 
     def train_epoch(self,
                     num_steps=None,
