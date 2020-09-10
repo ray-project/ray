@@ -134,7 +134,8 @@ prepare_native() {
   done
 }
 
-check_native() {
+# Return 0 if native bianries and libraries exist and 1 if not.
+native_files_exist() {
   local os
   for os in 'darwin' 'linux'; do
     native_dirs=()
@@ -162,7 +163,7 @@ deploy_jars() {
     fi
   fi
   echo "Start deploying jars"
-  if check_native; then
+  if native_files_exist; then
     (
       cd "$WORKSPACE_DIR/java"
       mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
