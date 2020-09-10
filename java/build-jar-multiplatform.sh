@@ -160,10 +160,14 @@ deploy_jars() {
   fi
   echo "Start deploying jars"
   if check_native; then
-    cd "$WORKSPACE_DIR/java"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-    cd "$WORKSPACE_DIR/streaming/java"
-    mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    (
+      cd "$WORKSPACE_DIR/java"
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    )
+    (
+      cd "$WORKSPACE_DIR/streaming/java"
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    )
     echo "Finished deploying jars"
   else
     echo "Native bianries/libraries are not ready, skip deploying jars."
