@@ -127,8 +127,8 @@ class SkOptSearch(Searcher):
     def __init__(self,
                  optimizer=None,
                  space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  max_concurrent=None,
@@ -137,7 +137,8 @@ class SkOptSearch(Searcher):
             You can install Skopt with the command:
             `pip install scikit-optimize`."""
 
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self.max_concurrent = max_concurrent
         super(SkOptSearch, self).__init__(
             metric=metric,

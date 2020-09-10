@@ -25,6 +25,12 @@
     <developerConnection>scm:git:ssh://github.com:ray-project/ray.git</developerConnection>
   </scm>
 
+  <developers>
+    <developer>
+      <organizationUrl>https://ray.io</organizationUrl>
+    </developer>
+  </developers>
+
   <distributionManagement>
     <snapshotRepository>
       <id>ossrh</id>

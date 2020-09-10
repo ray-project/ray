@@ -7,6 +7,7 @@ import time
 import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.suggest.bayesopt import BayesOptSearch
 
 
@@ -43,18 +44,18 @@ if __name__ == "__main__":
             "height": tune.uniform(-100, 100)
         }
     }
-    algo = BayesOptSearch(
-        metric="mean_loss",
-        mode="min",
-        utility_kwargs={
-            "kind": "ucb",
-            "kappa": 2.5,
-            "xi": 0.0
-        })
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    algo = BayesOptSearch(utility_kwargs={
+        "kind": "ucb",
+        "kappa": 2.5,
+        "xi": 0.0
+    })
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
     tune.run(
         easy_objective,
         name="my_exp",
+        metric="mean_loss",
+        mode="min",
         search_alg=algo,
         scheduler=scheduler,
         **tune_kwargs)

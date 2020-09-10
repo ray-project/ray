@@ -1,21 +1,5 @@
 import numpy as np
-from gym.envs.mujoco import HalfCheetahEnv
-import inspect
-
-
-def get_all_function_arguments(function, locals):
-    kwargs_dict = {}
-    for arg in inspect.getfullargspec(function).kwonlyargs:
-        if arg not in ["args", "kwargs"]:
-            kwargs_dict[arg] = locals[arg]
-    args = [locals[arg] for arg in inspect.getfullargspec(function).args]
-
-    if "args" in locals:
-        args += locals["args"]
-
-    if "kwargs" in locals:
-        kwargs_dict.update(locals["kwargs"])
-    return args, kwargs_dict
+from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
 
 
 class HalfCheetahWrapper(HalfCheetahEnv):
@@ -42,8 +26,28 @@ class HalfCheetahWrapper(HalfCheetahEnv):
             return np.minimum(np.maximum(-1000.0, reward), 1000.0)
 
 
+class HopperWrapper(HopperEnv):
+    """Hopper Wrapper that wraps Mujoco Hopper-v2 env
+    with an additional defined reward function for model-based RL.
+
+    This is currently used for MBMPO.
+    """
+
+    def __init__(self, *args, **kwargs):
+        HopperEnv.__init__(self, *args, **kwargs)
+
+    def reward(self, obs, action, obs_next):
+        alive_bonus = 1.0
+        assert obs.ndim == 2 and action.ndim == 2
+        assert obs.shape == obs_next.shape and action.shape[0] == obs.shape[0]
+        vel = obs_next[:, 5]
+        ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
+        reward = vel + alive_bonus - ctrl_cost
+        return np.minimum(np.maximum(-1000.0, reward), 1000.0)
+
+
 if __name__ == "__main__":
-    env = HalfCheetahWrapper()
+    env = HopperWrapper()
     env.reset()
     for _ in range(1000):
         env.step(env.action_space.sample())

@@ -82,7 +82,6 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java",
         "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
         "--code-search-path=" + String.join(":", classpath)
     );
