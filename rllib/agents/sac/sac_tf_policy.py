@@ -2,8 +2,10 @@
 TensorFlow policy class used for SAC.
 """
 
+import gym
 from gym.spaces import Box, Discrete
 import logging
+from typing import Dict, List, Optional, Tuple, Type
 
 import ray
 import ray.experimental.tf_utils
@@ -12,14 +14,19 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
+from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
-    DiagGaussian, SquashedGaussian
+    DiagGaussian, SquashedGaussian, TFActionDistribution
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_tfp
+from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
+    TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -27,12 +34,27 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
-def build_sac_model(policy, obs_space, action_space, config):
-    # 2 cases:
-    # 1) with separate state-preprocessor (before obs+action concat).
-    # 2) no separate state-preprocessor: concat obs+actions right away.
+def build_sac_model(policy: Policy,
+                    obs_space: gym.spaces.Space,
+                    action_space: gym.spaces.Space,
+                    config: TrainerConfigDict) -> TFModelV2:
+    """Constructs the necessary TFModelV2s for the Policy and returns them.
+
+    Args:
+        policy (Policy): The TFPolicy that will use the models.
+        obs_space (gym.spaces.Space): The observation space.
+        action_space (gym.spaces.Space): The action space.
+        config (TrainerConfigDict): The SAC trainer's config dict.
+
+    Returns:
+        TFModelV2: The ModelV2 to be used by the Policy. Note: An additional
+            target model will be created in this function and assigned to
+            `policy.target_model`.
+    """
+    # With separate state-preprocessor (before obs+action concat).
     if config["use_state_preprocessor"]:
         num_outputs = 256  # Flatten last Conv2D to this many nodes.
+    # No separate state-preprocessor: concat obs+actions right away.
     else:
         num_outputs = 0
         # No state preprocessor: fcnet_hiddens should be empty.
@@ -64,6 +86,10 @@ def build_sac_model(policy, obs_space, action_space, config):
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
 
+    # Create an exact copy of the model and store it in `policy.target_model`.
+    # This will be used for tau-synched Q-target models that run behind the
+    # actual Q-networks and are used for target q-value calculations in the
+    # loss terms.
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
@@ -84,14 +110,49 @@ def build_sac_model(policy, obs_space, action_space, config):
     return policy.model
 
 
-def postprocess_trajectory(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
+def postprocess_trajectory(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+    """Postprocesses a trajectory and returns the processed trajectory.
+
+    The trajectory contains only data from one episode and from one agent.
+    - If  `config.batch_mode=truncate_episodes` (default), sample_batch may
+    contain a truncated (at-the-end) episode, in case the
+    `config.rollout_fragment_length` was reached by the sampler.
+    - If `config.batch_mode=complete_episodes`, sample_batch will contain
+    exactly one episode (no matter how long).
+    New columns can be added to sample_batch and existing ones may be altered.
+
+    Args:
+        policy (Policy): The Policy used to generate the trajectory
+            (`sample_batch`)
+        sample_batch (SampleBatch): The SampleBatch to postprocess.
+        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+            dict of AgentIDs mapping to other agents' trajectory data (from the
+            same episode). NOTE: The other agents use the same policy.
+        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+            object in which the agents operated.
+
+    Returns:
+        SampleBatch: The postprocessed, modified SampleBatch (or a new one).
+    """
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def get_dist_class(config, action_space):
+def _get_dist_class(
+        config: TrainerConfigDict,
+        action_space: gym.spaces.Space) -> Type[TFActionDistribution]:
+    """Helper function to return a dist class based on config and action space.
+    
+    Args:
+        config (TrainerConfigDict): The Trainer's config dict.
+        action_space (gym.spaces.Space): The action space used.
+
+    Returns:
+        Type[TFActionDistribution]: A TF distribution class.
+    """
     if isinstance(action_space, Discrete):
         return Categorical
     else:
@@ -102,24 +163,63 @@ def get_dist_class(config, action_space):
             return DiagGaussian
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
-                                      *,
-                                      explore=True,
-                                      **kwargs):
-    # Get base-model output.
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        model: SACTFModel,
+        obs_batch: TensorType,
+        *,
+        explore: bool = True,
+        **kwargs) \
+        -> Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]:
+    """The action distribution function to be used by the algo.
+
+    An action distribution function is used by an algorithm to figure out
+    which action distribution class to use and with which inputs to
+    parameterize it.
+
+    Args:
+        policy (Policy): The Policy being queried for actions and calling this
+            function.
+        model (SACTFModel): The SAC specific Model to use to generate the
+            distribution inputs (see sac_tf|torch_model.py). Must support the
+            `get_policy_output` method.
+        obs_batch (TensorType): The observations to be used as inputs to the
+            model.
+        explore (bool): Whether to activate exploration or not.
+
+    Returns:
+        Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]: The
+            dist inputs, dist class, and a list of internal state outputs
+            (in the RNN case).
+    """
+    # Get base-model output (w/o the SAC specific parts of the network).
     model_out, state_out = model({
         "obs": obs_batch,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
-    # Get action model output from base-model output.
+    # Use the base output to get the policy outputs from the SAC model's
+    # policy components.
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    # Get a distribution class to be used with the just calculated dist-inputs.
+    action_dist_class = _get_dist_class(policy.config, policy.action_space)
     return distribution_inputs, action_dist_class, state_out
 
 
-def sac_actor_critic_loss(policy, model, _, train_batch):
+def sac_actor_critic_loss(
+        policy: Policy, model: ModelV2, dist_class: Type[TFActionDistribution],
+        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    """Constructs the loss for the Soft Actor Critic.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[ActionDistribution]: The action distr. class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        Union[TensorType, List[TensorType]]: A single loss tensor or a list
+            of loss tensors.
+    """
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
@@ -171,7 +271,7 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
     # Continuous actions case.
     else:
         # Sample simgle actions from distribution.
-        action_dist_class = get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
