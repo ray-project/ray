@@ -157,13 +157,18 @@ def add_maddpg_postprocessing(config):
     setups for DQN and APEX.
     """
 
-    def f(batch, workers, config):
-        policies = dict(workers.local_worker()
-                        .foreach_trainable_policy(lambda p, i: (i, p)))
-        return before_learn_on_batch(batch, policies,
-                                     config["train_batch_size"])
+    class _CustomBeforeLearnOnBatch:
+        def __init__(self, workers, config):
+            self.workers = workers
+            self.config = config
 
-    config["before_learn_on_batch"] = f
+        def __call__(self, batch):
+            policies = dict(self.workers.local_worker()
+                            .foreach_trainable_policy(lambda p, i: (i, p)))
+            return before_learn_on_batch(batch, policies,
+                                        self.config["train_batch_size"])
+
+    config["before_learn_on_batch"] = _CustomBeforeLearnOnBatch
     return config
 
 

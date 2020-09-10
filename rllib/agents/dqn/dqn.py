@@ -291,9 +291,13 @@ def execution_plan(workers, config):
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
-    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+    if config.get("before_learn_on_batch"):
+        before_learn_on_batch = config["before_learn_on_batch"]
+        before_learn_on_batch = before_learn_on_batch(workers, config)
+    else:
+        before_learn_on_batch = lambda b: b
     replay_op = Replay(local_buffer=local_replay_buffer) \
-        .for_each(lambda x: post_fn(x, workers, config)) \
+        .for_each(before_learn_on_batch) \
         .for_each(TrainOneStep(workers)) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
@@ -301,11 +305,17 @@ def execution_plan(workers, config):
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode="round_robin",
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
+    if parallel_rollouts_mode == "bulk_sync":
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode="round_robin",
+            output_indexes=[1],
+            round_robin_weights=calculate_rr_weights(config))
+    else:
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode="async",
+            output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 

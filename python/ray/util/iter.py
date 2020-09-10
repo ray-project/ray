@@ -666,6 +666,13 @@ class LocalIterator(Generic[T]):
     # used to measure the underlying wait latency for measurement purposes.
     ON_FETCH_START_HOOK_NAME = "_on_fetch_start"
 
+    # If a function passed to LocalIterator.for_each() has this method,
+    # we will call it each not ready value condition. This can be
+    # used to implement an early stop of the iterator by stoping
+    # the iteration, or any default value by returning something.
+    # This method should expect the same arguments of the __call__.
+    HANDLE_NEXT_VALUE_NOT_READY_HOOK_NAME = "_handle_next_value_not_ready"
+
     thread_local = threading.local()
 
     def __init__(self,
@@ -743,7 +750,12 @@ class LocalIterator(Generic[T]):
             def apply_foreach(it):
                 for item in it:
                     if isinstance(item, _NextValueNotReady):
-                        yield item
+                        if hasattr(fn, LocalIterator.HANDLE_NEXT_VALUE_NOT_READY_HOOK_NAME):
+                            with self._metrics_context():
+                                result = fn._handle_next_value_not_ready(item)
+                            yield result
+                        else:
+                            yield item
                     else:
                         # Keep retrying the function until it returns a valid
                         # value. This allows for non-blocking functions.
@@ -1059,7 +1071,7 @@ class LocalIterator(Generic[T]):
                             else:
                                 yield_counts[i] += 1
                                 yield item
-                    except StopIteration:
+                    except StopIteration as ex:
                         fix_weights = [
                             w != "*" for w in round_robin_weights
                         ]
@@ -1067,7 +1079,9 @@ class LocalIterator(Generic[T]):
                         if (any(fix_weights) and
                             yield_counts[i] < expected_yield_counts and
                             pull_counts[i] >= MAX_PULL):
-                            raise
+                            raise ex
+                        elif isinstance(ex, ForceIteratorStopIteration):
+                            raise ex
                         else:
                             removed_iter_indices.append(i)
                             active.remove((weight, it))
@@ -1231,3 +1245,10 @@ class _ActorSet(object):
 
     def with_transform(self, fn):
         return _ActorSet(self.actors, self.transforms + [fn])
+
+
+class ForceIteratorStopIteration(StopIteration):
+    """
+    Indicates that the iterator should stop yielding regardless of which at point
+    is located.
+    """
