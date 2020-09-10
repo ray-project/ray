@@ -1,8 +1,8 @@
-import { Grid, makeStyles, Tooltip } from "@material-ui/core";
-import React from "react";
+import { Box, Grid, makeStyles, Tooltip } from "@material-ui/core";
+import React, { ReactChild } from "react";
 
 type LabeledDatumProps = {
-  label: string;
+  label: ReactChild;
   datum: any;
   tooltip?: string;
 };
@@ -26,7 +26,7 @@ const LabeledDatum: React.FC<LabeledDatumProps> = ({
   const innerHtml = (
     <Grid container item xs={6}>
       <Grid item xs={6}>
-        <span className={tooltip && classes.tooltipLabel}>{label}</span>
+        <Box className={tooltip && classes.tooltipLabel}>{label}</Box>
       </Grid>
       <Grid item xs={6}>
         <span>{datum}</span>

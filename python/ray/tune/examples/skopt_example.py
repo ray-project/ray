@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.skopt import SkOptSearch
 
@@ -59,15 +60,16 @@ if __name__ == "__main__":
     algo = SkOptSearch(
         # parameter_names=space.keys(),  # If you want to set the space
         # parameter_ranges=space.values(), # If you want to set the space
-        metric="mean_loss",
-        mode="min",
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards)
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    scheduler = AsyncHyperBandScheduler()
 
     tune.run(
         easy_objective,
+        metric="mean_loss",
+        mode="min",
         name="skopt_exp_with_warmstart",
         search_alg=algo,
         scheduler=scheduler,

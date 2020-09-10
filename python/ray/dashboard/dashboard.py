@@ -92,8 +92,8 @@ class DashboardController(BaseDashboardController):
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
         ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
                           [])
-        actors = self.node_stats.get_actors(workers_info_by_node,
-                                            infeasible_tasks, ready_tasks)
+        actor_groups = self.node_stats.get_actors(
+            workers_info_by_node, infeasible_tasks, ready_tasks)
         plasma_stats = {}
         # HTTP call to metrics port for each node in nodes/
         used_views = ("object_store_num_local_objects",
@@ -116,7 +116,11 @@ class DashboardController(BaseDashboardController):
                 node_plasma_stats[view_name] = view_data
             plasma_stats[address] = node_plasma_stats
 
-        return {"nodes": D, "actors": actors, "plasmaStats": plasma_stats}
+        return {
+            "nodes": D,
+            "actorGroups": actor_groups,
+            "plasmaStats": plasma_stats
+        }
 
     def get_ray_config(self):
         try:
