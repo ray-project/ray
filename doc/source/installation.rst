@@ -80,7 +80,7 @@ For example, here are the Ray 0.9.0.dev0 wheels for Python 3.5, MacOS for commit
 
 Install Ray With Maven
 ---------------
-Latest ray java release can be found in `ray-api <https://mvnrepository.com/artifact/io.ray>`__. To use latest ray java release in your application, use following entries in your ``pom.xml``:
+The latest Ray java release can be found in `ray-api <https://mvnrepository.com/artifact/io.ray>`__. To use the latest Ray java release in your application, add the following entries in your ``pom.xml``:
 .. code-block:: xml
     <dependency>
       <groupId>io.ray</groupId>
