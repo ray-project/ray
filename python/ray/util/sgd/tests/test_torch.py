@@ -260,6 +260,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
                     training_operator_cls=TestOperator,
                     num_workers=num_workers,
                     backend="gloo",
+                    use_gpu=False,
                     use_local=use_local,
                     config={
                         "models": model_count,
@@ -305,6 +306,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq, use_local):  # noqa:
                 training_operator_cls=TestTrainingOperator,
                 scheduler_step_freq=scheduler_freq,
                 backend="gloo",
+                use_gpu=False,
                 use_local=use_local)
     else:
         trainer = TorchTrainer(
@@ -312,6 +314,7 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq, use_local):  # noqa:
             training_operator_cls=TestTrainingOperator,
             scheduler_step_freq=scheduler_freq,
             backend="gloo",
+            use_gpu=False,
             use_local=use_local)
 
         for i in range(3):
@@ -632,6 +635,8 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
         return
     trainer1 = TorchTrainer(
         training_operator_cls=Operator,
+        backend="gloo",
+        use_gpu=False,
         wrap_ddp=False,
         num_workers=2,
         use_local=True)
@@ -643,7 +648,11 @@ def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
     trainer1.shutdown()
 
     trainer2 = TorchTrainer(
-        training_operator_cls=Operator, wrap_ddp=False, num_workers=2)
+        training_operator_cls=Operator,
+        backend="gloo",
+        use_gpu=False,
+        wrap_ddp=False,
+        num_workers=2)
     trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
