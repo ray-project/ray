@@ -285,15 +285,15 @@ class TorchTrainer:
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
-        if num_workers > 1:
-            params.update(
-                backend=self.backend,
-                add_dist_sampler=self.add_dist_sampler,
-                wrap_ddp=self.wrap_ddp)
+        dist_params = dict(
+            backend=self.backend,
+            add_dist_sampler=self.add_dist_sampler,
+            wrap_ddp=self.wrap_ddp)
 
         self.worker_group.start_workers(
             num_workers,
             params,
+            dist_params,
             initialization_hook=self.initialization_hook,
             num_cpus_per_worker=self.num_cpus_per_worker,
             use_gpu=self.use_gpu,

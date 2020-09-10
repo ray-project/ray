@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 class BaseWorkerGroup:
-    def start_workers(self, num_workers, params, initialization_hook,
+    def start_workers(self, num_workers, params,
+                      dist_params, initialization_hook,
                       timeout_s, num_cpus_per_worker, use_gpu):
         raise NotImplementedError
 
@@ -98,10 +99,12 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         ]
         return remote_operator_setups
 
-    def start_workers(self, num_workers, params, initialization_hook,
+    def start_workers(self, num_workers, params,
+                      dist_params, initialization_hook,
                       timeout_s, num_cpus_per_worker, use_gpu):
         self.num_workers = num_workers
         self.params = params
+        self.dist_params = dist_params
         self.initialization_hook = initialization_hook
         self.timeout_s = timeout_s
         self.num_cpus_per_worker = num_cpus_per_worker
@@ -114,7 +117,8 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             self.num_workers = num_workers
             ray.get(self.remote_workers[0].setup_operator.remote())
         else:
-            self._init_workers(num_workers, params, num_cpus_per_worker,
+            self._init_workers(num_workers, {**params, **dist_params},
+                num_cpus_per_worker,
                                use_gpu)
             self.num_workers = num_workers
 
@@ -271,6 +275,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
                 self._last_resize = time.time()
                 self.start_workers(int(new_remote_workers),
                                    params=self.params,
+                                   dist_params=self.dist_params,
                                    initialization_hook=self.initialization_hook,
                                    num_cpus_per_worker=self.num_cpus_per_worker,
                                    use_gpu=self.use_gpu,
@@ -294,12 +299,14 @@ class LocalWorkerGroup(BaseWorkerGroup):
         self.remote_worker_group = RemoteWorkerGroup()
         self.num_workers = 0
 
-    def start_workers(self, num_workers, params, initialization_hook,
+    def start_workers(self, num_workers, params,
+                      dist_params, initialization_hook,
                       timeout_s, num_cpus_per_worker, use_gpu):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
 
         self.num_workers = num_workers
         self.params = params
+        self.dist_params = dist_params
         self.initialization_hook = initialization_hook
         self.timeout_s = timeout_s
         self.num_cpus_per_worker = num_cpus_per_worker
@@ -311,11 +318,14 @@ class LocalWorkerGroup(BaseWorkerGroup):
                 self.apply_all_workers(initialization_hook)
             self.local_worker.setup_operator()
         else:
+
             # Start local worker
             self.local_worker = LocalDistributedRunner(
-                num_cpus=num_cpus_per_worker, num_gpus=int(use_gpu), **params)
+                num_cpus=num_cpus_per_worker, num_gpus=int(use_gpu),
+                **{**params, **dist_params})
             self.remote_worker_group._init_workers(
-                num_workers - 1, params, num_cpus_per_worker, use_gpu)
+                num_workers - 1, {**params, **dist_params},
+                    num_cpus_per_worker, use_gpu)
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
 
@@ -382,8 +392,10 @@ class LocalWorkerGroup(BaseWorkerGroup):
             new_remote_workers = \
                 self.remote_worker_group._check_potential_remote_workers_size()
             if new_remote_workers:
-                self._last_resize = time.time()
-                self.start_workers(int(new_remote_workers) + 1, params=self.params,
+                self.remote_worker_group._last_resize = time.time()
+                self.start_workers(int(new_remote_workers) + 1,
+                                   params=self.params,
+                                   dist_params=self.dist_params,
                                    initialization_hook=self.initialization_hook,
                                    num_cpus_per_worker=self.num_cpus_per_worker,
                                    use_gpu=self.use_gpu,
@@ -446,6 +458,10 @@ class LocalWorkerGroup(BaseWorkerGroup):
 
     def get_num_workers(self):
         return self.remote_worker_group.get_num_workers() + 1
+
+    @property
+    def remote_workers(self):
+        return self.remote_worker_group.remote_workers
 
 class DeactivatedWorkerGroup:
     def __getattr__(self, *args, **kwargs):
