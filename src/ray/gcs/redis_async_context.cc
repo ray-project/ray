@@ -26,12 +26,10 @@ namespace gcs {
 RedisAsyncContext::RedisAsyncContext(redisAsyncContext *redis_async_context)
     : redis_async_context_(redis_async_context) {
   RAY_CHECK(redis_async_context_ != nullptr);
-  RAY_LOG(INFO) << "Create redis_async_context_ " << redis_async_context_;
 }
 
 RedisAsyncContext::~RedisAsyncContext() {
   if (redis_async_context_ != nullptr) {
-    RAY_LOG(INFO) << "Free redis_async_context_ " << redis_async_context_;
     redisAsyncFree(redis_async_context_);
     redis_async_context_ = nullptr;
   }
@@ -57,7 +55,6 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
   // with -c opt on Windows.
   RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
-  RAY_LOG(INFO) << "Read redis_async_context_ " << redis_async_context_;
   redisAsyncHandleRead(redis_async_context_);
 }
 
@@ -65,7 +62,6 @@ void RedisAsyncContext::RedisAsyncHandleWrite() {
   // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
   // it.
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_LOG(INFO) << "Write redis_async_context_ " << redis_async_context_;
   redisAsyncHandleWrite(redis_async_context_);
 }
 
@@ -81,7 +77,6 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
     }
-    RAY_LOG(INFO) << "Command redis_async_context_ " << redis_async_context_;
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
 
@@ -105,7 +100,6 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privd
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
     }
-    RAY_LOG(INFO) << "CommandArgv redis_async_context_ " << redis_async_context_;
     ret_code =
         redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
   }
