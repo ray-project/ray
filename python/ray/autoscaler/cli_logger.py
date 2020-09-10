@@ -187,6 +187,9 @@ def _isatty():
 class _CliLogger():
     """Singleton class for CLI logging.
 
+    Without calling 'cli_logger.configure', the CLILogger will default
+    to 'record' style logging.
+
     Attributes:
         old_style (bool):
             If `old_style` is `True`, the old logging calls are used instead
