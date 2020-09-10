@@ -1,8 +1,8 @@
 import logging
-from typing import Type
+from typing import Optional, Type
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -158,6 +158,16 @@ def validate_config(config: TrainerConfigDict) -> None:
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the DQN algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     if config.get("prioritized_replay"):
         prio_args = {
             "prioritized_replay_alpha": config["prioritized_replay_alpha"],
@@ -234,23 +244,22 @@ def calculate_rr_weights(config: TrainerConfigDict):
     return weights
 
 
-def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
-        from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
-    else:
-        return DQNTFPolicy
 
 
-def get_simple_policy_class(config: TrainerConfigDict) -> Type[Policy]:
-    if config["framework"] == "torch":
-        from ray.rllib.agents.dqn.simple_q_torch_policy import \
-            SimpleQTorchPolicy
-        return SimpleQTorchPolicy
-    else:
-        return SimpleQTFPolicy
-
-
+# Build a generic off-policy trainer, on top of which other trainers
+# (such as DDPGTrainer) are built
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
@@ -259,8 +268,7 @@ GenericOffPolicyTrainer = build_trainer(
     validate_config=validate_config,
     execution_plan=execution_plan)
 
+# Build a child class of `Trainer`, which uses the framework specific Policy
+# determined in `get_policy_class()` above.
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)
-
-SimpleQTrainer = DQNTrainer.with_updates(
-    default_policy=SimpleQTFPolicy, get_policy_class=get_simple_policy_class)

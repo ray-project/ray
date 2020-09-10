@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 class TargetNetworkMixin:
+    """Assign the `update_target` method to the SimpleQTFPolicy
+
+    The function is called every `target_network_update_freq` steps by the
+    master learner.
+    """
+
     def __init__(self, obs_space: gym.Space, action_space: gym.Space,
                  config: TrainerConfigDict):
         def do_update():
@@ -45,6 +51,17 @@ def build_q_model_and_distribution(policy: Policy, obs_space: gym.Space,
 
 def build_q_losses(policy: Policy, model, dist_class,
                    train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for SimpleQTorchPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[ActionDistribution]): The action distribution class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     # q network evaluation
     q_t = compute_q_values(
         policy,
@@ -96,6 +113,15 @@ def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
 def setup_late_mixins(policy: Policy, obs_space: gym.Space,
                       action_space: gym.Space,
                       config: TrainerConfigDict) -> None:
+    """Call all mixin classes' constructors before SimpleQTorchPolicy
+    initialization.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.Space): The Policy's observation space.
+        action_space (gym.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 

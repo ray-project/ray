@@ -1,6 +1,8 @@
+import gym
 from ray.rllib.models.tf.layers import NoisyLayer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
@@ -20,23 +22,23 @@ class DistributionalQTFModel(TFModelV2):
 
     def __init__(
             self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
+            obs_space: gym.Space,
+            action_space: gym.Space,
+            num_outputs: int,
+            model_config: ModelConfigDict,
+            name: str,
             q_hiddens=(256, ),
-            dueling=False,
-            num_atoms=1,
-            use_noisy=False,
-            v_min=-10.0,
-            v_max=10.0,
-            sigma0=0.5,
+            dueling: bool = False,
+            num_atoms: int = 1,
+            use_noisy: bool = False,
+            v_min: float = -10.0,
+            v_max: float = 10.0,
+            sigma0: float = 0.5,
             # TODO(sven): Move `add_layer_norm` into ModelCatalog as
             #  generic option, then error if we use ParameterNoise as
             #  Exploration type and do not have any LayerNorm layers in
             #  the net.
-            add_layer_norm=False):
+            add_layer_norm: bool = False):
         """Initialize variables of this model.
 
         Extra model kwargs:
