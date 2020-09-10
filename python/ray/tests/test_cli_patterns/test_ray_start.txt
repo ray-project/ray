@@ -1,11 +1,4 @@
 Local node IP: .+
-Available RAM
-  Workers: .+ GiB
-  Objects: .+ GiB
-
-  To adjust these values, use
-    ray\.init\(memory=<bytes>, object_store_memory=<bytes>\)
-Dashboard URL: .+
 
 --------------------
 Ray runtime started.
