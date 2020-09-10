@@ -93,7 +93,7 @@ The latest Ray java release can be found in `ray-api <https://mvnrepository.com/
       <version>${ray.version}</version>
     </dependency>
 
-Latest ray java snapshot can be found in `sonatype <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use latest ray java snapshot in your application, use following entries in your ``pom.xml``:
+The latest Ray Java snapshot can be found in `sonatype <https://oss.sonatype.org/#nexus-search;quick~io.ray>`__. To use the latest Ray Java snapshot in your application, add the following entries in your ``pom.xml``:
 .. code-block:: xml
   <!-- only needed for snapshot version of ray -->
   <repositories>
