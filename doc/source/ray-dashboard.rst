@@ -95,6 +95,7 @@ The ray config tab shows you the current cluster launcher configuration if you'r
 Tune
 ~~~~
 The Tune tab shows you:
+
 - Tune jobs and their statuses.
 - Hyperparameters for each job.
 
