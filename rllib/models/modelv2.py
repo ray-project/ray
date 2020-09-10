@@ -181,7 +181,7 @@ class ModelV2:
 
         Custom models should override forward() instead of __call__.
 
-        Arguments:
+        Args:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward", "is_training"
             state (list): list of state tensors with sizes matching those

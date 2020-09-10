@@ -79,11 +79,13 @@ class _MultiAgentSampleCollector(_SampleCollector):
                     max_shift_before = shift[0]
                 if max_shift_after < shift[-1]:
                     max_shift_after = shift[-1]
-            # Figure out num_timesteps and num_agents.
+            # Figure out num_timesteps.
             kwargs = {"time_major": time_major}
             if policy.is_recurrent():
-                kwargs["num_timesteps"] = \
-                    policy.config["model"]["max_seq_len"]
+                n = 0
+                while n < policy.config["rollout_fragment_length"]:
+                    n += policy.config["model"]["max_seq_len"]
+                kwargs["num_timesteps"] = n
                 kwargs["time_major"] = True
             elif num_timesteps is not None:
                 kwargs["num_timesteps"] = num_timesteps
@@ -96,13 +98,13 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
         # Internal agent-to-policy map.
         self.agent_to_policy = {}
-        # Number of "inference" steps taken in the environment.
-        # Regardless of the number of agents involved in each of these steps.
-        # Most general example:
-        # n vectorized envs, with m agents each (mapping to p policies, where
-        # p <= m).
-        #
-        self.env_steps_across_all_agents_since_last_reset = 0
+        ## Number of "inference" steps taken in the environment.
+        ## Regardless of the number of agents involved in each of these steps.
+        ## Most general example:
+        ## n vectorized envs, with m agents each (mapping to p policies, where
+        ## p <= m).
+        ##
+        self.count = 0
 
         # Data columns that are added to a SampleBatch via postprocessing.
         self.data_cols_added_in_postprocessing = set()

@@ -974,15 +974,17 @@ def _process_observations_w_trajectory_view_api(
     large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
         rollout_fragment_length != float("inf") else 5000
 
-    # For each environment.
+    _sample_collector.count += 1
+
+    # For each (vectorized) sub-environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
-    for env_id, agent_obs in unfiltered_obs.items():
+    for env_id, all_agents_obs in unfiltered_obs.items():
         is_new_episode: bool = env_id not in active_episodes
         episode: MultiAgentEpisode = active_episodes[env_id]
 
         if not is_new_episode:
             episode.length += 1
-            _sample_collector.count += 1
+            #_sample_collector.count += 1
             episode._add_agent_rewards(rewards[env_id])
 
         if (_sample_collector.total_env_steps() > large_batch_threshold
@@ -1027,19 +1029,19 @@ def _process_observations_w_trajectory_view_api(
 
         # Custom observation function is applied before preprocessing.
         if observation_fn:
-            agent_obs: Dict[AgentID, EnvObsType] = observation_fn(
-                agent_obs=agent_obs,
+            all_agents_obs: Dict[AgentID, EnvObsType] = observation_fn(
+                agent_obs=all_agents_obs,
                 worker=worker,
                 base_env=base_env,
                 policies=policies,
                 episode=episode)
-            if not isinstance(agent_obs, dict):
+            if not isinstance(all_agents_obs, dict):
                 raise ValueError(
                     "observe() must return a dict of agent observations")
 
         # For each agent in the environment.
         # type: AgentID, EnvObsType
-        for agent_id, raw_obs in agent_obs.items():
+        for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
             policy_id: PolicyID = episode.policy_for(agent_id)
             prep_obs: EnvObsType = _get_or_raise(preprocessors,
@@ -1154,7 +1156,7 @@ def _process_observations_w_trajectory_view_api(
             # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
+                resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
             else:
                 del active_episodes[env_id]
                 resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
@@ -1202,7 +1204,7 @@ def _process_observations_w_trajectory_view_api(
             #  attention), but keep last episode data around in
             #  SampleBatchBuilder to be able to still reference into it
             #  should a model require this.
-            _sample_collector.postprocess_trajectories_so_far(episode)
+            _sample_collector.postprocess_trajectories_so_far()
             sample_batch = _sample_collector.get_multi_agent_batch_and_reset()
             outputs.append(sample_batch)
 

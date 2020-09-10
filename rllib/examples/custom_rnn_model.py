@@ -40,19 +40,18 @@ if __name__ == "__main__":
         "gamma": 0.9,
         "num_workers": 0,
         "num_envs_per_worker": 20,
-        #"rollout_fragment_length":
         "entropy_coeff": 0.001,
         "num_sgd_iter": 5,
         "vf_loss_coeff": 1e-5,
         "model": {
             "custom_model": "rnn",
-            #"_time_major": args.torch,
+            "_time_major": args.torch,
             "max_seq_len": 20,
         },
         # Have to manually enable it for torch as it only gets automatically
         # enabled if we use the auto-LSTM wrapping, which we don't here (we
         # use a custom model).
-        "_use_trajectory_view_api": False,#args.torch,
+        "_use_trajectory_view_api": args.torch,
         "framework": "torch" if args.torch else "tf",
     }
 

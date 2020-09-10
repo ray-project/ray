@@ -35,7 +35,6 @@ def pad_batch_to_sequences_of_same_size(
         shuffle: bool = False,
         batch_divisibility_req: int = 1,
         feature_keys: Optional[List[str]] = None,
-        _use_trajectory_view_api: bool = False,
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -56,26 +55,7 @@ def pad_batch_to_sequences_of_same_size(
         feature_keys (Optional[List[str]]): An optional list of keys to apply
             sequence-chopping to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
-        _use_trajectory_view_api (bool): Whether we are using the Trajectory
-            View API to collect and process samples.
     """
-    if _use_trajectory_view_api:
-        if batch.time_major is not None:
-            t = 0 if batch.time_major else 1
-            for col in batch.data.keys():
-                # Cut time-dim from states.
-                if "state_" in col[:6]:
-                    batch[col] = batch[col][t]
-                # Flatten all other data.
-                else:
-                    # Cut time-dim at `max_seq_len`.
-                    if batch.time_major:
-                        batch[col] = batch[col][:batch.max_seq_len]
-                    batch[col] = batch[col].reshape((-1, ) +
-                                                    batch[col].shape[2:])
-            batch["seq_lens"] = torch.tensor(batch.seq_lens)
-        return
-
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
@@ -130,6 +110,64 @@ def pad_batch_to_sequences_of_same_size(
                 "seq_lens": seq_lens,
                 "max_seq_len": max_seq_len,
             })))
+
+
+@DeveloperAPI
+def prepare_sample_batch_for_rnn(
+        batch: SampleBatch,
+        lstm_max_seq_len: int,
+):
+    """Applies padding to `batch` so it's choppable into same-size sequences.
+
+    Shuffles `batch` (if desired), makes sure divisibility requirement is met,
+    then pads the batch ([B, ...]) into same-size chunks ([B, ...]) w/o
+    adding a time dimension (yet).
+    Padding depends on episodes found in batch and `max_seq_len`.
+
+    Args:
+        batch (SampleBatch): The SampleBatch object. All values in here have
+            the shape [B, ...].
+        lstm_max_seq_len (int): The max. sequence length to use for chopping.
+    """
+    if batch.time_major is not None:
+        # Figure out how much to chop off the time axis (because there is
+        # no actual data in there whatsoever).
+        T = batch["dones"].shape[0 if batch.time_major else 1]
+        t_max = max(batch.seq_lens)
+        chunks_per_seq_len = (t_max // lstm_max_seq_len) + (1 if t_max % lstm_max_seq_len else 0)
+        chop_off = chunks_per_seq_len * lstm_max_seq_len #(t_max // lstm_max_seq_len) * lstm_max_seq_len + (lstm_max_seq_len if t_max % lstm_max_seq_len else 0)
+        for col in batch.data.keys():
+            data = batch[col]
+            # Chop and reshape into actual `lstm_max_seq_len` chunks.
+            if batch.time_major:
+                data = data[:chop_off]
+                data = data.reshape((lstm_max_seq_len, -1) + data.shape[2:])
+            else:
+                data = data[:,:chop_off]
+                data = data.reshape((-1, lstm_max_seq_len) + data.shape[2:])
+
+            # Cut time-dim from states.
+            if "state_" in col[:6]:
+                if batch.time_major:
+                    data = data[0]
+                else:
+                    data = data[:][0]
+            # Flatten all other data.
+            else:
+                # Cut time-dim at `max_seq_len`.
+                if batch.time_major and batch.max_seq_len < lstm_max_seq_len:
+                    data = data[:batch.max_seq_len]
+                data = data.reshape((-1, ) + data.shape[2:])
+            batch[col] = data
+
+        seq_lens = []
+        for l in batch.seq_lens:
+            for _ in range(chunks_per_seq_len):
+                seq_lens.append(lstm_max_seq_len if l >= lstm_max_seq_len else max(0, l))
+                l -= lstm_max_seq_len
+        batch.max_seq_len = max(seq_lens)
+        batch.seq_lens = seq_lens
+        batch["seq_lens"] = torch.tensor(seq_lens)
 
 
 @DeveloperAPI

@@ -10,7 +10,8 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
+from ray.rllib.policy.rnn_sequencing import \
+    pad_batch_to_sequences_of_same_size, prepare_sample_batch_for_rnn
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -333,13 +334,18 @@ class TorchPolicy(Policy):
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            postprocessed_batch,
-            max_seq_len=self.max_seq_len,
-            shuffle=False,
-            batch_divisibility_req=self.batch_divisibility_req,
-            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
-        )
+        if self.config["_use_trajectory_view_api"]:
+            prepare_sample_batch_for_rnn(
+                batch=postprocessed_batch,
+                lstm_max_seq_len=self.max_seq_len,
+            )
+        else:
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req
+            )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
