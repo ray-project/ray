@@ -1,14 +1,17 @@
+from typing import Any
+
 import distutils
 import logging
 import os
 import time
+from dataclasses import dataclass
 
 from inspect import isclass
 from shlex import quote
 
-from ray import ray_constants
 from ray import services
 from ray.util.debug import log_once
+from ray.tune.utils.util import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
@@ -17,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing local checkpoints to cloud.
 # In env variable is not set, sync happens every 300 seconds.
-CLOUD_SYNC_PERIOD = ray_constants.env_integer(
-    key="TUNE_CLOUD_SYNC_S", default=300)
+CLOUD_SYNC_PERIOD = 300
 
 # Syncing period for syncing worker logs to driver.
 NODE_SYNC_PERIOD = 300
@@ -30,6 +32,18 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def set_sync_periods(sync_config):
+    """Sets sync periods from config."""
+    global CLOUD_SYNC_PERIOD
+    global NODE_SYNC_PERIOD
+    if os.environ.get("TUNE_CLOUD_SYNC_S"):
+        logger.warning("'TUNE_CLOUD_SYNC_S' is deprecated. Set "
+                       "`cloud_sync_period` via tune.SyncConfig instead.")
+        CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
+    NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
+    CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
 
 
 def log_sync_template(options=""):
@@ -61,6 +75,42 @@ def log_sync_template(options=""):
     rsh = rsh.format(ssh_key=quote(ssh_key))
     template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
     return template.format(options=options, rsh=quote(rsh))
+
+
+@dataclass
+class SyncConfig:
+    """Configuration object for syncing.
+
+    Args:
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
+        sync_to_cloud (func|str): Function for syncing the local_dir to and
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            commands. By default local_dir is synced to remote_dir every 300
+            seconds. To change this, set the TUNE_CLOUD_SYNC_S
+            environment variable in the driver machine.
+        sync_to_driver (func|str|bool): Function for syncing trial logdir from
+            remote node to local. If string, then it must be a string template
+            that includes `{source}` and `{target}` for the syncer to run.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+            driver. If set to False, checkpoint syncing from worker to driver
+            is asynchronous and best-effort. This does not affect persistent
+            storage syncing. Defaults to True.
+        node_sync_period (int): Syncing period for syncing worker logs to
+            driver. Defaults to 300.
+        cloud_sync_period (int): Syncing period for syncing local
+            checkpoints to cloud. Defaults to 300.
+    """
+    upload_dir: str = None
+    sync_to_cloud: Any = None
+    sync_to_driver: Any = None
+    sync_on_checkpoint: bool = True
+    node_sync_period: int = 300
+    cloud_sync_period: int = 300
 
 
 class Syncer:

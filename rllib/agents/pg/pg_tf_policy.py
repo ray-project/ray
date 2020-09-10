@@ -46,7 +46,7 @@ def pg_tf_loss(
             train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
 
 
-# Build a child class of `TFPolicy`, given the extra options:
+# Build a child class of `DynamicTFPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
 PGTFPolicy = build_tf_policy(

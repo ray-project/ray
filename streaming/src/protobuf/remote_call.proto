@@ -4,6 +4,8 @@ package ray.streaming.proto;
 
 import "protobuf/streaming.proto";
 
+import "google/protobuf/any.proto";
+
 option java_package = "io.ray.streaming.runtime.generated";
 
 // Execution vertex info, including it's upstream and downstream
@@ -22,7 +24,7 @@ message ExecutionVertexContext {
     // unique id of execution vertex
     int32 execution_vertex_id = 1;
     // unique id of execution job vertex
-    int32 execution_job_vertex_Id = 2;
+    int32 execution_job_vertex_id = 2;
     // name of execution job vertex, e.g. 1-SourceOperator
     string execution_job_vertex_name = 3;
     // index of execution vertex
@@ -55,4 +57,49 @@ message PythonJobWorkerContext {
   bytes master_actor = 1;
   // vertex including it's upstream and downstream
   ExecutionVertexContext execution_vertex_context = 2;
+}
+
+message BoolResult {
+  bool boolRes = 1;
+}
+
+message Barrier {
+  int64 id = 1;
+}
+
+message CheckpointId {
+  int64 checkpoint_id = 1;
+}
+
+message BaseWorkerCmd {
+  bytes actor_id = 1;  // actor id
+  int64 timestamp = 2;
+  google.protobuf.Any detail = 3;
+}
+
+message WorkerCommitReport {
+  int64 commit_checkpoint_id = 1;
+}
+
+message WorkerRollbackRequest {
+  string exception_msg = 1;
+  string worker_hostname = 2;
+  string worker_pid = 3;
+}
+
+message CallResult {
+  bool success = 1;
+  int32 result_code = 2;
+  string result_msg = 3;
+  QueueRecoverInfo result_obj = 4;
+}
+
+message QueueRecoverInfo {
+  enum QueueCreationStatus {
+    FreshStarted = 0;
+    PullOk = 1;
+    Timeout = 2;
+    DataLost = 3;
+  }
+  map<string, QueueCreationStatus> creation_status = 3;
 }

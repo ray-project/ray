@@ -69,6 +69,9 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = None  # int: total samples to evaluate.
         self._finished = False
 
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)
+
     def add_configurations(self, experiments):
         """Registers experiment specifications.
 

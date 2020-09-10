@@ -158,7 +158,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         for i in range(self.num_models):
             self.add_module("TD-model-" + str(i), self.dynamics_ensemble[i])
-        self.replay_buffer_max = 100000
+        self.replay_buffer_max = 10000
         self.replay_buffer = None
         self.optimizers = [
             torch.optim.Adam(
@@ -170,7 +170,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         self.metrics[STEPS_SAMPLED_COUNTER] = 0
 
         # For each worker, choose a random model to choose trajectories from
-        self.sample_index = np.random.randint(self.num_models)
+        worker_index = get_global_worker().worker_index
+        self.sample_index = int((worker_index - 1) / self.num_models)
         self.global_itr = 0
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
@@ -195,9 +196,10 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
         new_samples = local_worker.sample()
+        # Initial Exploration of 8000 timesteps
         if not self.global_itr:
-            tmp = local_worker.sample()
-            new_samples.concat(tmp)
+            extra = local_worker.sample()
+            new_samples.concat(extra)
 
         # Process Samples
         new_samples = process_samples(new_samples)
@@ -257,9 +259,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                     train_losses[ind] = train_losses[
                         ind].detach().cpu().numpy()
 
-                del x
-                del y
-
             # Validation
             val_lists = []
             for data in zip(*val_loaders):
@@ -273,8 +272,6 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
                 for ind in range(self.num_models):
                     val_losses[ind] = val_losses[ind].detach().cpu().numpy()
-                del x
-                del y
 
             val_lists = np.array(val_lists)
             avg_val_losses = np.mean(val_lists, axis=0)

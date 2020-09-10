@@ -76,12 +76,13 @@ class HyperBandScheduler(FIFOScheduler):
     def __init__(self,
                  time_attr="training_iteration",
                  reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_t=81,
                  reduction_factor=3):
         assert max_t > 0, "Max (time_attr) not valid!"
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
         if reward_attr is not None:
             mode = "max"
@@ -108,11 +109,32 @@ class HyperBandScheduler(FIFOScheduler):
         self._state = {"bracket": None, "band_idx": 0}
         self._num_stopped = 0
         self._metric = metric
-        if mode == "max":
+        self._mode = mode
+        self._metric_op = None
+
+        if self._mode == "max":
             self._metric_op = 1.
-        elif mode == "min":
+        elif self._mode == "min":
             self._metric_op = -1.
         self._time_attr = time_attr
+
+    def set_search_properties(self, metric, mode):
+        if self._metric and metric:
+            return False
+        if self._mode and mode:
+            return False
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = 1.
+        elif self._mode == "min":
+            self._metric_op = -1.
+
+        return True
 
     def on_trial_add(self, trial_runner, trial):
         """Adds new trial.
@@ -121,6 +143,13 @@ class HyperBandScheduler(FIFOScheduler):
         add to current bracket. Else, if current band is not filled,
         create new bracket, add to current bracket.
         Else, create new iteration, create new bracket, add to bracket."""
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
 
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]
@@ -282,7 +311,8 @@ class HyperBandScheduler(FIFOScheduler):
         for i, band in enumerate(self._hyperbands):
             out += "\nRound #{}:".format(i)
             for bracket in band:
-                out += "\n  {}".format(bracket)
+                if bracket:
+                    out += "\n  {}".format(bracket)
         return out
 
     def state(self):

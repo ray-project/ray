@@ -67,6 +67,8 @@ struct NodeManagerConfig {
   int max_worker_port;
   /// The initial number of workers to create.
   int num_initial_workers;
+  /// The soft limit of the number of workers.
+  int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
   int num_initial_python_workers_for_first_job;
   /// The maximum number of workers that can be started concurrently by a
@@ -95,6 +97,28 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::unordered_map<std::string, std::string> raylet_config;
+};
+
+typedef std::pair<PlacementGroupID, int64_t> BundleID;
+struct pair_hash {
+  template <class T1, class T2>
+  std::size_t operator()(const std::pair<T1, T2> &pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+  }
+};
+
+enum CommitState {
+  /// Resources are prepared.
+  PREPARED,
+  /// Resources are COMMITTED.
+  COMMITTED
+};
+
+struct BundleState {
+  /// Leasing state for 2PC protocol.
+  CommitState state;
+  /// Resources that are acquired at preparation stage.
+  ResourceIdSet acquired_resources;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -286,16 +310,27 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ScheduleTasks(std::unordered_map<ClientID, SchedulingResources> &resource_map);
 
+  /// Make a placement decision for the resource_map and subtract original resources so
+  /// that the node is ready to commit (create) placement group resources.
+  ///
+  /// \param resource_map A mapping from node manager ID to an estimate of the
+  /// resources available to that node manager. Scheduling decisions will only
+  /// consider the local node manager and the node managers in the keys of the
+  /// resource_map argument.
+  /// \param bundle_spec Specification of bundle that will be prepared.
+  /// \return True is resources were successfully prepared. False otherwise.
+  bool PrepareBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+                     const BundleSpecification &bundle_spec);
+
   /// Make a placement decision for the resource_map.
   ///
   /// \param resource_map A mapping from node manager ID to an estimate of the
   /// resources available to that node manager. Scheduling decisions will only
   /// consider the local node manager and the node managers in the keys of the
   /// resource_map argument.
-  /// \return ResourceIdSet.
-  ResourceIdSet ScheduleBundle(
-      std::unordered_map<ClientID, SchedulingResources> &resource_map,
-      const BundleSpecification &bundle_spec);
+  /// \param bundle_spec Specification of bundle that will be prepared.
+  void CommitBundle(std::unordered_map<ClientID, SchedulingResources> &resource_map,
+                    const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
   ///
@@ -552,10 +587,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether setup was successful.
   ray::Status SetupPlasmaSubscription();
 
-  /// Handle a `ResourcesLease` request.
-  void HandleRequestResourceReserve(const rpc::RequestResourceReserveRequest &request,
-                                    rpc::RequestResourceReserveReply *reply,
+  /// Handle a `PrepareBundleResources` request.
+  void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
+                                    rpc::PrepareBundleResourcesReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `CommitBundleResources` request.
+  void HandleCommitBundleResources(const rpc::CommitBundleResourcesRequest &request,
+                                   rpc::CommitBundleResourcesReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ResourcesReturn` request.
   void HandleCancelResourceReserve(const rpc::CancelResourceReserveRequest &request,
@@ -787,6 +827,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
   std::vector<ObjectID> objects_to_free_;
+
+  /// This map represents the commit state of 2PC protocol for atomic placement group
+  /// creation.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
+      bundle_state_map_;
 };
 
 }  // namespace raylet

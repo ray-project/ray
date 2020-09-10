@@ -60,7 +60,11 @@ class EarlyStoppingSuite(unittest.TestCase):
         return t1, t2
 
     def testMedianStoppingConstantPerf(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
@@ -75,7 +79,11 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingOnCompleteOnly(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         self.assertEqual(
@@ -87,7 +95,11 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingGracePeriod(self):
-        rule = MedianStoppingRule(grace_period=2.5, min_samples_required=1)
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=2.5,
+            min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
@@ -104,7 +116,11 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingMinSamples(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=2)
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=2)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
@@ -120,7 +136,11 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingUsesMedian(self):
-        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
+        rule = MedianStoppingRule(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
@@ -135,7 +155,11 @@ class EarlyStoppingSuite(unittest.TestCase):
 
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
-            grace_period=0, min_samples_required=1, hard_stop=False)
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=0,
+            min_samples_required=1,
+            hard_stop=False)
         t1, t2 = self.basicSetup(rule)
         runner = mock_trial_runner()
         rule.on_trial_complete(runner, t1, result(10, 1000))
@@ -265,7 +289,8 @@ class HyperbandSuite(unittest.TestCase):
         (15, 9) -> (5, 27) -> (2, 45);
         (34, 3) -> (12, 9) -> (4, 27) -> (2, 42);
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 41);"""
-        sched = HyperBandScheduler(max_t=max_t)
+        sched = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=max_t)
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
@@ -321,7 +346,7 @@ class HyperbandSuite(unittest.TestCase):
         return sched
 
     def testConfigSameEta(self):
-        sched = HyperBandScheduler()
+        sched = HyperBandScheduler(metric="episode_reward_mean", mode="max")
         i = 0
         while not sched._cur_band_filled():
             t = Trial("__fake")
@@ -335,7 +360,10 @@ class HyperbandSuite(unittest.TestCase):
 
         reduction_factor = 10
         sched = HyperBandScheduler(
-            max_t=1000, reduction_factor=reduction_factor)
+            metric="episode_reward_mean",
+            mode="max",
+            max_t=1000,
+            reduction_factor=reduction_factor)
         i = 0
         while not sched._cur_band_filled():
             t = Trial("__fake")
@@ -348,7 +376,8 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
     def testConfigSameEtaSmall(self):
-        sched = HyperBandScheduler(max_t=1)
+        sched = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=1)
         i = 0
         while len(sched._hyperbands) < 2:
             t = Trial("__fake")
@@ -627,7 +656,11 @@ class BOHBSuite(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testLargestBracketFirst(self):
-        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
+        sched = HyperBandForBOHB(
+            metric="episode_reward_mean",
+            mode="max",
+            max_t=3,
+            reduction_factor=3)
         runner = _MockTrialRunner(sched)
         for i in range(3):
             t = Trial("__fake")
@@ -642,7 +675,11 @@ class BOHBSuite(unittest.TestCase):
         def result(score, ts):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
-        sched = HyperBandForBOHB(max_t=3, reduction_factor=3)
+        sched = HyperBandForBOHB(
+            metric="episode_reward_mean",
+            mode="max",
+            max_t=3,
+            reduction_factor=3)
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         runner._search_alg.searcher = MagicMock()
@@ -668,7 +705,11 @@ class BOHBSuite(unittest.TestCase):
         def result(score, ts):
             return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
 
-        sched = HyperBandForBOHB(max_t=3, reduction_factor=3, mode="min")
+        sched = HyperBandForBOHB(
+            metric="episode_reward_mean",
+            mode="min",
+            max_t=3,
+            reduction_factor=3)
         runner = _MockTrialRunner(sched)
         runner._search_alg = MagicMock()
         runner._search_alg.searcher = MagicMock()
@@ -688,6 +729,34 @@ class BOHBSuite(unittest.TestCase):
         self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEquals(spy_result["hyperband_info"]["budget"], 1)
+
+    def testPauseResumeChooseTrial(self):
+        def result(score, ts):
+            return {"episode_reward_mean": score, TRAINING_ITERATION: ts}
+
+        sched = HyperBandForBOHB(
+            metric="episode_reward_mean",
+            mode="min",
+            max_t=10,
+            reduction_factor=3)
+        runner = _MockTrialRunner(sched)
+        runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
+        trials = [Trial("__fake") for i in range(3)]
+        for t in trials:
+            runner.add_trial(t)
+            runner._launch_trial(t)
+
+        all_results = [result(1, 5), result(2, 1), result(3, 5)]
+        for trial, trial_result in zip(trials, all_results):
+            decision = sched.on_trial_result(runner, trial, trial_result)
+            self.assertEqual(decision, TrialScheduler.PAUSE)
+            runner._pause_trial(trial)
+
+        run_trial = sched.choose_trial_to_run(runner)
+        self.assertEqual(run_trial, trials[1])
+        self.assertSequenceEqual([t.status for t in trials],
+                                 [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
 
 
 class _MockTrial(Trial):
@@ -737,6 +806,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         }
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
+            metric="episode_reward_mean",
+            mode="max",
             perturbation_interval=perturbation_interval,
             resample_probability=resample_prob,
             quantile_fraction=0.25,
@@ -1651,6 +1722,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         }
         pbt = PopulationBasedTraining(
             metric="mean_accuracy",
+            mode="max",
             time_attr="training_iteration",
             perturbation_interval=perturbation_interval,
             resample_probability=resample_prob,
@@ -1767,7 +1839,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         return t1, t2
 
     def testAsyncHBOnComplete(self):
-        scheduler = AsyncHyperBandScheduler(max_t=10, brackets=1)
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=10, brackets=1)
         t1, t2 = self.basicSetup(scheduler)
         t3 = Trial("PPO")
         scheduler.on_trial_add(None, t3)
@@ -1778,7 +1851,11 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAsyncHBGracePeriod(self):
         scheduler = AsyncHyperBandScheduler(
-            grace_period=2.5, reduction_factor=3, brackets=1)
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=2.5,
+            reduction_factor=3,
+            brackets=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
@@ -1795,7 +1872,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testAsyncHBAllCompletes(self):
-        scheduler = AsyncHyperBandScheduler(max_t=10, brackets=10)
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=10, brackets=10)
         trials = [Trial("PPO") for i in range(10)]
         for t in trials:
             scheduler.on_trial_add(None, t)
@@ -1807,7 +1885,12 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAsyncHBUsesPercentile(self):
         scheduler = AsyncHyperBandScheduler(
-            grace_period=1, max_t=10, reduction_factor=2, brackets=1)
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1)
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
@@ -1822,7 +1905,12 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
     def testAsyncHBNanPercentile(self):
         scheduler = AsyncHyperBandScheduler(
-            grace_period=1, max_t=10, reduction_factor=2, brackets=1)
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1)
         t1, t2 = self.nanSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 450))
         scheduler.on_trial_complete(None, t2, result(10, np.nan))

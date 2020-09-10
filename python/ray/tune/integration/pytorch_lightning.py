@@ -235,8 +235,8 @@ class TuneReportCheckpointCallback(TuneCallback):
     .. code-block:: python
 
         import pytorch_lightning as pl
-        from ray.tune.integration.pytorch_lightning import \
-            TuneReportCheckpointCallback
+        from ray.tune.integration.pytorch_lightning import (
+            TuneReportCheckpointCallback)
 
         # Save checkpoint after each training batch and after each
         # validation epoch.

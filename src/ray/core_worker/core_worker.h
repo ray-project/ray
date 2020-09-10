@@ -57,12 +57,38 @@ struct CoreWorkerOptions {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
-      TaskType task_type, const RayFunction &ray_function,
+      TaskType task_type, const std::string task_name, const RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
+
+  CoreWorkerOptions()
+      : store_socket(""),
+        raylet_socket(""),
+        enable_logging(false),
+        log_dir(""),
+        install_failure_signal_handler(false),
+        node_ip_address(""),
+        node_manager_port(0),
+        raylet_ip_address(""),
+        driver_name(""),
+        stdout_file(""),
+        stderr_file(""),
+        task_execution_callback(nullptr),
+        check_signals(nullptr),
+        gc_collect(nullptr),
+        spill_objects(nullptr),
+        restore_spilled_objects(nullptr),
+        get_lang_stack(nullptr),
+        kill_main(nullptr),
+        ref_counting_enabled(false),
+        is_local_mode(false),
+        num_workers(0),
+        terminate_asyncio_thread(nullptr),
+        serialized_job_config(""),
+        metrics_agent_port(-1) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;

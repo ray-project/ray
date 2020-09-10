@@ -4,7 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
-from ray.experimental.placement_group import PlacementGroup, \
+from ray.util.placement_group import PlacementGroup, \
     check_placement_group_index
 import ray.signature
 
@@ -61,9 +61,9 @@ class RemoteFunction:
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
-                 num_gpus, memory, object_store_memory, resources, num_returns,
-                 max_calls, max_retries, placement_group,
-                 placement_group_bundle_index):
+                 num_gpus, memory, object_store_memory, resources,
+                 accelerator_type, num_returns, max_calls, max_retries,
+                 placement_group, placement_group_bundle_index):
         self._language = language
         self._function = function
         self._function_name = (
@@ -79,6 +79,7 @@ class RemoteFunction:
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
+        self._accelerator_type = accelerator_type
         self._num_returns = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS
                              if num_returns is None else num_returns)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
@@ -149,10 +150,12 @@ class RemoteFunction:
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
+                accelerator_type=None,
                 resources=None,
                 max_retries=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -195,8 +198,9 @@ class RemoteFunction:
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            self._object_store_memory, self._resources, self._accelerator_type,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -212,7 +216,7 @@ class RemoteFunction:
                     "Cross language remote function " \
                     "cannot be executed locally."
             object_refs = worker.core_worker.submit_task(
-                self._language, self._function_descriptor, list_args,
+                self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, placement_group.id,
                 placement_group_bundle_index)
 

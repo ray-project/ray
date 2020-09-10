@@ -94,6 +94,9 @@ extern jmethodID java_system_gc;
 /// RayException class
 extern jclass java_ray_exception_class;
 
+/// RayIntentionalSystemExitException class
+extern jclass java_ray_intentional_system_exit_exception_class;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
@@ -127,6 +130,11 @@ extern jfieldID java_function_arg_value;
 extern jclass java_base_task_options_class;
 /// resources field of BaseTaskOptions class
 extern jfieldID java_base_task_options_resources;
+
+/// CallOptions class
+extern jclass java_call_options_class;
+/// name field of CallOptions class
+extern jfieldID java_call_options_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -256,7 +264,7 @@ inline ID JavaByteArrayToId(JNIEnv *env, const jbyteArray &bytes) {
   std::string id_str(ID::Size(), 0);
   env->GetByteArrayRegion(bytes, 0, ID::Size(),
                           reinterpret_cast<jbyte *>(&id_str.front()));
-  auto arr_size = env->GetArrayLength(bytes);
+  auto arr_size = static_cast<size_t>(env->GetArrayLength(bytes));
   RAY_CHECK(arr_size == ID::Size())
       << "ID length should be " << ID::Size() << " instead of " << arr_size;
   return ID::FromBinary(id_str);

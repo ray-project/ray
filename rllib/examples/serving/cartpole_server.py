@@ -46,15 +46,8 @@ if __name__ == "__main__":
             env=env,
             config=dict(
                 connector_config, **{
-                    "exploration_config": {
-                        "type": "EpsilonGreedy",
-                        "initial_epsilon": 1.0,
-                        "final_epsilon": 0.02,
-                        "epsilon_timesteps": 1000,
-                    },
                     "learning_starts": 100,
                     "timesteps_per_iteration": 200,
-                    "log_level": "INFO",
                     "framework": args.framework,
                 }))
     elif args.run == "PPO":
@@ -63,7 +56,7 @@ if __name__ == "__main__":
             env=env,
             config=dict(
                 connector_config, **{
-                    "sample_batch_size": 1000,
+                    "rollout_fragment_length": 1000,
                     "train_batch_size": 4000,
                     "framework": args.framework,
                 }))

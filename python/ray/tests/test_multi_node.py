@@ -8,8 +8,22 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore,
-    init_error_pubsub, get_error_message)
+    wait_for_children_of_pid_to_exit, wait_for_condition, kill_process_by_name,
+    Semaphore, init_error_pubsub, get_error_message)
+
+
+def test_remote_raylet_cleanup(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    def remote_raylets_dead():
+        return not cluster.remaining_processes_alive()
+
+    cluster.remove_node(cluster.head_node, allow_graceful=False)
+    wait_for_condition(remote_raylets_dead)
 
 
 def test_error_isolation(call_ray_start):
@@ -369,6 +383,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test starting Ray with a node IP address specified.
     check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1"])
+    check_call_ray(["stop"])
+
+    # Test starting Ray with a system config parameter set.
+    check_call_ray([
+        "start", "--head", "--system-config",
+        "{\"metrics_report_interval_ms\":100}"
+    ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the object manager and node manager ports
