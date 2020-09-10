@@ -78,15 +78,14 @@ class NodeUpdater:
         self.process_runner = process_runner
         self.node_id = node_id
         self.provider = provider
-        # Some node providers don't specify empty structures as defaults. Better to
-        # be defensive.
-        if file_mounts:
-            self.file_mounts = {
-                remote: os.path.expanduser(local)
-                for remote, local in file_mounts.items()
-            }
-        else:
-            self.file_mounts = {}
+        # Some node providers don't specify empty structures as
+        # defaults. Better to be defensive.
+        file_mounts = file_mounts or {}
+        self.file_mounts = {
+            remote: os.path.expanduser(local)
+            for remote, local in file_mounts.items()
+        }
+
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
         self.ray_start_commands = ray_start_commands
@@ -97,12 +96,10 @@ class NodeUpdater:
         # worker nodes is the same. Also note that `cluster_synced_files` is
         # set on the head -> worker updaters only (so `expanduser` is only run
         # on the head node).
-        if cluster_synced_files:
-            self.cluster_synced_files = [
-                os.path.expanduser(path) for path in cluster_synced_files
-            ]
-        else:
-            self.cluster_synced_files = []
+        cluster_synced_files = cluster_synced_files or []
+        self.cluster_synced_files = [
+            os.path.expanduser(path) for path in cluster_synced_files
+        ]
         self.auth_config = auth_config
         self.is_head_node = is_head_node
 
