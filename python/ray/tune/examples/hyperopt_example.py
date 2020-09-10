@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hyperopt import HyperOptSearch
 
@@ -58,8 +59,14 @@ if __name__ == "__main__":
             "activation": tune.choice(["relu", "tanh"])
         }
     }
-    algo = HyperOptSearch(
-        metric="mean_loss", mode="min", points_to_evaluate=current_best_params)
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    algo = HyperOptSearch(points_to_evaluate=current_best_params)
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+
+    scheduler = AsyncHyperBandScheduler()
     tune.run(
-        easy_objective, search_alg=algo, scheduler=scheduler, **tune_kwargs)
+        easy_objective,
+        search_alg=algo,
+        scheduler=scheduler,
+        metric="mean_loss",
+        mode="min",
+        **tune_kwargs)

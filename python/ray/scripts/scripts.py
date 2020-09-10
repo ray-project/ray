@@ -309,11 +309,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
-    "--include-java",
-    is_flag=True,
-    default=None,
-    help="Enable Java worker support.")
-@click.option(
     "--java-worker-options",
     required=False,
     hidden=True,
@@ -368,7 +363,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, include_java, java_worker_options, load_code_from_local,
+          temp_dir, java_worker_options, load_code_from_local,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
@@ -427,7 +422,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
-        include_java=include_java,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -469,7 +463,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             num_redis_shards=num_redis_shards,
             redis_max_clients=None,
             autoscaling_config=autoscaling_config,
-            include_java=False,
         )
 
         node = ray.node.Node(
@@ -527,7 +520,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             "    ray stop".format(
                 redis_address, " --redis-password='" + redis_password + "'"
                 if redis_password else "",
-                ", redis_password='" + redis_password + "'"
+                ", _redis_password='" + redis_password + "'"
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
@@ -558,12 +551,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             raise ValueError(
                 "If --head is not passed in, the --include-dashboard"
                 "flag is not relevant.")
-        if include_java is not None:
-            cli_logger.abort("`{}` should not be specified without `{}`.",
-                             cf.bold("--include-java"), cf.bold("--head"))
 
-            raise ValueError("--include-java should only be set for the head "
-                             "node.")
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
         services.wait_for_redis_to_start(
@@ -1358,7 +1346,7 @@ def memory(address, redis_password):
     if not address:
         address = services.find_redis_address_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address, redis_password=redis_password)
+    ray.init(address=address, _redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
 
 

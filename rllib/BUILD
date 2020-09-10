@@ -468,6 +468,16 @@ py_test(
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
+# BCTrainer (sub-type of MARWIL)
+py_test(
+    name = "test_bc",
+    tags = ["agents_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["agents/marwil/tests/test_bc.py"]
+)
+
 # MAMLTrainer
 py_test(
     name = "test_maml",

@@ -118,8 +118,8 @@ class HyperOptSearch(Searcher):
     def __init__(
             self,
             space=None,
-            metric="episode_reward_mean",
-            mode="max",
+            metric=None,
+            mode=None,
             points_to_evaluate=None,
             n_initial_points=20,
             random_state_seed=None,
@@ -129,6 +129,8 @@ class HyperOptSearch(Searcher):
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         from hyperopt.fmin import generate_trials_to_calculate
         super(HyperOptSearch, self).__init__(
             metric=metric,
