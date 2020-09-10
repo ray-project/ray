@@ -255,8 +255,8 @@ class TrainingOperator:
         else:
             self._criterion = None
 
-        logger.debug("Setting up Apex.")
         if self.use_fp16 and amp:
+            logger.debug("Setting up Apex.")
             self._models, self._optimizers = amp.initialize(
                 self._models, self._optimizers, **self._apex_args)
             self._amp = amp
