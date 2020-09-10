@@ -166,6 +166,8 @@ class NodeUpdater:
 
         def do_sync(remote_path, local_path, allow_non_existing_paths=False):
             if allow_non_existing_paths and not os.path.exists(local_path):
+                cli_logger.print("sync: {} does not exist. Skipping.",
+                                 local_path)
                 # Ignore missing source files. In the future we should support
                 # the --delete-missing-args command to delete files that have
                 # been removed
@@ -204,7 +206,10 @@ class NodeUpdater:
             with cli_logger.group(
                     "Processing worker file mounts",
                     _numbered=("[]", previous_steps + 2, total_steps)):
+                cli_logger.print("synced files: {}",
+                                 str(self.cluster_synced_files))
                 for path in self.cluster_synced_files:
+                    path = os.path.expanduser(path)
                     do_sync(path, path, allow_non_existing_paths=True)
         else:
             cli_logger.print(

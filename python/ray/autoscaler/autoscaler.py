@@ -54,6 +54,7 @@ class StandardAutoscaler:
     StandardAutoscaler is also used to bootstrap clusters (by adding workers
     until the target cluster size is met).
     """
+    provider = None
 
     def __init__(self,
                  config_path,
@@ -250,6 +251,7 @@ class StandardAutoscaler:
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
@@ -295,9 +297,9 @@ class StandardAutoscaler:
             self.config = new_config
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
-
-            self.provider = get_node_provider(self.config["provider"],
-                                              self.config["cluster_name"])
+            if not self.provider:
+                self.provider = get_node_provider(self.config["provider"],
+                                                  self.config["cluster_name"])
             # Check whether we can enable the resource demand scheduler.
             if "available_node_types" in self.config:
                 self.available_node_types = self.config["available_node_types"]
@@ -492,6 +494,8 @@ class StandardAutoscaler:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
+        logger.debug(f"{node_id} is not being updated and "
+                     "passes config check (can_update=True).")
         return True
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
