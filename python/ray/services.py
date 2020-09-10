@@ -1160,9 +1160,9 @@ def start_dashboard(require_dashboard,
         dashboard_url = (
             f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
 
-        logger.info("View the Ray dashboard at {}{}{}{}{}",
-                    colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
-                    colorama.Fore.RESET, colorama.Style.NORMAL)
+        logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
 
         return dashboard_url, process_info
     else:
