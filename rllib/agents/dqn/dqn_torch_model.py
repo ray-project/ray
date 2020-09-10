@@ -1,3 +1,5 @@
+"""PyTorch model for DQN"""
+
 from typing import Sequence
 import gym
 from ray.rllib.models.torch.misc import SlimFC

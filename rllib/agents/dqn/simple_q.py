@@ -1,8 +1,11 @@
 """
-Simple Q (simple_q)
-===================
+Simple Q-Learning
+=================
 
-This file defines the distributed Trainer class for the simple Q learning.
+This module provides a basic implementation of the DQN algorithm without any
+optimizations.
+
+This file defines the distributed Trainer class for the Simple Q algorithm.
 See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 

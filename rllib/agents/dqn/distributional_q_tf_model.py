@@ -1,8 +1,12 @@
+"""Tensorflow model for DQN"""
+
+from typing import List
+
 import gym
 from ray.rllib.models.tf.layers import NoisyLayer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import ModelConfigDict
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -22,8 +26,8 @@ class DistributionalQTFModel(TFModelV2):
 
     def __init__(
             self,
-            obs_space: gym.Space,
-            action_space: gym.Space,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
             num_outputs: int,
             model_config: ModelConfigDict,
             name: str,
@@ -62,7 +66,6 @@ class DistributionalQTFModel(TFModelV2):
         only defines the layers for the Q head. Those layers for forward()
         should be defined in subclasses of DistributionalQModel.
         """
-
         super(DistributionalQTFModel, self).__init__(
             obs_space, action_space, num_outputs, model_config, name)
 
@@ -70,7 +73,8 @@ class DistributionalQTFModel(TFModelV2):
         self.model_out = tf.keras.layers.Input(
             shape=(num_outputs, ), name="model_out")
 
-        def build_action_value(prefix, model_out):
+        def build_action_value(prefix: str,
+                               model_out: TensorType) -> List[TensorType]:
             if q_hiddens:
                 action_out = model_out
                 for i in range(len(q_hiddens)):
@@ -131,7 +135,8 @@ class DistributionalQTFModel(TFModelV2):
                 dist = tf.expand_dims(tf.ones_like(action_scores), -1)
                 return [action_scores, logits, dist]
 
-        def build_state_score(prefix, model_out):
+        def build_state_score(prefix: str,
+                              model_out: TensorType) -> TensorType:
             state_out = model_out
             for i in range(len(q_hiddens)):
                 if use_noisy:
@@ -165,7 +170,8 @@ class DistributionalQTFModel(TFModelV2):
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 
-    def get_q_value_distributions(self, model_out):
+    def get_q_value_distributions(self,
+                                  model_out: TensorType) -> List[TensorType]:
         """Returns distributional values for Q(s, a) given a state embedding.
 
         Override this in your custom model to customize the Q output head.
@@ -177,10 +183,8 @@ class DistributionalQTFModel(TFModelV2):
             (action_scores, logits, dist) if num_atoms == 1, otherwise
             (action_scores, z, support_logits_per_action, logits, dist)
         """
-
         return self.q_value_head(model_out)
 
-    def get_state_value(self, model_out):
+    def get_state_value(self, model_out: TensorType) -> TensorType:
         """Returns the state value prediction for the given state embedding."""
-
         return self.state_value_head(model_out)

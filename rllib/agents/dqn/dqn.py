@@ -1,5 +1,16 @@
+"""
+Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+==============================================
+
+This file defines the distributed Trainer class for the Deep Q-Networks
+algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
+
+Detailed documentation:
+https://docs.ray.io/en/latest/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+"""  # noqa: E501
+
 import logging
-from typing import Optional, Type
+from typing import List, Optional, Type
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -232,7 +243,8 @@ def execution_plan(workers: WorkerSet,
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config: TrainerConfigDict):
+def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+    """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
@@ -258,8 +270,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return DQNTorchPolicy
 
 
-# Build a generic off-policy trainer, on top of which other trainers
-# (such as DDPGTrainer) are built
+# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
+# may build on top of it.
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
@@ -268,7 +280,7 @@ GenericOffPolicyTrainer = build_trainer(
     validate_config=validate_config,
     execution_plan=execution_plan)
 
-# Build a child class of `Trainer`, which uses the framework specific Policy
+# Build a DQN trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

@@ -1,3 +1,5 @@
+"""PyTorch policy class used for DQN"""
+
 from typing import Dict, List, Tuple
 
 import gym
@@ -127,9 +129,22 @@ class ComputeTDErrorMixin:
 
 
 def build_q_model_and_distribution(
-        policy: Policy, obs_space: gym.Space, action_space: gym.Space,
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
+    """Build q_model and target_q_model for DQN
 
+    Args:
+        policy (Policy): The policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        (q_model, TorchCategorical)
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_q_model`.
+    """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
@@ -301,7 +316,8 @@ def setup_early_mixins(policy: Policy, obs_space, action_space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def after_init(policy: Policy, obs_space: gym.Space, action_space: gym.Space,
+def after_init(policy: Policy, obs_space: gym.spaces.Space,
+               action_space: gym.spaces.Space,
                config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)

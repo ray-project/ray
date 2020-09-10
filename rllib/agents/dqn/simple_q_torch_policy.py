@@ -1,14 +1,15 @@
-"""Basic example of a DQN policy without any optimizations."""
+"""PyTorch policy class used for Simple Q-Learning"""
 
 import logging
-from typing import Dict
+from typing import Dict, Tuple
 
 import gym
 import ray
 from ray.rllib.agents.dqn.simple_q_tf_policy import (
     build_q_models, compute_q_values, get_distribution_inputs_and_class)
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
+    TorchDistributionWrapper
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
@@ -24,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
+    """Assign the `update_target` method to the SimpleQTorchPolicy
 
     The function is called every `target_network_update_freq` steps by the
     master learner.
     """
 
-    def __init__(self, obs_space: gym.Space, action_space: gym.Space,
-                 config: TrainerConfigDict):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         def do_update():
             # Update_target_fn will be called periodically to copy Q network to
             # target Q network.
@@ -42,9 +43,10 @@ class TargetNetworkMixin:
         self.update_target = do_update
 
 
-def build_q_model_and_distribution(policy: Policy, obs_space: gym.Space,
-                                   action_space: gym.Space,
-                                   config: TrainerConfigDict) -> ModelV2:
+def build_q_model_and_distribution(
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
     return build_q_models(policy, obs_space, action_space, config), \
         TorchCategorical
 
@@ -106,20 +108,20 @@ def build_q_losses(policy: Policy, model, dist_class,
 
 def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
                         action_dist) -> Dict[str, TensorType]:
-    """Adds q-values to action out dict."""
+    """Adds q-values to the action out dict."""
     return {"q_values": policy.q_values}
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.Space,
-                      action_space: gym.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
                       config: TrainerConfigDict) -> None:
     """Call all mixin classes' constructors before SimpleQTorchPolicy
     initialization.
 
     Args:
         policy (Policy): The Policy object.
-        obs_space (gym.Space): The Policy's observation space.
-        action_space (gym.Space): The Policy's action space.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)

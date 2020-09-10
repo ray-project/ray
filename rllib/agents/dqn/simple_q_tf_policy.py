@@ -1,4 +1,4 @@
-"""Basic example of a DQN policy without any optimizations."""
+"""TensorFlow policy class used for Simple Q-Learning"""
 
 import logging
 from typing import List, Tuple, Type
@@ -35,8 +35,8 @@ class TargetNetworkMixin:
     master learner.
     """
 
-    def __init__(self, obs_space: gym.Space, action_space: gym.Space,
-                 config: TrainerConfigDict):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
         @make_tf_callable(self.get_session())
         def do_update():
             # update_target_fn will be called periodically to copy Q network to
@@ -57,15 +57,17 @@ class TargetNetworkMixin:
         return self.q_func_vars + self.target_q_func_vars
 
 
-def build_q_models(policy: Policy, obs_space: gym.Space,
-                   action_space: gym.Space,
+def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
+                   action_space: gym.spaces.Space,
                    config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for SimpleQTFPolicy
+    """Build q_model and target_q_model for Simple Q learning
+
+    Note that this function works for both Tensorflow and PyTorch.
 
     Args:
         policy (Policy): The Policy, which will use the model for optimization.
-        obs_space (gym.Space): The policy's observation space.
-        action_space (gym.Space): The policy's action space.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
         config (TrainerConfigDict):
 
     Returns:
@@ -107,18 +109,7 @@ def get_distribution_inputs_and_class(
         explore=True,
         is_training=True,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
-    """Build the action distribution
-
-    Args:
-        policy (Policy): The Policy to calculate the action distribution for.
-        model (ModelV2): The Model to calculate the action distribution for.
-        obs_batch (TensorType):
-
-    Returns:
-        dist_inputs (TensorType):
-        dist_class (type):
-        state_outs (List[TensorType]):
-    """
+    """Build the action distribution"""
     q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
@@ -198,15 +189,15 @@ def compute_q_values(policy: Policy,
     return model_out
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.Space,
-                      action_space: gym.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
                       config: TrainerConfigDict) -> None:
     """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
 
     Args:
         policy (Policy): The Policy object.
-        obs_space (gym.Space): The Policy's observation space.
-        action_space (gym.Space): The Policy's action space.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
