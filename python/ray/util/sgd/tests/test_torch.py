@@ -54,7 +54,8 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=1,
         use_local=use_local,
-        backend="gloo")
+        backend="gloo",
+        use_gpu=False)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
@@ -70,7 +71,8 @@ def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=TestOperator,
         num_workers=2,
         use_local=use_local,
-        backend="gloo")
+        backend="gloo",
+        use_gpu=False)
     trainer.train(num_steps=1)
     trainer.shutdown()
     with pytest.raises(RuntimeError):
@@ -84,7 +86,8 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo")
+        backend="gloo",
+        use_gpu=False)
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["val_loss"]
@@ -158,6 +161,7 @@ def test_multi_model(ray_start_2_cpus, num_workers, use_local):
         num_workers=num_workers,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
     )
     trainer1.train()
     state = trainer1.state_dict()
@@ -172,6 +176,7 @@ def test_multi_model(ray_start_2_cpus, num_workers, use_local):
         num_workers=num_workers,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
     )
     trainer2.load_state_dict(state)
 
@@ -348,6 +353,7 @@ def test_dataset(ray_start_4_cpus, use_local):
         use_local=use_local,
         num_workers=2,
         backend="gloo",
+        use_gpu=False,
     )
 
     dataset = dataset_creator()
@@ -385,6 +391,7 @@ def test_split_batch(ray_start_2_cpus, use_local):
         num_workers=2,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
         config={
             BATCH_SIZE: batch_size,
             "data_size": data_size,
@@ -421,6 +428,7 @@ def test_reduce_result(ray_start_2_cpus, use_local):
         num_workers=2,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
         config={"data_size": data_size})
     list_stats = trainer.train(reduce_results=False, profile=True)
     assert len(list_stats) == 2
@@ -451,6 +459,7 @@ def test_metrics(ray_start_2_cpus, num_workers, use_local):
         num_workers=num_workers,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -500,6 +509,7 @@ def test_metrics_nan(ray_start_2_cpus, num_workers, use_local):
         num_workers=num_workers,
         use_local=use_local,
         backend="gloo",
+        use_gpu=False,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -536,6 +546,7 @@ def test_scheduler_validate(ray_start_2_cpus, use_local):  # noqa: F811
         scheduler_step_freq="manual",
         training_operator_cls=TestOperator,
         backend="gloo",
+        use_gpu=False,
         use_local=use_local)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
@@ -586,6 +597,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
         training_operator_cls=Operator,
         num_workers=num_workers,
         backend="gloo",
+        use_gpu=False,
         use_local=use_local)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
@@ -599,6 +611,7 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
         training_operator_cls=Operator,
         num_workers=num_workers,
         backend="gloo",
+        use_gpu=False,
         use_local=use_local)
     trainer2.load(checkpoint_path)
 
@@ -808,7 +821,8 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
         training_operator_cls=Operator,
         num_workers=1,
         use_local=use_local,
-        backend="gloo")
+        backend="gloo",
+        use_gpu=False)
 
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
