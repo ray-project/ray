@@ -1,5 +1,7 @@
 package io.ray.api.function;
 
+import io.ray.api.type.TypeInfo;
+
 /**
  * A class that represents a method of a Python actor.
  * <p>
@@ -33,9 +35,9 @@ public class PyActorMethod<R> {
   // The name of this actor method
   public final String methodName;
   // Type of the return value of this actor method
-  public final Class<R> returnType;
+  public final TypeInfo<R> returnType;
 
-  private PyActorMethod(String methodName, Class<R> returnType) {
+  private PyActorMethod(String methodName, TypeInfo<R> returnType) {
     this.methodName = methodName;
     this.returnType = returnType;
   }
@@ -59,6 +61,10 @@ public class PyActorMethod<R> {
    * @return a python actor method.
    */
   public static <R> PyActorMethod<R> of(String methodName, Class<R> returnType) {
+    return new PyActorMethod<>(methodName, new TypeInfo<>(returnType));
+  }
+
+  public static <R> PyActorMethod<R> of(String methodName, TypeInfo<R> returnType) {
     return new PyActorMethod<>(methodName, returnType);
   }
 

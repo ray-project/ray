@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
+import io.ray.api.type.TypeInfo;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.NativeRayObject;
@@ -76,13 +77,13 @@ public class ArgumentsBuilder {
   /**
    * Convert list of NativeRayObject/ByteBuffer to real function arguments.
    */
-  public static Object[] unwrap(List<Object> args, Class<?>[] types) {
+  public static Object[] unwrap(List<Object> args, TypeInfo<?>[] types) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {
       Object arg = args.get(i);
       Preconditions.checkState(arg instanceof ByteBuffer || arg instanceof NativeRayObject);
       if (arg instanceof ByteBuffer) {
-        Preconditions.checkState(types[i] == ByteBuffer.class);
+        Preconditions.checkState(TypeInfo.BYTE_BUFFER_TYPE_INFO.equals(types[i]));
         realArgs[i] = arg;
       } else {
         realArgs[i] = ObjectSerializer.deserialize((NativeRayObject) arg, null, types[i]);

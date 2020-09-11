@@ -9,6 +9,7 @@ import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import io.ray.api.type.TypeInfo;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,14 +56,14 @@ public class ObjectSerializer {
    * @return The deserialized object.
    */
   public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId,
-      Class<?> objectType) {
+      TypeInfo<?> objectType) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
       if (Arrays.equals(meta, OBJECT_METADATA_TYPE_RAW)) {
-        if (objectType == ByteBuffer.class) {
+        if (TypeInfo.BYTE_BUFFER_TYPE_INFO.equals(objectType)) {
           return ByteBuffer.wrap(data);
         }
         return data;

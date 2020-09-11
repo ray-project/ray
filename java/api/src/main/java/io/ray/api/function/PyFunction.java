@@ -1,5 +1,7 @@
 package io.ray.api.function;
 
+import io.ray.api.type.TypeInfo;
+
 /**
  * A class that represents a Python remote function.
  *
@@ -37,9 +39,9 @@ public class PyFunction<R> {
   // The name of this function
   public final String functionName;
   // Type of the return value of this function
-  public final Class<R> returnType;
+  public final TypeInfo<R> returnType;
 
-  private PyFunction(String moduleName, String functionName, Class<R> returnType) {
+  private PyFunction(String moduleName, String functionName, TypeInfo<R> returnType) {
     this.moduleName = moduleName;
     this.functionName = functionName;
     this.returnType = returnType;
@@ -68,6 +70,11 @@ public class PyFunction<R> {
    */
   public static <R> PyFunction<R> of(
       String moduleName, String functionName, Class<R> returnType) {
+    return new PyFunction<>(moduleName, functionName, new TypeInfo<>(returnType));
+  }
+
+  public static <R> PyFunction<R> of(
+      String moduleName, String functionName, TypeInfo<R> returnType) {
     return new PyFunction<>(moduleName, functionName, returnType);
   }
 

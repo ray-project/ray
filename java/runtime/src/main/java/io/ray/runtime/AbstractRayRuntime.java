@@ -19,6 +19,7 @@ import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.type.TypeInfo;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
@@ -76,7 +77,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public <T> ObjectRef<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<>(objectId,
+        new TypeInfo<>(obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
@@ -88,7 +90,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public <T> List<T> get(List<ObjectRef<T>> objectRefs) {
     List<ObjectId> objectIds = new ArrayList<>();
-    Class<T> objectType = null;
+    TypeInfo<T> objectType = null;
     for (ObjectRef<T> o : objectRefs) {
       ObjectRefImpl<T> objectRefImpl = (ObjectRefImpl<T>) o;
       objectIds.add(objectRefImpl.getId());
@@ -112,10 +114,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public ObjectRef call(RayFunc func, Object[] args, CallOptions options) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Optional<Class<?>> returnType = rayFunction.getReturnType();
-    return callNormalFunction(functionDescriptor, args, returnType, options);
+    Optional<TypeInfo<?>> returnType = rayFunction.getReturnTypeInfo();
+    return callNormalFunction(functionDescriptor, args, rayFunction.getReturnTypeInfo(), options);
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
@@ -131,17 +134,17 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args) {
     RayFunction rayFunction = functionManager.getFunction(workerContext.getCurrentJobId(), func);
     FunctionDescriptor functionDescriptor = rayFunction.functionDescriptor;
-    Optional<Class<?>> returnType = rayFunction.getReturnType();
-    return callActorFunction(actor, functionDescriptor, args, returnType);
+    return callActorFunction(actor, functionDescriptor, args, rayFunction.getReturnTypeInfo());
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object... args) {
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
     return callActorFunction(pyActor, functionDescriptor, args,
-        /*returnType=*/Optional.of(pyActorMethod.returnType));
+        /*returnType=*/Optional.ofNullable(pyActorMethod.returnType));
   }
 
   @Override
@@ -229,7 +232,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
-      Object[] args, Optional<Class<?>> returnType, CallOptions options) {
+      Object[] args, Optional<TypeInfo<?>> returnType, CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
@@ -239,7 +242,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl<>(returnIds.get(0), returnType.get());
     }
   }
 
@@ -247,7 +250,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       BaseActorHandle rayActor,
       FunctionDescriptor functionDescriptor,
       Object[] args,
-      Optional<Class<?>> returnType) {
+      Optional<TypeInfo<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder
         .wrap(args, functionDescriptor.getLanguage());
@@ -257,7 +260,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      return new ObjectRefImpl<>(returnIds.get(0), returnType.get());
     }
   }
 

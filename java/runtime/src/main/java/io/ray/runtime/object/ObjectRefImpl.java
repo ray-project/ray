@@ -9,6 +9,7 @@ import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.api.type.TypeInfo;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -32,9 +33,9 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   // store the worker ID for later uses.
   private transient UniqueId workerId;
 
-  private Class<T> type;
+  private TypeInfo<T> type;
 
-  public ObjectRefImpl(ObjectId id, Class<T> type) {
+  public ObjectRefImpl(ObjectId id, TypeInfo<T> type) {
     this.id = id;
     this.type = type;
     addLocalReference();
@@ -51,7 +52,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     return id;
   }
 
-  public Class<T> getType() {
+  public TypeInfo<T> getType() {
     return type;
   }
 
@@ -67,10 +68,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     ObjectSerializer.addContainedObjectId(this.getId());
   }
 
+  @SuppressWarnings("unchecked")
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (ObjectId) in.readObject();
-    this.type = (Class<T>) in.readObject();
+    this.type = (TypeInfo<T>) in.readObject();
     addLocalReference();
   }
 

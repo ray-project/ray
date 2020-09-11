@@ -7,6 +7,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.exception.RayException;
+import io.ray.api.type.TypeInfo;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -87,7 +88,7 @@ public abstract class ObjectStore {
    * @return A list of GetResult objects.
    */
   @SuppressWarnings("unchecked")
-  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
+  public <T> List<T> get(List<ObjectId> ids, TypeInfo<?> elementType) {
     // Pass -1 as timeout to wait until all objects are available in object store.
     List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
 

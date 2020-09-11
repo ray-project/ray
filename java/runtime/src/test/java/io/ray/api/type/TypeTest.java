@@ -9,7 +9,7 @@ public class TypeTest {
 
   @Test
   public void testCapture() {
-    assertEquals(new Type<Map<String, Integer>>(){}.capture().getTypeName(),
+    assertEquals(new TypeInfo(){}.getType().getTypeName(),
         "java.util.Map<java.lang.String, java.lang.Integer>");
   }
 }

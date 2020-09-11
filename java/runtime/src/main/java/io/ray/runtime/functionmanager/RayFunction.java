@@ -1,8 +1,10 @@
 package io.ray.runtime.functionmanager;
 
+import io.ray.api.type.TypeInfo;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.Optional;
 
 /**
@@ -25,11 +27,15 @@ public class RayFunction {
    */
   public final JavaFunctionDescriptor functionDescriptor;
 
+  private final TypeInfo<?>[] parameterTypeInfos;
+
   public RayFunction(Executable executable, ClassLoader classLoader,
       JavaFunctionDescriptor functionDescriptor) {
     this.executable = executable;
     this.classLoader = classLoader;
     this.functionDescriptor = functionDescriptor;
+    this.parameterTypeInfos = Arrays.stream(executable.getGenericParameterTypes())
+        .map(TypeInfo::new).toArray(TypeInfo[]::new);
   }
 
   /**
@@ -77,6 +83,18 @@ public class RayFunction {
     } else {
       return Optional.empty();
     }
+  }
+
+  public Optional<TypeInfo<?>> getReturnTypeInfo() {
+    if (hasReturn()) {
+      return Optional.of(new TypeInfo<>(((Method) executable).getGenericReturnType()));
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  public TypeInfo<?>[] getParameterTypeInfos() {
+    return parameterTypeInfos;
   }
 
   @Override
