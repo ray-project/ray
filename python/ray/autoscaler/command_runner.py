@@ -768,6 +768,9 @@ class DockerCommandRunner(CommandRunnerInterface):
         # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
-                self.run_rsync_up(
-                    file_mounts[mount], mount, options={"file_mount": False})
+                self.ssh_command_runner.run(
+                    "docker cp {src} {container}:{dst}".format(
+                        src=os.path.join(DOCKER_MOUNT_PREFIX, mount),
+                        container=self.container_name,
+                        dst=self._docker_expand_user(mount)))
         self.initialized = True
