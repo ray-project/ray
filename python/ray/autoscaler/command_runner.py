@@ -721,14 +721,14 @@ class DockerCommandRunner(CommandRunnerInterface):
 
             self.run("docker pull {}".format(image), run_env="host")
 
-        # Don't mount bootstrap files because of docker mount inode behavior.
-        # (Changes to host file are not reflected in container).
-        cleaned_file_mounts = file_mounts.copy()
+        # Bootstrap files cannot be bind mounted because docker opens the
+        # underlying inode. When the file is switched, docker becomes outdated.
+        cleaned_bind_mounts = file_mounts.copy()
         for mnt in BOOTSTRAP_MOUNTS:
-            cleaned_file_mounts.pop(mnt, None)
+            cleaned_bind_mounts.pop(mnt, None)
 
         start_command = docker_start_cmds(
-            self.ssh_command_runner.ssh_user, image, cleaned_file_mounts,
+            self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
                 f"{'head' if as_head else 'worker'}_run_options", []))
@@ -754,7 +754,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     mnt["Destination"] for mnt in active_mounts
                 ]
                 # Ignore ray bootstrap files.
-                for remote, local in cleaned_file_mounts.items():
+                for remote, local in cleaned_bind_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
                         cli_logger.error(
@@ -764,6 +764,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
+
+        # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
                 self.run_rsync_up(
