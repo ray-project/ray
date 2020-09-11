@@ -117,17 +117,6 @@ def create_or_update_cluster(config_file: str,
     else:
         cmd_output_util.set_output_redirected(redirect_command_output)
 
-    if use_login_shells:
-        cli_logger.warning(
-            "Commands running under a login shell can produce more "
-            "output than special processing can handle.")
-        cli_logger.warning(
-            "Thus, the output from subcommands will be logged as is.")
-        cli_logger.warning(
-            "Consider using {}, {}.", cf.bold("--use-normal-shells"),
-            cf.underlined("if you tested your workflow and it is compatible"))
-        cli_logger.newline()
-
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid")
         cli_logger.newline()
@@ -508,7 +497,6 @@ def get_or_create_head_node(config,
                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
@@ -741,12 +729,12 @@ def get_or_create_head_node(config,
         with cli_logger.group("Useful commands"):
             cli_logger.print("Monitor autoscaling with")
             cli_logger.print(
-                cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
+                cf.bold("  ray exec {}{} {}"), config_file, modifiers,
                 quote(monitor_str))
 
             cli_logger.print("Connect to a terminal on the cluster head")
             cli_logger.print(
-                cf.bold("  ray attach {}{}"), raw_config_file, modifiers)
+                cf.bold("  ray attach {}{}"), config_file, modifiers)
     finally:
         provider.cleanup()
 
