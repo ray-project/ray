@@ -246,6 +246,10 @@ def run(
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
             ValueError will be thrown.
+        queue_trials (bool): Whether to queue trials when the cluster does
+            not currently have enough resources to launch one. This should
+            be set to True when running on an autoscaling cluster to enable
+            automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
