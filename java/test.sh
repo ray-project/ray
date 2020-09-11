@@ -58,7 +58,7 @@ RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.r
 ray stop
 
 echo "Running documentation demo code."
-for file in $(ls java/test/src/main/java/io/ray/docdemo); do
+for file in `ls java/test/src/main/java/io/ray/docdemo`; do
   class=${file%".java"}
   echo "Running $class"
   java -cp bazel-bin/java/all_tests_deploy.jar io.ray.docdemo.$class
