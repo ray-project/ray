@@ -90,9 +90,9 @@ download_jars() {
   local sleep_time_units=60
 
   for f in "$@"; do
-    for os in 'darwin' 'windows'; do
+    for os in 'darwin' 'linux' 'windows'; do
       if [[ "$os" == "windows" ]]; then
-        break
+        continue
       fi
       local url="https://ray-wheels.s3-us-west-2.amazonaws.com/jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/$f"
       mkdir -p "$JAR_BASE_DIR/$os"
@@ -115,6 +115,7 @@ download_jars() {
       done
     done
   done
+  echo "Download jars took $wait_time seconds"
 }
 
 # prepare native binaries and libraries.
