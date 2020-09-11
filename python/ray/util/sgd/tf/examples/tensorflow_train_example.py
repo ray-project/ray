@@ -135,7 +135,10 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
