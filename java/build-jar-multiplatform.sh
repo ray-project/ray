@@ -168,11 +168,11 @@ deploy_jars() {
   if native_files_exist; then
     (
       cd "$WORKSPACE_DIR/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+      mvn -T16 install deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
     )
     (
       cd "$WORKSPACE_DIR/streaming/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
     )
     echo "Finished deploying jars"
   else
