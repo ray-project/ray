@@ -202,7 +202,7 @@ def test_docker_rsync():
     remote_file = "/root/protected-file"
     remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
 
-    process_runner.respond_to_call("docker inspect -f", "true")
+    process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
         local_mount, remote_mount, options={"file_mount": True})
 
@@ -219,7 +219,7 @@ def test_docker_rsync():
     process_runner.clear_history()
     ##############################
 
-    process_runner.respond_to_call("docker inspect -f", "true")
+    process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
         local_file, remote_file, options={"file_mount": False})
 
