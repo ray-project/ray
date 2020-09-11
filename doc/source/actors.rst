@@ -476,19 +476,18 @@ Actor Pool
 
 Actors, Workers and Resources
 -----------------------------------------
-With a single actor occupying a single worker process for its lifetime,
-the difference between an actor and worker can be hazy. This will spell out the differences.
+What's the difference between a worker and an actor?
 
-When Ray starts on a machine, it is allocated a certain amount of resources (which you can specify with arguments to ray.init ). One idle ray worker starts in the cluster per CPU by default.
+Each "Ray worker" is a python process. 
 
-Each of these workers is able to perform tasks or actors. For an actor, the actor runs on a worker and occupies that workers capacity as long as the actor is alive.
+Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
 
-If you have a bunch of tasks that need, for example, 2 cpus each (which you can specify in the args to @ray.remote ), and 16 CPUs, you will end up with 8 of your 16 workers idling.
+ * Tasks: When Ray starts on a machine, a number of Ray workers will be started automatically (1 per CPU by default). They will be used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you will end up with 8 of your 16 workers idling.
 
-An actor of a given class does not always get launched to the same worker process, but once an actor is instantiated, all of its methods will run on the same resources.
+ * Actor: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods will run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors are not reused and will be terminated when the Actor is deleted.
 
-To maximally utilize your resources, then, you want to maximize the time that
-your actors are working. You also want to allocate enough cluster resources 
+To maximally utilize your resources, you want to maximize the time that
+your workers are working. You also want to allocate enough cluster resources 
 so that both all of your needed actors can run and any other tasks you
 define can run. This also implies that tasks are scheduled more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
