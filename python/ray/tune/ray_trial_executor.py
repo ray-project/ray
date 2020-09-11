@@ -140,13 +140,6 @@ class RayTrialExecutor(TrialExecutor):
                  reuse_actors=False,
                  ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
-        if queue_trials is None:
-            if os.environ.get("TUNE_DISABLE_QUEUE_TRIALS") == "1":
-                logger.info("'TUNE_DISABLE_QUEUE_TRIALS=1' detected.")
-                queue_trials = False
-            elif is_ray_cluster():
-                queue_trials = True
-
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")

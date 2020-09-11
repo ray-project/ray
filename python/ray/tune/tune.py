@@ -95,13 +95,13 @@ def run(
         restore=None,
         server_port=None,
         resume=False,
+        queue_trials=False,
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
         # Deprecated args
         ray_auto_init=None,
         run_errored_only=None,
-        queue_trials=None,
         global_checkpoint_period=None,
         with_server=None,
         upload_dir=None,
@@ -264,11 +264,6 @@ def run(
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
-    if queue_trials:
-        raise ValueError(
-            "queue_trials is deprecated. "
-            "Set env var 'TUNE_DISABLE_QUEUE_TRIALS=1' instead to "
-            "disable queuing behavior.")
     if ray_auto_init:
         raise ValueError("ray_auto_init is deprecated. "
                          "Set env var 'TUNE_DISABLE_AUTO_INIT=1' instead or "
@@ -294,7 +289,9 @@ def run(
     set_sync_periods(sync_config)
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors)
+        reuse_actors=reuse_actors,
+        queue_trials=queue_trials
+    )
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -443,6 +440,7 @@ def run_experiments(experiments,
                     verbose=2,
                     progress_reporter=None,
                     resume=False,
+                    queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
@@ -472,6 +470,7 @@ def run_experiments(experiments,
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
+            queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
@@ -485,6 +484,7 @@ def run_experiments(experiments,
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
+                queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
