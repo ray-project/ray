@@ -58,10 +58,12 @@ RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.r
 ray stop
 
 echo "Running documentation demo code."
-for file in `ls java/test/src/main/java/io/ray/docdemo`; do
+docdemo_path="java/test/src/main/java/io/ray/docdemo/"
+for file in "$docdemo_path"*.java; do
+  file=${file#"$docdemo_path"}
   class=${file%".java"}
   echo "Running $class"
-  java -cp bazel-bin/java/all_tests_deploy.jar io.ray.docdemo.$class
+  java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
 done
 
 popd
