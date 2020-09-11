@@ -50,7 +50,7 @@ echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
 run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
-echo "Running connecting existing cluster tests"
+echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
   linux*) ip=$(hostname -I | awk '{print $1}');;
   darwin*) ip=$(ipconfig getifaddr en0);;
@@ -60,7 +60,18 @@ RAY_BACKEND_LOG_LEVEL=debug ray start --head --redis-port=6379 --redis-password=
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.redis.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop
+
+echo "Running documentation demo code."
+docdemo_path="java/test/src/main/java/io/ray/docdemo/"
+for file in "$docdemo_path"*.java; do
+  file=${file#"$docdemo_path"}
+  class=${file%".java"}
+  echo "Running $class"
+  java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
+done
+
 popd
+
 
 pushd "$ROOT_DIR"
 echo "Testing maven install."
