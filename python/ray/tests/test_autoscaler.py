@@ -54,15 +54,17 @@ class MockProcessRunner:
     def check_output(self, cmd):
         self.check_call(cmd)
         return_string = "command-output"
-        key_to_delete = None
-        for pattern, pair in self.call_response.items():
+        key_to_shrink = None
+        for pattern, response_list in self.call_response.items():
             if pattern in str(cmd):
-                return_string = pair[0]
-                if pair[1] - 1 == 0:
-                    key_to_delete = pattern
+                return_string = response_list[0]
+                key_to_shrink = pattern
                 break
-        if key_to_delete:
-            del self.call_response[key_to_delete]
+        if key_to_shrink:
+            self.call_response[key_to_shrink] = self.call_response[
+                key_to_shrink][1:]
+            if len(self.call_response[key_to_shrink]) == 0:
+                del self.call_response[key_to_shrink]
 
         return return_string.encode()
 
@@ -108,8 +110,8 @@ class MockProcessRunner:
     def clear_history(self):
         self.calls = []
 
-    def respond_to_call(self, pattern, response, num_times=1):
-        self.call_response[pattern] = (response, num_times)
+    def respond_to_call(self, pattern, response_list):
+        self.call_response[pattern] = response_list
 
 
 class MockProvider(NodeProvider):
@@ -400,6 +402,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, one before run, two final calls to cp
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "true", "true"])
         get_or_create_head_node(
             SMALL_CLUSTER,
             config_path,
@@ -414,6 +420,15 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+        runner.assert_not_has_call(
+            "1.2.3.4", pattern="-v /tmp/ray_tmp_mount/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_key.pem")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)

@@ -706,6 +706,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         return string
 
     def run_init(self, *, as_head, file_mounts):
+        BOOTSTRAP_MOUNTS = [
+            "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
+        ]
+
         image = self.docker_config.get("image")
         image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", image)
@@ -717,8 +721,14 @@ class DockerCommandRunner(CommandRunnerInterface):
 
             self.run("docker pull {}".format(image), run_env="host")
 
+        # Don't mount bootstrap files because of docker mount inode behavior.
+        # (Changes to host file are not reflected in container).
+        cleaned_file_mounts = file_mounts.copy()
+        for mnt in BOOTSTRAP_MOUNTS:
+            cleaned_file_mounts.pop(mnt, None)
+
         start_command = docker_start_cmds(
-            self.ssh_command_runner.ssh_user, image, file_mounts,
+            self.ssh_command_runner.ssh_user, image, cleaned_file_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
                 f"{'head' if as_head else 'worker'}_run_options", []))
@@ -743,7 +753,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 active_remote_mounts = [
                     mnt["Destination"] for mnt in active_mounts
                 ]
-                for remote, local in file_mounts.items():
+                # Ignore ray bootstrap files.
+                for remote, local in cleaned_file_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
                         cli_logger.error(
@@ -753,4 +764,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
+        for mount in BOOTSTRAP_MOUNTS:
+            if mount in file_mounts:
+                self.run_rsync_up(
+                    file_mounts[mount], mount, options={"file_mount": False})
         self.initialized = True
