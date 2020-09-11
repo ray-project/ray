@@ -147,6 +147,8 @@ class TorchRunner:
         if self.use_fp16 and self.training_operator._amp:
             state.update({"amp": self.training_operator._amp.state_dict()})
 
+        return state
+
     def load_state_dict(self, state):
         """Sets the state of the model."""
         models = self.models
