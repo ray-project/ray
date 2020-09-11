@@ -90,7 +90,7 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                raise RuntimeError("Mising entry for node_type {} in "
+                raise RuntimeError("Missing entry for node_type {} in "
                                    "available_node_types config: {}".format(
                                        node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
