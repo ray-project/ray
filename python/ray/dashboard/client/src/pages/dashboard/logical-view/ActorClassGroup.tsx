@@ -48,7 +48,11 @@ const ActorClassGroup: React.FC<ActorClassGroupProps> = ({
   const [expanded, setExpanded] = useState(false);
   const toggleExpanded = () => setExpanded(!expanded);
   const entries = actorGroup.entries.map((actor, i) => (
-    <Box component="div" className={classes.actorEntry} key={actor.actorId ?? i} >
+    <Box
+      component="div"
+      className={classes.actorEntry}
+      key={actor.actorId ?? i}
+    >
       <Actor actor={actor} />
     </Box>
   ));

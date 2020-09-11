@@ -238,7 +238,7 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
             {Object.entries(profiling).map(
               ([profilingId, { startTime, latestResponse }]) =>
                 latestResponse !== null && (
-                  <React.Fragment key={profilingId} >
+                  <React.Fragment key={profilingId}>
                     (
                     {latestResponse.status === "pending" ? (
                       `Profiling for ${Math.round(
