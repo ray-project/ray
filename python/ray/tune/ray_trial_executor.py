@@ -135,7 +135,7 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials=None,
+                 queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
