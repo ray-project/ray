@@ -1,5 +1,11 @@
+"""
+TensorFlow policy class used for SAC.
+"""
+
+import gym
 from gym.spaces import Discrete
 import logging
+from typing import Dict, Type
 
 import ray
 import ray.experimental.tf_utils
@@ -7,11 +13,14 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -21,11 +30,22 @@ logger = logging.getLogger(__name__)
 
 def build_sac_model_and_action_dist(policy, obs_space, action_space, config):
     model = build_sac_model(policy, obs_space, action_space, config)
-    action_dist_class = get_dist_class(config, action_space)
+    action_dist_class = _get_dist_class(config, action_space)
     return model, action_dist_class
 
 
-def get_dist_class(config, action_space):
+def _get_dist_class(
+    config: TrainerConfigDict,
+    action_space: gym.spaces.Space) -> Type[TorchDistributionWrapper]:
+    """Helper function to return a dist class based on config and action space.
+
+    Args:
+        config (TrainerConfigDict): The Trainer's config dict.
+        action_space (gym.spaces.Space): The action space used.
+
+    Returns:
+        Type[TFActionDistribution]: A TF distribution class.
+    """
     if isinstance(action_space, Discrete):
         return TorchCategorical
     else:
@@ -52,7 +72,7 @@ def action_distribution_fn(policy,
         "is_training": is_training,
     }, [], None)
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy.config, policy.action_space)
 
     return distribution_inputs, action_dist_class, []
 
@@ -218,7 +238,17 @@ def actor_critic_loss(policy, model, _, train_batch):
                  [policy.alpha_loss])
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy,
+          train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Stats function for SAC. Returns a dict with important loss stats.
+
+    Args:
+        policy (Policy): The Policy to generate stats for.
+        train_batch (SampleBatch): The SampleBatch (already) used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
     return {
         "td_error": policy.td_error,
         "mean_td_error": torch.mean(policy.td_error),
@@ -318,7 +348,28 @@ class TargetNetworkMixin:
         self.target_model.load_state_dict(model_state_dict)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy,
+                     obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors after Policy initialization.
+
+    - Moves the target model(s) to the GPU, if necessary.
+    - Adds the `compute_td_error` method to the given policy.
+    Calling `compute_td_error` with batch data will re-calculate the loss
+    on that batch AND return the per-batch-item TD-error for prioritized
+    replay buffer record weight updating (in case a prioritized replay buffer
+    is used).
+    - Also adds the `update_target` method to the given policy.
+    Calling `update_target` updates all target Q-networks' weights from their
+    respective "main" Q-metworks, based on tau (smooth, partial updating).
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     policy.target_model = policy.target_model.to(policy.device)
     policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
     policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
@@ -326,6 +377,8 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy)
 
 
+# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# above.
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",
     loss_fn=actor_critic_loss,

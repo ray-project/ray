@@ -5,7 +5,7 @@ TensorFlow policy class used for SAC.
 import gym
 from gym.spaces import Box, Discrete
 import logging
-from typing import Dict, List, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
@@ -16,7 +16,7 @@ from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, SquashedGaussian, TFActionDistribution
 from ray.rllib.policy.policy import Policy
@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 def build_sac_model(policy: Policy,
                     obs_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
-                    config: TrainerConfigDict) -> TFModelV2:
-    """Constructs the necessary TFModelV2s for the Policy and returns them.
+                    config: TrainerConfigDict) -> ModelV2:
+    """Constructs the necessary ModelV2 for the Policy and returns it.
 
     Args:
         policy (Policy): The TFPolicy that will use the models.
@@ -47,7 +47,7 @@ def build_sac_model(policy: Policy,
         config (TrainerConfigDict): The SAC trainer's config dict.
 
     Returns:
-        TFModelV2: The ModelV2 to be used by the Policy. Note: An additional
+        ModelV2: The ModelV2 to be used by the Policy. Note: An additional
             target model will be created in this function and assigned to
             `policy.target_model`.
     """
@@ -69,7 +69,7 @@ def build_sac_model(policy: Policy,
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
-    policy.model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -107,7 +107,7 @@ def build_sac_model(policy: Policy,
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
 
-    return policy.model
+    return model
 
 
 def postprocess_trajectory(
@@ -129,7 +129,7 @@ def postprocess_trajectory(
         policy (Policy): The Policy used to generate the trajectory
             (`sample_batch`)
         sample_batch (SampleBatch): The SampleBatch to postprocess.
-        other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
+        other_agent_batches (Optional[Dict[AgentID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
         episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
@@ -165,7 +165,7 @@ def _get_dist_class(
 
 def get_distribution_inputs_and_class(
         policy: Policy,
-        model: SACTFModel,
+        model: ModelV2,
         obs_batch: TensorType,
         *,
         explore: bool = True,
@@ -173,9 +173,11 @@ def get_distribution_inputs_and_class(
         -> Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]:
     """The action distribution function to be used by the algo.
 
-    An action distribution function is used by an algorithm to figure out
-    which action distribution class to use and with which inputs to
-    parameterize it.
+    An action distribution function is used to customize the choice of action
+    distribution class and the resulting action distribution inputs (to
+    parameterize it).
+    After parameterizing the distribution, a `sample()` call
+    will be made on it to generate actions.
 
     Args:
         policy (Policy): The Policy being queried for actions and calling this
@@ -223,22 +225,26 @@ def sac_actor_critic_loss(
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
+    # Get the base model output from the train batch.
     model_out_t, _ = model({
         "obs": train_batch[SampleBatch.CUR_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
+    # Get the base model output from the next observations in the train batch.
     model_out_tp1, _ = model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
+    # Get the target model's base outputs from the next observations in the
+    # train batch.
     target_model_out_tp1, _ = policy.target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
-    # Discrete case.
+    # Discrete actions case.
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
         log_pis_t = tf.nn.log_softmax(model.get_policy_output(model_out_t), -1)
@@ -315,7 +321,7 @@ def sac_actor_critic_loss(
         q_tp1_best_masked = (1.0 - tf.cast(train_batch[SampleBatch.DONES],
                                            tf.float32)) * q_tp1_best
 
-    # compute RHS of bellman equation
+    # Compute RHS of bellman equation for the Q-loss (critic(s)).
     q_t_selected_target = tf.stop_gradient(
         train_batch[SampleBatch.REWARDS] +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
@@ -328,6 +334,7 @@ def sac_actor_critic_loss(
     else:
         td_error = base_td_error
 
+    # Calculate one or two critic losses (2 in the twin_q case).
     critic_loss = [
         0.5 * tf.keras.losses.MSE(
             y_true=q_t_selected_target, y_pred=q_t_selected)
@@ -361,7 +368,7 @@ def sac_actor_critic_loss(
             tf.stop_gradient(log_pis_t + model.target_entropy))
         actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
 
-    # save for stats function
+    # Save for stats function.
     policy.policy_t = policy_t
     policy.q_t = q_t
     policy.td_error = td_error
@@ -371,12 +378,27 @@ def sac_actor_critic_loss(
     policy.alpha_value = model.alpha
     policy.target_entropy = model.target_entropy
 
-    # in a custom apply op we handle the losses separately, but return them
-    # combined in one loss for now
+    # In a custom apply op we handle the losses separately, but return them
+    # combined in one loss for now.
     return actor_loss + tf.math.add_n(critic_loss) + alpha_loss
 
 
-def gradients_fn(policy, optimizer, loss):
+def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
+                               loss: TensorType) -> ModelGradients:
+    """Gradients computing function (from loss tensor, using local optimizer).
+
+    Args:
+        policy (Policy): The Policy object that generated the loss tensor and
+            that holds the given local optimizer.
+        optimizer (LocalOptimizer): The tf (local) optimizer object to
+            calculate the gradients with.
+        loss (TensorType): The loss tensor for which gradients should be
+            calculated.
+
+    Returns:
+        ModelGradients: List of the possibly clipped gradients- and variable
+            tuples.
+    """
     # Eager: Use GradientTape.
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
@@ -445,7 +467,24 @@ def gradients_fn(policy, optimizer, loss):
     return grads_and_vars
 
 
-def apply_gradients(policy, optimizer, grads_and_vars):
+def apply_gradients(
+    policy: Policy,
+    optimizer: LocalOptimizer,
+    grads_and_vars: ModelGradients) -> Union["tf.Operation", None]:
+    """Gradients applying function (from list of "grad_and_var" tuples).
+
+    Args:
+        policy (Policy): The Policy object whose Model(s) the given gradients
+            should be applied to.
+        optimizer (LocalOptimizer): The tf (local) optimizer object through
+            which to apply the gradients.
+        grads_and_vars (ModelGradients): The list of grad_and_var tuples to
+            apply via the given optimizer.
+
+    Returns:
+        Union[tf.Operation, None]: The tf op to be used to run the apply
+            operation. None for eager mode.
+    """
     actor_apply_ops = policy._actor_optimizer.apply_gradients(
         policy._actor_grads_and_vars)
 
@@ -461,9 +500,11 @@ def apply_gradients(policy, optimizer, grads_and_vars):
             policy._critic_optimizer[0].apply_gradients(cgrads)
         ]
 
+    # Eager mode -> Just apply and return None.
     if policy.config["framework"] in ["tf2", "tfe"]:
         policy._alpha_optimizer.apply_gradients(policy._alpha_grads_and_vars)
         return
+    # Tf static graph -> Return op.
     else:
         alpha_apply_ops = policy._alpha_optimizer.apply_gradients(
             policy._alpha_grads_and_vars,
@@ -471,10 +512,18 @@ def apply_gradients(policy, optimizer, grads_and_vars):
         return tf.group([actor_apply_ops, alpha_apply_ops] + critic_apply_ops)
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy,
+          train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Stats function for SAC. Returns a dict with important loss stats.
+
+    Args:
+        policy (Policy): The Policy to generate stats for.
+        train_batch (SampleBatch): The SampleBatch (already) used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
     return {
-        # "policy_t": policy.policy_t,
-        # "td_error": policy.td_error,
         "mean_td_error": tf.reduce_mean(policy.td_error),
         "actor_loss": tf.reduce_mean(policy.actor_loss),
         "critic_loss": tf.reduce_mean(policy.critic_loss),
@@ -488,9 +537,13 @@ def stats(policy, train_batch):
 
 
 class ActorCriticOptimizerMixin:
+    """Mixin class to generate the necessary optimizers for actor-critic algos.
+
+    - Creates global step for counting the number of update operations.
+    - Creates separate optimizers for actor, critic, and alpha.
+    """
     def __init__(self, config):
-        # - Create global step for counting the number of update operations.
-        # - Use separate optimizers for actor & critic.
+        # Eager mode.
         if config["framework"] in ["tf2", "tfe"]:
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
@@ -505,6 +558,7 @@ class ActorCriticOptimizerMixin:
                         "optimization"]["critic_learning_rate"]))
             self._alpha_optimizer = tf.keras.optimizers.Adam(
                 learning_rate=config["optimization"]["entropy_learning_rate"])
+        # Static graph mode.
         else:
             self.global_step = tf1.train.get_or_create_global_step()
             self._actor_optimizer = tf1.train.AdamOptimizer(
@@ -521,31 +575,95 @@ class ActorCriticOptimizerMixin:
                 learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
+def setup_early_mixins(policy: Policy,
+                       obs_space: gym.spaces.Space,
+                       action_space: gym.spaces.Space,
+                       config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors before Policy's initialization.
+
+    Adds the necessary optimizers to the given Policy.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     ActorCriticOptimizerMixin.__init__(policy, config)
 
 
-def setup_mid_mixins(policy, obs_space, action_space, config):
+def setup_mid_mixins(policy: Policy,
+                     obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors before Policy's loss initialization.
+
+    Adds the `compute_td_error` method to the given policy.
+    Calling `compute_td_error` with batch data will re-calculate the loss
+    on that batch AND return the per-batch-item TD-error for prioritized
+    replay buffer record weight updating (in case a prioritized replay buffer
+    is used).
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     ComputeTDErrorMixin.__init__(policy, sac_actor_critic_loss)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy,
+                      obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors after Policy initialization.
+
+    Adds the `update_target` method to the given policy.
+    Calling `update_target` updates all target Q-networks' weights from their
+    respective "main" Q-metworks, based on tau (smooth, partial updating).
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid, observation_space, action_space, config):
+def validate_spaces(policy: Policy,
+                    observation_space: gym.spaces.Space,
+                    action_space: gym.spaces.Space,
+                    config: TrainerConfigDict) -> None:
+    """Validates the observation- and action spaces used for the Policy.
+
+    Args:
+        policy (Policy): The policy, whose spaces are being validated.
+        observation_space (gym.spaces.Space): The observation space to
+            validate.
+        action_space (gym.spaces.Space): The action space to validate.
+        config (TrainerConfigDict): The Policy's config dict.
+
+    Throws:
+        UnsupportedSpaceException: If one of the spaces is not supported.
+    """
+    # Only support single Box or single Discreete spaces.
     if not isinstance(action_space, (Box, Discrete)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "SAC.".format(action_space, pid))
-    if isinstance(action_space, Box) and len(action_space.shape) > 1:
+            "SAC.".format(action_space, policy))
+    # If Box, make sure it's a 1D vector space.
+    elif isinstance(action_space, Box) and len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
-            "{}. ".format(action_space, pid, action_space.shape) +
+            "{}. ".format(action_space, policy, action_space.shape) +
             "Consider reshaping this into a single dimension, "
             "using a Tuple action space, or the multi-agent API.")
 
 
+# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# above.
 SACTFPolicy = build_tf_policy(
     name="SACTFPolicy",
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
@@ -554,7 +672,7 @@ SACTFPolicy = build_tf_policy(
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
-    gradients_fn=gradients_fn,
+    gradients_fn=compute_and_clip_gradients,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[
