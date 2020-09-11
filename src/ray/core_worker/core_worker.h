@@ -319,7 +319,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
-  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
+  /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional
   /// disconnect.
   ///

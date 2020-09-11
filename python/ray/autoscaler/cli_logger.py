@@ -268,7 +268,7 @@ class _CliLogger():
             self.pretty = _isatty()
         elif self._log_style == "record":
             self.pretty = False
-            self.color_mode = "false"
+            self._set_color_mode("false")
         elif self._log_style == "pretty":
             self.pretty = True
 
