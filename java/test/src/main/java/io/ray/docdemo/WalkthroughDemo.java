@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core walkthrough doc (https://docs.ray.io/en/latest/walkthrough.html).
+ * This class contains demo code of the Ray core walkthrough doc (https://docs.ray.io/en/master/walkthrough.html).
  *
  * Please keep them in sync.
  */

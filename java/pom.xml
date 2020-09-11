@@ -57,7 +57,6 @@
     <module>api</module>
     <module>runtime</module>
     <module>test</module>
-    <module>tutorial</module>
   </modules>
 
   <properties>
