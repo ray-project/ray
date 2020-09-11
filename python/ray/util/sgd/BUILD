@@ -67,7 +67,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--num-replicas=1"]
+    args = ["--num-replicas=1", "--smoke-test"]
 )
 
 py_test(
@@ -77,7 +77,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--num-replicas=2"]
+    args = ["--num-replicas=2", "--smoke-test"]
 )
 
 py_test(
@@ -87,7 +87,7 @@ py_test(
     srcs = ["tf/examples/tensorflow_train_example.py"],
     tags = ["exclusive", "tf"],
     deps = [":sgd_lib"],
-    args = ["--tune"]
+    args = ["--tune", "--smoke-test"]
 )
 
 # --------------------------------------------------------------------
