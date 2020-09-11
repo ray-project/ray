@@ -104,13 +104,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
-   -  |pytorch| :ref:`Dreamer <dreamer>`
-
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
-
-   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
-
-   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
@@ -124,7 +118,15 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Multi-agent specific
+*  Meta-learning
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
+
+   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
+   -  |pytorch| :ref:`Dreamer <dreamer>`
+
+*  Multi-agent
 
    -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
    -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
