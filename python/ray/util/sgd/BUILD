@@ -148,7 +148,7 @@ py_test(
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=1"]
+    args = ["--num-workers=1", "--smoke-test"]
 )
 
 py_test(
@@ -158,7 +158,7 @@ py_test(
     srcs = ["torch/examples/train_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=2"]
+    args = ["--num-workers=2", "--smoke-test"]
 )
 
 py_test(
@@ -168,7 +168,7 @@ py_test(
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=1"]
+    args = ["--num-workers=1", "--smoke-test"]
 )
 
 py_test(
@@ -178,7 +178,7 @@ py_test(
     srcs = ["torch/examples/tune_example.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
-    args = ["--num-workers=2"]
+    args = ["--num-workers=2", "--smoke-test"]
 )
 
 
