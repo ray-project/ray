@@ -397,10 +397,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
           system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     if gcs_server_port and not head:
         raise ValueError(
@@ -594,7 +591,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
-                              "firewall settings other "
+                              "firewall settings and "
                               "network configuration."))
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
@@ -755,10 +752,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
 def stop(force, verbose, log_style, log_color):
     """Stop Ray processes manually on the local machine."""
 
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
@@ -923,10 +917,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
        yes, cluster_name, no_config_cache, redirect_command_output,
        use_login_shells, log_style, log_color, verbose):
     """Create or update a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     if restart_only or no_restart:
         cli_logger.doassert(restart_only != no_restart,
@@ -989,10 +980,7 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
 def down(cluster_config_file, yes, workers_only, cluster_name,
          keep_min_workers, log_style, log_color, verbose):
     """Tear down a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
                      keep_min_workers)
@@ -1042,10 +1030,7 @@ def kill_random_node(cluster_config_file, yes, hard, cluster_name):
 def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
             verbose):
     """Tails the autoscaler logs of a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     monitor_cluster(cluster_config_file, lines, cluster_name)
 
@@ -1085,10 +1070,7 @@ def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
 def attach(cluster_config_file, start, screen, tmux, cluster_name,
            no_config_cache, new, port_forward, log_style, log_color, verbose):
     """Create or attach to a SSH session to a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(
@@ -1116,10 +1098,7 @@ def attach(cluster_config_file, start, screen, tmux, cluster_name,
 def rsync_down(cluster_config_file, source, target, cluster_name, log_style,
                log_color, verbose):
     """Download specific files from a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     rsync(cluster_config_file, source, target, cluster_name, down=True)
 
@@ -1144,10 +1123,7 @@ def rsync_down(cluster_config_file, source, target, cluster_name, log_style,
 def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
              log_style, log_color, verbose):
     """Upload specific files to a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     rsync(
         cluster_config_file,
@@ -1215,10 +1191,7 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
     Example:
         >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     cli_logger.doassert(not (screen and tmux),
                         "`{}` and `{}` are incompatible.", cf.bold("--screen"),
@@ -1339,10 +1312,7 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
          cluster_name, no_config_cache, port_forward, log_style, log_color,
          verbose):
     """Execute a command via SSH on a Ray cluster."""
-    cli_logger.log_style = log_style
-    cli_logger.color_mode = log_color
-    cli_logger.verbosity = verbose
-    cli_logger.detect_colors()
+    cli_logger.configure(log_style, log_color, verbose)
 
     port_forward = [(port, port) for port in list(port_forward)]
 
