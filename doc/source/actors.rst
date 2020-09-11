@@ -279,7 +279,7 @@ This will kill the actor process and release resources associated/assigned to th
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
-Manual termination via an actor handle 
+Manual termination via an actor handle
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can terminate an actor forcefully.
