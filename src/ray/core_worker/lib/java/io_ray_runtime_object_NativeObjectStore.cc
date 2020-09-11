@@ -188,7 +188,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
 
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
-    JNIEnv *env, jclass, jbyteArray objectId, jbyteArray outerObjectId, jbyteArray ownerAddress) {
+    JNIEnv *env, jclass, jbyteArray objectId, jbyteArray outerObjectId,
+    jbyteArray ownerAddress) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto outer_objectId = ray::ObjectID::Nil();
   if (outerObjectId != NULL) {
