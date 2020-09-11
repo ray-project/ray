@@ -3,9 +3,7 @@ import io
 import itertools
 import torch
 
-import ray
 from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
-from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -57,9 +55,6 @@ class TorchRunner:
             use_tqdm=self.use_tqdm,
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
-
-    def setup_address(self):
-        return setup_address()
 
     def train_epoch(self,
                     num_steps=None,
@@ -126,12 +121,19 @@ class TorchRunner:
             self.timers.disable()
         self.training_operator._set_timers(self.timers)
 
-    def state_dict(self):
+    def state_dict(self, to_cpu=False):
         """Returns the state of the runner."""
+        model_states = []
+        for model in self.models:
+            sd = model.state_dict()
+            if to_cpu:
+                for k, v in sd.items():
+                    sd[k] = v.cpu()
+            model_states.append(sd)
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
-            "models": [model.state_dict() for model in self.models],
+            "models": model_states,
             "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
         schedulers = self.schedulers
@@ -144,7 +146,6 @@ class TorchRunner:
         # Check if fp16 is True and if NVIDIA Apex is imported.
         if self.use_fp16 and self.training_operator._amp:
             state.update({"amp": self.training_operator._amp.state_dict()})
-        return state
 
     def load_state_dict(self, state):
         """Sets the state of the model."""

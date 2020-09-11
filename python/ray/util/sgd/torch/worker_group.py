@@ -9,7 +9,6 @@ from ray.exceptions import RayActorError
 from ray.util.sgd.torch.distributed_torch_runner import \
     LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
-from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
 
 RESIZE_COOLDOWN_S = 10
@@ -40,7 +39,7 @@ class BaseWorkerGroup:
     def shutdown(self, force=False):
         raise NotImplementedError
 
-    def state_dict(self):
+    def state_dict(self, to_cpu=False):
         raise NotImplementedError
 
     def train(self, num_steps=None, profile=False, info=None, dataset=None):
@@ -125,8 +124,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
 
-            address = ray.get(
-                self.remote_workers[0].setup_address.remote())
+            address = ray.get(self.remote_workers[0].setup_address.remote())
 
             ray.get(
                 self._setup_process_group(address, timeout_s,
@@ -179,9 +177,9 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         if blocking:
             ray.get(remote_calls)
 
-    def state_dict(self):
+    def state_dict(self, to_cpu=False):
         ready, _ = ray.wait(
-            [r.state_dict.remote() for r in self.remote_workers],
+            [r.state_dict.remote(to_cpu) for r in self.remote_workers],
             num_returns=1)
         return ray.get(ready[0])
 
@@ -379,8 +377,8 @@ class LocalWorkerGroup(BaseWorkerGroup):
         if blocking:
             ray.get(remote_calls)
 
-    def state_dict(self):
-        return self.local_worker.state_dict()
+    def state_dict(self, to_cpu=False):
+        return self.local_worker.state_dict(to_cpu)
 
     def should_resize(self):
         """Returns True if past cooldown and exists resources to scale up."""

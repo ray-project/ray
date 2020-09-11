@@ -4,6 +4,7 @@ import os
 
 import torch
 import torch.distributed as dist
+from ray.util.sgd.utils import find_free_port
 from torch.utils.data import DataLoader, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
@@ -41,6 +42,11 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
+
+    def setup_address(self):
+        ip = ray.services.get_node_ip_address()
+        port = find_free_port()
+        return f"tcp://{ip}:{port}"
 
     def setup_process_group(self, url, world_rank, world_size, timeout):
         """Connects the distributed PyTorch backend.

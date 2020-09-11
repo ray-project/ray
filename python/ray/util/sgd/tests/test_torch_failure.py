@@ -1,15 +1,11 @@
 from unittest.mock import patch
-import numpy as np
-import os
 import pytest
 import time
-import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
-from ray import tune
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
@@ -64,7 +60,6 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             use_local=use_local,
-            backend="gloo",
             num_workers=2)
 
         @ray.remote
@@ -101,7 +96,6 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             use_local=use_local,
-            backend="gloo",
             num_workers=2)
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
@@ -150,7 +144,6 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             timeout_s=5,
-            backend="gloo",
             use_local=use_local,
             num_workers=2)
 
@@ -158,40 +151,3 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
             trainer1.train(max_retries=1)
 
         trainer1.shutdown(force=True)
-
-
-def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
-    if not dist.is_available():
-        return
-    trainer1 = TorchTrainer(
-        training_operator_cls=Operator,
-        backend="gloo",
-        use_gpu=False,
-        wrap_ddp=False,
-        num_workers=2,
-        use_local=True)
-    trainer1.train()
-    checkpoint_path = os.path.join(tmp_path, "checkpoint")
-    trainer1.save(checkpoint_path)
-
-    model1 = trainer1.get_model()
-    trainer1.shutdown()
-
-    trainer2 = TorchTrainer(
-        training_operator_cls=Operator,
-        backend="gloo",
-        use_gpu=False,
-        wrap_ddp=False,
-        num_workers=2)
-    trainer2.load(checkpoint_path)
-
-    model2 = trainer2.get_model()
-
-    model1_state_dict = model1.state_dict()
-    model2_state_dict = model2.state_dict()
-
-    assert set(model1_state_dict.keys()) == set(model2_state_dict.keys())
-
-    for k in model1_state_dict:
-        assert torch.equal(model1_state_dict[k], model2_state_dict[k])
-    trainer2.shutdown()

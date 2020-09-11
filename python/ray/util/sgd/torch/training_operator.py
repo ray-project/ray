@@ -649,7 +649,9 @@ class TrainingOperator:
         """Override this to return a representation of the operator state.
         Any argument passed into self.register and self.register_data will
         automatically be saved.
-        Use this method to save any additional state.
+        Use this method to save any additional state. If your TorchTrainer
+        is on a CPU-only machine, make sure this method converts all state
+        to be CPU-compatible.
 
         Returns:
             dict: The state dict of the operator."""

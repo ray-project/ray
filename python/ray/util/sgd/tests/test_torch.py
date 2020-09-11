@@ -1,8 +1,6 @@
-from unittest.mock import patch
 import numpy as np
 import os
 import pytest
-import time
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -11,7 +9,6 @@ from torch.utils.data import DataLoader
 import ray
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import (
     get_test_operator, get_test_metrics_operator, TrainingOperator)
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
@@ -54,7 +51,6 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=1,
         use_local=use_local,
-        backend="gloo",
         use_gpu=False)
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
@@ -71,7 +67,6 @@ def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=TestOperator,
         num_workers=2,
         use_local=use_local,
-        backend="gloo",
         use_gpu=False)
     trainer.train(num_steps=1)
     trainer.shutdown()
@@ -86,7 +81,6 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo",
         use_gpu=False)
     for i in range(3):
         train_loss1 = trainer.train()["train_loss"]
@@ -160,7 +154,6 @@ def test_multi_model(ray_start_2_cpus, num_workers, use_local):
         training_operator_cls=TestOperator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo",
         use_gpu=False,
     )
     trainer1.train()
@@ -175,7 +168,6 @@ def test_multi_model(ray_start_2_cpus, num_workers, use_local):
         training_operator_cls=TestOperator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo",
         use_gpu=False,
     )
     trainer2.load_state_dict(state)
@@ -259,8 +251,6 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
                     scheduler_step_freq="epoch",
                     training_operator_cls=TestOperator,
                     num_workers=num_workers,
-                    backend="gloo",
-                    use_gpu=False,
                     use_local=use_local,
                     config={
                         "models": model_count,
@@ -304,15 +294,13 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa:
                 config={"custom_func": train_epoch},
                 training_operator_cls=TestTrainingOperator,
                 scheduler_step_freq=scheduler_freq,
-                backend="gloo",
-                use_gpu=False)
+            )
     else:
         trainer = TorchTrainer(
             config={"custom_func": train_epoch},
             training_operator_cls=TestTrainingOperator,
             scheduler_step_freq=scheduler_freq,
-            backend="gloo",
-            use_gpu=False)
+        )
 
         for i in range(3):
             trainer.train()
@@ -352,8 +340,6 @@ def test_dataset(ray_start_4_cpus, use_local):
         training_operator_cls=DatasetOperator,
         use_local=use_local,
         num_workers=2,
-        backend="gloo",
-        use_gpu=False,
     )
 
     dataset = dataset_creator()
@@ -390,8 +376,6 @@ def test_split_batch(ray_start_2_cpus, use_local):
         training_operator_cls=TestOperator,
         num_workers=2,
         use_local=use_local,
-        backend="gloo",
-        use_gpu=False,
         config={
             BATCH_SIZE: batch_size,
             "data_size": data_size,
@@ -427,8 +411,6 @@ def test_reduce_result(ray_start_2_cpus, use_local):
         training_operator_cls=TestOperator,
         num_workers=2,
         use_local=use_local,
-        backend="gloo",
-        use_gpu=False,
         config={"data_size": data_size})
     list_stats = trainer.train(reduce_results=False, profile=True)
     assert len(list_stats) == 2
@@ -458,8 +440,6 @@ def test_metrics(ray_start_2_cpus, num_workers, use_local):
         training_operator_cls=TestOperator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo",
-        use_gpu=False,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -508,8 +488,6 @@ def test_metrics_nan(ray_start_2_cpus, num_workers, use_local):
         training_operator_cls=TestOperator,
         num_workers=num_workers,
         use_local=use_local,
-        backend="gloo",
-        use_gpu=False,
         config={
             "scores": train_scores,
             "val_scores": val_scores,
@@ -545,8 +523,6 @@ def test_scheduler_validate(ray_start_2_cpus, use_local):  # noqa: F811
     trainer = TorchTrainer(
         scheduler_step_freq="manual",
         training_operator_cls=TestOperator,
-        backend="gloo",
-        use_gpu=False,
         use_local=use_local)
     trainer.update_scheduler(0.5)
     trainer.update_scheduler(0.5)
@@ -563,9 +539,9 @@ def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
         **{
             "training_operator_cls": Operator,
             "num_workers": num_workers,
-            "use_local": use_local,
             "use_gpu": False,
             "backend": "gloo",
+            "use_local": use_local,
             "config": {
                 "batch_size": 512,
                 "lr": 0.001
@@ -596,8 +572,6 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
     trainer1 = TorchTrainer(
         training_operator_cls=Operator,
         num_workers=num_workers,
-        backend="gloo",
-        use_gpu=False,
         use_local=use_local)
     trainer1.train()
     checkpoint_path = os.path.join(tmp_path, "checkpoint")
@@ -610,9 +584,38 @@ def test_save_and_restore(ray_start_2_cpus, num_workers, use_local,
     trainer2 = TorchTrainer(
         training_operator_cls=Operator,
         num_workers=num_workers,
-        backend="gloo",
-        use_gpu=False,
         use_local=use_local)
+    trainer2.load(checkpoint_path)
+
+    model2 = trainer2.get_model()
+
+    model1_state_dict = model1.state_dict()
+    model2_state_dict = model2.state_dict()
+
+    assert set(model1_state_dict.keys()) == set(model2_state_dict.keys())
+
+    for k in model1_state_dict:
+        assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+    trainer2.shutdown()
+
+
+def test_wrap_ddp(ray_start_2_cpus, tmp_path):  # noqa: F811
+    if not dist.is_available():
+        return
+    trainer1 = TorchTrainer(
+        training_operator_cls=Operator,
+        wrap_ddp=False,
+        num_workers=2,
+        use_local=True)
+    trainer1.train()
+    checkpoint_path = os.path.join(tmp_path, "checkpoint")
+    trainer1.save(checkpoint_path)
+
+    model1 = trainer1.get_model()
+    trainer1.shutdown()
+
+    trainer2 = TorchTrainer(
+        training_operator_cls=Operator, wrap_ddp=False, num_workers=2)
     trainer2.load(checkpoint_path)
 
     model2 = trainer2.get_model()
@@ -671,11 +674,7 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
         loss_creator=lambda config: nn.MSELoss())
 
     trainer = TorchTrainer(
-        training_operator_cls=Operator,
-        num_workers=1,
-        use_local=use_local,
-        backend="gloo",
-        use_gpu=False)
+        training_operator_cls=Operator, num_workers=1, use_local=use_local)
 
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1

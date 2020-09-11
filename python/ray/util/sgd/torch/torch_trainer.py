@@ -118,8 +118,8 @@ class TorchTrainer:
         use_local (bool): If True, 1 worker will be a local worker running
             on the driver process, and all other workers will be remote. If
             False, all workers will be remote. Set this to True for easy
-            debugging of worker on driver process. Defaults to False.
-
+            debugging of worker on driver process, but could also
+            lead to issues with Cuda devices. Defaults to False.
     """
 
     # TODO: Implement autoscaling. If num_workers=-1, the trainer will use as
@@ -144,6 +144,7 @@ class TorchTrainer:
             apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
+            use_local=False,
             # Deprecated Args.
             num_replicas=None,
             batch_size=None,
@@ -154,7 +155,6 @@ class TorchTrainer:
             loss_creator=None,
             serialize_data_creation=None,
             data_loader_args=None,
-            use_local=False,
     ):
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
@@ -166,6 +166,13 @@ class TorchTrainer:
                 "do CustomOperator = TrainingOperator.from_creators("
                 "model_creator, ...) and pass in CustomOperator into "
                 "TorchTrainer.")
+
+        if use_local and log_once("use_local"):
+            logger.warning("use_local is set to True. This could lead to "
+                           "issues with Cuda devices. If you are seeing this"
+                           "issue, try setting use_local to False. For more "
+                           "information, see "
+                           "https://github.com/ray-project/ray/issues/9202.")
 
         if num_workers > 1 and not dist.is_available():
             raise ValueError(
@@ -472,19 +479,22 @@ class TorchTrainer:
         """
         return self.worker_group.get_local_operator()
 
-    def state_dict(self):
-        return self.worker_group.state_dict()
+    def state_dict(self, to_cpu=False):
+        return self.worker_group.state_dict(to_cpu)
 
     def load_state_dict(self, state_dict, blocking=False):
         self.worker_group.load_state_dict(state_dict, blocking=blocking)
 
-    def save(self, checkpoint):
+    def save(self, checkpoint, to_cpu=False):
         """Saves the Trainer state to the provided checkpoint path.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
+            to_cpu (bool): Converts model state dict to CPU before saving.
+                This is useful if workers are trained on GPU, but the
+                TorchTrainer lives on a CPU-only machine.
         """
-        torch.save(self.state_dict(), checkpoint)
+        torch.save(self.state_dict(to_cpu), checkpoint)
         return checkpoint
 
     def load(self, checkpoint):
@@ -530,8 +540,9 @@ class TorchTrainer:
             def default_resource_request(cls, config):
                 num_workers = config.get("num_workers",
                                          kwargs.get("num_workers", 1))
-                num_cpus_per_worker = config.get("num_cpus_per_worker",
-                                        kwargs.get("num_cpus_per_worker", 1))
+                num_cpus_per_worker = config.get(
+                    "num_cpus_per_worker", kwargs.get("num_cpus_per_worker",
+                                                      1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
                 use_local = config.get("use_local",
                                        kwargs.get("use_local", False))
@@ -539,15 +550,15 @@ class TorchTrainer:
                 if use_local:
                     remote_worker_count = num_workers - 1
                     local_cpus = 1
-                    use_gpu_this_worker = use_gpu
+                    local_gpus = int(use_gpu)
                 else:
                     remote_worker_count = num_workers
                     local_cpus = 0
-                    use_gpu_this_worker = False
+                    local_gpus = 0
 
                 return Resources(
                     cpu=int(local_cpus * num_cpus_per_worker),
-                    gpu=int(use_gpu_this_worker),
+                    gpu=int(local_gpus),
                     extra_cpu=int(remote_worker_count * num_cpus_per_worker),
                     extra_gpu=int(int(use_gpu) * remote_worker_count))
 
@@ -610,7 +621,8 @@ class BaseTorchTrainable(Trainable):
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
-        self.trainer.save(checkpoint_path)
+        to_cpu = torch.cuda.is_available()
+        self.trainer.save(checkpoint_path, to_cpu)
         return checkpoint_path
 
     def load_checkpoint(self, checkpoint_path):
