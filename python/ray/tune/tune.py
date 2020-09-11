@@ -289,9 +289,7 @@ def run(
     set_sync_periods(sync_config)
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        queue_trials=queue_trials
-    )
+        reuse_actors=reuse_actors, queue_trials=queue_trials)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
