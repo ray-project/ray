@@ -621,7 +621,7 @@ class BaseTorchTrainable(Trainable):
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
-        to_cpu = torch.cuda.is_available()
+        to_cpu = not torch.cuda.is_available()
         self.trainer.save(checkpoint_path, to_cpu)
         return checkpoint_path
 
