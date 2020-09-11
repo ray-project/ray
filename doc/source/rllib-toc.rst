@@ -124,7 +124,7 @@ Algorithms
 
    -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
-   -  |pytorch| :ref:`Dreamer <dreamer>`
+   -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
 
 *  Multi-agent
 
