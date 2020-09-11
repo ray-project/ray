@@ -62,8 +62,6 @@ class ResourceDemandScheduler:
             logger.info("No resource demands")
             return []
 
-        logger.info("Available resources: {}".format(usage_by_ip))
-
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes, usage_by_ip)
 
