@@ -110,3 +110,39 @@ You can limit the number of concurrent task running at once using the
     # Only 10 tasks will be running concurrently. Once 10 finish, the next 10 should run.
     ray.get([actor.run_task.remote() for _ in range(50)])
 
+
+Threaded Actors
+---------------
+
+Sometimes asyncio is not an ideal solution for your actor. For example, you may
+have one method that perform some computation heavy task blocking the event loop.
+In async actors, only one task can be running at once. To achieve threaded
+concurrency, you can use the ``max_concurrency`` options without any async methods.
+
+
+.. warning::
+    When there is at least one ``async def`` method in actor definition, Ray
+    will recognize the actor as AsyncActor instead of ThreadedActor. There will
+    be only one thread in AsyncActor! Don't add ``async def`` if you want a threadpool.
+
+
+.. code-block:: python
+
+    @ray.remote
+    class ThreadedActor:
+        def task_1(self): print("I'm running in a thread!")
+        def task_2(self): print("I'm running in another thread!")
+
+    a = ThreadedActor.options(max_concurrency=2).remote()
+    ray.get([a.task_1.remote(), a.task_2.remote()])
+
+
+.. note::
+    Each invocation of the threaded actor will be running in a thread pool.
+    The ``max_concurrency`` limit the size of the threadpool. Furthermore,
+    keep in mind the Python's `Global Interpreter Lock (GIL) <https://wiki.python.org/moin/GlobalInterpreterLock>`_
+    will only allow one thread of Python code running at once. This means if you
+    are just parallelizing Python code, you won't get true parallelism. If you
+    calls Numpy, Cython, Tensorflow, or PyTorch code, these libraries will release
+    the GIL when calling into C/C++ functions.
+
