@@ -34,9 +34,8 @@ However, there are some caveats with using this. You should not do this if:
 3. If your remote actor/task sets any sort of process-level global variables
 4. If you use are using async actors
 
-If you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
-variable to `` ``.
-
+Also note, if you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
+variable to a comma separated list of your GPU Device IDs.
 
 
 Tip 3: Sharing the ray cluster across tests if possible

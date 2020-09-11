@@ -222,7 +222,7 @@ Note that there are some known issues with local mode. Avoid using it if:
 4. If you use are using async actors
 
 Also note, if you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
-variable to `` ``.
+variable to a comma separated list of your GPU Device IDs.
 
 .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
