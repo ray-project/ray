@@ -13,6 +13,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 =================== ========== ======================= ================== =========== =============================================================
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
+`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `ES`_               tf + torch **Yes**                 **Yes**            No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
@@ -22,6 +23,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `MAML`_             tf + torch No                      **Yes**            No
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
+`MBMPO`_            torch      No                      **Yes**            No
 `PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
@@ -40,7 +42,7 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 ----------------------------- ---------------------------------------------------------------------------------------
 `Fully Independent Learning`_  Depends on bootstrapped algorithm
 ----------------------------- ---------------------------------------------------------------------------------------
-`Centralized Critic Methods`_  Depends on bootstrapped algorithm
+`Shared Critic Methods`_       Depends on bootstrapped algorithm
 ============================= =======================================================================================
 
 
@@ -442,6 +444,35 @@ Tuned examples: HalfCheetahRandDirecEnv (`Env <https://github.com/ray-project/ra
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
+.. _mbmpo:
+
+Model-Based Meta-Policy-Optimization (MB-MPO)
+---------------------------------------------
+|pytorch|
+`[paper] <https://arxiv.org/pdf/1809.05214.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/mbmpo/mbmpo.py>`__
+
+RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns based on the predictions of an ensemble of transition-dynamics models. Similar to MAML, MBMPO metalearns an optimial policy by treating each dynamics model as a different task. Code here is adapted from https://github.com/jonasrothfuss/model_ensemble_meta_learning. Similar to the original paper, MBMPO is evaluated on MuJoCo, with the horizon set to 200 instead of the default 1000.
+
+Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
+
+Tuned examples: `HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__, `Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__
+
+**MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ============  ====================
+MuJoCo env     RLlib MBMPO   Clavera et al MBMPO
+=============  ============  ====================
+HalfCheetah    520           ~550
+Hopper         620           ~650
+=============  ============  ====================
+
+**MBMPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/mbmpo/mbmpo.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
 .. _dreamer:
 
 Dreamer
@@ -517,16 +548,44 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 .. _marwil:
 
-Advantage Re-Weighted Imitation Learning (MARWIL)
--------------------------------------------------
+Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
+-----------------------------------------------------------
 |pytorch| |tensorflow|
-`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning. MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/marwil.py>`__
+
+MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data.
+When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
+MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/agents/marwil/marwil.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+.. _bc:
+
+Behavior Cloning (BC; derived from MARWIL implementation)
+---------------------------------------------------------
+|pytorch| |tensorflow|
+`[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/bc.py>`__
+
+Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
+with the only difference being the ``beta`` parameter force-set to 0.0. This makes
+BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
+BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-bc.yaml>`__
+
+**BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/marwil/bc.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -600,9 +659,11 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
 
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 24
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 24
 
 
@@ -646,7 +707,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -670,8 +731,9 @@ Fully Independent Learning
 
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
-Centralized Critic Methods
+Shared Critic Methods
 --------------------------
 
-`[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__Centralized critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are essentially centralized critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
-Tuned examples:  `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
+`[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__ Shared critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are mostly shared critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
+
+Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__

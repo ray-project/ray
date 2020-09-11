@@ -79,7 +79,7 @@ class ValidateUtilTest(unittest.TestCase):
         # this is not serializable
         e = threading.Event()
 
-        def test():
+        def test(config):
             print(e)
 
         assert diagnose_serialization(test) is not True
@@ -88,7 +88,7 @@ class ValidateUtilTest(unittest.TestCase):
         # the `test` scope.
 
         # correct implementation
-        def test():
+        def test(config):
             e = threading.Event()
             print(e)
 

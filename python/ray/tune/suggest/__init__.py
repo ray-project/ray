@@ -8,8 +8,8 @@ from ray.tune.suggest.repeater import Repeater
 
 def create_searcher(
         search_alg,
-        metric="episode_reward_mean",
-        mode="max",
+        metric=None,
+        mode=None,
         **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.

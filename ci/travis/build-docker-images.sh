@@ -24,21 +24,21 @@ build_and_push_tags() {
     do 
         BASE_IMAGE=$(if [ "$GPU" ]; then echo "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"; else echo "ubuntu:focal"; fi;)
         FULL_NAME_WITH_TAG="rayproject/$1:$2$GPU"
-        LATEST_FULL_NAME_WITH_TAG="rayproject/$1:latest$GPU"
-        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" -t "$FULL_NAME_WITH_TAG" /"$ROOT_DIR"/docker/"$1"
+        NIGHTLY_FULL_NAME_WITH_TAG="rayproject/$1:nightly$GPU"
+        docker build --no-cache --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH=".whl/$WHEEL" --label "SHA=$2" -t "$FULL_NAME_WITH_TAG" /"$ROOT_DIR"/docker/"$1"
         
-        docker tag "$FULL_NAME_WITH_TAG" "$LATEST_FULL_NAME_WITH_TAG"
+        docker tag "$FULL_NAME_WITH_TAG" "$NIGHTLY_FULL_NAME_WITH_TAG"
 
         docker_push "$FULL_NAME_WITH_TAG"
-        docker_push "$LATEST_FULL_NAME_WITH_TAG"
+        docker_push "$NIGHTLY_FULL_NAME_WITH_TAG"
     done
 }
 
 build_or_pull_base_images() {
-    docker pull rayproject/base-deps:latest
+    docker pull rayproject/base-deps:nightly
     TAG=$(date +%F_%H-00)
     
-    age=$(docker inspect -f '{{ .Created }}' rayproject/base-deps:latest)
+    age=$(docker inspect -f '{{ .Created }}' rayproject/base-deps:nightly)
     # Build if older than 2 weeks, files have been edited in this PR OR branch release
     if [[  $(date -d "-14 days" +%F) > $(date -d "$age" +%F) || \
         "$RAY_CI_DOCKER_AFFECTED" == "1" || \
@@ -52,9 +52,9 @@ build_or_pull_base_images() {
         done
 
     else
-        docker pull rayproject/ray-deps:latest
-        docker pull rayproject/ray-deps:latest-gpu
-        docker pull rayproject/base-deps:latest-gpu
+        docker pull rayproject/ray-deps:nightly
+        docker pull rayproject/ray-deps:nightly-gpu
+        docker pull rayproject/base-deps:nightly-gpu
         echo "Just pulling images"
     fi
 
@@ -89,13 +89,13 @@ if [[ "$TRAVIS" == "true" ]]; then
     # TODO(ilr) Remove autoscaler in the future
     for GPU in "" "-gpu"
     do
-        docker tag "rayproject/ray-ml:latest$GPU" "rayproject/autoscaler:latest$GPU"
+        docker tag "rayproject/ray-ml:nightly$GPU" "rayproject/autoscaler:nightly$GPU"
         docker tag "rayproject/ray-ml:$commit_sha$GPU" "rayproject/autoscaler:$commit_sha$GPU"
-        docker_push "rayproject/autoscaler:latest$GPU" 
+        docker_push "rayproject/autoscaler:nightly$GPU" 
         docker_push "rayproject/autoscaler:$commit_sha$GPU"
     done
 
-    docker_push rayproject/autoscaler:latest
+    docker_push rayproject/autoscaler:nightly
     docker_push rayproject/autoscaler:"$commit_sha"
  
 
@@ -108,8 +108,10 @@ if [[ "$TRAVIS" == "true" ]]; then
        do
             for GPU in "" "-gpu"
             do
-                docker tag "rayproject/$IMAGE:latest$GPU" "rayproject/$IMAGE:$normalized_branch_name$GPU"
+                docker tag "rayproject/$IMAGE:nightly$GPU" "rayproject/$IMAGE:$normalized_branch_name$GPU"
+                docker tag "rayproject/$IMAGE:nightly$GPU" "rayproject/$IMAGE:latest$GPU"
                 docker_push  "rayproject/$IMAGE:$normalized_branch_name$GPU"
+                docker_push  "rayproject/$IMAGE:latest$GPU"
             done
        done 
     fi

@@ -435,6 +435,50 @@ def validate_save_restore(trainable_cls,
     return True
 
 
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargspec(train_func).args
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use reporter if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) works."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
+
+
 if __name__ == "__main__":
     ray.init()
     X = pin_in_object_store("hello")

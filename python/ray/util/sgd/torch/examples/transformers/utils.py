@@ -36,6 +36,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False):
         ),
     )
 
+    # Use FileLock to prevent parallel writes that may corrupt data.
     with FileLock("/tmp/load_and_cache_examples.lock"):
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s",

@@ -4,13 +4,14 @@ import ray
 from ray import serve
 
 import os
+import tempfile
 import numpy as np
 import requests
 # __doc_import_end__
 # yapf: enable
 
 # __doc_train_model_begin__
-TRAINED_MODEL_PATH = "/tmp/mnist_model.h5"
+TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")
 
 
 def train_and_save_model():
@@ -71,7 +72,7 @@ class TFMnistModel:
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
-client.create_backend("tf:v1", TFMnistModel, "/tmp/mnist_model.h5")
+client.create_backend("tf:v1", TFMnistModel, TRAINED_MODEL_PATH)
 client.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
 # __doc_deploy_end__
 

@@ -154,8 +154,8 @@ def train_cifar10(config):
             with ag.record():
                 outputs = [finetune_net(X) for X in data]
                 loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
-            for l in loss:
-                l.backward()
+            for ls in loss:
+                ls.backward()
 
             trainer.step(batch_size)
         mx.nd.waitall()
@@ -170,7 +170,7 @@ def train_cifar10(config):
             outputs = [finetune_net(X) for X in data]
             loss = [L(yhat, y) for yhat, y in zip(outputs, label)]
 
-            test_loss += sum(l.mean().asscalar() for l in loss) / len(loss)
+            test_loss += sum(ls.mean().asscalar() for ls in loss) / len(loss)
             metric.update(label, outputs)
 
         _, test_acc = metric.get()
@@ -194,11 +194,7 @@ if __name__ == "__main__":
         sched = FIFOScheduler()
     elif args.scheduler == "asynchyperband":
         sched = AsyncHyperBandScheduler(
-            time_attr="training_iteration",
-            metric="mean_loss",
-            mode="min",
-            max_t=400,
-            grace_period=60)
+            metric="mean_loss", mode="min", max_t=400, grace_period=60)
     else:
         raise NotImplementedError
     tune.run(

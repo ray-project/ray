@@ -84,8 +84,6 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
         java_worker_options (list): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
@@ -138,7 +136,6 @@ class RayParams:
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
-                 include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
@@ -147,7 +144,8 @@ class RayParams:
                  metrics_agent_port=None,
                  metrics_export_port=None,
                  lru_evict=False,
-                 object_spilling_config=None):
+                 object_spilling_config=None,
+                 code_search_path=None):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -182,7 +180,6 @@ class RayParams:
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
-        self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
@@ -194,6 +191,9 @@ class RayParams:
         self._enable_object_reconstruction = enable_object_reconstruction
         self.object_spilling_config = object_spilling_config
         self._check_usage()
+        self.code_search_path = code_search_path
+        if code_search_path is None:
+            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:

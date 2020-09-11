@@ -7,6 +7,8 @@ import pickle
 import json
 import numpy as np
 import requests
+import os
+import tempfile
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -33,9 +35,13 @@ model.fit(train_x, train_y)
 print("MSE:", mean_squared_error(model.predict(val_x), val_y))
 
 # Save the model and label to file
-with open("/tmp/iris_model_logistic_regression.pkl", "wb") as f:
+MODEL_PATH = os.path.join(tempfile.gettempdir(),
+                          "iris_model_logistic_regression.pkl")
+LABEL_PATH = os.path.join(tempfile.gettempdir(), "iris_labels.json")
+
+with open(MODEL_PATH, "wb") as f:
     pickle.dump(model, f)
-with open("/tmp/iris_labels.json", "w") as f:
+with open(LABEL_PATH, "w") as f:
     json.dump(target_names.tolist(), f)
 # __doc_train_model_end__
 
@@ -43,9 +49,9 @@ with open("/tmp/iris_labels.json", "w") as f:
 # __doc_define_servable_begin__
 class BoostingModel:
     def __init__(self):
-        with open("/tmp/iris_model_logistic_regression.pkl", "rb") as f:
+        with open(MODEL_PATH, "rb") as f:
             self.model = pickle.load(f)
-        with open("/tmp/iris_labels.json") as f:
+        with open(LABEL_PATH) as f:
             self.label_list = json.load(f)
 
     def __call__(self, flask_request):

@@ -133,6 +133,10 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
 void WorkerPool::Start(int num_workers) {
   RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
   for (auto &entry : states_by_lang_) {
+    if (entry.first == Language::JAVA) {
+      // Disable initial workers for Java.
+      continue;
+    }
     auto &state = entry.second;
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
@@ -223,6 +227,33 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     // sure this is the freshest option than others.
     dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
                            job_config->jvm_options().end());
+  }
+  // For non-multi-tenancy mode, job code search path is embedded in worker_command.
+  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
+    std::string code_search_path_str;
+    for (int i = 0; i < job_config->code_search_path_size(); i++) {
+      auto path = job_config->code_search_path(i);
+      if (i != 0) {
+        code_search_path_str += ":";
+      }
+      code_search_path_str += path;
+    }
+    if (!code_search_path_str.empty()) {
+      switch (language) {
+      case Language::PYTHON: {
+        code_search_path_str = "--code-search-path=" + code_search_path_str;
+        break;
+      }
+      case Language::JAVA: {
+        code_search_path_str = "-Dray.job.code-search-path" + code_search_path_str;
+        break;
+      }
+      default:
+        RAY_LOG(FATAL) << "code_search_path is not supported for worker language "
+                       << language;
+      }
+      dynamic_options.push_back(code_search_path_str);
+    }
   }
 
   // Extract pointers from the worker command to pass into execvp.
@@ -360,9 +391,15 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   argv.push_back(NULL);
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
-    // The worker failed to start. This is a fatal error.
-    RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
-                   << ec.message();
+    // errorcode 24: Too many files. This is caused by ulimit.
+    if (ec.value() == 24) {
+      RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
+                     << "`ulimit -n <num_files>` then restart Ray.";
+    } else {
+      // The worker failed to start. This is a fatal error.
+      RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
+                     << ec.message();
+    }
   }
   return child;
 }
