@@ -112,6 +112,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void registerObjectRef(ObjectId outer, ObjectId objectId, byte[] ownership) {
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
   }
 }

@@ -106,14 +106,12 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JN
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
- * Method:    nativeRegisterObjectRef
+ * Method:    nativeRegisterOwnershipInfoAndResolveFuture
  * Signature: ([B[B[B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterObjectRef(JNIEnv *, jclass,
-                                                                     jbyteArray,
-                                                                     jbyteArray,
-                                                                     jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray);
 
 #ifdef __cplusplus
 }

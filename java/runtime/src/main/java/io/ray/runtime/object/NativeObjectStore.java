@@ -74,8 +74,13 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void registerObjectRef(ObjectId outer, ObjectId objectId, byte[] ownership) {
-    nativeRegisterObjectRef(outer.getBytes(), objectId.getBytes(), ownership);
+  public void registerOwnershipInfoAndResolveFuture(ObjectId objectId, ObjectId outerObjectId,
+      byte[] ownerAddress) {
+    byte[] outer = null;
+    if (outerObjectId != null) {
+      outer = outerObjectId.getBytes();
+    }
+    nativeRegisterOwnershipInfoAndResolveFuture(objectId.getBytes(), outer, ownerAddress);
   }
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
@@ -111,6 +116,6 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
 
-  private static native void nativeRegisterObjectRef(byte[] outer, byte[] objectId,
-      byte[] ownership);
+  private static native void nativeRegisterOwnershipInfoAndResolveFuture(byte[] objectId,
+      byte[] outerObjectId, byte[] ownerAddress);
 }

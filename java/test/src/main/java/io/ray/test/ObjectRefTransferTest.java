@@ -6,21 +6,9 @@ import io.ray.api.Ray;
 import java.util.ArrayList;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class ObjectRefTransferTest extends BaseTest {
-
-  @BeforeClass
-  public void setUpClass() {
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-  }
-
-  @AfterClass
-  public void tearDownClass() {
-    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
-  }
 
   @Test
   public void testObjectTransfer() {
@@ -31,7 +19,6 @@ public class ObjectRefTransferTest extends BaseTest {
     ActorHandle<RemoteActor> handle = Ray.actor(RemoteActor::new).remote();
     String result = handle.task(RemoteActor::get, data).remote().get();
     Assert.assertEquals(result, "test");
-    handle.kill();
   }
 
   @Test
@@ -44,7 +31,6 @@ public class ObjectRefTransferTest extends BaseTest {
     ActorHandle<RemoteActor> handle = Ray.actor(RemoteActor::new).remote();
     String result = handle.task(RemoteActor::getNested, data).remote().get();
     Assert.assertEquals(result, "inner");
-    handle.kill();
   }
 
   public static class RemoteActor {
