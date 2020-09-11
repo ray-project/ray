@@ -959,10 +959,11 @@ def rsync(config_file: str,
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
-    for remote_mount in config.get("file_mounts", {}).keys():
-        if remote_mount in (source if down else target):
-            is_file_mount = True
-            break
+    if source and target:
+        for remote_mount in config.get("file_mounts", {}).keys():
+            if (source if down else target).startswith(remote_mount):
+                is_file_mount = True
+                break
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
