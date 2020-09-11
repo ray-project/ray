@@ -1,4 +1,5 @@
 from gym.spaces import Box, Discrete
+from functools import partial
 import logging
 
 import ray
@@ -211,8 +212,6 @@ def sac_actor_critic_loss(policy, model, _, train_batch):
         q_tp1_best_masked = (1.0 - tf.cast(train_batch[SampleBatch.DONES],
                                            tf.float32)) * q_tp1_best
 
-    assert policy.config["n_step"] == 1, "TODO(hartikainen) n_step > 1"
-
     # compute RHS of bellman equation
     q_t_selected_target = tf.stop_gradient(
         train_batch[SampleBatch.REWARDS] +
@@ -322,7 +321,8 @@ def gradients_fn(policy, optimizer, loss):
 
     # Clip if necessary.
     if policy.config["grad_clip"]:
-        clip_func = tf.clip_by_norm
+        clip_func = partial(
+            tf.clip_by_norm, clip_norm=policy.config["grad_clip"])
     else:
         clip_func = tf.identity
 

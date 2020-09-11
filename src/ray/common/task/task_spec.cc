@@ -120,7 +120,7 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).object_ref().object_id() != "";
+  return message_->args(arg_index).has_object_ref();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {

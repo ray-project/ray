@@ -1,9 +1,4 @@
-Commands running under a login shell can produce more output than special processing can handle\.
-Thus, the output from subcommands will be logged as is\.
-Consider using --use-normal-shells, if you tested your workflow and it is compatible\.
-
 Cluster configuration valid
-
 Cluster: test-cli
 
 Bootstrapping AWS config
@@ -46,6 +41,6 @@ Acquiring an up-to-date head node
 
 Useful commands
   Monitor autoscaling with
-    ray exec .+ 'tail -n 100 -f /tmp/ray/session_\*/logs/monitor\*'
+    ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'
   Connect to a terminal on the cluster head
     ray attach .+

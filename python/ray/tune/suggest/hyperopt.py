@@ -42,27 +42,6 @@ class HyperOptSearch(Searcher):
 
         pip install -U hyperopt
 
-    You will not be able to leverage Tune's default ``grid_search``
-    and random search primitives when using HyperOptSearch. You need to
-    use the `HyperOpt search space specification
-    <https://github.com/hyperopt/hyperopt/wiki/FMin>`_.
-
-    .. code-block:: python
-
-        space = {
-            'width': hp.uniform('width', 0, 20),
-            'height': hp.uniform('height', -100, 100),
-            'activation': hp.choice("activation", ["relu", "tanh"])
-        }
-        current_best_params = [{
-            'width': 10,
-            'height': 0,
-            'activation': 0, # The index of "relu"
-        }]
-        algo = HyperOptSearch(
-            space, metric="mean_loss", mode="min",
-            points_to_evaluate=current_best_params)
-
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
@@ -88,13 +67,59 @@ class HyperOptSearch(Searcher):
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
+    Tune automatically converts search spaces to HyperOpt's format:
+
+    .. code-block:: python
+
+        config = {
+            'width': tune.uniform(0, 20),
+            'height': tune.uniform(-100, 100),
+            'activation': tune.choice(["relu", "tanh"])
+        }
+
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+
+        hyperopt_search = HyperOptSearch(
+            metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(trainable, config=config, search_alg=hyperopt_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
+    .. code-block:: python
+
+        space = {
+            'width': hp.uniform('width', 0, 20),
+            'height': hp.uniform('height', -100, 100),
+            'activation': hp.choice("activation", ["relu", "tanh"])
+        }
+
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+
+        hyperopt_search = HyperOptSearch(
+            space, metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(trainable, search_alg=hyperopt_search)
+
+
     """
 
     def __init__(
             self,
             space=None,
-            metric="episode_reward_mean",
-            mode="max",
+            metric=None,
+            mode=None,
             points_to_evaluate=None,
             n_initial_points=20,
             random_state_seed=None,
@@ -104,6 +129,8 @@ class HyperOptSearch(Searcher):
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         from hyperopt.fmin import generate_trials_to_calculate
         super(HyperOptSearch, self).__init__(
             metric=metric,

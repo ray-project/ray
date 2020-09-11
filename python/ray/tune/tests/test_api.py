@@ -14,7 +14,8 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping)
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
+                                 AsyncHyperBandScheduler)
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -24,6 +25,8 @@ from ray.tune.logger import Logger
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
+from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.suggest.ax import AxSearch
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
@@ -242,17 +245,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("B", B)
 
         def f(cpus, gpus, queue_trials):
-            return run_experiments(
-                {
-                    "foo": {
-                        "run": "B",
-                        "config": {
-                            "cpu": cpus,
-                            "gpu": gpus,
-                        },
-                    }
-                },
-                queue_trials=queue_trials)[0]
+            if not queue_trials:
+                os.environ["TUNE_DISABLE_QUEUE_TRIALS"] = "1"
+            else:
+                os.environ.pop("TUNE_DISABLE_QUEUE_TRIALS", None)
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            })[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
@@ -515,7 +520,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= top)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= top)
 
         patience = 5
         stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
@@ -523,14 +529,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= patience)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= patience)
 
         stopper = EarlyStopping("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
             all(t.status == Trial.TERMINATED for t in analysis.trials))
-        self.assertTrue(len(analysis.dataframe()) <= top)
+        self.assertTrue(
+            len(analysis.dataframe(metric="test", mode="max")) <= top)
 
     def testBadStoppingFunction(self):
         def train(config, reporter):
@@ -636,8 +644,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             loggers=None)
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
-        new_trials = tune.run(
-            test, resume=True, run_errored_only=True, **config).trials
+        new_trials = tune.run(test, resume="ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
@@ -1103,6 +1110,67 @@ class TrainableFunctionApiTest(unittest.TestCase):
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
+
+    def testTimeout(self):
+        from ray.tune.stopper import TimeoutStopper
+        import datetime
+
+        def train(config):
+            for i in range(20):
+                tune.report(metric=i)
+                time.sleep(1)
+
+        register_trainable("f1", train)
+
+        start = time.time()
+        tune.run("f1", time_budget_s=5)
+        diff = time.time() - start
+        self.assertLess(diff, 10)
+
+        # Metric should fire first
+        start = time.time()
+        tune.run("f1", stop={"metric": 3}, time_budget_s=7)
+        diff = time.time() - start
+        self.assertLess(diff, 7)
+
+        # Timeout should fire first
+        start = time.time()
+        tune.run("f1", stop={"metric": 10}, time_budget_s=5)
+        diff = time.time() - start
+        self.assertLess(diff, 10)
+
+        # Combined stopper. Shorter timeout should win.
+        start = time.time()
+        tune.run(
+            "f1",
+            stop=TimeoutStopper(10),
+            time_budget_s=datetime.timedelta(seconds=3))
+        diff = time.time() - start
+        self.assertLess(diff, 9)
+
+
+class ShimCreationTest(unittest.TestCase):
+    def testCreateScheduler(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        scheduler = "async_hyperband"
+        shim_scheduler = tune.create_scheduler(scheduler, **kwargs)
+        real_scheduler = AsyncHyperBandScheduler(**kwargs)
+        assert type(shim_scheduler) is type(real_scheduler)
+
+    def testCreateSearcher(self):
+        kwargs = {"metric": "metric_foo", "mode": "min"}
+
+        searcher_ax = "ax"
+        shim_searcher_ax = tune.create_searcher(searcher_ax, **kwargs)
+        real_searcher_ax = AxSearch(space=[], **kwargs)
+        assert type(shim_searcher_ax) is type(real_searcher_ax)
+
+        searcher_hyperopt = "hyperopt"
+        shim_searcher_hyperopt = tune.create_searcher(searcher_hyperopt,
+                                                      **kwargs)
+        real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
+        assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
 
 
 if __name__ == "__main__":

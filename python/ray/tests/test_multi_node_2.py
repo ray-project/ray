@@ -76,7 +76,7 @@ def setup_monitor(address):
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     while True:
         monitor.process_messages()
-        resource_usage = monitor.load_metrics.get_resource_usage()
+        resource_usage = monitor.load_metrics._get_resource_usage()
 
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]
