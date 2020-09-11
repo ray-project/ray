@@ -47,6 +47,8 @@ public class ObjectSerializer {
   // field will contain all the nested object IDs.
   static ThreadLocal<Set<ObjectId>> containedObjectIds = ThreadLocal.withInitial(HashSet::new);
 
+  static ThreadLocal<ObjectId> outerObjectId = ThreadLocal.withInitial(() -> ObjectId.NIL);
+
   /**
    * Deserialize an object from an {@link NativeRayObject} instance.
    *
@@ -169,5 +171,17 @@ public class ObjectSerializer {
     List<ObjectId> ids = new ArrayList<>(containedObjectIds.get());
     containedObjectIds.get().clear();
     return ids;
+  }
+
+  static void setOuterObjectId(ObjectId objectId) {
+    outerObjectId.set(objectId);
+  }
+
+  static ObjectId getOuterObjectId() {
+    return outerObjectId.get();
+  }
+
+  static void resetOuterObjectId() {
+    outerObjectId.set(ObjectId.NIL);
   }
 }

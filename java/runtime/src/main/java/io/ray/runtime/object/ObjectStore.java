@@ -96,8 +96,13 @@ public abstract class ObjectStore {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
       Object object = null;
       if (dataAndMeta != null) {
-        object = ObjectSerializer
+        try {
+          ObjectSerializer.setOuterObjectId(ids.get(i));
+          object = ObjectSerializer
             .deserialize(dataAndMeta, ids.get(i), elementType);
+        } finally {
+          ObjectSerializer.resetOuterObjectId();
+        }
       }
       if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
@@ -181,4 +186,19 @@ public abstract class ObjectStore {
    * @param objectId The object ID to decrease the reference count for.
    */
   public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
+
+  /**
+   * Promote the given object to the underlying object store.
+   * @param objectId The ID of the object to promote
+   * @return the serialized ownership address
+   */
+  public abstract byte[] promoteAndGetOwnershipInfo(ObjectId objectId);
+
+  /**
+   * Register the given object ownership information.
+   * @param outer The outer ObjectId which contains the given ObjectId
+   * @param objectId The ID of the object needs to register
+   * @param ownership The serialized address of the owner
+   */
+  public abstract void registerObjectRef(ObjectId outer, ObjectId objectId, byte[] ownership);
 }

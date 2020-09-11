@@ -12,6 +12,8 @@ public class ObjectId extends BaseId implements Serializable {
 
   public static final int LENGTH = 20;
 
+  public static final ObjectId NIL = genNil();
+
   /**
    * Create an ObjectId from a ByteBuffer.
    */
@@ -40,6 +42,15 @@ public class ObjectId extends BaseId implements Serializable {
   @Override
   public int size() {
     return LENGTH;
+  }
+
+  /**
+   * Generate a nil JobId.
+   */
+  private static ObjectId genNil() {
+    byte[] b = new byte[LENGTH];
+    Arrays.fill(b, (byte) 0xFF);
+    return new ObjectId(b);
   }
 
 }

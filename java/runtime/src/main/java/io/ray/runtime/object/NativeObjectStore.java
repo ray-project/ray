@@ -68,6 +68,16 @@ public class NativeObjectStore extends ObjectStore {
     }
   }
 
+  @Override
+  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+    return nativePromoteAndGetOwnershipInfo(objectId.getBytes());
+  }
+
+  @Override
+  public void registerObjectRef(ObjectId outer, ObjectId objectId, byte[] ownership) {
+    nativeRegisterObjectRef(outer.getBytes(), objectId.getBytes(), ownership);
+  }
+
   public Map<ObjectId, long[]> getAllReferenceCounts() {
     Map<ObjectId, long[]> referenceCounts = new HashMap<>();
     for (Map.Entry<byte[], long[]> entry :
@@ -98,4 +108,9 @@ public class NativeObjectStore extends ObjectStore {
   private static native void nativeRemoveLocalReference(byte[] workerId, byte[] objectId);
 
   private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
+
+  private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
+
+  private static native void nativeRegisterObjectRef(byte[] outer, byte[] objectId,
+      byte[] ownership);
 }
