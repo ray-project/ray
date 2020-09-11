@@ -96,8 +96,6 @@ Algorithms
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
-
 *  Gradient-based
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
@@ -118,7 +116,9 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Meta-learning
+*  Model-based / Meta-learning
+
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
    -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
