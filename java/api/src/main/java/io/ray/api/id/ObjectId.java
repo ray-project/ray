@@ -45,7 +45,7 @@ public class ObjectId extends BaseId implements Serializable {
   }
 
   /**
-   * Generate a nil JobId.
+   * Generate a nil ObjectId.
    */
   private static ObjectId genNil() {
     byte[] b = new byte[LENGTH];
