@@ -116,17 +116,6 @@ def create_or_update_cluster(config_file: str,
     else:
         cmd_output_util.set_output_redirected(redirect_command_output)
 
-    if use_login_shells:
-        cli_logger.warning(
-            "Commands running under a login shell can produce more "
-            "output than special processing can handle.")
-        cli_logger.warning(
-            "Thus, the output from subcommands will be logged as is.")
-        cli_logger.warning(
-            "Consider using {}, {}.", cf.bold("--use-normal-shells"),
-            cf.underlined("if you tested your workflow and it is compatible"))
-        cli_logger.newline()
-
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid")
         cli_logger.newline()
@@ -455,7 +444,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
 def monitor_cluster(cluster_config_file, num_lines, override_cluster_name):
     """Tails the autoscaler logs of a Ray cluster."""
-    cmd = "tail -n {} -f /tmp/ray/session_*/logs/monitor*".format(num_lines)
+    cmd = f"tail -n {num_lines} -f /tmp/ray/session_latest/logs/monitor*"
     exec_cluster(
         cluster_config_file,
         cmd=cmd,
@@ -506,7 +495,6 @@ def get_or_create_head_node(config,
                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
@@ -717,7 +705,7 @@ def get_or_create_head_node(config,
                 logger, "get_or_create_head_node: "
                 "Head node up-to-date, IP address is: {}", head_node_ip)
 
-        monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
+        monitor_str = "tail -n 100 -f /tmp/ray/session_latest/logs/monitor*"
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
@@ -739,12 +727,12 @@ def get_or_create_head_node(config,
         with cli_logger.group("Useful commands"):
             cli_logger.print("Monitor autoscaling with")
             cli_logger.print(
-                cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
+                cf.bold("  ray exec {}{} {}"), config_file, modifiers,
                 quote(monitor_str))
 
             cli_logger.print("Connect to a terminal on the cluster head")
             cli_logger.print(
-                cf.bold("  ray attach {}{}"), raw_config_file, modifiers)
+                cf.bold("  ray attach {}{}"), config_file, modifiers)
     finally:
         provider.cleanup()
 
@@ -959,10 +947,11 @@ def rsync(config_file: str,
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
-    for remote_mount in config.get("file_mounts", {}).keys():
-        if remote_mount in (source if down else target):
-            is_file_mount = True
-            break
+    if source and target:
+        for remote_mount in config.get("file_mounts", {}).keys():
+            if (source if down else target).startswith(remote_mount):
+                is_file_mount = True
+                break
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:

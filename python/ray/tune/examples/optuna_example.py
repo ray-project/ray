@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.optuna import OptunaSearch
 
@@ -45,7 +46,13 @@ if __name__ == "__main__":
             "activation": tune.choice(["relu", "tanh"])
         }
     }
-    algo = OptunaSearch(metric="mean_loss", mode="min")
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+    algo = OptunaSearch()
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
     tune.run(
-        easy_objective, search_alg=algo, scheduler=scheduler, **tune_kwargs)
+        easy_objective,
+        metric="mean_loss",
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        **tune_kwargs)

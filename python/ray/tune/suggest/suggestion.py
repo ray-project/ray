@@ -366,3 +366,6 @@ class ConcurrencyLimiter(Searcher):
 
     def on_unpause(self, trial_id):
         self.searcher.on_unpause(trial_id)
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)

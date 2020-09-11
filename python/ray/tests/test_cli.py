@@ -132,6 +132,9 @@ def _load_output_pattern(name):
 
 def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
+    print("---")
+    print(result.output)
+    print("---")
 
     if result.exception is not None:
         print(result.output)

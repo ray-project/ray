@@ -75,9 +75,12 @@ build_jars_multiplatform() {
       return
     fi
   fi
-  download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"
-  prepare_native
-  build_jars multiplatform false
+  if download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"; then
+    prepare_native
+    build_jars multiplatform false
+  else
+    echo "download_jars failed, skip building multiplatform jars"
+  fi
 }
 
 # Download darwin/windows ray-related jar from s3
@@ -87,9 +90,9 @@ download_jars() {
   local sleep_time_units=60
 
   for f in "$@"; do
-    for os in 'darwin' 'windows'; do
+    for os in 'darwin' 'linux' 'windows'; do
       if [[ "$os" == "windows" ]]; then
-        break
+        continue
       fi
       local url="https://ray-wheels.s3-us-west-2.amazonaws.com/jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$os/$f"
       mkdir -p "$JAR_BASE_DIR/$os"
@@ -101,9 +104,9 @@ download_jars() {
           echo "Waiting $url to be ready for $wait_time seconds..."
           sleep $sleep_time_units
           wait_time=$((wait_time + sleep_time_units))
-          if [[ wait_time == $((60 * 120)) ]]; then
+          if [[ wait_time == $((sleep_time_units * 100)) ]]; then
             echo "Download $url timeout"
-            exit 1
+            return 1
           fi
         else
           echo "Download $url to $dest_file succeed"
@@ -112,6 +115,7 @@ download_jars() {
       done
     done
   done
+  echo "Download jars took $wait_time seconds"
 }
 
 # prepare native binaries and libraries.
@@ -131,9 +135,27 @@ prepare_native() {
   done
 }
 
+# Return 0 if native bianries and libraries exist and 1 if not.
+native_files_exist() {
+  local os
+  for os in 'darwin' 'linux'; do
+    native_dirs=()
+    native_dirs+=("$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os")
+    native_dirs+=("$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os")
+    for native_dir in "${native_dirs[@]}"; do
+      if [ ! -d "$native_dir" ]; then
+        echo "$native_dir doesn't exist"
+        return 1
+      fi
+    done
+  done
+}
+
 # This function assume all multiplatform binaries are prepared already.
 deploy_jars() {
   if [ "${TRAVIS-}" = true ]; then
+    mkdir -p ~/.m2
+    echo "<settings><servers><server><id>ossrh</id><username>${OSSRH_KEY}</username><password>${OSSRH_TOKEN}</password></server></servers></settings>" > ~/.m2/settings.xml
     if [[ "$TRAVIS_REPO_SLUG" != "ray-project/ray" ||
      "$TRAVIS_PULL_REQUEST" != "false" || "$TRAVIS_BRANCH" != "master" ]]; then
       echo "Skip deploying jars when this build is from a pull request or
@@ -142,11 +164,19 @@ deploy_jars() {
     fi
   fi
   echo "Start deploying jars"
-  cd "$WORKSPACE_DIR/java"
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  cd "$WORKSPACE_DIR/streaming/java"
-  mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
-  echo "Finished deploying jars"
+  if native_files_exist; then
+    (
+      cd "$WORKSPACE_DIR/java"
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    )
+    (
+      cd "$WORKSPACE_DIR/streaming/java"
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+    )
+    echo "Finished deploying jars"
+  else
+    echo "Native bianries/libraries are not ready, skip deploying jars."
+  fi
 }
 
 case "$1" in
@@ -167,4 +197,3 @@ deploy) # Deploy jars to maven repository.
   "$@"
   ;;
 esac
-

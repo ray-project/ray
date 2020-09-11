@@ -187,6 +187,9 @@ def _isatty():
 class _CliLogger():
     """Singleton class for CLI logging.
 
+    Without calling 'cli_logger.configure', the CLILogger will default
+    to 'record' style logging.
+
     Attributes:
         old_style (bool):
             If `old_style` is `True`, the old logging calls are used instead
@@ -219,13 +222,13 @@ class _CliLogger():
 
     def __init__(self):
         self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
-        self.pretty = True
-        self.interactive = _isatty()
         self.indent_level = 0
 
         self._verbosity = 0
         self._color_mode = "auto"
-        self._log_style = "auto"
+        self._log_style = "record"
+        self.pretty = False
+        self.interactive = False
 
         # store whatever colorful has detected for future use if
         # the color ouput is toggled (colorful detects # of supported colors,
@@ -239,19 +242,33 @@ class _CliLogger():
             format_tmpl = ray_constants.LOGGER_FORMAT
         self._formatter = logging.Formatter(format_tmpl)
 
+    def configure(self, log_style=None, color_mode=None, verbosity=None):
+        """Configures the logger according to values."""
+        if log_style is not None:
+            self._set_log_style(log_style)
+
+        if color_mode is not None:
+            self._set_color_mode(color_mode)
+
+        if verbosity is not None:
+            self._set_verbosity(verbosity)
+
+        self.detect_colors()
+
     @property
     def log_style(self):
         return self._log_style
 
-    @log_style.setter
-    def log_style(self, x):
+    def _set_log_style(self, x):
+        """Configures interactivity and formatting."""
         self._log_style = x.lower()
+        self.interactive = _isatty()
 
         if self._log_style == "auto":
             self.pretty = _isatty()
         elif self._log_style == "record":
             self.pretty = False
-            self.color_mode = "false"
+            self._set_color_mode("false")
         elif self._log_style == "pretty":
             self.pretty = True
 
@@ -259,8 +276,7 @@ class _CliLogger():
     def color_mode(self):
         return self._color_mode
 
-    @color_mode.setter
-    def color_mode(self, x):
+    def _set_color_mode(self, x):
         self._color_mode = x.lower()
         self.detect_colors()
 
@@ -270,8 +286,7 @@ class _CliLogger():
             return 999
         return self._verbosity
 
-    @verbosity.setter
-    def verbosity(self, x):
+    def _set_verbosity(self, x):
         self._verbosity = x
 
     def detect_colors(self):
