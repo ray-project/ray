@@ -32,7 +32,7 @@ The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-o
     :start-after: __torch_operator_start__
     :end-before: __torch_operator_end__
 
-Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor. One of the replicas will be on the main process, which can simplify the debugging and logging experience.
+Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor.
 
 Before instantiating the trainer, first start or connect to a Ray cluster:
 
