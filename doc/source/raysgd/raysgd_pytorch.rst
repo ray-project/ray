@@ -288,8 +288,8 @@ However, if you have these creator functions already and do not want to change y
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
-   :start-after: __backwards_compat__start
-   :end-before: __backwards_compat_end
+   :start-after: __backwards_compat_start__
+   :end-before: __backwards_compat_end__
 
 Initialization Functions
 ------------------------
