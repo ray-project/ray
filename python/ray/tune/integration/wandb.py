@@ -9,6 +9,8 @@ from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
 from ray.tune.utils import flatten_dict
 
+import yaml
+
 try:
     import wandb
 except ImportError:
@@ -29,6 +31,12 @@ def _clean_log(obj):
     # Else
     try:
         pickle.dumps(obj)
+        yaml.dump(
+            obj,
+            Dumper=yaml.SafeDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            encoding="utf-8")
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder

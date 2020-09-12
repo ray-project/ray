@@ -12,7 +12,6 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
-from ray.tune.cluster_info import is_ray_cluster
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
@@ -136,17 +135,10 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials=None,
+                 queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
-        if queue_trials is None:
-            if os.environ.get("TUNE_DISABLE_QUEUE_TRIALS") == "1":
-                logger.info("'TUNE_DISABLE_QUEUE_TRIALS=1' detected.")
-                queue_trials = False
-            elif is_ray_cluster():
-                queue_trials = True
-
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
