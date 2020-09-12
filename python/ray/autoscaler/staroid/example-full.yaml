@@ -1,4 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
+# A namespace will be automatically created for each cluster_name in SKE.
 cluster_name: default
 
 # The maximum number of workers nodes to launch in addition to the head
@@ -13,6 +14,114 @@ max_workers: 1
 provider:
     type: staroid
 
+    # Access token for Staroid from https://staroid.com/settings/accesstokens.
+    # Alternatively, you can set STAROID_ACCESS_TOKEN environment variable.
+    # https://github.com/staroids/staroid-python#configuration for more information.
+    access_token:
+
+    # Staroid account to use. e.g. GITHUB/staroids
+    # Alternatively, you can set STAROID_ACCOUNT environment variable.
+    # Leave empty to select default account for given access token.
+    # https://github.com/staroids/staroid-python#configuration for more information.
+    account:
+
+    # Name of a Staroid Kubernetes Engine (SKE) instance.
+    # Alternatively, you can set STAROID_SKE environment variable.
+    # An SKE is a virtualized Kubernetes cluster.
+    # Will create a new if not exists.
+    ske: "Ray cluster"
+
+    # Cloud and Region to create an SKE when not exists.
+    # If SKE already exists, this value will be ignored.
+    ske_region: "aws us-west2"
+
+    # Exposing external IP addresses for ray pods isn't currently supported.
+    use_internal_ips: true
+
+# Kubernetes pod config for the head node pod.
+head_node:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: ray-head-
+
+        # Must match the head node service selector above if a head node
+        # service is required.
+        labels:
+            component: ray-head
+    spec:
+        # Restarting the head node automatically is not currently supported.
+        # If the head node goes down, `ray up` must be run again.
+        restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+
+        # staroid requires non-root container
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
+          #   - screen (used for `ray attach`)
+          #   - kubectl (used by the autoscaler to manage worker pods)
+          image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
+          command: ["/bin/bash", "-c", "--"]
+          args: ["trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 6379 # Redis port.
+              - containerPort: 6380 # Redis port.
+              - containerPort: 6381 # Redis port.
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+          resources:
+              requests:
+                  cpu: 1000m
+                  memory: 512Mi
+              limits:
+                  # The maximum memory that this pod is allowed to use. The
+                  # limit will be detected by ray and split to use 10% for
+                  # redis, 30% for the shared memory object store, and the
+                  # rest for application memory. If this limit is not set and
+                  # the object store size is not set manually, ray will
+                  # allocate a very large object store in each pod that may
+                  # cause problems for other pods.
+                  memory: 2Gi
+          env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: requests.cpu
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
 # list of paths. The same path on the head node will be copied to the worker node.
