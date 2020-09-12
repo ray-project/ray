@@ -130,6 +130,15 @@ class TorchRunner:
                 for k, v in sd.items():
                     sd[k] = v.cpu()
             model_states.append(sd)
+        optimizer_states = []
+        for opt in self.optimizers:
+            sd = opt.state_dict()
+            if to_cpu:
+                for state in sd["state"].values():
+                    for k, v in state.items():
+                        if torch.is_tensor(v):
+                            state[k] = v.cpu()
+            optimizer_states.append(sd)
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
