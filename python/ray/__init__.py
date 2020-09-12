@@ -16,13 +16,13 @@ if "pickle5" in sys.modules:
         version = tuple(int(n) for n in version_info[0].version.split("."))
         if version < (0, 0, 10):
             raise ImportError("You are using an old version of pickle5 "
-                              "that leaks memory, please run"
+                              "that leaks memory, please run "
                               "'pip install pickle5 -U' to upgrade")
     except pkg_resources.DistributionNotFound:
-        logger.warning("You are using the 'pickle5' module, but"
-                       "the exact version is unknown (possibly carried as"
-                       "an internal component by another module). Please"
-                       "make sure you are using pickle5 >= 0.0.10 because"
+        logger.warning("You are using the 'pickle5' module, but "
+                       "the exact version is unknown (possibly carried as "
+                       "an internal component by another module). Please "
+                       "make sure you are using pickle5 >= 0.0.10 because "
                        "previous versions may leak memory.")
 
 if "OMP_NUM_THREADS" not in os.environ:
