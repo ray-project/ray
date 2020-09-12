@@ -17,8 +17,6 @@ before_install:
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
     python -u ci/remote-watch.py --skip_repo=ray-project/ray &
-  - export JAVA_HOME=$HOME/openjdk8
-  - $TRAVIS_BUILD_DIR/install-jdk.sh --install openjdk8 --target $JAVA_HOME
 
 matrix:
   include:
@@ -124,7 +122,7 @@ matrix:
 
     - os: linux
       env:
-        - JAVA_TESTS=1
+        - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
@@ -136,7 +134,8 @@ matrix:
 
     - os: linux
       env:
-        - STREAMING_TESTS=1
+        - TESTSUITE=streaming
+        - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
