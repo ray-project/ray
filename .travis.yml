@@ -17,6 +17,7 @@ before_install:
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
     python -u ci/remote-watch.py --skip_repo=ray-project/ray &
+  - jdk_switcher use openjdk8
 
 matrix:
   include:
