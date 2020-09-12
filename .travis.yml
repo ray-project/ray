@@ -17,8 +17,8 @@ before_install:
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
     python -u ci/remote-watch.py --skip_repo=ray-project/ray &
-  - wget https://github.com/michaelklishin/jdk_switcher/blob/master/jdk_switcher.sh
-  - sh jdk_switcher.sh use openjdk8
+  - export JAVA_HOME=$HOME/openjdk8
+  - $TRAVIS_BUILD_DIR/install-jdk.sh --install openjdk8 --target $JAVA_HOME
 
 matrix:
   include:
