@@ -143,7 +143,7 @@ class TorchRunner:
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
             "models": model_states,
-            "optimizers": [opt.state_dict() for opt in self.optimizers]
+            "optimizers": optimizer_states
         }
         schedulers = self.schedulers
         if schedulers:
