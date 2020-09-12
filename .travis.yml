@@ -123,7 +123,6 @@ matrix:
 
     - os: linux
       env:
-        - JDK='Oracle JDK 8'
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
@@ -136,7 +135,6 @@ matrix:
     - os: linux
       env:
         - TESTSUITE=streaming
-        - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
