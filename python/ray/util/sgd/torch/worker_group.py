@@ -15,7 +15,7 @@ RESIZE_COOLDOWN_S = 10
 logger = logging.getLogger(__name__)
 
 
-class BaseWorkerGroup:
+class WorkerGroupInterface:
     def start_workers(self, num_workers, params, dist_params,
                       initialization_hook, timeout_s, num_cpus_per_worker,
                       use_gpu):
@@ -58,7 +58,7 @@ class BaseWorkerGroup:
         raise NotImplementedError
 
 
-class RemoteWorkerGroup(BaseWorkerGroup):
+class RemoteWorkerGroup(WorkerGroupInterface):
     """Groups together multiple DistributedTorchRunner workers."""
 
     def __init__(self):
@@ -295,7 +295,7 @@ class RemoteWorkerGroup(BaseWorkerGroup):
         return len(self.remote_workers)
 
 
-class LocalWorkerGroup(BaseWorkerGroup):
+class LocalWorkerGroup(WorkerGroupInterface):
     def __init__(self):
         self.local_worker = None
         self.remote_worker_group = RemoteWorkerGroup()
