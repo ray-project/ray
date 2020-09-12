@@ -7,9 +7,6 @@ git:
   depth: false  # Shallow clones can prevent diff against base branch
   quiet: true
 
-jdk:
-  - openjdk8
-
 before_install:
   - unset -f cd  # Travis defines this on Mac for RVM, but it breaks the Mac build
   - |
@@ -20,6 +17,8 @@ before_install:
     git fetch -q -- origin "${to_fetch[@]}"
     git checkout -qf "${TRAVIS_COMMIT}" --
     python -u ci/remote-watch.py --skip_repo=ray-project/ray &
+  - wget https://github.com/michaelklishin/jdk_switcher/blob/master/jdk_switcher.sh
+  - sh jdk_switcher.sh use openjdk8
 
 matrix:
   include:
