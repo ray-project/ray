@@ -123,6 +123,7 @@ matrix:
 
     - os: linux
       env:
+        - JAVA_TESTS=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
@@ -134,7 +135,7 @@ matrix:
 
     - os: linux
       env:
-        - TESTSUITE=streaming
+        - STREAMING_TESTS=1
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
