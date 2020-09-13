@@ -580,6 +580,14 @@ def test_many_custom_resources(shutdown_only):
     ray.get(results)
 
 
+def __delete_miscellaneous_item__(resources):
+    del resources["memory"]
+    del resources["object_store_memory"]
+    for key in list(resources.keys()):
+        if key.startswith("node:"):
+            del resources[key]
+
+
 # TODO: 5 retry attempts may be too little for Travis and we may need to
 # increase it if this test begins to be flaky on Travis.
 def test_zero_capacity_deletion_semantics(shutdown_only):
@@ -590,20 +598,12 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
         MAX_RETRY_ATTEMPTS = 5
         retry_count = 0
 
-        del resources["memory"]
-        del resources["object_store_memory"]
-        for key in list(resources.keys()):
-            if key.startswith("node:"):
-                del resources[key]
+        __delete_miscellaneous_item__(resources)
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
-            del resources["memory"]
-            del resources["object_store_memory"]
-            for key in list(resources.keys()):
-                if key.startswith("node:"):
-                    del resources[key]
+            __delete_miscellaneous_item__(resources)
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
