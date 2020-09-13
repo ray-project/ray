@@ -72,6 +72,7 @@ define_java_module(
     visibility = ["//visibility:public"],
     deps = [
         ":io_ray_ray_api",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_config",
@@ -161,11 +162,6 @@ filegroup(
     name = "java_native_deps",
     srcs = [
         ":core_worker_library_java",
-        ":gcs_server",
-        ":libray_redis_module.so",
-        ":plasma_store_server",
-        ":raylet",
-        ":redis-server",
     ],
 )
 

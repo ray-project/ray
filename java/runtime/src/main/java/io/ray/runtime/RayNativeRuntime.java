@@ -5,10 +5,8 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
-import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
-import io.ray.runtime.exception.RayException;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
@@ -22,15 +20,11 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.io.File;
-import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +35,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayNativeRuntime.class);
 
-  private RunManager manager = null;
+  private boolean startRayHead = false;
 
   /**
    * In Java, GC runs in a standalone thread, and we can't control the exact
@@ -58,8 +52,16 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // Expose ray ABI symbols which may be depended by other shared
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
-    final RayConfig rayConfig = RayConfig.getInstance();
-    if (rayConfig.getRedisAddress() != null && rayConfig.workerMode == WorkerType.DRIVER) {
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+    LOGGER.debug("Native libraries loaded.");
+  }
+
+  public RayNativeRuntime(RayConfig rayConfig) {
+    super(rayConfig);
+  }
+
+  private static void loadConfigFromGcs(RayConfig rayConfig) {
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver that is connecting to the existing GCS.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       final String sessionDir = client.get("session_dir", null);
@@ -67,73 +69,29 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       rayConfig.setSessionDir(sessionDir);
     }
 
-    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-    LOGGER.debug("Native libraries loaded.");
-    try {
-      FileUtils.forceMkdir(new File(rayConfig.logDir));
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to create the log directory.", e);
-    }
-  }
-
-  public RayNativeRuntime(RayConfig rayConfig) {
-    super(rayConfig);
-    loadConfigFromGcs(rayConfig);
-  }
-
-  private static void loadConfigFromGcs(RayConfig rayConfig) {
-    if (rayConfig.getRedisAddress() != null) {
-      GcsClient tempGcsClient =
-          new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-      for (Map.Entry<String, String> entry :
-          tempGcsClient.getInternalConfig().entrySet()) {
-        rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
-      }
-
-      if (rayConfig.workerMode == WorkerType.DRIVER) {
-        // Keep this method logic in sync with `services.get_address_info_from_redis_helper`
-        int numRetries = 5;
-        int retryCount = 0;
-        boolean configLoaded = false;
-        while (retryCount++ < numRetries) {
-          for (NodeInfo nodeInfo : tempGcsClient.getAllNodeInfo()) {
-            if (rayConfig.nodeIp.equals(nodeInfo.nodeAddress) ||
-                (nodeInfo.nodeAddress.equals("127.0.0.1") &&
-                    rayConfig.nodeIp.equals(rayConfig.getRedisAddress()))) {
-              rayConfig.objectStoreSocketName = nodeInfo.objectStoreSocketName;
-              rayConfig.rayletSocketName = nodeInfo.rayletSocketName;
-              rayConfig.nodeManagerPort = nodeInfo.nodeManagerPort;
-              configLoaded = true;
-              break;
-            }
-          }
-          if (!configLoaded) {
-            LOGGER.warn("Some processes that the driver needs to connect to have " +
-                "not registered with Redis, so retrying. Have you run " +
-                "'ray start' on this node?");
-            try {
-              TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-              throw new RuntimeException(e);
-            }
-          } else {
-            break;
-          }
-        }
-        if (!configLoaded) {
-          throw new RayException("Some processes that the driver needs to connect to have " +
-              "not registered with Redis. Have you run 'ray start' on this node?");
-        }
-      }
+    GcsClient tempGcsClient =
+        new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+    rayConfig.rayletConfigParameters.clear();
+    for (Map.Entry<String, String> entry :
+        tempGcsClient.getInternalConfig().entrySet()) {
+      rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
     }
   }
 
   @Override
   public void start() {
-    if (rayConfig.getRedisAddress() == null) {
-      manager = new RunManager(rayConfig);
-      manager.startRayProcesses(true);
+    if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getRedisAddress() == null) {
+      // Set it to true before `RunManager.startRayHead` so `Ray.shutdown()` can still kill
+      // Ray processes even if `Ray.init()` failed.
+      startRayHead = true;
+      RunManager.startRayHead(rayConfig);
     }
+    Preconditions.checkNotNull(rayConfig.getRedisAddress());
+    if (rayConfig.workerMode == WorkerType.DRIVER) {
+      RunManager.fillDriverInfo(rayConfig);
+    }
+
+    loadConfigFromGcs(rayConfig);
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
@@ -179,9 +137,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     try {
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         nativeShutdown();
-        if (null != manager) {
-          manager.cleanup();
-          manager = null;
+        if (startRayHead) {
+          startRayHead = false;
+          RunManager.stopRay();
         }
       }
       if (null != gcsClient) {
@@ -193,11 +151,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } finally {
       writeLock.unlock();
     }
-  }
-
-  // For test purpose only
-  public RunManager getRunManager() {
-    return manager;
   }
 
   @Override
