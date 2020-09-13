@@ -66,7 +66,6 @@ public class RayConfig {
   public final Map<String, String> rayletConfigParameters;
 
   public List<String> codeSearchPath;
-  public final String pythonWorkerCommand;
 
   public final List<String> headArgs;
 
@@ -165,11 +164,6 @@ public class RayConfig {
 
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
-    if (config.hasPath("ray.worker.python-command")) {
-      pythonWorkerCommand = config.getString("ray.worker.python-command");
-    } else {
-      pythonWorkerCommand = null;
-    }
 
     // Redis configurations.
     String redisAddress = config.getString("ray.redis.address");
