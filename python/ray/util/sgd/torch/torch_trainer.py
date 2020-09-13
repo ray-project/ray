@@ -177,7 +177,7 @@ class TorchTrainer:
 
         if use_local and log_once("use_local"):
             logger.warning("use_local is set to True. This could lead to "
-                           "issues with Cuda devices. If you are seeing this"
+                           "issues with Cuda devices. If you are seeing this "
                            "issue, try setting use_local to False. For more "
                            "information, see "
                            "https://github.com/ray-project/ray/issues/9202.")
