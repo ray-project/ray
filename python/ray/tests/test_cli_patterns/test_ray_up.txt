@@ -1,7 +1,6 @@
-Cluster configuration valid
 Cluster: test-cli
 
-Bootstrapping AWS config
+Checking AWS environment settings
 AWS config
   IAM Profile: .+ \[default\]
   EC2 Key pair \(head & workers\): .+ \[default\]

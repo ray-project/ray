@@ -155,8 +155,6 @@ def create_or_update_cluster(config_file: str,
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid")
-
     printed_overrides = False
 
     def handle_cli_override(key, override):
@@ -245,8 +243,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(  # todo: better message
-            "Bootstrapping {} config",
+    with cli_logger.timed(
+            "Checking {} environment settings",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
