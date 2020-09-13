@@ -4,7 +4,7 @@ import pickle
 
 import ray
 
-from ray.tune import Trainable
+from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
 from ray.util.sgd.tf.tf_runner import TFRunner
 

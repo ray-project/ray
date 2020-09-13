@@ -101,6 +101,7 @@ class WorkerGroupInterface:
         """
         raise NotImplementedError
 
+
 class RemoteWorkerGroup(WorkerGroupInterface):
     """A group of TorchRunner workers that are all remote Ray actors.
 
@@ -116,9 +117,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
     """
 
-    def __init__(self, max_workers, params, dist_params,
-                      initialization_hook, timeout_s, num_cpus_per_worker,
-                      use_gpu):
+    def __init__(self, max_workers, params, dist_params, initialization_hook,
+                 timeout_s, num_cpus_per_worker, use_gpu):
         # Invariant: These variables should never change state!
         self._max_workers = max_workers
         self._params = params
@@ -133,7 +133,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # The last time when this worker group was resized.
         self._last_resize = float("-inf")
 
-
     def _init_dist_workers(self, num_workers):
         """Create `num_workers` remote workers."""
         # Generate actor class
@@ -143,7 +142,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
         # Start workers
         self.remote_workers = [
-            RemoteRunner.remote({
+            RemoteRunner.remote(**{
                 **self._params,
                 **self._dist_params
             }) for _ in range(num_workers)
@@ -165,10 +164,11 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         """
         # Setup the process group among all workers.
         remote_pgroup_setups = [
-            worker.setup_process_group.remote(address=address, world_rank=i,
-                                              world_size=world_size,
-                                              timeout=timedelta(
-                                                  self._timeout_s))
+            worker.setup_process_group.remote(
+                url=address,
+                world_rank=i,
+                world_size=world_size,
+                timeout=timedelta(self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
@@ -202,8 +202,9 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             # Make sure to get the IP address of the rank 0 worker node.
             address = ray.get(self.remote_workers[0].setup_address.remote())
 
-            ray.get(self._setup_process_group(address=address,
-                                              world_size=num_workers))
+            ray.get(
+                self._setup_process_group(
+                    address=address, world_size=num_workers))
 
             ray.get(self._setup_operator())
 
@@ -371,9 +372,9 @@ class LocalWorkerGroup(WorkerGroupInterface):
     Args:
         Same as RemoteWorkerGroup.
     """
-    def __init__(self, max_workers, params, dist_params,
-                 initialization_hook, timeout_s, num_cpus_per_worker,
-                 use_gpu):
+
+    def __init__(self, max_workers, params, dist_params, initialization_hook,
+                 timeout_s, num_cpus_per_worker, use_gpu):
 
         # Invariant: These variables should never change state!
         self._max_workers = max_workers
@@ -386,9 +387,13 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
         self.local_worker = None
         self.remote_worker_group = RemoteWorkerGroup(
-            max_workers=max_workers-1, params=params,
-                                                dist_params=dist_params,
-                                                initialization_hook=initialization_hook, timeout_s=timeout_s, num_cpus_per_worker=num_cpus_per_worker, use_gpu=use_gpu)
+            max_workers=max_workers - 1,
+            params=params,
+            dist_params=dist_params,
+            initialization_hook=initialization_hook,
+            timeout_s=timeout_s,
+            num_cpus_per_worker=num_cpus_per_worker,
+            use_gpu=use_gpu)
 
     def start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
@@ -408,7 +413,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
                     **self._params,
                     **self._dist_params
                 })
-            self.remote_worker_group._init_workers(num_workers - 1)
+            self.remote_worker_group._init_dist_workers(num_workers - 1)
             if self._initialization_hook:
                 self.apply_all_workers(self._initialization_hook)
 
@@ -418,11 +423,11 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
             remote_pgs = self.remote_worker_group._setup_process_group(
                 address=address, world_size=num_workers)
-            self.local_worker.setup_process_group(address=address,
-                                                  world_rank=num_workers - 1,
-                                                  world_size=num_workers,
-                                                  timeout=timedelta(
-                                                      self._timeout_s))
+            self.local_worker.setup_process_group(
+                url=address,
+                world_rank=num_workers - 1,
+                world_size=num_workers,
+                timeout=timedelta(self._timeout_s))
             ray.get(remote_pgs)
 
             remote_operators = self.remote_worker_group._setup_operator()
@@ -467,7 +472,14 @@ class LocalWorkerGroup(WorkerGroupInterface):
         self.remote_worker_group.reset()
 
         self.local_worker = None
-        self.remote_worker_group = DeactivatedWorkerGroup()
+        self.remote_worker_group = RemoteWorkerGroup(
+            max_workers=self._max_workers - 1,
+            params=self._params,
+            dist_params=self._dist_params,
+            initialization_hook=self._initialization_hook,
+            num_cpus_per_worker=self._num_cpus_per_worker,
+            use_gpu=self._use_gpu,
+            timeout_s=self._timeout_s)
 
     def new_workers_size(self):
         return self.remote_worker_group.new_workers_size() + 1
@@ -517,7 +529,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
             self.remote_worker_group.reset()
 
         self.local_worker = None
-        self.remote_worker_group = RemoteWorkerGroup()
+        self.remote_worker_group = DeactivatedWorkerGroup()
 
     @property
     def num_workers(self):

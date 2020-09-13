@@ -39,6 +39,26 @@ def ray_start_4_cpus():
         dist.destroy_process_group()
 
 
+def gen_step_with_fail(num_fails):
+    def train_with_fail(self, num_steps, profile, info, dataset=None):
+        if not hasattr(self, "_num_failures"):
+            self._num_failures = 0
+        remote_worker_stats = []
+        for i, w in enumerate(self.remote_workers):
+            params = dict(num_steps=num_steps, profile=profile, info=info)
+            if dataset:
+                params["iterator"] = dataset.get_shard(i)
+            stats = w.train_epoch.remote(**params)
+            remote_worker_stats.append(stats)
+        if self._num_failures < num_fails:
+            time.sleep(1)
+            ray.kill(self.remote_workers[0])
+            self._num_failures += 1
+        return remote_worker_stats
+
+    return train_with_fail
+
+
 @pytest.mark.parametrize("use_local", [False, True])
 def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
@@ -101,26 +121,6 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
         trainer1.shutdown()
-
-
-def gen_step_with_fail(num_fails):
-    def train_with_fail(self, num_steps, profile, info, dataset=None):
-        if not hasattr(self, "_num_failures"):
-            self._num_failures = 0
-        remote_worker_stats = []
-        for i, w in enumerate(self.remote_workers):
-            params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
-            stats = w.train_epoch.remote(**params)
-            remote_worker_stats.append(stats)
-        if self._num_failures < num_fails:
-            time.sleep(1)
-            ray.kill(self.remote_workers[0])
-            self._num_failures += 1
-        return remote_worker_stats
-
-    return train_with_fail
 
 
 @pytest.mark.parametrize("use_local", [False, True])

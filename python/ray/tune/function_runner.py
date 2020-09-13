@@ -7,9 +7,7 @@ import threading
 import traceback
 import uuid
 
-import ray
 from ray.tune.registry import parameter_registry
-from ray.util.sgd.utils import find_free_port
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -19,6 +17,8 @@ from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
                             detect_reporter)
+
+from ray.util.sgd.torch.utils import setup_address
 
 logger = logging.getLogger(__name__)
 
@@ -510,9 +510,7 @@ def wrap_function(train_func, warn=True):
             return output
 
         def setup_address(self):
-            ip = ray.services.get_node_ip_address()
-            port = find_free_port()
-            return f"tcp://{ip}:{port}"
+            return setup_address()
 
     return ImplicitFunc
 

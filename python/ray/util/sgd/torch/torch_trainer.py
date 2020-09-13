@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import Trainable
+from ray.tune.trainable import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
@@ -316,7 +316,6 @@ class TorchTrainer:
         else:
             self.worker_group = RemoteWorkerGroup(**worker_args)
 
-
         # TODO(amogkam): If not enough resources are available to create
         #  num_workers workers, this command will hang. Instead,
         #  start_workers should take into account available resources when
@@ -339,17 +338,15 @@ class TorchTrainer:
             new_workers = self.worker_group.new_workers_size()
             if new_workers:
                 self._last_resize = time.time()
-                self._start_workers(
-                    int(new_workers))
+                self._start_workers(int(new_workers))
                 self.load_state_dict(state_dict)
                 return
             else:
-                delay = 2 ** i
+                delay = 2**i
                 logger.warning(
                     "No new workers found. Retrying in %d sec." % delay)
                 time.sleep(delay)
         raise RuntimeError("Exceeded max_retries for relaunching workers.")
-
 
     def train(self,
               num_steps=None,
@@ -393,13 +390,15 @@ class TorchTrainer:
                 list of metric dictionaries whose length will be equal to
                 ``num_workers``.
         """
+        import pdb
+        pdb.set_trace()
         assert max_retries >= 0, "`max_retries` must be non-negative."
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
         if self.worker_group.should_scale_up():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_workers()
+            self._resize_worker_group()
         success, worker_stats = self.worker_group.train(
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
@@ -408,7 +407,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_workers()
+            self._resize_worker_group()
             logger.info("Retrying training step with %d workers." %
                         (self.worker_group.get_num_workers()))
             success, worker_stats = self.worker_group.train(

@@ -1,8 +1,17 @@
 import os
 import logging
+
+import ray
 import torch.distributed as dist
+from ray.util.sgd.utils import find_free_port
 
 logger = logging.getLogger(__name__)
+
+
+def setup_address():
+    ip = ray.services.get_node_ip_address()
+    port = find_free_port()
+    return f"tcp://{ip}:{port}"
 
 
 def setup_process_group(url, world_rank, world_size, timeout, backend="gloo"):
