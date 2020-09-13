@@ -55,8 +55,6 @@ public class RayConfig {
   public final List<String> jvmParameters;
 
   private String redisAddress;
-  private String redisIp;
-  private Integer redisPort;
   public final int headRedisPort;
   public final int[] redisShardPorts;
   public final int numberRedisShards;
@@ -248,22 +246,10 @@ public class RayConfig {
     Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
 
     this.redisAddress = redisAddress;
-    String[] ipAndPort = redisAddress.split(":");
-    Preconditions.checkArgument(ipAndPort.length == 2, "Invalid redis address.");
-    this.redisIp = ipAndPort[0];
-    this.redisPort = Integer.parseInt(ipAndPort[1]);
   }
 
   public String getRedisAddress() {
     return redisAddress;
-  }
-
-  public String getRedisIp() {
-    return redisIp;
-  }
-
-  public Integer getRedisPort() {
-    return redisPort;
   }
 
   public void setJobId(JobId jobId) {
