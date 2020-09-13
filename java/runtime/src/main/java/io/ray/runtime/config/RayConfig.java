@@ -48,7 +48,6 @@ public class RayConfig {
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
-  public final Map<String, Double> resources;
   private JobId jobId;
   public String sessionDir;
   public String logDir;
@@ -139,15 +138,6 @@ public class RayConfig {
       nodeIp = config.getString("ray.node-ip");
     } else {
       nodeIp = NetworkUtil.getIpAddress(null);
-    }
-    // Resources.
-    resources = ResourceUtil.getResourcesMapFromString(
-        config.getString("ray.resources"));
-    if (isDriver) {
-      if (!resources.containsKey("CPU")) {
-        int numCpu = Runtime.getRuntime().availableProcessors();
-        resources.put("CPU", numCpu * 1.0);
-      }
     }
     // Job id.
     String jobId = config.getString("ray.job.id");
