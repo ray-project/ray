@@ -3,6 +3,7 @@
 #
 # Important: Make sure to run "source activate pytorch_p36" in your sessions to
 # activate the right conda environment. Otherwise you won't be able to import ray.
+#
 cluster_name: ml
 
 # The minimum number of workers nodes to launch in addition to the head
