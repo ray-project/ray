@@ -7,7 +7,9 @@ import threading
 import traceback
 import uuid
 
+import ray
 from ray.tune.registry import parameter_registry
+from ray.util.sgd.utils import find_free_port
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -506,6 +508,11 @@ def wrap_function(train_func, warn=True):
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        def setup_address(self):
+            ip = ray.services.get_node_ip_address()
+            port = find_free_port()
+            return f"tcp://{ip}:{port}"
 
     return ImplicitFunc
 

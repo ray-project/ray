@@ -166,6 +166,11 @@ class TorchRunner:
         optimizers = self.optimizers
         for optimizer, state_dict in zip(optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
+            if torch.cuda.is_available():
+                for state in optimizer.state.values():
+                    for k, v in state.items():
+                        if torch.is_tensor(v):
+                            state[k] = v.cuda()
         schedulers = self.schedulers
         if schedulers:
             for scheduler, state_dict in zip(schedulers, state["schedulers"]):

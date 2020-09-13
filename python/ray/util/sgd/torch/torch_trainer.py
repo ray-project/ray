@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import logging
 import os
@@ -80,11 +82,17 @@ class TorchTrainer:
             that subclasses the TrainingOperator class. This class
             will be copied onto all remote workers and used to specify
             training components and custom training and validation operations.
+        initialization_hook (function): A function to call on all training
+            workers when they are first initialized. This could be useful to
+            set environment variables for all the worker processes.
         config (dict): Custom configuration value to be passed to
             all operator constructors.
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
-            DistributedDataParallel.
+            DistributedDataParallel. TorchTrainer will scale down the number
+            of workers if enough resources are not available, and will scale
+            back up once they are. The total number of
+            workers will never exceed `num_workers` amount.
         num_cpus_per_worker (int): Sets the cpu requirement for each worker.
         use_gpu (bool): Sets resource allocation for workers to 1 GPU
             if true, and automatically moves both the model and optimizer
@@ -231,6 +239,7 @@ class TorchTrainer:
         self.use_fp16 = use_fp16
         self.use_tqdm = use_tqdm
         self.add_dist_sampler = add_dist_sampler
+        self.use_local = use_local
 
         if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
@@ -239,11 +248,6 @@ class TorchTrainer:
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
-
-        if use_local:
-            self.worker_group = LocalWorkerGroup()
-        else:
-            self.worker_group = RemoteWorkerGroup()
 
         if scheduler_step_freq:
             _validate_scheduler_step_freq(scheduler_step_freq)
@@ -297,14 +301,55 @@ class TorchTrainer:
             add_dist_sampler=self.add_dist_sampler,
             wrap_ddp=self.wrap_ddp)
 
-        self.worker_group.start_workers(
-            num_workers,
-            params,
-            dist_params,
-            initialization_hook=self.initialization_hook,
-            num_cpus_per_worker=self.num_cpus_per_worker,
-            use_gpu=self.use_gpu,
-            timeout_s=self.timeout_s)
+        worker_args = {
+            "max_workers": num_workers,
+            "params": params,
+            "dist_params": dist_params,
+            "initialization_hook": self.initialization_hook,
+            "num_cpus_per_worker": self.num_cpus_per_worker,
+            "use_gpu": self.use_gpu,
+            "timeout_s": self.timeout_s
+        }
+
+        if self.use_local:
+            self.worker_group = LocalWorkerGroup(**worker_args)
+        else:
+            self.worker_group = RemoteWorkerGroup(**worker_args)
+
+
+        # TODO(amogkam): If not enough resources are available to create
+        #  num_workers workers, this command will hang. Instead,
+        #  start_workers should take into account available resources when
+        #  determining how many workers to create.
+        self.worker_group.start_workers(num_workers)
+
+    def _resize_worker_group(self, max_retries=10):
+        """Resizes the number of remote workers based on available resources.
+        Total number of workers will never exceed `num_workers` amount.
+
+        Args:
+            max_retries (int): How many times to attempt to resize workers
+                before failing.
+        """
+        state_dict = self.state_dict(to_cpu=not torch.cuda.is_available())
+        self.worker_group.reset()
+
+        time.sleep(1)
+        for i in range(max_retries):
+            new_workers = self.worker_group.new_workers_size()
+            if new_workers:
+                self._last_resize = time.time()
+                self._start_workers(
+                    int(new_workers))
+                self.load_state_dict(state_dict)
+                return
+            else:
+                delay = 2 ** i
+                logger.warning(
+                    "No new workers found. Retrying in %d sec." % delay)
+                time.sleep(delay)
+        raise RuntimeError("Exceeded max_retries for relaunching workers.")
+
 
     def train(self,
               num_steps=None,
@@ -352,9 +397,9 @@ class TorchTrainer:
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
-        if self.worker_group.should_resize():
+        if self.worker_group.should_scale_up():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self.worker_group.resize_workers()
+            self._resize_workers()
         success, worker_stats = self.worker_group.train(
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
@@ -363,7 +408,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self.worker_group.resize_workers()
+            self._resize_workers()
             logger.info("Retrying training step with %d workers." %
                         (self.worker_group.get_num_workers()))
             success, worker_stats = self.worker_group.train(
@@ -510,7 +555,14 @@ class TorchTrainer:
         raise DeprecationWarning("Use `TorchTrainer.load()` instead.")
 
     def shutdown(self, force=False):
-        """Shuts down workers and releases resources."""
+        """Shuts down workers and releases resources.
+
+        Args:
+            force (bool): If True, forcefully kill all workers. If False,
+                attempt a graceful shutdown first, and then forcefully kill if
+                unsuccessful.
+
+        """
         self.worker_group.shutdown(force=force)
         self.worker_group = DeactivatedWorkerGroup()
 

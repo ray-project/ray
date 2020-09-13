@@ -16,7 +16,7 @@ from ray.tune.function_runner import wrap_function
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import detect_checkpoint_function
-from ray.util.sgd.torch.utils import setup_process_group, setup_address
+from ray.util.sgd.torch.utils import setup_process_group
 from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 
 logger = logging.getLogger(__name__)
@@ -75,13 +75,15 @@ class _TorchTrainable(tune.Trainable):
         remote_trainable = remote_trainable.options(
             **self.get_remote_worker_options())
 
-        address = setup_address()
         self.workers = [
             remote_trainable.remote(
                 config=config,
                 logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
             for rank in range(num_workers)
         ]
+
+        # Address has to be IP of rank 0 worker's node.
+        address = ray.get(self.workers[0].setup_address.remote())
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
