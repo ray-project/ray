@@ -55,9 +55,6 @@ public class RayConfig {
   public final List<String> jvmParameters;
 
   private String redisAddress;
-  public final int headRedisPort;
-  public final int[] redisShardPorts;
-  public final int numberRedisShards;
   public final String redisPassword;
 
   // RPC socket name of object store.
@@ -181,16 +178,6 @@ public class RayConfig {
       this.redisAddress = null;
     }
 
-    if (config.hasPath("ray.redis.head-port")) {
-      headRedisPort = config.getInt("ray.redis.head-port");
-    } else {
-      headRedisPort = NetworkUtil.getUnusedPort();
-    }
-    numberRedisShards = config.getInt("ray.redis.shard-number");
-    redisShardPorts = new int[numberRedisShards];
-    for (int i = 0; i < numberRedisShards; i++) {
-      redisShardPorts[i] = NetworkUtil.getUnusedPort();
-    }
     redisPassword = config.getString("ray.redis.password");
     // Raylet node manager port.
     if (config.hasPath("ray.raylet.node-manager-port")) {
