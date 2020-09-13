@@ -105,4 +105,14 @@ public class LocalModeObjectStore extends ObjectStore {
   @Override
   public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
   }
+
+  @Override
+  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+    return new byte[0];
+  }
+
+  @Override
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
+  }
 }

@@ -6,6 +6,7 @@ import logging
 import multiprocessing
 import os
 import random
+import shutil
 import signal
 import socket
 import subprocess
@@ -13,13 +14,11 @@ import sys
 import time
 
 import colorama
-import colorful as cf
 import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
 import redis
-from ray.autoscaler.cli_logger import cli_logger
 
 resource = None
 if sys.platform != "win32":
@@ -550,12 +549,6 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
-        cli_logger.error(
-            "Unable to connect to Redis at "
-            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
-            redis_ip_address, redis_port, num_retries)
-        cli_logger.abort("Check your firewall and network settings.")
-
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -1168,12 +1161,9 @@ def start_dashboard(require_dashboard,
         dashboard_url = (
             f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
 
-        cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
-                                 dashboard_url)
-        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
-                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
-                            dashboard_url, colorama.Fore.RESET,
-                            colorama.Style.NORMAL)
+        logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
 
         return dashboard_url, process_info
     else:
@@ -1325,15 +1315,8 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     has_java_command = False
-    try:
-        java_proc = subprocess.run(
-            ["java", "-version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        if java_proc.returncode == 0:
-            has_java_command = True
-    except OSError:
-        pass
+    if shutil.which("java") is not None:
+        has_java_command = True
 
     ray_java_installed = False
     try:

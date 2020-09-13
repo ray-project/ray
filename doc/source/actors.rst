@@ -279,7 +279,7 @@ This will kill the actor process and release resources associated/assigned to th
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
-Manual termination via an actor handle 
+Manual termination via an actor handle
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can terminate an actor forcefully.
@@ -469,3 +469,23 @@ Actor Pool
   .. group-tab:: Java
 
     Actor pool hasn't been implemented in Java yet.
+
+Concurrency within an actor
+---------------------------
+
+
+.. tabs::
+  .. group-tab:: Python
+
+    Within a single actor process, it is possible to execute concurrent threads.
+
+    Ray offers two types of concurrency within an actor:
+
+     * :ref:`async execution <async-actors>`
+     * :ref:`threading <threaded-actors>`
+
+    See the above links for more details.
+
+  .. group-tab:: Java
+
+    Actor-level concurrency hasn't been implemented in Java yet.
