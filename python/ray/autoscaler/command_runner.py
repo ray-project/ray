@@ -222,7 +222,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             final_cmd += cmd
             # `kubectl exec` + subprocess w/ list of args has unexpected
             # side-effects.
-            final_cmd = ' '.join(final_cmd)
+            final_cmd = " ".join(final_cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
