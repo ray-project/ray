@@ -66,7 +66,6 @@ public class RayConfig {
 
   // RPC socket name of object store.
   public String objectStoreSocketName;
-  public final Long objectStoreSize;
 
   // RPC socket name of Raylet.
   public String rayletSocketName;
@@ -76,6 +75,8 @@ public class RayConfig {
 
   public List<String> codeSearchPath;
   public final String pythonWorkerCommand;
+
+  public final List<String> headArgs;
 
   private static volatile RayConfig instance = null;
 
@@ -168,8 +169,6 @@ public class RayConfig {
     }
     workerEnv = workerEnvBuilder.build();
     updateSessionDir();
-    // Object store configurations.
-    objectStoreSize = config.getBytes("ray.object-store.size");
 
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
@@ -247,6 +246,8 @@ public class RayConfig {
     } else {
       numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
     }
+
+    headArgs = config.getStringList("ray.head.args");
 
     // Validate config.
     validate();
