@@ -125,7 +125,7 @@ def test_kubernetes_command_runner():
         """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
     ]
 
-    assert process_runner.calls[0] == ' '.join(expected)
+    assert process_runner.calls[0] == " ".join(expected)
 
 
 def test_docker_command_runner():
