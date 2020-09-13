@@ -2,7 +2,6 @@ package io.ray.runtime.config;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
@@ -12,16 +11,12 @@ import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
-import io.ray.runtime.util.ResourceUtil;
 import java.io.File;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -32,13 +27,6 @@ public class RayConfig {
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
-
-  private static final Random RANDOM = new Random();
-
-  private static final DateTimeFormatter DATE_TIME_FORMATTER =
-      DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
-
-  private static final String DEFAULT_TEMP_DIR = "/tmp/ray";
 
   private Config config;
 
@@ -68,25 +56,6 @@ public class RayConfig {
 
   public final List<String> headArgs;
 
-  private static volatile RayConfig instance = null;
-
-  public static RayConfig getInstance() {
-    if (instance == null) {
-      synchronized (RayConfig.class) {
-        if (instance == null) {
-          instance = RayConfig.create();
-        }
-      }
-    }
-    return instance;
-  }
-
-  public static void reset() {
-    synchronized (RayConfig.class) {
-      instance = null;
-    }
-  }
-
   public final int numWorkersPerProcess;
 
   public final List<String> jvmOptionsForJavaWorker;
@@ -95,7 +64,7 @@ public class RayConfig {
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
-          "Redis address must be set in worker mode.");
+        "Redis address must be set in worker mode.");
     }
   }
 
@@ -149,7 +118,7 @@ public class RayConfig {
       }
     }
     workerEnv = workerEnvBuilder.build();
-    updateSessionDir();
+    updateSessionDir(null);
 
     // Object store socket name.
     if (config.hasPath("ray.object-store.socket-name")) {
@@ -176,7 +145,7 @@ public class RayConfig {
       nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     } else {
       Preconditions.checkState(workerMode != WorkerType.WORKER,
-          "Worker started by raylet should accept the node manager port from raylet.");
+        "Worker started by raylet should accept the node manager port from raylet.");
       nodeManagerPort = NetworkUtil.getUnusedPort();
     }
 
@@ -191,7 +160,7 @@ public class RayConfig {
     // Job code search path.
     if (config.hasPath("ray.job.code-search-path")) {
       codeSearchPath = Arrays.asList(
-          config.getString("ray.job.code-search-path").split(":"));
+        config.getString("ray.job.code-search-path").split(":"));
     } else {
       codeSearchPath = Collections.emptyList();
     }
@@ -199,7 +168,7 @@ public class RayConfig {
     boolean enableMultiTenancy = false;
     if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
       enableMultiTenancy =
-          Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
+        Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
     }
 
     if (!enableMultiTenancy) {
@@ -242,11 +211,7 @@ public class RayConfig {
   }
 
   public void setSessionDir(String sessionDir) {
-    this.sessionDir = sessionDir;
-  }
-
-  public String getSessionDir() {
-    return sessionDir;
+    updateSessionDir(sessionDir);
   }
 
   public Config getInternalConfig() {
@@ -270,19 +235,15 @@ public class RayConfig {
     return toRender.root().render(ConfigRenderOptions.concise());
   }
 
-  private void updateSessionDir() {
+  private void updateSessionDir(String sessionDir) {
     // session dir
-    if (workerMode == WorkerType.DRIVER) {
-      final int minBound = 100000;
-      final int maxBound = 999999;
-      final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
-          LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
-      sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
-    } else if (workerMode == WorkerType.WORKER) {
-      sessionDir = removeTrailingSlash(config.getString("ray.session-dir"));
-    } else {
-      throw new RuntimeException("Unknown worker type.");
+    if (config.hasPath("ray.session-dir")) {
+      sessionDir = config.getString("ray.session-dir");
     }
+    if (sessionDir != null) {
+      sessionDir = removeTrailingSlash(sessionDir);
+    }
+    this.sessionDir = sessionDir;
 
     // Log dir.
     String localLogDir = null;

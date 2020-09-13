@@ -46,16 +46,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
    */
   private final ReadWriteLock shutdownLock = new ReentrantReadWriteLock();
 
-
-  static {
-    LOGGER.debug("Loading native libraries.");
-    // Expose ray ABI symbols which may be depended by other shared
-    // libraries such as libstreaming_java.so.
-    // See BUILD.bazel:libcore_worker_library_java.so
-    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-    LOGGER.debug("Native libraries loaded.");
-  }
-
   public RayNativeRuntime(RayConfig rayConfig) {
     super(rayConfig);
   }
@@ -68,6 +58,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
     }
+    // Expose ray ABI symbols which may be depended by other shared
+    // libraries such as libstreaming_java.so.
+    // See BUILD.bazel:libcore_worker_library_java.so
+    Preconditions.checkNotNull(rayConfig.sessionDir);
+    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
     GcsClient tempGcsClient =
         new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
@@ -146,7 +141,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient.destroy();
         gcsClient = null;
       }
-      RayConfig.reset();
       LOGGER.debug("RayNativeRuntime shutdown");
     } finally {
       writeLock.unlock();
