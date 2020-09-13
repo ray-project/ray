@@ -39,8 +39,8 @@ TEST_ARGS=(-Dray.raylet.config.num_workers_per_process_java=10 -Dray.job.num-jav
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
 # TestNG will exit with code 2. And bazel treats it as test failure.
-# bazel test //java:all_tests --action_env=ENABLE_MULTI_LANGUAGE_TESTS=1 --config=ci || cluster_exit_code=$?
-ENABLE_MULTI_LANGUAGE_TESTS=1 run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+# bazel test //java:all_tests --config=ci || cluster_exit_code=$?
+run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?

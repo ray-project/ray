@@ -5,7 +5,8 @@ import io.ray.api.Ray;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class MultiLanguageClusterTest extends BaseMultiLanguageTest {
+@Test(groups = {"cluster"})
+public class MultiLanguageClusterTest extends BaseTest {
 
   public static String echo(String word) {
     return word;
