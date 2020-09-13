@@ -4,43 +4,20 @@ import random
 import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
+from ray.rllib.examples.models.eager_model import EagerModel
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iters", type=int, default=200)
-
-
-class EagerModel(Model):
-    """Example of using embedded eager execution in a custom model.
-
-    This shows how to use tf.py_function() to execute a snippet of TF code
-    in eager mode. Here the `self.forward_eager` method just prints out
-    the intermediate tensor for debug purposes, but you can in general
-    perform any TF eager operation in tf.py_function().
-    """
-
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        self.fcnet = FullyConnectedNetwork(input_dict, self.obs_space,
-                                           self.action_space, num_outputs,
-                                           options)
-        feature_out = tf.py_function(self.forward_eager,
-                                     [self.fcnet.last_layer], tf.float32)
-
-        with tf.control_dependencies([feature_out]):
-            return tf.identity(self.fcnet.outputs), feature_out
-
-    def forward_eager(self, feature_layer):
-        assert tf.executing_eagerly()
-        if random.random() > 0.99:
-            print("Eagerly printing the feature layer mean value",
-                  tf.reduce_mean(feature_layer))
-        return feature_layer
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=float, default=150)
+parser.add_argument("--as-test", action="store_true")
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
@@ -84,13 +61,23 @@ if __name__ == "__main__":
     ray.init()
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
-    tune.run(
-        MyTrainer,
-        stop={"training_iteration": args.iters},
-        config={
-            "env": "CartPole-v0",
-            "num_workers": 0,
-            "model": {
-                "custom_model": "eager_model"
-            },
-        })
+
+    config = {
+        "env": "CartPole-v0",
+        "num_workers": 0,
+        "model": {
+            "custom_model": "eager_model"
+        },
+        "framework": "tfe",
+    }
+    stop = {
+        "timesteps_total": args.stop_timesteps,
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run(MyTrainer, stop=stop, config=config)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+    ray.shutdown()

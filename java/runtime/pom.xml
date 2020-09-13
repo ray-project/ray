@@ -4,21 +4,38 @@
   xmlns="http://maven.apache.org/POM/4.0.0"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
-    <groupId>org.ray</groupId>
+    <groupId>io.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.9.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
   <artifactId>ray-runtime</artifactId>
   <name>ray runtime</name>
   <description>ray runtime implementation</description>
-
   <packaging>jar</packaging>
+  <properties>
+    <output.directory>${basedir}/../../build/java</output.directory>
+  </properties>
+  <profiles>
+    <profile>
+      <id>release</id>
+      <activation>
+        <property>
+          <name>release</name>
+          <value>true</value>
+        </property>
+        <activeByDefault>false</activeByDefault>
+      </activation>
+      <properties>
+        <output.directory>${basedir}</output.directory>
+      </properties>
+    </profile>
+  </profiles>
 
   <dependencies>
     <dependency>
-      <groupId>org.ray</groupId>
+      <groupId>io.ray</groupId>
       <artifactId>ray-api</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -53,6 +70,16 @@
   <version>2.57</version>
 </dependency>
 <dependency>
+  <groupId>javax.xml.bind</groupId>
+  <artifactId>jaxb-api</artifactId>
+  <version>2.3.0</version>
+</dependency>
+<dependency>
+  <groupId>log4j</groupId>
+  <artifactId>log4j</artifactId>
+  <version>1.2.17</version>
+</dependency>
+<dependency>
   <groupId>net.java.dev.jna</groupId>
   <artifactId>jna</artifactId>
   <version>5.5.0</version>
@@ -61,6 +88,11 @@
   <groupId>org.apache.commons</groupId>
   <artifactId>commons-lang3</artifactId>
   <version>3.4</version>
+</dependency>
+<dependency>
+  <groupId>org.msgpack</groupId>
+  <artifactId>msgpack-core</artifactId>
+  <version>0.8.20</version>
 </dependency>
 <dependency>
   <groupId>org.ow2.asm</groupId>
@@ -80,7 +112,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>6.9.10</version>
+  <version>7.1.0</version>
 </dependency>
 <dependency>
   <groupId>redis.clients</groupId>
@@ -124,7 +156,7 @@
         <artifactId>maven-jar-plugin</artifactId>
         <version>2.3.1</version>
         <configuration>
-          <outputDirectory>${basedir}/../../build/java</outputDirectory>
+          <outputDirectory>${output.directory}</outputDirectory>
         </configuration>
       </plugin>
     </plugins>

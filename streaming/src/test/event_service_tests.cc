@@ -1,4 +1,5 @@
 #include <thread>
+
 #include "event_service.h"
 #include "gtest/gtest.h"
 
@@ -10,7 +11,6 @@ bool SendEmptyToChannel(ProducerChannelInfo *info) { return true; }
 /// Mock function for write all messages to channel.
 bool WriteAllToChannel(ProducerChannelInfo *info) { return true; }
 
-bool stop = false;
 TEST(EventServiceTest, Test1) {
   std::shared_ptr<EventService> server = std::make_shared<EventService>();
 
@@ -19,31 +19,29 @@ TEST(EventServiceTest, Test1) {
   server->Register(EventType::UserEvent, WriteAllToChannel);
   server->Register(EventType::FlowEvent, WriteAllToChannel);
 
-  std::thread thread_empty([server, &mock_channel_info] {
+  bool stop = false;
+  std::thread thread_empty([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(20);
-    while (true) {
-      if (stop) break;
-      Event event{&mock_channel_info, EventType::EmptyEvent, true};
+    while (!stop) {
+      Event event(&mock_channel_info, EventType::EmptyEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
   });
 
-  std::thread thread_flow([server, &mock_channel_info] {
+  std::thread thread_flow([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(2);
-    while (true) {
-      if (stop) break;
-      Event event{&mock_channel_info, EventType::FlowEvent, true};
+    while (!stop) {
+      Event event(&mock_channel_info, EventType::FlowEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
   });
 
-  std::thread thread_user([server, &mock_channel_info] {
+  std::thread thread_user([server, &mock_channel_info, &stop] {
     std::chrono::milliseconds MockTimer(2);
-    while (true) {
-      if (stop) break;
-      Event event{&mock_channel_info, EventType::UserEvent, true};
+    while (!stop) {
+      Event event(&mock_channel_info, EventType::UserEvent, true);
       server->Push(event);
       std::this_thread::sleep_for(MockTimer);
     }
@@ -78,9 +76,9 @@ TEST(EventServiceTest, remove_delete_channel_event) {
   mock_channel_info_vec.push_back(mock_channel_info2);
 
   for (auto &id : mock_channel_info_vec) {
-    Event empty_event{&id, EventType::EmptyEvent, true};
-    Event user_event{&id, EventType::UserEvent, true};
-    Event flow_event{&id, EventType::FlowEvent, true};
+    Event empty_event(&id, EventType::EmptyEvent, true);
+    Event user_event(&id, EventType::UserEvent, true);
+    Event flow_event(&id, EventType::FlowEvent, true);
     server->Push(empty_event);
     server->Push(user_event);
     server->Push(flow_event);

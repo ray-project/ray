@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
-#define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
+#pragma once
 
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -28,17 +30,18 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
-#include "plasma/client.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
-#include "ray/object_manager/object_store_notification_manager.h"
+#include "ray/object_manager/ownership_based_object_directory.h"
+#include "ray/object_manager/plasma/store_runner.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -64,6 +67,12 @@ struct ObjectManagerConfig {
   /// Number of threads of rpc service
   /// Send and receive request in these threads
   int rpc_service_threads_number;
+  /// Initial memory allocation for store.
+  int64_t object_store_memory = -1;
+  /// The directory for shared memory files.
+  std::string plasma_directory;
+  /// Enable huge pages.
+  bool huge_pages;
 };
 
 struct LocalObjectInfo {
@@ -74,9 +83,19 @@ struct LocalObjectInfo {
   std::unordered_map<ClientID, int64_t> recent_pushes;
 };
 
+class ObjectStoreRunner {
+ public:
+  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ~ObjectStoreRunner();
+
+ private:
+  std::thread store_thread_;
+};
+
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id) = 0;
+  virtual ray::Status Pull(const ObjectID &object_id,
+                           const rpc::Address &owner_address) = 0;
   virtual void CancelPull(const ObjectID &object_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
@@ -121,11 +140,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
   ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                              const rpc::Address &owner_address,
                               const ClientID &client_id, uint64_t data_size,
                               uint64_t metadata_size, uint64_t chunk_index,
                               std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
@@ -134,13 +155,15 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param client_id Client id of remote object manager which sends this chunk
   /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
   ray::Status ReceiveObjectChunk(const ClientID &client_id, const ObjectID &object_id,
-                                 uint64_t data_size, uint64_t metadata_size,
-                                 uint64_t chunk_index, const std::string &data);
+                                 const rpc::Address &owner_address, uint64_t data_size,
+                                 uint64_t metadata_size, uint64_t chunk_index,
+                                 const std::string &data);
 
   /// Send pull request
   ///
@@ -171,6 +194,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   ~ObjectManager();
 
+  /// Stop the Plasma Store eventloop. Currently it is only used to handle
+  /// signals from Raylet.
+  void Stop();
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///
@@ -200,7 +227,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id) override;
+  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -234,8 +261,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param callback Invoked when either timeout_ms is satisfied OR num_ready_objects
   /// is satisfied.
   /// \return Status of whether the wait successfully initiated.
-  ray::Status Wait(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                   uint64_t num_required_objects, bool wait_local,
+  ray::Status Wait(const std::vector<ObjectID> &object_ids,
+                   const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+                   int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
                    const WaitCallback &callback);
 
   /// Free a list of objects from object store.
@@ -287,6 +315,8 @@ class ObjectManager : public ObjectManagerInterface,
     WaitCallback callback;
     /// Ordered input object_ids.
     std::vector<ObjectID> object_id_order;
+    /// Objects' owners.
+    std::unordered_map<ObjectID, rpc::Address> owner_addresses;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
     /// The objects that have been found. Note that if wait_local is true, then
@@ -299,10 +329,11 @@ class ObjectManager : public ObjectManagerInterface,
   };
 
   /// Creates a wait request and adds it to active_wait_requests_.
-  ray::Status AddWaitRequest(const UniqueID &wait_id,
-                             const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                             uint64_t num_required_objects, bool wait_local,
-                             const WaitCallback &callback);
+  ray::Status AddWaitRequest(
+      const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
+      const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
+      int64_t timeout_ms, uint64_t num_required_objects, bool wait_local,
+      const WaitCallback &callback);
 
   /// Lookup any remaining objects that are not local. This is invoked after
   /// the wait request is created and local objects are identified.
@@ -372,7 +403,11 @@ class ObjectManager : public ObjectManagerInterface,
   ClientID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  ObjectStoreNotificationManager store_notification_;
+  // Object store runner.
+  ObjectStoreRunner object_store_internal_;
+  // Process notifications from Plasma. We make it a shared pointer because
+  // we will decide its type at runtime, and we would pass it to Plasma Store.
+  std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
   ObjectBufferPool buffer_pool_;
 
   /// Weak reference to main service. We ensure this object is destroyed before
@@ -435,8 +470,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// Client id - object manager gRPC client.
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
+
+  /// Running sum of the amount of memory used in the object store.
+  int64_t used_memory_ = 0;
 };
 
 }  // namespace ray
-
-#endif  // RAY_OBJECT_MANAGER_OBJECT_MANAGER_H

@@ -3,6 +3,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -30,12 +31,11 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_cloud": "echo {source} {target}"
-                }).trials
+                stop={
+                    "training_iteration": 1
+                },
+                sync_config=tune.SyncConfig(
+                    **{"sync_to_cloud": "echo {source} {target}"})).trials
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -44,26 +44,26 @@ class TestSyncFunctionality(unittest.TestCase):
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
+                stop={
+                    "training_iteration": 1
+                },
+                sync_config=tune.SyncConfig(**{
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {target}"
-                }).trials
+                })).trials
 
         with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
+                stop={
+                    "training_iteration": 1
+                },
+                sync_config=tune.SyncConfig(**{
                     "upload_dir": "test",
                     "sync_to_cloud": "ls {source}"
-                }).trials
+                })).trials
 
         tmpdir = tempfile.mkdtemp()
         logfile = os.path.join(tmpdir, "test.log")
@@ -72,13 +72,14 @@ class TestSyncFunctionality(unittest.TestCase):
             "__fake",
             name="foo",
             max_failures=0,
-            **{
-                "stop": {
-                    "training_iteration": 1
-                },
-                "upload_dir": "test",
-                "sync_to_cloud": "echo {source} {target} > " + logfile
-            }).trials
+            stop={
+                "training_iteration": 1
+            },
+            sync_config=tune.SyncConfig(
+                **{
+                    "upload_dir": "test",
+                    "sync_to_cloud": "echo {source} {target} > " + logfile
+                })).trials
         with open(logfile) as f:
             lines = f.read()
             self.assertTrue("test" in lines)
@@ -88,42 +89,41 @@ class TestSyncFunctionality(unittest.TestCase):
         """Tests that invalid commands throw.."""
         with self.assertRaises(TuneError):
             # This raises TuneError because logger is init in safe zone.
+            sync_config = tune.SyncConfig(sync_to_driver="ls {target}")
             [trial] = tune.run(
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": "ls {target}"
-                }).trials
+                stop={
+                    "training_iteration": 1
+                },
+                sync_config=sync_config,
+            ).trials
 
         with self.assertRaises(TuneError):
             # This raises TuneError because logger is init in safe zone.
+            sync_config = tune.SyncConfig(sync_to_driver="ls {source}")
             [trial] = tune.run(
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": "ls {source}"
+                sync_config=sync_config,
+                stop={
+                    "training_iteration": 1
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
             with patch("ray.services.get_node_ip_address") as mock_sync:
+                sync_config = tune.SyncConfig(
+                    sync_to_driver="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
                 [trial] = tune.run(
                     "__fake",
                     name="foo",
                     max_failures=0,
-                    **{
-                        "stop": {
-                            "training_iteration": 1
-                        },
-                        "sync_to_driver": "echo {source} {target}"
+                    sync_config=sync_config,
+                    stop={
+                        "training_iteration": 1
                     }).trials
                 self.assertGreater(mock_fn.call_count, 0)
 
@@ -136,6 +136,8 @@ class TestSyncFunctionality(unittest.TestCase):
             for filename in glob.glob(os.path.join(local, "*.json")):
                 shutil.copy(filename, remote)
 
+        sync_config = tune.SyncConfig(
+            upload_dir=tmpdir2, sync_to_cloud=sync_func)
         [trial] = tune.run(
             "__fake",
             name="foo",
@@ -144,12 +146,46 @@ class TestSyncFunctionality(unittest.TestCase):
             stop={
                 "training_iteration": 1
             },
-            upload_dir=tmpdir2,
-            sync_to_cloud=sync_func).trials
+            sync_config=sync_config).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
         shutil.rmtree(tmpdir2)
+
+    @patch("ray.tune.sync_client.S3_PREFIX", "test")
+    def testCloudSyncPeriod(self):
+        """Tests that changing CLOUD_SYNC_PERIOD affects syncing frequency."""
+        tmpdir = tempfile.mkdtemp()
+
+        def trainable(config):
+            for i in range(10):
+                time.sleep(1)
+                tune.report(score=i)
+
+        mock = unittest.mock.Mock()
+
+        def counter(local, remote):
+            mock()
+
+        sync_config = tune.SyncConfig(
+            upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
+        # This was originally set to 0.5
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        self.addCleanup(
+            lambda: os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S", None))
+        [trial] = tune.run(
+            trainable,
+            name="foo",
+            max_failures=0,
+            local_dir=tmpdir,
+            stop={
+                "training_iteration": 10
+            },
+            sync_config=sync_config,
+        ).trials
+
+        self.assertEqual(mock.call_count, 12)
+        shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
@@ -159,6 +195,9 @@ class TestSyncFunctionality(unittest.TestCase):
                 print("writing to", f.name)
                 f.write(source)
 
+        sync_config = tune.SyncConfig(
+            sync_to_driver=sync_func_driver, node_sync_period=5)
+
         [trial] = tune.run(
             "__fake",
             name="foo",
@@ -166,12 +205,13 @@ class TestSyncFunctionality(unittest.TestCase):
             stop={
                 "training_iteration": 1
             },
-            sync_to_driver=sync_func_driver).trials
+            sync_config=sync_config).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
         with patch("ray.services.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
+            sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -179,7 +219,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 stop={
                     "training_iteration": 1
                 },
-                sync_to_driver=sync_func_driver).trials
+                sync_config=sync_config).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -190,17 +230,17 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
+        sync_config = tune.SyncConfig(sync_to_driver=sync_func)
+
         with patch.object(CommandBasedClient, "_execute") as mock_sync:
             [trial] = tune.run(
                 "__fake",
                 name="foo",
                 max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": sync_func
-                }).trials
+                stop={
+                    "training_iteration": 1
+                },
+                sync_config=sync_config).trials
             self.assertEqual(mock_sync.call_count, 0)
 
 

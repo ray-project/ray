@@ -145,7 +145,7 @@ instead of
 then each task that got sent to the scheduler (one for every element of
 ``batch_ids``) would have had a copy of ``theta`` serialized inside of it. Since
 ``theta`` here consists of the parameters of a potentially large model, this is
-inefficient. *Large objects should be passed by object ID to remote functions
+inefficient. *Large objects should be passed by object ref to remote functions
 and not by value*.
 
 We use remote actors and remote objects internally in the implementation of

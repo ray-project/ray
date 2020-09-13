@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_PB_UTIL_H
-#define RAY_GCS_PB_UTIL_H
+#pragma once
 
 #include <memory>
+
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -29,18 +29,20 @@ namespace gcs {
 /// \param job_id The ID of job that need to be registered or updated.
 /// \param is_dead Whether the driver of this job is dead.
 /// \param timestamp The UNIX timestamp of corresponding to this event.
-/// \param node_manager_address Address of the node this job was started on.
+/// \param driver_ip_address IP address of the driver that started this job.
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id, bool is_dead, int64_t timestamp,
-    const std::string &node_manager_address, int64_t driver_pid) {
+    const std::string &driver_ip_address, int64_t driver_pid,
+    const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   job_info_ptr->set_timestamp(timestamp);
-  job_info_ptr->set_node_manager_address(node_manager_address);
+  job_info_ptr->set_driver_ip_address(driver_ip_address);
   job_info_ptr->set_driver_pid(driver_pid);
+  *job_info_ptr->mutable_config() = job_config;
   return job_info_ptr;
 }
 
@@ -59,7 +61,7 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
 /// Helper function to produce actor table data.
 inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
     const TaskSpecification &task_spec, const ray::rpc::Address &address,
-    ray::rpc::ActorTableData::ActorState state, uint64_t remaining_reconstructions) {
+    ray::rpc::ActorTableData::ActorState state, uint64_t num_restarts) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_info_ptr = std::make_shared<ray::rpc::ActorTableData>();
@@ -70,10 +72,10 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_actor_creation_dummy_object_id(
       task_spec.ActorDummyObject().Binary());
   actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
+  actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_remaining_reconstructions(remaining_reconstructions);
+  actor_info_ptr->set_num_restarts(num_restarts);
   actor_info_ptr->mutable_address()->CopyFrom(address);
   actor_info_ptr->mutable_owner_address()->CopyFrom(
       task_spec.GetMessage().caller_address());
@@ -82,20 +84,35 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 }
 
 /// Helper function to produce worker failure data.
-inline std::shared_ptr<ray::rpc::WorkerFailureData> CreateWorkerFailureData(
+inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const ClientID &raylet_id, const WorkerID &worker_id, const std::string &address,
-    int32_t port, int64_t timestamp = std::time(nullptr)) {
-  auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerFailureData>();
+    int32_t port, int64_t timestamp = std::time(nullptr),
+    bool intentional_disconnect = false) {
+  auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
   worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
+  worker_failure_info_ptr->set_intentional_disconnect(intentional_disconnect);
   return worker_failure_info_ptr;
+}
+
+/// Helper function to produce object location change.
+///
+/// \param node_id The node ID that this object appeared on or was evicted by.
+/// \param is_add Whether the object is appeared on the node.
+/// \return The object location change created by this method.
+inline std::shared_ptr<ray::rpc::ObjectLocationChange> CreateObjectLocationChange(
+    const ClientID &node_id, bool is_add) {
+  ray::rpc::ObjectTableData object_table_data;
+  object_table_data.set_manager(node_id.Binary());
+  auto object_location_change = std::make_shared<ray::rpc::ObjectLocationChange>();
+  object_location_change->set_is_add(is_add);
+  object_location_change->mutable_data()->CopyFrom(object_table_data);
+  return object_location_change;
 }
 
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_PB_UTIL_H

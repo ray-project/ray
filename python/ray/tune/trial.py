@@ -1,11 +1,14 @@
+from typing import Sequence
+
 import ray.cloudpickle as cloudpickle
+from collections import deque
 import copy
 from datetime import datetime
 import logging
+import platform
 import shutil
 import uuid
 import time
-import tempfile
 import os
 from numbers import Number
 from ray.tune import TuneError
@@ -41,7 +44,7 @@ class Location:
     def __str__(self):
         if not self.pid:
             return ""
-        elif self.hostname == os.uname()[1]:
+        elif self.hostname == platform.node():
             return "pid={}".format(self.pid)
         else:
             return "{}:{}".format(self.hostname, self.pid)
@@ -108,7 +111,7 @@ class TrialInfo:
     """Serializable struct for holding information for a Trial.
 
     Attributes:
-        trial_name (str): String name of the currernt trial.
+        trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
     """
 
@@ -123,6 +126,19 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+
+def create_logdir(dirname, local_dir):
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
 
 
 class Trial:
@@ -172,7 +188,9 @@ class Trial:
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
+                 trial_dirname_creator=None,
                  loggers=None,
+                 log_to_file=None,
                  sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
@@ -191,8 +209,7 @@ class Trial:
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls and hasattr(trainable_cls,
-                                     "default_resource_request"):
+        if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
             if default_resources:
@@ -207,6 +224,13 @@ class Trial:
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
+
+        self.log_to_file = log_to_file
+        # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
+        if not self.log_to_file or not isinstance(self.log_to_file, Sequence) \
+           or not len(self.log_to_file) == 2:
+            self.log_to_file = (None, None)
+
         self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
@@ -215,8 +239,13 @@ class Trial:
         self.last_result = {}
         self.last_update_time = -float("inf")
 
-        # stores in memory max/min/last result for each metric by trial
+        # stores in memory max/min/avg/last-n-avg/last result for each
+        # metric by trial
         self.metric_analysis = {}
+
+        # keep a moving average over these last n steps
+        self.n_steps = [5, 10]
+        self.metric_n_steps = {}
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -227,7 +256,9 @@ class Trial:
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
+        self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
+        self.custom_dirname = None
 
         # Checkpointing fields
         self.saving_to = None
@@ -237,6 +268,8 @@ class Trial:
             self.remote_checkpoint_dir_prefix = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+        self.keep_checkpoints_num = keep_checkpoints_num
+        self.checkpoint_score_attr = checkpoint_score_attr
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
@@ -263,6 +296,12 @@ class Trial:
         ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
+
+        if trial_dirname_creator:
+            self.custom_dirname = trial_dirname_creator(self)
+            if os.path.sep in self.custom_dirname:
+                raise ValueError(f"Trial dirname must not contain '/'. "
+                                 "Got {self.custom_dirname}")
 
     @property
     def node_ip(self):
@@ -295,21 +334,37 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
-    @classmethod
-    def create_logdir(cls, identifier, local_dir):
-        local_dir = os.path.expanduser(local_dir)
-        os.makedirs(local_dir, exist_ok=True)
-        return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
-            dir=local_dir)
+    def reset(self):
+        return Trial(
+            self.trainable_name,
+            config=self.config,
+            trial_id=None,
+            local_dir=self.local_dir,
+            evaluated_params=self.evaluated_params,
+            experiment_tag=self.experiment_tag,
+            resources=self.resources,
+            stopping_criterion=self.stopping_criterion,
+            remote_checkpoint_dir=self.remote_checkpoint_dir,
+            checkpoint_freq=self.checkpoint_freq,
+            checkpoint_at_end=self.checkpoint_at_end,
+            sync_on_checkpoint=self.sync_on_checkpoint,
+            keep_checkpoints_num=self.keep_checkpoints_num,
+            checkpoint_score_attr=self.checkpoint_score_attr,
+            export_formats=self.export_formats,
+            restore_path=self.restore_path,
+            trial_name_creator=self.trial_name_creator,
+            loggers=self.loggers,
+            log_to_file=self.log_to_file,
+            sync_to_driver_fn=self.sync_to_driver_fn,
+            max_failures=self.max_failures,
+        )
 
     def init_logger(self):
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(
-                    self._trainable_name() + "_" + self.experiment_tag,
-                    self.local_dir)
+                self.logdir = create_logdir(self._generate_dirname(),
+                                            self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -471,20 +526,40 @@ class Trial:
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
                         "max": value,
                         "min": value,
+                        "avg": value,
                         "last": value
                     }
+                    self.metric_n_steps[metric] = {}
+                    for n in self.n_steps:
+                        key = "last-{:d}-avg".format(n)
+                        self.metric_analysis[metric][key] = value
+                        # Store n as string for correct restore.
+                        self.metric_n_steps[metric][str(n)] = deque(
+                            [value], maxlen=n)
                 else:
+                    step = result["training_iteration"] or 1
                     self.metric_analysis[metric]["max"] = max(
                         value, self.metric_analysis[metric]["max"])
                     self.metric_analysis[metric]["min"] = min(
                         value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["avg"] = 1 / step * (
+                        value +
+                        (step - 1) * self.metric_analysis[metric]["avg"])
                     self.metric_analysis[metric]["last"] = value
+
+                    for n in self.n_steps:
+                        key = "last-{:d}-avg".format(n)
+                        self.metric_n_steps[metric][str(n)].append(value)
+                        self.metric_analysis[metric][key] = sum(
+                            self.metric_n_steps[metric][str(n)]) / len(
+                                self.metric_n_steps[metric][str(n)])
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
@@ -528,6 +603,15 @@ class Trial:
             identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
+    def _generate_dirname(self):
+        if self.custom_dirname:
+            generated_dirname = self.custom_dirname
+        else:
+            generated_dirname = f"{str(self)}_{self.experiment_tag}"
+            generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
+            generated_dirname += f"_{date_str()}"
+        return generated_dirname.replace("/", "_")
+
     def __getstate__(self):
         """Memento generator for Trial.
 
@@ -543,6 +627,7 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state["runner"] = None
+        state["location"] = Location()
         state["result_logger"] = None
         # Avoid waiting for events that will never occur on resume.
         state["resuming_from"] = None

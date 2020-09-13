@@ -5,18 +5,18 @@ It supports both traced and non-traced eager execution modes."""
 import functools
 import logging
 import numpy as np
+from gym.spaces import Tuple, Dict
 
 from ray.util.debug import log_once
-from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
-    ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -34,10 +34,13 @@ def _convert_to_tf(x):
 
 
 def _convert_to_numpy(x):
-    if x is None:
-        return None
+    def _map(x):
+        if isinstance(x, tf.Tensor):
+            return x.numpy()
+        return x
+
     try:
-        return tf.nest.map_structure(lambda component: component.numpy(), x)
+        return tf.nest.map_structure(_map, x)
     except AttributeError:
         raise TypeError(
             ("Object of type {} has no method to convert to numpy.").format(
@@ -108,7 +111,7 @@ def traced_eager_policy(eager_policy_cls):
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -171,12 +174,13 @@ def build_eager_tf_policy(name,
                           grad_stats_fn=None,
                           extra_learn_fetches_fn=None,
                           extra_action_fetches_fn=None,
+                          validate_spaces=None,
                           before_init=None,
                           before_loss_init=None,
                           after_init=None,
                           make_model=None,
                           action_sampler_fn=None,
-                          log_likelihood_fn=None,
+                          action_distribution_fn=None,
                           mixins=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
@@ -186,7 +190,7 @@ def build_eager_tf_policy(name,
     much simpler, but has lower performance.
 
     You shouldn't need to call this directly. Rather, prefer to build a TF
-    graph policy and use set {"eager": true} in the trainer config to have
+    graph policy and use set {"framework": "tfe"} in the trainer config to have
     it automatically be converted to an eager policy.
 
     This has the same signature as build_tf_policy()."""
@@ -196,7 +200,7 @@ def build_eager_tf_policy(name,
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
-            self.framework = "tf"
+            self.framework = "tfe"
             Policy.__init__(self, observation_space, action_space, config)
             self._is_training = False
             self._loss_initialized = False
@@ -205,16 +209,19 @@ def build_eager_tf_policy(name,
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
+            if validate_spaces:
+                validate_spaces(self, observation_space, action_space, config)
+
             if before_init:
                 before_init(self, observation_space, action_space, config)
 
             self.config = config
             self.dist_class = None
-
-            if action_sampler_fn:
+            if action_sampler_fn or action_distribution_fn:
                 if not make_model:
-                    raise ValueError("`make_model` is required if "
-                                     "`action_sampler_fn` is given")
+                    raise ValueError(
+                        "`make_model` is required if `action_sampler_fn` OR "
+                        "`action_distribution_fn` is given")
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
@@ -228,22 +235,27 @@ def build_eager_tf_policy(name,
                     action_space,
                     logit_dim,
                     config["model"],
-                    framework="tf",
+                    framework=self.framework,
                 )
-
+            self.exploration = self._create_exploration()
             self._state_in = [
-                tf.convert_to_tensor(np.array([s]))
+                tf.convert_to_tensor([s])
                 for s in self.model.get_initial_state()
             ]
-
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(
                     np.array([observation_space.sample()])),
                 SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(action_space.sample())]),
+                    [flatten_to_single_ndarray(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }
-            self.model(input_dict, self._state_in, tf.convert_to_tensor([1]))
+
+            if action_distribution_fn:
+                dist_inputs, self.dist_class, _ = action_distribution_fn(
+                    self, self.model, input_dict[SampleBatch.CUR_OBS])
+            else:
+                self.model(input_dict, self._state_in,
+                           tf.convert_to_tensor([1]))
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -254,22 +266,23 @@ def build_eager_tf_policy(name,
             if optimizer_fn:
                 self._optimizer = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.train.AdamOptimizer(config["lr"])
+                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
         @override(Policy)
         def postprocess_trajectory(self,
-                                   samples,
+                                   sample_batch,
                                    other_agent_batches=None,
                                    episode=None):
             assert tf.executing_eagerly()
+            # Call super's postprocess_trajectory first.
+            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
-                return postprocess_fn(self, samples, other_agent_batches,
+                return postprocess_fn(self, sample_batch, other_agent_batches,
                                       episode)
-            else:
-                return samples
+            return sample_batch
 
         @override(Policy)
         @convert_eager_inputs
@@ -294,7 +307,7 @@ def build_eager_tf_policy(name,
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -305,68 +318,85 @@ def build_eager_tf_policy(name,
 
             explore = explore if explore is not None else \
                 self.config["explore"]
+            timestep = timestep if timestep is not None else \
+                self.global_timestep
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
             self._state_in = state_batches
 
-            if tf.executing_eagerly():
-                n = len(obs_batch)
-            else:
-                n = obs_batch.shape[0]
-            seq_lens = tf.ones(n, dtype=tf.int32)
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
 
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
+            n = input_dict[SampleBatch.CUR_OBS].shape[0]
+            seq_lens = tf.ones(n, dtype=tf.int32)
             if obs_include_prev_action_reward:
-                input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
+                if prev_action_batch is not None:
+                    input_dict[SampleBatch.PREV_ACTIONS] = \
+                        tf.convert_to_tensor(prev_action_batch)
+                if prev_reward_batch is not None:
+                    input_dict[SampleBatch.PREV_REWARDS] = \
+                        tf.convert_to_tensor(prev_reward_batch)
 
-            # Custom sampler fn given (which may handle self.exploration).
-            if action_sampler_fn is not None:
-                state_out = []
-                action, logp = action_sampler_fn(
-                    self,
-                    self.model,
-                    input_dict,
-                    self.observation_space,
-                    self.action_space,
-                    explore,
-                    self.config,
-                    timestep=timestep
-                    if timestep is not None else self.global_timestep)
             # Use Exploration object.
-            else:
-                with tf.variable_creator_scope(_disallow_var_creation):
-                    model_out, state_out = self.model(input_dict,
-                                                      state_batches, seq_lens)
-                    action, logp = self.exploration.get_exploration_action(
-                        model_out,
-                        self.dist_class,
+            with tf.variable_creator_scope(_disallow_var_creation):
+                if action_sampler_fn:
+                    dist_inputs = None
+                    state_out = []
+                    actions, logp = self.action_sampler_fn(
+                        self,
                         self.model,
-                        timestep=timestep
-                        if timestep is not None else self.global_timestep,
+                        input_dict[SampleBatch.CUR_OBS],
+                        explore=explore,
+                        timestep=timestep,
+                        episodes=episodes)
+                else:
+                    # Exploration hook before each forward pass.
+                    self.exploration.before_compute_actions(
+                        timestep=timestep, explore=explore)
+
+                    if action_distribution_fn:
+                        dist_inputs, dist_class, state_out = \
+                            action_distribution_fn(
+                                self, self.model,
+                                input_dict[SampleBatch.CUR_OBS],
+                                explore=explore,
+                                timestep=timestep,
+                                is_training=False)
+                    else:
+                        dist_class = self.dist_class
+                        dist_inputs, state_out = self.model(
+                            input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
+
+                    # Get the exploration action from the forward results.
+                    actions, logp = self.exploration.get_exploration_action(
+                        action_distribution=action_dist,
+                        timestep=timestep,
                         explore=explore)
 
+            # Add default and custom fetches.
             extra_fetches = {}
+            # Action-logp and action-prob.
             if logp is not None:
-                extra_fetches.update({
-                    ACTION_PROB: tf.exp(logp),
-                    ACTION_LOGP: logp,
-                })
+                extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
+                extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            # Action-dist inputs.
+            if dist_inputs is not None:
+                extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
+            # Custom extra fetches.
             if extra_action_fetches_fn:
                 extra_fetches.update(extra_action_fetches_fn(self))
 
             # Increase our global sampling timestep counter by 1.
             self.global_timestep += 1
 
-            return action, state_out, extra_fetches
+            return actions, state_out, extra_fetches
 
         @override(Policy)
         def compute_log_likelihoods(self,
@@ -375,6 +405,10 @@ def build_eager_tf_policy(name,
                                     state_batches=None,
                                     prev_action_batch=None,
                                     prev_reward_batch=None):
+            if action_sampler_fn and action_distribution_fn is None:
+                raise ValueError("Cannot compute log-prob/likelihood w/o an "
+                                 "`action_distribution_fn` and a provided "
+                                 "`action_sampler_fn`!")
 
             seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
             input_dict = {
@@ -389,17 +423,27 @@ def build_eager_tf_policy(name,
                         prev_reward_batch),
                 })
 
-            # Custom log_likelihood function given.
-            if log_likelihood_fn:
-                log_likelihoods = log_likelihood_fn(
-                    self, self.model, actions, input_dict,
-                    self.observation_space, self.action_space, self.config)
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
+
+            # Action dist class and inputs are generated via custom function.
+            if action_distribution_fn:
+                dist_inputs, dist_class, _ = action_distribution_fn(
+                    self,
+                    self.model,
+                    input_dict[SampleBatch.CUR_OBS],
+                    explore=False,
+                    is_training=False)
+                action_dist = dist_class(dist_inputs, self.model)
+                log_likelihoods = action_dist.logp(actions)
             # Default log-likelihood calculation.
             else:
                 dist_inputs, _ = self.model(input_dict, state_batches,
                                             seq_lens)
-                action_dist = self.dist_class(dist_inputs, self.model)
-                log_likelihoods = action_dist.logp(actions)
+                dist_class = self.dist_class
+
+            action_dist = dist_class(dist_inputs, self.model)
+            log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
@@ -414,8 +458,10 @@ def build_eager_tf_policy(name,
             return _convert_to_numpy(self.exploration.get_info())
 
         @override(Policy)
-        def get_weights(self):
+        def get_weights(self, as_dict=False):
             variables = self.variables()
+            if as_dict:
+                return {v.name: v.numpy() for v in variables}
             return [v.numpy() for v in variables]
 
         @override(Policy)
@@ -425,6 +471,29 @@ def build_eager_tf_policy(name,
                                                     len(variables))
             for v, w in zip(variables, weights):
                 v.assign(w)
+
+        @override(Policy)
+        def get_state(self):
+            state = {"_state": super().get_state()}
+            state["_optimizer_variables"] = self._optimizer.variables()
+            return state
+
+        @override(Policy)
+        def set_state(self, state):
+            state = state.copy()  # shallow copy
+            # Set optimizer vars first.
+            optimizer_vars = state.pop("_optimizer_variables", None)
+            if optimizer_vars and self._optimizer.variables():
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints.")
+                for opt_var, value in zip(self._optimizer.variables(),
+                                          optimizer_vars):
+                    opt_var.assign(value)
+            # Then the Policy's (NN) weights.
+            super().set_state(state["_state"])
 
         def variables(self):
             """Return the list of all savable variables for this policy."""
@@ -529,6 +598,7 @@ def build_eager_tf_policy(name,
                 }
             else:
                 fetches[LEARNER_STATS_KEY] = {}
+
             if extra_learn_fetches_fn:
                 fetches.update(
                     {k: v
@@ -542,18 +612,22 @@ def build_eager_tf_policy(name,
 
         def _initialize_loss_with_dummy_batch(self):
             # Dummy forward pass to initialize any policy attributes, etc.
-            action_dtype, action_shape = ModelCatalog.get_action_shape(
-                self.action_space)
             dummy_batch = {
                 SampleBatch.CUR_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.NEXT_OBS: np.array(
                     [self.observation_space.sample()]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.ACTIONS: tf.nest.map_structure(
-                    lambda c: np.array([c]), self.action_space.sample()),
                 SampleBatch.REWARDS: np.array([0], dtype=np.float32),
             }
+            if isinstance(self.action_space, (Dict, Tuple)):
+                dummy_batch[SampleBatch.ACTIONS] = [
+                    flatten_to_single_ndarray(self.action_space.sample())
+                ]
+            else:
+                dummy_batch[SampleBatch.ACTIONS] = tf.nest.map_structure(
+                    lambda c: np.array([c]), self.action_space.sample())
+
             if obs_include_prev_action_reward:
                 dummy_batch.update({
                     SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
@@ -567,7 +641,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
 
             # Convert everything to tensors.
-            dummy_batch = tf.nest.map_structure(tf.convert_to_tensor,
+            dummy_batch = tf.nest.map_structure(tf1.convert_to_tensor,
                                                 dummy_batch)
 
             # for IMPALA which expects a certain sample batch size.
@@ -579,13 +653,20 @@ def build_eager_tf_policy(name,
                 dummy_batch = tf.nest.map_structure(
                     lambda c: tile_to(c, get_batch_divisibility_req(self)),
                     dummy_batch)
+            i = 0
+            self._state_in = []
+            while "state_in_{}".format(i) in dummy_batch:
+                self._state_in.append(dummy_batch["state_in_{}".format(i)])
+                i += 1
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], self._state_in,
+                dummy_batch[SampleBatch.CUR_OBS],
+                self._state_in,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
-                dummy_batch.get(SampleBatch.PREV_REWARDS))
+                dummy_batch.get(SampleBatch.PREV_REWARDS),
+                explore=False)
             dummy_batch.update(fetches)
 
             postprocessed_batch = self.postprocess_trajectory(

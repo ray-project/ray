@@ -44,12 +44,25 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
   return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
+FunctionDescriptor FunctionDescriptorBuilder::BuildCpp(
+    const std::string &lib_name, const std::string &function_offset,
+    const std::string &exec_function_offset) {
+  rpc::FunctionDescriptor descriptor;
+  auto typed_descriptor = descriptor.mutable_cpp_function_descriptor();
+  typed_descriptor->set_lib_name(lib_name);
+  typed_descriptor->set_function_offset(function_offset);
+  typed_descriptor->set_exec_function_offset(exec_function_offset);
+  return ray::FunctionDescriptor(new CppFunctionDescriptor(std::move(descriptor)));
+}
+
 FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor message) {
   switch (message.function_descriptor_case()) {
   case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
     return ray::FunctionDescriptor(new ray::JavaFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kPythonFunctionDescriptor:
     return ray::FunctionDescriptor(new ray::PythonFunctionDescriptor(std::move(message)));
+  case ray::FunctionDescriptorType::kCppFunctionDescriptor:
+    return ray::FunctionDescriptor(new ray::CppFunctionDescriptor(std::move(message)));
   default:
     break;
   }
@@ -74,6 +87,13 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
         function_descriptor_list[1],  // class name
         function_descriptor_list[2],  // function name
         function_descriptor_list[3]   // function hash
+    );
+  } else if (language == rpc::Language::CPP) {
+    RAY_CHECK(function_descriptor_list.size() == 3);
+    return FunctionDescriptorBuilder::BuildCpp(
+        function_descriptor_list[0],  // lib name
+        function_descriptor_list[1],  // function offset
+        function_descriptor_list[2]   // exec function offset
     );
   } else {
     RAY_LOG(FATAL) << "Unspported language " << language;

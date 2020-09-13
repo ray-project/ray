@@ -1,9 +1,11 @@
+import numpy as np
+
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -21,6 +23,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
     def __init__(self,
                  action_space,
                  *,
+                 framework: str,
                  ou_theta=0.15,
                  ou_sigma=0.2,
                  ou_base_scale=0.1,
@@ -29,7 +32,6 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                  final_scale=0.02,
                  scale_timesteps=10000,
                  scale_schedule=None,
-                 framework="tf",
                  **kwargs):
         """Initializes an Ornstein-Uhlenbeck Exploration object.
 
@@ -58,13 +60,13 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         """
         super().__init__(
             action_space,
+            framework=framework,
             random_timesteps=random_timesteps,
             initial_scale=initial_scale,
             final_scale=final_scale,
             scale_timesteps=scale_timesteps,
             scale_schedule=scale_schedule,
             stddev=1.0,  # Force `self.stddev` to 1.0.
-            framework=framework,
             **kwargs)
         self.ou_theta = ou_theta
         self.ou_sigma = ou_sigma
@@ -73,9 +75,11 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         # The current OU-state value (gets updated each time, an eploration
         # action is computed).
         self.ou_state = get_variable(
-            self.action_space.low.size * [.0],
+            np.array(self.action_space.low.size * [.0], dtype=np.float32),
             framework=self.framework,
-            tf_name="ou_state")
+            tf_name="ou_state",
+            torch_tensor=True,
+            device=self.device)
 
     @override(GaussianNoise)
     def _get_tf_exploration_action_op(self, action_dist, explore, timestep):
@@ -87,13 +91,19 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
 
         # Apply base-scaled and time-annealed scaled OU-noise to
         # deterministic actions.
-        gaussian_sample = tf.random_normal(
+        gaussian_sample = tf.random.normal(
             shape=[self.action_space.low.size], stddev=self.stddev)
         ou_new = self.ou_theta * -self.ou_state + \
             self.ou_sigma * gaussian_sample
-        ou_state_new = tf.assign_add(self.ou_state, ou_new)
-        noise = scale * self.ou_base_scale * ou_state_new * \
-            (self.action_space.high - self.action_space.low)
+        if self.framework in ["tf2", "tfe"]:
+            self.ou_state.assign_add(ou_new)
+            ou_state_new = self.ou_state
+        else:
+            ou_state_new = tf1.assign_add(self.ou_state, ou_new)
+        high_m_low = self.action_space.high - self.action_space.low
+        high_m_low = tf.where(
+            tf.math.is_inf(high_m_low), tf.ones_like(high_m_low), high_m_low)
+        noise = scale * self.ou_base_scale * ou_state_new * high_m_low
         stochastic_actions = tf.clip_by_value(
             deterministic_actions + noise,
             self.action_space.low * tf.ones_like(deterministic_actions),
@@ -104,7 +114,7 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             self.random_exploration.get_tf_exploration_action_op(
                 action_dist, explore)
         exploration_actions = tf.cond(
-            pred=ts <= self.random_timesteps,
+            pred=tf.convert_to_tensor(ts <= self.random_timesteps),
             true_fn=lambda: random_actions,
             false_fn=lambda: stochastic_actions)
 
@@ -119,11 +129,18 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
-        assign_op = \
-            tf.assign_add(self.last_timestep, 1) if timestep is None else \
-            tf.assign(self.last_timestep, timestep)
-        with tf.control_dependencies([assign_op, ou_state_new]):
+        if self.framework in ["tf2", "tfe"]:
+            if timestep is None:
+                self.last_timestep.assign_add(1)
+            else:
+                self.last_timestep = timestep
             return action, logp
+        else:
+            assign_op = (tf1.assign_add(self.last_timestep, 1)
+                         if timestep is None else tf1.assign(
+                             self.last_timestep, timestep))
+            with tf1.control_dependencies([assign_op, ou_state_new]):
+                return action, logp
 
     @override(GaussianNoise)
     def _get_torch_exploration_action(self, action_dist, explore, timestep):
@@ -135,31 +152,46 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
         if explore:
             # Random exploration phase.
             if self.last_timestep <= self.random_timesteps:
-                action = self.random_exploration.get_torch_exploration_action(
-                    action_dist, True)
+                action, _ = \
+                    self.random_exploration.get_torch_exploration_action(
+                        action_dist, explore=True)
             # Apply base-scaled and time-annealed scaled OU-noise to
             # deterministic actions.
             else:
                 det_actions = action_dist.deterministic_sample()
                 scale = self.scale_schedule(self.last_timestep)
                 gaussian_sample = scale * torch.normal(
-                    mean=0.0, stddev=1.0, size=det_actions.size())
-
+                    mean=torch.zeros(self.ou_state.size()), std=1.0) \
+                    .to(self.device)
                 ou_new = self.ou_theta * -self.ou_state + \
                     self.ou_sigma * gaussian_sample
                 self.ou_state += ou_new
-                noise = scale * self.ou_base_scale * self.ou_state * \
-                    (self.action_space.high - self.action_space.low)
-                action = torch.clamp(
-                    det_actions + noise,
-                    self.action_space.low * torch.ones_like(det_actions),
-                    self.action_space.high * torch.ones_like(det_actions))
+                high_m_low = torch.from_numpy(
+                    self.action_space.high - self.action_space.low). \
+                    to(self.device)
+                high_m_low = torch.where(
+                    torch.isinf(high_m_low),
+                    torch.ones_like(high_m_low).to(self.device), high_m_low)
+                noise = scale * self.ou_base_scale * self.ou_state * high_m_low
+
+                action = torch.min(
+                    torch.max(
+                        det_actions + noise,
+                        torch.tensor(
+                            self.action_space.low,
+                            dtype=torch.float32,
+                            device=self.device)),
+                    torch.tensor(
+                        self.action_space.high,
+                        dtype=torch.float32,
+                        device=self.device))
 
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()
 
         # Logp=always zero.
-        logp = torch.zeros(shape=(action.size()[0], ), dtype=torch.float32)
+        logp = torch.zeros(
+            (action.size()[0], ), dtype=torch.float32, device=self.device)
 
         return action, logp

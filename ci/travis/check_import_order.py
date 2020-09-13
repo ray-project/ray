@@ -9,6 +9,8 @@ some/file/path.py:23 import psutil without explicitly import ray before it.
 """
 
 import argparse
+import glob
+import io
 import re
 import sys
 from pathlib import Path
@@ -23,7 +25,7 @@ def check_import(file):
         "import setproctitle": -1
     }
 
-    with open(file) as f:
+    with io.open(file, "r", encoding="utf-8") as f:
         for i, line in enumerate(f):
             for check in check_to_lines.keys():
                 # This regex will match the following case
@@ -36,7 +38,7 @@ def check_import(file):
                 # - submodule import: `import ray.constants as ray_constants`
                 # - submodule import: `from ray import xyz`
                 if re.search(r"^\s*" + check + r"(\s*|\s+# noqa F401.*)$",
-                             line):
+                             line) and check_to_lines[check] == -1:
                     check_to_lines[check] = i
 
     for import_lib in ["import psutil", "import setproctitle"]:
@@ -63,7 +65,7 @@ if __name__ == "__main__":
 
     file_path = Path(args.path)
     if file_path.is_dir():
-        all_py_files = file_path.rglob("*.py")
+        all_py_files = glob.glob("*.py", recursive=True)
     else:
         all_py_files = [file_path]
 

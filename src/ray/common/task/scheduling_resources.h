@@ -1,11 +1,11 @@
-#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
-#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#pragma once
 
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
@@ -67,6 +67,11 @@ class FractionalResourceQuantity {
 /// GPUs, and custom labels.
 class ResourceSet {
  public:
+  static std::shared_ptr<ResourceSet> Nil() {
+    static auto nil = std::make_shared<ResourceSet>();
+    return nil;
+  }
+
   /// \brief empty ResourceSet constructor.
   ResourceSet();
 
@@ -142,6 +147,33 @@ class ResourceSet {
   /// \param other: The other resource set to add.
   /// \return Void.
   void AddResources(const ResourceSet &other);
+
+  /// \brief Aggregate resources from the other set into this set, adding any missing
+  /// resource labels to this set.
+  ///
+  /// This adds both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
+  /// NOTE: This method should be used AFTER resources are COMMITTED.
+  /// It can have unexpected behavior if you call this method on PREPARED resources.
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  /// \param other: The other resource set to add.
+  /// \return Void.
+  void CommitBundleResources(const PlacementGroupID &group_id, const int bundle_index,
+                             const ResourceSet &other);
+
+  /// \brief Return back all the bundle resource. Changing the resource name and adding
+  /// any missing resource labels to this set.
+  ///
+  /// Note that this method assumes bundle resources are COMMITTED.
+  /// Please make sure to commit bundle resources before calling this method.
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The bundle index to return resources for.
+  /// \return Void.
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Subtract a set of resources from the current set of resources and
   /// check that the post-subtraction result nonnegative. Assumes other
@@ -399,6 +431,31 @@ class ResourceIdSet {
   /// \param capacity capacity of the resource being added
   void AddOrUpdateResource(const std::string &resource_name, int64_t capacity);
 
+  /// \brief Commit a Bundle resource in the ResourceIdSet.
+  ///
+  /// This adds both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  /// \param resource_name the name of the resource to create/update (e.g., "CPU").
+  /// \param resource_ids resource_ids of the resource being added
+  void CommitBundleResourceIds(const PlacementGroupID &group_id, const int bundle_index,
+                               const std::string &resource_name,
+                               ResourceIds &resource_ids);
+
+  /// \brief remove a Bundle resource in the ResourceIdSet.
+  ///
+  /// The bundle resources will be returned to their original resource names.
+  /// Note that the bundle resources should've been COMMITTED before this method is
+  /// called.
+  ///
+  /// \param group_id: The placement group id.
+  /// \param bundle_index: The index of the bundle.
+  /// \param resource_name the name of the resource to remove (e.g., "CPU").
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index,
+                             const std::string &resource_name);
+
   /// \brief Deletes a resource in the ResourceIdSet. This does not raise an exception,
   /// just deletes the resource. Tasks with acquired resources keep running.
   ///
@@ -473,18 +530,27 @@ class SchedulingResources {
   /// \return Void.
   void SetAvailableResources(ResourceSet &&newset);
 
+  /// \brief Request the total resources capacity.
+  ///
+  /// \return Immutable set of resources with currently total capacity.
   const ResourceSet &GetTotalResources() const;
+
+  /// \brief Overwrite total resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces total resource capacity.
+  /// \return Void.
+  void SetTotalResources(ResourceSet &&newset);
+
+  /// \brief Request the resource load information.
+  ///
+  /// \return Immutable set of resources describing the load information.
+  const ResourceSet &GetLoadResources() const;
 
   /// \brief Overwrite information about resource load with new resource load set.
   ///
   /// \param newset: The set of resources that replaces resource load information.
   /// \return Void.
   void SetLoadResources(ResourceSet &&newset);
-
-  /// \brief Request the resource load information.
-  ///
-  /// \return Immutable set of resources describing the load information.
-  const ResourceSet &GetLoadResources() const;
 
   /// \brief Release the amount of resources specified.
   ///
@@ -510,6 +576,42 @@ class SchedulingResources {
   /// \param capacity: New capacity of the resource.
   /// \return Void.
   void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
+
+  /// \brief Update total, available and load resources with the ResourceIds.
+  /// Create if not exists. This will only update resources, but it won't
+  /// create placement group resources. That'll be done when resources are
+  /// COMMITTED. Commit should be done by CommitBundleResources.
+  ///
+  /// We need this step for running 2PC protocol for atomic placement group creation.
+  ///
+  /// \param resource_name: Name of the resource to be modified.
+  /// \param resource_set: New resource_set of the resource.
+  void PrepareBundleResources(const PlacementGroupID &group, const int bundle_index,
+                              const ResourceSet &resource_set);
+
+  /// \brief Commit placement group resources. It means this method'll create
+  /// placement group resources. The original resources should've been updated
+  /// by PrepareBundleResources.
+  ///
+  /// We need this step for running 2PC protocol for atomic placement group creation.
+  ///
+  /// The resources will be transfered from their original resource names.
+  /// This includes both the the indexed and wildcard resources (e.g., both
+  /// CPU_group_i_zzz and CPU_group_zzz).
+  ///
+  /// \param resource_name: Name of the resource to be modified
+  /// \param resource_set: New resource_set of the resource.
+  void CommitBundleResources(const PlacementGroupID &group, const int bundle_index,
+                             const ResourceSet &resource_set);
+
+  /// \brief delete total, available and load resources with the ResourceIds.
+  ///
+  /// The bundle resources will be returned to their original resource names.
+  /// This is the inverse of TransferToBundleResources().
+  ///
+  /// \param group_id: Placement group id to delete resources for.
+  /// \param bundle_index: The bundle index to return resources for.
+  void ReturnBundleResources(const PlacementGroupID &group_id, const int bundle_index);
 
   /// \brief Delete resource from total, available and load resources.
   ///
@@ -541,5 +643,3 @@ struct hash<ray::ResourceSet> {
   }
 };
 }  // namespace std
-
-#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

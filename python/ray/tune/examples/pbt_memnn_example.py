@@ -22,7 +22,7 @@ import tarfile
 import numpy as np
 import re
 
-from ray.tune import Trainable
+from ray import tune
 
 
 def tokenize(sent):
@@ -94,7 +94,7 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
             pad_sequences(queries, maxlen=query_maxlen), np.array(answers))
 
 
-def read_data():
+def read_data(finish_fast=False):
     # Get the file
     try:
         path = get_file(
@@ -125,11 +125,13 @@ def read_data():
     with tarfile.open(path) as tar:
         train_stories = get_stories(tar.extractfile(challenge.format("train")))
         test_stories = get_stories(tar.extractfile(challenge.format("test")))
-
+    if finish_fast:
+        train_stories = train_stories[:64]
+        test_stories = test_stories[:64]
     return train_stories, test_stories
 
 
-class MemNNModel(Trainable):
+class MemNNModel(tune.Trainable):
     def build_model(self):
         """Helper method for creating the model"""
         vocab = set()
@@ -214,9 +216,10 @@ class MemNNModel(Trainable):
         model = Model([input_sequence, question], answer)
         return model
 
-    def _setup(self, config):
+    def setup(self, config):
         with FileLock(os.path.expanduser("~/.tune.lock")):
-            self.train_stories, self.test_stories = read_data()
+            self.train_stories, self.test_stories = read_data(
+                config["finish_fast"])
         model = self.build_model()
         rmsprop = RMSprop(
             lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))
@@ -226,7 +229,7 @@ class MemNNModel(Trainable):
             metrics=["accuracy"])
         self.model = model
 
-    def _train(self):
+    def step(self):
         # train
         self.model.fit(
             [self.inputs_train, self.queries_train],
@@ -242,12 +245,12 @@ class MemNNModel(Trainable):
             verbose=0)
         return {"mean_accuracy": accuracy}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
         return file_path
 
-    def _restore(self, path):
+    def load_checkpoint(self, path):
         # See https://stackoverflow.com/a/42763323
         del self.model
         self.model = load_model(path)
@@ -255,33 +258,34 @@ class MemNNModel(Trainable):
 
 if __name__ == "__main__":
     import ray
-    from ray.tune import Trainable, run
     from ray.tune.schedulers import PopulationBasedTraining
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(num_cpus=2)
+    read_data()
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
         metric="mean_accuracy",
         mode="max",
-        perturbation_interval=5,
+        perturbation_interval=2,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
             "lr": lambda: 10**np.random.randint(-10, 0),
             "rho": lambda: np.random.uniform(0, 1)
         })
 
-    results = run(
+    results = tune.run(
         MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
-        stop={"training_iteration": 10 if args.smoke_test else 100},
-        num_samples=4,
+        stop={"training_iteration": 4 if args.smoke_test else 100},
+        num_samples=2,
         config={
+            "finish_fast": args.smoke_test,
             "batch_size": 32,
             "epochs": 1,
             "dropout": 0.3,

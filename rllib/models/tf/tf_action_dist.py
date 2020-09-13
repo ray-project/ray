@@ -1,13 +1,18 @@
+from math import log
 import numpy as np
 import functools
+import tree
 
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
+    SMALL_NUMBER
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf, try_import_tfp, SMALL_NUMBER, \
-    MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.tuple_actions import TupleActions
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.typing import TensorType, List
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
 
 
@@ -15,13 +20,14 @@ tfp = try_import_tfp()
 class TFActionDistribution(ActionDistribution):
     """TF-specific extensions for building action distributions."""
 
-    @DeveloperAPI
-    def __init__(self, inputs, model):
+    @override(ActionDistribution)
+    def __init__(self, inputs: List[TensorType], model: ModelV2):
         super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
+        self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @DeveloperAPI
-    def _build_sample_op(self):
+    def _build_sample_op(self) -> TensorType:
         """Implement this instead of sample(), to enable op reuse.
 
         This is needed since the sample op is non-deterministic and is shared
@@ -30,14 +36,14 @@ class TFActionDistribution(ActionDistribution):
         raise NotImplementedError
 
     @override(ActionDistribution)
-    def sample(self):
+    def sample(self) -> TensorType:
         """Draw a sample from the action distribution."""
         return self.sample_op
 
     @override(ActionDistribution)
-    def sampled_action_logp(self):
+    def sampled_action_logp(self) -> TensorType:
         """Returns the log probability of the sampled action."""
-        return self.logp(self.sample_op)
+        return self.sampled_action_logp_op
 
 
 class Categorical(TFActionDistribution):
@@ -61,26 +67,27 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keepdims=True)
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=1)
+        return tf.reduce_sum(p0 * (tf.math.log(z0) - a0), axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
-        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keepdims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keepdims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
-        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keepdims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keepdims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
+        return tf.reduce_sum(
+            p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return tf.squeeze(tf.multinomial(self.inputs, 1), axis=1)
+        return tf.squeeze(tf.random.categorical(self.inputs, 1), axis=1)
 
     @staticmethod
     @override(ActionDistribution)
@@ -99,6 +106,7 @@ class MultiCategorical(TFActionDistribution):
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
+        self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -172,12 +180,13 @@ class GumbelSoftmax(TFActionDistribution):
         assert temperature >= 0.0
         self.dist = tfp.distributions.RelaxedOneHotCategorical(
             temperature=temperature, logits=inputs)
+        self.probs = tf.nn.softmax(self.dist._distribution.logits)
         super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
         # Return the dist object's prob values.
-        return self.dist._distribution.probs
+        return self.probs
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -225,17 +234,18 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return -0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), axis=1) - \
-               0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
-               tf.reduce_sum(self.log_std, axis=1)
+            tf.math.square((tf.cast(x, tf.float32) - self.mean) / self.std),
+            axis=1
+        ) - 0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(x)[1], tf.float32) - \
+            tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
         return tf.reduce_sum(
             other.log_std - self.log_std +
-            (tf.square(self.std) + tf.square(self.mean - other.mean)) /
-            (2.0 * tf.square(other.std)) - 0.5,
+            (tf.math.square(self.std) + tf.math.square(self.mean - other.mean))
+            / (2.0 * tf.math.square(other.std)) - 0.5,
             axis=1)
 
     @override(ActionDistribution)
@@ -245,7 +255,7 @@ class DiagGaussian(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
-        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+        return self.mean + self.std * tf.random.normal(tf.shape(self.mean))
 
     @staticmethod
     @override(ActionDistribution)
@@ -270,27 +280,16 @@ class SquashedGaussian(TFActionDistribution):
                 (excluding this value).
         """
         assert tfp is not None
-        loc, log_scale = tf.split(inputs, 2, axis=-1)
+        mean, log_std = tf.split(inputs, 2, axis=-1)
         # Clip `scale` values (coming from NN) to reasonable values.
-        log_scale = tf.clip_by_value(log_scale, MIN_LOG_NN_OUTPUT,
-                                     MAX_LOG_NN_OUTPUT)
-        scale = tf.exp(log_scale)
-        self.distr = tfp.distributions.Normal(loc=loc, scale=scale)
+        log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
+                                   MAX_LOG_NN_OUTPUT)
+        std = tf.exp(log_std)
+        self.distr = tfp.distributions.Normal(loc=mean, scale=std)
         assert np.all(np.less(low, high))
         self.low = low
         self.high = high
         super().__init__(inputs, model)
-
-    @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        unsquashed_values = self._unsquash(self.sample_op)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(unsquashed_values), axis=-1)
-        unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        log_prob -= tf.math.reduce_sum(
-            tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
-            axis=-1)
-        return log_prob
 
     @override(ActionDistribution)
     def deterministic_sample(self):
@@ -303,27 +302,89 @@ class SquashedGaussian(TFActionDistribution):
 
     @override(ActionDistribution)
     def logp(self, x):
+        # Unsquash values (from [low,high] to ]-inf,inf[)
         unsquashed_values = self._unsquash(x)
-        log_prob = tf.reduce_sum(
-            self.distr.log_prob(value=unsquashed_values), axis=-1)
+        # Get log prob of unsquashed values from our Normal.
+        log_prob_gaussian = self.distr.log_prob(unsquashed_values)
+        # For safety reasons, clamp somehow, only then sum up.
+        log_prob_gaussian = tf.clip_by_value(log_prob_gaussian, -100, 100)
+        log_prob_gaussian = tf.reduce_sum(log_prob_gaussian, axis=-1)
+        # Get log-prob for squashed Gaussian.
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
-        log_prob -= tf.math.reduce_sum(
+        log_prob = log_prob_gaussian - tf.reduce_sum(
             tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER),
             axis=-1)
         return log_prob
 
     def _squash(self, raw_values):
-        # Make sure raw_values are not too high/low (such that tanh would
-        # return exactly 1.0/-1.0, which would lead to +/-inf log-probs).
-        return (tf.clip_by_value(
-            tf.math.tanh(raw_values),
-            -1.0 + SMALL_NUMBER,
-            1.0 - SMALL_NUMBER) + 1.0) / 2.0 * (self.high - self.low) + \
-               self.low
+        # Returned values are within [low, high] (including `low` and `high`).
+        squashed = ((tf.math.tanh(raw_values) + 1.0) / 2.0) * \
+            (self.high - self.low) + self.low
+        return tf.clip_by_value(squashed, self.low, self.high)
 
     def _unsquash(self, values):
-        return tf.math.atanh((values - self.low) /
-                             (self.high - self.low) * 2.0 - 1.0)
+        normed_values = (values - self.low) / (self.high - self.low) * 2.0 - \
+                        1.0
+        # Stabilize input to atanh.
+        save_normed_values = tf.clip_by_value(
+            normed_values, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        unsquashed = tf.math.atanh(save_normed_values)
+        return unsquashed
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
+
+
+class Beta(TFActionDistribution):
+    """
+    A Beta distribution is defined on the interval [0, 1] and parameterized by
+    shape parameters alpha and beta (also called concentration parameters).
+
+    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+        and Gamma(n) = (n - 1)!
+    """
+
+    def __init__(self, inputs, model, low=0.0, high=1.0):
+        # Stabilize input parameters (possibly coming from a linear layer).
+        inputs = tf.clip_by_value(inputs, log(SMALL_NUMBER),
+                                  -log(SMALL_NUMBER))
+        inputs = tf.math.log(tf.math.exp(inputs) + 1.0) + 1.0
+        self.low = low
+        self.high = high
+        alpha, beta = tf.split(inputs, 2, axis=-1)
+        # Note: concentration0==beta, concentration1=alpha (!)
+        self.dist = tfp.distributions.Beta(
+            concentration1=alpha, concentration0=beta)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self):
+        mean = self.dist.mean()
+        return self._squash(mean)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return self._squash(self.dist.sample())
+
+    @override(ActionDistribution)
+    def logp(self, x):
+        unsquashed_values = self._unsquash(x)
+        return tf.math.reduce_sum(
+            self.dist.log_prob(unsquashed_values), axis=-1)
+
+    def _squash(self, raw_values):
+        return raw_values * (self.high - self.low) + self.low
+
+    def _unsquash(self, values):
+        return (values - self.low) / (self.high - self.low)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(action_space, model_config):
+        return np.prod(action_space.shape) * 2
 
 
 class Deterministic(TFActionDistribution):
@@ -338,8 +399,8 @@ class Deterministic(TFActionDistribution):
         return self.inputs
 
     @override(TFActionDistribution)
-    def sampled_action_logp(self):
-        return 0.0
+    def logp(self, x):
+        return tf.zeros_like(self.inputs)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -352,70 +413,82 @@ class Deterministic(TFActionDistribution):
 
 
 class MultiActionDistribution(TFActionDistribution):
-    """Action distribution that operates for list of actions.
+    """Action distribution that operates on a set of actions.
 
     Args:
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, model, action_space, child_distributions,
-                 input_lens):
-        # skip TFActionDistribution init
+    def __init__(self, inputs, model, *, child_distributions, input_lens,
+                 action_space):
         ActionDistribution.__init__(self, inputs, model)
-        self.input_lens = input_lens
-        split_inputs = tf.split(inputs, self.input_lens, axis=1)
-        child_list = []
-        for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i], model))
-        self.child_distributions = child_list
+
+        self.action_space_struct = get_base_struct_from_space(action_space)
+
+        input_lens = np.array(input_lens, dtype=np.int32)
+        split_inputs = tf.split(inputs, input_lens, axis=1)
+        self.flat_child_distributions = tree.map_structure(
+            lambda dist, input_: dist(input_, model), child_distributions,
+            split_inputs)
 
     @override(ActionDistribution)
     def logp(self, x):
-        split_indices = []
-        for dist in self.child_distributions:
+        # Single tensor input (all merged).
+        if isinstance(x, (tf.Tensor, np.ndarray)):
+            split_indices = []
+            for dist in self.flat_child_distributions:
+                if isinstance(dist, Categorical):
+                    split_indices.append(1)
+                else:
+                    split_indices.append(tf.shape(dist.sample())[1])
+            split_x = tf.split(x, split_indices, axis=1)
+        # Structured or flattened (by single action component) input.
+        else:
+            split_x = tree.flatten(x)
+
+        def map_(val, dist):
+            # Remove extra categorical dimension.
             if isinstance(dist, Categorical):
-                split_indices.append(1)
-            else:
-                split_indices.append(tf.shape(dist.sample())[1])
-        split_list = tf.split(x, split_indices, axis=1)
-        for i, distribution in enumerate(self.child_distributions):
-            # Remove extra categorical dimension
-            if isinstance(distribution, Categorical):
-                split_list[i] = tf.cast(
-                    tf.squeeze(split_list[i], axis=-1), tf.int32)
-        log_list = [
-            distribution.logp(split_x) for distribution, split_x in zip(
-                self.child_distributions, split_list)
-        ]
-        return functools.reduce(lambda a, b: a + b, log_list)
+                val = tf.cast(tf.squeeze(val, axis=-1), tf.int32)
+            return dist.logp(val)
+
+        # Remove extra categorical dimension and take the logp of each
+        # component.
+        flat_logps = tree.map_structure(map_, split_x,
+                                        self.flat_child_distributions)
+
+        return functools.reduce(lambda a, b: a + b, flat_logps)
 
     @override(ActionDistribution)
     def kl(self, other):
         kl_list = [
-            distribution.kl(other_distribution)
-            for distribution, other_distribution in zip(
-                self.child_distributions, other.child_distributions)
+            d.kl(o) for d, o in zip(self.flat_child_distributions,
+                                    other.flat_child_distributions)
         ]
         return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
     def entropy(self):
-        entropy_list = [s.entropy() for s in self.child_distributions]
+        entropy_list = [d.entropy() for d in self.flat_child_distributions]
         return functools.reduce(lambda a, b: a + b, entropy_list)
 
     @override(ActionDistribution)
     def sample(self):
-        return TupleActions([s.sample() for s in self.child_distributions])
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
+        return tree.map_structure(lambda s: s.sample(), child_distributions)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return TupleActions(
-            [s.deterministic_sample() for s in self.child_distributions])
+        child_distributions = tree.unflatten_as(self.action_space_struct,
+                                                self.flat_child_distributions)
+        return tree.map_structure(lambda s: s.deterministic_sample(),
+                                  child_distributions)
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
-        p = self.child_distributions[0].sampled_action_logp()
-        for c in self.child_distributions[1:]:
+        p = self.flat_child_distributions[0].sampled_action_logp()
+        for c in self.flat_child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
 

@@ -2,7 +2,6 @@
 #include <string>
 
 #include "gtest/gtest.h"
-
 #include "message/message.h"
 #include "message/message_bundle.h"
 
@@ -17,7 +16,7 @@ TEST(StreamingSerializationTest, streaming_message_serialization_test) {
   uint8_t *bytes = new uint8_t[message_length];
   message->ToBytes(bytes);
   StreamingMessagePtr new_message = StreamingMessage::FromBytes(bytes);
-  EXPECT_EQ(std::memcmp(new_message->RawData(), data, 3), 0);
+  EXPECT_EQ(std::memcmp(new_message->Payload(), data, 3), 0);
   delete[] bytes;
 }
 
@@ -81,10 +80,10 @@ TEST(StreamingSerializationTest, streaming_message_barrier_bundle_serialization_
     auto s_item = s_message_list.back();
     EXPECT_TRUE(s_item->ClassBytesSize() == m_item->ClassBytesSize());
     EXPECT_TRUE(s_item->GetMessageType() == m_item->GetMessageType());
-    EXPECT_TRUE(s_item->GetMessageSeqId() == m_item->GetMessageSeqId());
-    EXPECT_TRUE(s_item->GetDataSize() == m_item->GetDataSize());
+    EXPECT_TRUE(s_item->GetMessageId() == m_item->GetMessageId());
+    EXPECT_TRUE(s_item->PayloadSize() == m_item->PayloadSize());
     EXPECT_TRUE(
-        std::memcmp(s_item->RawData(), m_item->RawData(), m_item->GetDataSize()) == 0);
+        std::memcmp(s_item->Payload(), m_item->Payload(), m_item->PayloadSize()) == 0);
     EXPECT_TRUE(*(s_item.get()) == (*(m_item.get())));
 
     delete[] bundle_bytes;

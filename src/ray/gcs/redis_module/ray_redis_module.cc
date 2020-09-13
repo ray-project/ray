@@ -13,15 +13,16 @@
 // limitations under the License.
 
 #include <string.h>
+
 #include <sstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "ray/gcs/redis_module/redis_string.h"
+#include "ray/gcs/redis_module/redismodule.h"
 #include "ray/util/logging.h"
-#include "redis_string.h"
-#include "redismodule.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using ray::Status;
 using ray::rpc::GcsChangeMode;
@@ -38,7 +39,7 @@ using ray::rpc::TablePubsub;
 // All commands in this file that depend on "module" must be wrapped by "#if
 // RAY_USE_NEW_GCS", until we switch to this launch configuration as the
 // default.
-#include "chain_module.h"
+#include "ray/gcs/redis_module/chain_module.h"
 extern RedisChainModule module;
 #endif
 

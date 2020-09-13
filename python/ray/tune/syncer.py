@@ -1,18 +1,29 @@
+from typing import Any
+
 import distutils
 import logging
 import os
 import time
+from dataclasses import dataclass
 
+from inspect import isclass
 from shlex import quote
 
 from ray import services
+from ray.util.debug import log_once
+from ray.tune.utils.util import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
 
 logger = logging.getLogger(__name__)
 
-SYNC_PERIOD = 300
+# Syncing period for syncing local checkpoints to cloud.
+# In env variable is not set, sync happens every 300 seconds.
+CLOUD_SYNC_PERIOD = 300
+
+# Syncing period for syncing worker logs to driver.
+NODE_SYNC_PERIOD = 300
 
 _log_sync_warned = False
 _syncers = {}
@@ -21,6 +32,18 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def set_sync_periods(sync_config):
+    """Sets sync periods from config."""
+    global CLOUD_SYNC_PERIOD
+    global NODE_SYNC_PERIOD
+    if os.environ.get("TUNE_CLOUD_SYNC_S"):
+        logger.warning("'TUNE_CLOUD_SYNC_S' is deprecated. Set "
+                       "`cloud_sync_period` via tune.SyncConfig instead.")
+        CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
+    NODE_SYNC_PERIOD = int(sync_config.node_sync_period)
+    CLOUD_SYNC_PERIOD = int(sync_config.cloud_sync_period)
 
 
 def log_sync_template(options=""):
@@ -36,7 +59,8 @@ def log_sync_template(options=""):
         unavailable.
     """
     if not distutils.spawn.find_executable("rsync"):
-        logger.error("Log sync requires rsync to be installed.")
+        if log_once("tune:rsync"):
+            logger.error("Log sync requires rsync to be installed.")
         return None
     global _log_sync_warned
     ssh_key = get_ssh_key()
@@ -51,6 +75,42 @@ def log_sync_template(options=""):
     rsh = rsh.format(ssh_key=quote(ssh_key))
     template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
     return template.format(options=options, rsh=quote(rsh))
+
+
+@dataclass
+class SyncConfig:
+    """Configuration object for syncing.
+
+    Args:
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
+        sync_to_cloud (func|str): Function for syncing the local_dir to and
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            commands. By default local_dir is synced to remote_dir every 300
+            seconds. To change this, set the TUNE_CLOUD_SYNC_S
+            environment variable in the driver machine.
+        sync_to_driver (func|str|bool): Function for syncing trial logdir from
+            remote node to local. If string, then it must be a string template
+            that includes `{source}` and `{target}` for the syncer to run.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+            driver. If set to False, checkpoint syncing from worker to driver
+            is asynchronous and best-effort. This does not affect persistent
+            storage syncing. Defaults to True.
+        node_sync_period (int): Syncing period for syncing worker logs to
+            driver. Defaults to 300.
+        cloud_sync_period (int): Syncing period for syncing local
+            checkpoints to cloud. Defaults to 300.
+    """
+    upload_dir: str = None
+    sync_to_cloud: Any = None
+    sync_to_driver: Any = None
+    sync_on_checkpoint: bool = True
+    node_sync_period: int = 300
+    cloud_sync_period: int = 300
 
 
 class Syncer:
@@ -70,12 +130,23 @@ class Syncer:
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
-    def sync_up_if_needed(self):
-        if time.time() - self.last_sync_up_time > SYNC_PERIOD:
+    def sync_up_if_needed(self, sync_period):
+        """Syncs up if time since last sync up is greather than sync_period.
+
+        Arguments:
+            sync_period (int): Time period between subsequent syncs.
+        """
+
+        if time.time() - self.last_sync_up_time > sync_period:
             self.sync_up()
 
-    def sync_down_if_needed(self):
-        if time.time() - self.last_sync_down_time > SYNC_PERIOD:
+    def sync_down_if_needed(self, sync_period):
+        """Syncs down if time since last sync down is greather than sync_period.
+
+        Arguments:
+            sync_period (int): Time period between subsequent syncs.
+        """
+        if time.time() - self.last_sync_down_time > sync_period:
             self.sync_down()
 
     def sync_up(self):
@@ -131,6 +202,19 @@ class Syncer:
         return self._remote_dir
 
 
+class CloudSyncer(Syncer):
+    """Syncer for syncing files to/from the cloud."""
+
+    def __init__(self, local_dir, remote_dir, sync_client):
+        super(CloudSyncer, self).__init__(local_dir, remote_dir, sync_client)
+
+    def sync_up_if_needed(self):
+        return super(CloudSyncer, self).sync_up_if_needed(CLOUD_SYNC_PERIOD)
+
+    def sync_down_if_needed(self):
+        return super(CloudSyncer, self).sync_down_if_needed(CLOUD_SYNC_PERIOD)
+
+
 class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
@@ -158,12 +242,12 @@ class NodeSyncer(Syncer):
     def sync_up_if_needed(self):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up_if_needed()
+        return super(NodeSyncer, self).sync_up_if_needed(NODE_SYNC_PERIOD)
 
     def sync_down_if_needed(self):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_down_if_needed()
+        return super(NodeSyncer, self).sync_down_if_needed(NODE_SYNC_PERIOD)
 
     def sync_up_to_new_location(self, worker_ip):
         if worker_ip != self.worker_ip:
@@ -226,16 +310,16 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
         return _syncers[key]
 
     if not remote_dir:
-        _syncers[key] = Syncer(local_dir, remote_dir, NOOP)
+        _syncers[key] = CloudSyncer(local_dir, remote_dir, NOOP)
         return _syncers[key]
 
     client = get_sync_client(sync_function)
 
     if client:
-        _syncers[key] = Syncer(local_dir, remote_dir, client)
+        _syncers[key] = CloudSyncer(local_dir, remote_dir, client)
         return _syncers[key]
     sync_client = get_cloud_sync_client(remote_dir)
-    _syncers[key] = Syncer(local_dir, remote_dir, sync_client)
+    _syncers[key] = CloudSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 
@@ -253,6 +337,9 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     """
     key = (local_dir, remote_dir)
     if key in _syncers:
+        return _syncers[key]
+    elif isclass(sync_function) and issubclass(sync_function, Syncer):
+        _syncers[key] = sync_function(local_dir, remote_dir, None)
         return _syncers[key]
     elif not remote_dir or sync_function is False:
         sync_client = NOOP

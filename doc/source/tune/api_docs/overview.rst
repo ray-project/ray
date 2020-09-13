@@ -1,5 +1,9 @@
+.. _tune-api-ref:
+
 Tune API Reference
 ==================
+
+.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 This section contains a reference for the Tune API. If there is anything missing, please open an issue
 on `Github`_.
@@ -11,11 +15,14 @@ on `Github`_.
 
    execution.rst
    trainable.rst
+   reporters.rst
    analysis.rst
-   grid_random.rst
+   search_space.rst
    suggestion.rst
    schedulers.rst
+   sklearn.rst
+   logging.rst
+   integration.rst
    internals.rst
-   reporters.rst
    client.rst
    cli.rst

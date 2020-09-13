@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lib/java/jni_utils.h"
+#include "jni_utils.h"
 
 jclass java_boolean_class;
 jmethodID java_boolean_init;
 
 jclass java_double_class;
 jmethodID java_double_double_value;
+
+jclass java_object_class;
+jmethodID java_object_equals;
 
 jclass java_list_class;
 jmethodID java_list_size;
@@ -31,6 +34,10 @@ jmethodID java_array_list_init_with_capacity;
 
 jclass java_map_class;
 jmethodID java_map_entry_set;
+jmethodID java_map_put;
+
+jclass java_hash_map_class;
+jmethodID java_hash_map_init;
 
 jclass java_set_class;
 jmethodID java_set_iterator;
@@ -43,7 +50,11 @@ jclass java_map_entry_class;
 jmethodID java_map_entry_get_key;
 jmethodID java_map_entry_get_value;
 
+jclass java_system_class;
+jmethodID java_system_gc;
+
 jclass java_ray_exception_class;
+jclass java_ray_intentional_system_exit_exception_class;
 
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
@@ -65,10 +76,17 @@ jfieldID java_function_arg_value;
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
+jclass java_call_options_class;
+jfieldID java_call_options_name;
+
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_max_reconstructions;
+jfieldID java_actor_creation_options_global;
+jfieldID java_actor_creation_options_name;
+jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
+jfieldID java_actor_creation_options_group;
+jfieldID java_actor_creation_options_bundle_index;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -79,10 +97,14 @@ jclass java_native_ray_object_class;
 jmethodID java_native_ray_object_init;
 jfieldID java_native_ray_object_data;
 jfieldID java_native_ray_object_metadata;
+jfieldID java_native_ray_object_contained_object_ids;
 
 jclass java_task_executor_class;
+jmethodID java_task_executor_parse_function_arguments;
 jmethodID java_task_executor_execute;
-jmethodID java_task_executor_get;
+
+jclass java_placement_group_class;
+jfieldID java_placement_group_id;
 
 JavaVM *jvm;
 
@@ -109,6 +131,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_double_class = LoadClass(env, "java/lang/Double");
   java_double_double_value = env->GetMethodID(java_double_class, "doubleValue", "()D");
 
+  java_object_class = LoadClass(env, "java/lang/Object");
+  java_object_equals =
+      env->GetMethodID(java_object_class, "equals", "(Ljava/lang/Object;)Z");
+
   java_list_class = LoadClass(env, "java/util/List");
   java_list_size = env->GetMethodID(java_list_class, "size", "()I");
   java_list_get = env->GetMethodID(java_list_class, "get", "(I)Ljava/lang/Object;");
@@ -121,6 +147,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_map_class = LoadClass(env, "java/util/Map");
   java_map_entry_set = env->GetMethodID(java_map_class, "entrySet", "()Ljava/util/Set;");
+  java_map_put = env->GetMethodID(
+      java_map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+
+  java_hash_map_class = LoadClass(env, "java/util/HashMap");
+  java_hash_map_init = env->GetMethodID(java_hash_map_class, "<init>", "()V");
 
   java_set_class = LoadClass(env, "java/util/Set");
   java_set_iterator =
@@ -137,46 +168,70 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_map_entry_get_value =
       env->GetMethodID(java_map_entry_class, "getValue", "()Ljava/lang/Object;");
 
-  java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
+  java_system_class = LoadClass(env, "java/lang/System");
+  java_system_gc = env->GetStaticMethodID(java_system_class, "gc", "()V");
 
-  java_jni_exception_util_class = LoadClass(env, "org/ray/runtime/util/JniExceptionUtil");
+  java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
+  java_ray_intentional_system_exit_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
+
+  java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
       java_jni_exception_util_class, "getStackTrace",
       "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Throwable;)Ljava/lang/String;");
 
-  java_base_id_class = LoadClass(env, "org/ray/api/id/BaseId");
+  java_base_id_class = LoadClass(env, "io/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
   java_function_descriptor_class =
-      LoadClass(env, "org/ray/runtime/functionmanager/FunctionDescriptor");
+      LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");
   java_function_descriptor_get_language =
       env->GetMethodID(java_function_descriptor_class, "getLanguage",
-                       "()Lorg/ray/runtime/generated/Common$Language;");
+                       "()Lio/ray/runtime/generated/Common$Language;");
   java_function_descriptor_to_list =
       env->GetMethodID(java_function_descriptor_class, "toList", "()Ljava/util/List;");
 
-  java_language_class = LoadClass(env, "org/ray/runtime/generated/Common$Language");
+  java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   java_language_get_number = env->GetMethodID(java_language_class, "getNumber", "()I");
 
-  java_function_arg_class = LoadClass(env, "org/ray/runtime/task/FunctionArg");
+  java_function_arg_class = LoadClass(env, "io/ray/runtime/task/FunctionArg");
   java_function_arg_id =
-      env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
+      env->GetFieldID(java_function_arg_class, "id", "Lio/ray/api/id/ObjectId;");
   java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
-                                            "Lorg/ray/runtime/object/NativeRayObject;");
+                                            "Lio/ray/runtime/object/NativeRayObject;");
 
-  java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
+  java_base_task_options_class = LoadClass(env, "io/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
       env->GetFieldID(java_base_task_options_class, "resources", "Ljava/util/Map;");
 
+  java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
+  java_call_options_name =
+      env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
+
+  java_placement_group_class =
+      LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
+  java_placement_group_id =
+      env->GetFieldID(java_placement_group_class, "id",
+                      "Lio/ray/runtime/placementgroup/PlacementGroupId;");
+
   java_actor_creation_options_class =
-      LoadClass(env, "org/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_max_reconstructions =
-      env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
+      LoadClass(env, "io/ray/api/options/ActorCreationOptions");
+  java_actor_creation_options_global =
+      env->GetFieldID(java_actor_creation_options_class, "global", "Z");
+  java_actor_creation_options_name =
+      env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
+  java_actor_creation_options_max_restarts =
+      env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
   java_actor_creation_options_max_concurrency =
       env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
-  java_gcs_client_options_class = LoadClass(env, "org/ray/runtime/gcs/GcsClientOptions");
+  java_actor_creation_options_group =
+      env->GetFieldID(java_actor_creation_options_class, "group",
+                      "Lio/ray/api/placementgroup/PlacementGroup;");
+  java_actor_creation_options_bundle_index =
+      env->GetFieldID(java_actor_creation_options_class, "bundleIndex", "I");
+  java_gcs_client_options_class = LoadClass(env, "io/ray/runtime/gcs/GcsClientOptions");
   java_gcs_client_options_ip =
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
   java_gcs_client_options_port =
@@ -184,22 +239,22 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_gcs_client_options_password =
       env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
 
-  java_native_ray_object_class = LoadClass(env, "org/ray/runtime/object/NativeRayObject");
+  java_native_ray_object_class = LoadClass(env, "io/ray/runtime/object/NativeRayObject");
   java_native_ray_object_init =
       env->GetMethodID(java_native_ray_object_class, "<init>", "([B[B)V");
   java_native_ray_object_data =
       env->GetFieldID(java_native_ray_object_class, "data", "[B");
   java_native_ray_object_metadata =
       env->GetFieldID(java_native_ray_object_class, "metadata", "[B");
+  java_native_ray_object_contained_object_ids = env->GetFieldID(
+      java_native_ray_object_class, "containedObjectIds", "Ljava/util/List;");
 
-  java_task_executor_class = LoadClass(env, "org/ray/runtime/task/TaskExecutor");
+  java_task_executor_class = LoadClass(env, "io/ray/runtime/task/TaskExecutor");
+  java_task_executor_parse_function_arguments = env->GetMethodID(
+      java_task_executor_class, "checkByteBufferArguments", "(Ljava/util/List;)[Z");
   java_task_executor_execute =
       env->GetMethodID(java_task_executor_class, "execute",
                        "(Ljava/util/List;Ljava/util/List;)Ljava/util/List;");
-
-  java_task_executor_get = env->GetStaticMethodID(
-      java_task_executor_class, "get", "([B)Lorg/ray/runtime/task/TaskExecutor;");
-
   return CURRENT_JNI_VERSION;
 }
 
@@ -210,13 +265,17 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
 
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);
+  env->DeleteGlobalRef(java_object_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
+  env->DeleteGlobalRef(java_hash_map_class);
   env->DeleteGlobalRef(java_set_class);
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);
+  env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_function_descriptor_class);

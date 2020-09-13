@@ -1,3 +1,4 @@
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 load("@com_github_ray_project_ray//java:dependencies.bzl", "gen_java_deps")
 load("@com_github_ray_project_ray//streaming/java:dependencies.bzl", "gen_streaming_java_deps")
 load("@com_github_nelhage_rules_boost//:boost/boost.bzl", "boost_deps")
@@ -9,6 +10,7 @@ load("@rules_proto_grpc//:repositories.bzl", "rules_proto_grpc_toolchains")
 
 
 def ray_deps_build_all():
+  bazel_skylib_workspace()
   gen_java_deps()
   gen_streaming_java_deps()
   checkstyle_deps()

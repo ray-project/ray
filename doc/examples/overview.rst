@@ -1,11 +1,26 @@
 Ray Tutorials and Examples
 ==========================
 
-Get started with Ray, Tune, and RLlib with these notebooks that you can run online in CoLab or Binder:
- * `Ray Tutorial Notebooks <https://github.com/ray-project/tutorial>`__
+Get started with Ray, Tune, and RLlib with these notebooks that you can run online in Colab or Binder: `Ray Tutorial Notebooks <https://github.com/ray-project/tutorial>`__
 
-Example Gallery
----------------
+.. toctree::
+   :hidden:
+
+   tips-for-first-time.rst
+   plot_parameter_server.rst
+   plot_example-a3c.rst
+   plot_hyperparameter.rst
+   plot_pong_example.rst
+   plot_lbfgs.rst
+   plot_newsreader.rst
+   plot_streaming.rst
+   plot_example-lm.rst
+   testing-tips.rst
+
+.. customgalleryitem::
+   :tooltip: Tips for first time users.
+   :figure: /images/pipeline.png
+   :description: :doc:`/auto_examples/tips-for-first-time`
 
 .. customgalleryitem::
    :tooltip: Build a simple parameter server using Ray.
@@ -43,14 +58,6 @@ Example Gallery
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
    :description: :doc:`/auto_examples/plot_example-lm`
 
-.. toctree::
-   :hidden:
-
-   plot_parameter_server.rst
-   plot_example-a3c.rst
-   plot_hyperparameter.rst
-   plot_pong_example.rst
-   plot_lbfgs.rst
-   plot_newsreader.rst
-   plot_streaming.rst
-   plot_example-lm.rst
+.. customgalleryitem::
+   :tooltip: Tips for testing Ray applications
+   :description: :doc:`/auto_examples/testing-tips`

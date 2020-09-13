@@ -87,7 +87,8 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - wget --quiet https://s3-us-west-2.amazonaws.com/ray-wheels/releases/{{ray_version}}/{{commit}}/ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
+    - wget --quiet https://s3-us-west-2.amazonaws.com/ray-wheels/{{ray_branch}}/{{commit}}/ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
+    - conda uninstall -y terminado
     - source activate tensorflow_p36 && pip install -U ray-{{ray_version}}-cp36-cp36m-manylinux1_x86_64.whl
     - source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
     - source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0

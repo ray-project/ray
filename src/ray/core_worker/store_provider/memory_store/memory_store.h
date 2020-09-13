@@ -1,5 +1,4 @@
-#ifndef RAY_CORE_WORKER_MEMORY_STORE_H
-#define RAY_CORE_WORKER_MEMORY_STORE_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -13,6 +12,7 @@
 namespace ray {
 
 struct MemoryStoreStats {
+  int32_t num_in_plasma = 0;
   int32_t num_local_objects = 0;
   int64_t used_object_store_memory = 0;
 };
@@ -42,8 +42,9 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.
-  /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  /// \return Whether the object was put into the memory store. If false, then
+  /// this is because the object was promoted to and stored in plasma instead.
+  bool Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -153,7 +154,7 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Set of objects that should be promoted to plasma once available.
   absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
@@ -175,5 +176,3 @@ class CoreWorkerMemoryStore {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_MEMORY_STORE_H

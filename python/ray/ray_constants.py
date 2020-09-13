@@ -13,6 +13,12 @@ def env_integer(key, default):
     return default
 
 
+def env_bool(key, default):
+    if key in os.environ:
+        return True if os.environ[key].lower() == "true" else False
+    return default
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -26,7 +32,13 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# If a user does not specify a port for the primary Ray service,
+# we attempt to start the service running at this port.
+DEFAULT_PORT = 6379
 
+DEFAULT_DASHBOARD_IP = "127.0.0.1"
+DEFAULT_DASHBOARD_PORT = 8265
+PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
 DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
@@ -113,8 +125,14 @@ REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
 REPORTER_DIED_ERROR = "reporter_died"
+DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+
+# Used in gpu detection
+RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
+
+RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
@@ -147,21 +165,15 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
-LOGGER_FORMAT_HELP = "The logging format. default='{}'".format(LOGGER_FORMAT)
+LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
 LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
 
-# A constant indicating that an actor doesn't need reconstructions.
-NO_RECONSTRUCTION = 0
-# A constant indicating that an actor should be reconstructed infinite times.
-INFINITE_RECONSTRUCTION = 2**30
-
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
-PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
@@ -174,13 +186,19 @@ PROCESS_TYPE_GCS_SERVER = "gcs_server"
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
-# A constant used as object metadata to indicate the object is raw binary.
-RAW_BUFFER_METADATA = b"RAW"
-# A constant used as object metadata to indicate the object is pickled. This
-# format is only ever used for Python inline task argument values.
-PICKLE_BUFFER_METADATA = b"PICKLE"
-# A constant used as object metadata to indicate the object is pickle5 format.
-PICKLE5_BUFFER_METADATA = b"PICKLE5"
+# A constant used as object metadata to indicate the object is cross language.
+OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
+# A constant used as object metadata to indicate the object is python specific.
+OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
+# A constant used as object metadata to indicate the object is raw bytes.
+OBJECT_METADATA_TYPE_RAW = b"RAW"
+
+# A constant used as object metadata to indicate the object is an actor handle.
+# This value should be synchronized with the Java definition in
+# ObjectSerializer.java
+# TODO(fyrestone): Serialize the ActorHandle via the custom type feature
+# of XLANG.
+OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
@@ -194,7 +212,6 @@ NODE_DEFAULT_IP = "127.0.0.1"
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
 
-# RAY_GCS_SERVICE_ENABLED only set in ci job.
-# TODO(ffbin): Once we entirely migrate to service-based GCS, we should
-# remove it.
-RAY_GCS_SERVICE_ENABLED = "RAY_GCS_SERVICE_ENABLED"
+# Max 64 bit integer value, which is needed to ensure against overflow
+# in C++ when passing integer values cross-language.
+MAX_INT64_VALUE = 9223372036854775807

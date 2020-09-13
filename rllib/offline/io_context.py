@@ -1,6 +1,7 @@
 import os
 
 from ray.rllib.utils.annotations import PublicAPI
+from typing import Any
 
 
 @PublicAPI
@@ -18,12 +19,16 @@ class IOContext:
     """
 
     @PublicAPI
-    def __init__(self, log_dir=None, config=None, worker_index=0, worker=None):
+    def __init__(self,
+                 log_dir: str = None,
+                 config: dict = None,
+                 worker_index: int = 0,
+                 worker: Any = None):
         self.log_dir = log_dir or os.getcwd()
         self.config = config or {}
         self.worker_index = worker_index
         self.worker = worker
 
     @PublicAPI
-    def default_sampler_input(self):
+    def default_sampler_input(self) -> Any:
         return self.worker.sampler

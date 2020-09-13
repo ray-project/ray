@@ -5,6 +5,7 @@ import inspect
 import logging
 import numpy as np
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,10 @@ import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 import psutil
+
+pwd = None
+if sys.platform != "win32":
+    import pwd
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +121,11 @@ def push_error_to_driver_through_redis(redis_client,
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command(
-        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
-        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
-        error_data)
+    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    pubsub_msg.id = job_id.binary()
+    pubsub_msg.data = error_data
+    redis_client.publish("ERROR_INFO:" + job_id.hex(),
+                         pubsub_msg.SerializeAsString())
 
 
 def is_cython(obj):
@@ -211,8 +217,7 @@ def decode(byte_str, allow_none=False):
         return ""
 
     if not isinstance(byte_str, bytes):
-        raise ValueError(
-            "The argument {} must be a bytes object.".format(byte_str))
+        raise ValueError(f"The argument {byte_str} must be a bytes object.")
     if sys.version_info >= (3, 0):
         return byte_str.decode("ascii")
     else:
@@ -232,8 +237,8 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
         return s.decode(encoding, errors)
 
 
-def binary_to_object_id(binary_object_id):
-    return ray.ObjectID(binary_object_id)
+def binary_to_object_ref(binary_object_ref):
+    return ray.ObjectRef(binary_object_ref)
 
 
 def binary_to_task_id(binary_task_id):
@@ -269,9 +274,9 @@ def get_cuda_visible_devices():
     """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
 
     Returns:
-        if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
-            this returns None.
+        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
+            list of strings representing the IDs of the visible GPUs.
+            If it is not set or is set to NoDevFiles, returns empty list.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -284,7 +289,8 @@ def get_cuda_visible_devices():
     if gpu_ids_str == "NoDevFiles":
         return []
 
-    return [int(i) for i in gpu_ids_str.split(",")]
+    # GPU identifiers are given as strings representing integers or UUIDs.
+    return list(gpu_ids_str.split(","))
 
 
 last_set_gpu_ids = None
@@ -294,7 +300,7 @@ def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
-        gpu_ids: This is a list of integers representing GPU IDs.
+        gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
     global last_set_gpu_ids
@@ -307,9 +313,10 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
-        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        default_object_store_memory, default_resources,
+        default_accelerator_type, runtime_num_cpus, runtime_num_gpus,
+        runtime_memory, runtime_object_store_memory, runtime_resources,
+        runtime_accelerator_type):
     """Determine a task's resource requirements.
 
     Args:
@@ -359,15 +366,23 @@ def resources_from_resource_arguments(
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
 
-    memory = default_memory or runtime_memory
-    object_store_memory = (default_object_store_memory
-                           or runtime_object_store_memory)
+    # Order of arguments matter for short circuiting.
+    memory = runtime_memory or default_memory
+    object_store_memory = (runtime_object_store_memory
+                           or default_object_store_memory)
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(
             memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
+
+    if runtime_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{runtime_accelerator_type}"] = 0.001
+    elif default_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{default_accelerator_type}"] = 0.001
 
     return resources
 
@@ -387,6 +402,74 @@ def setup_logger(logging_level, logging_format):
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
     logger.propagate = False
+
+
+class Unbuffered(object):
+    """There's no "built-in" solution to programatically disabling buffering of
+    text files. Ray expects stdout/err to be text files, so creating an
+    unbuffered binary file is unacceptable.
+
+    See
+    https://mail.python.org/pipermail/tutor/2003-November/026645.html.
+    https://docs.python.org/3/library/functions.html#open
+
+    """
+
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def writelines(self, datas):
+        self.stream.writelines(datas)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+
+def open_log(path, unbuffered=False, **kwargs):
+    """
+    Opens the log file at `path`, with the provided kwargs being given to
+    `open`.
+    """
+    # Disable buffering, see test_advanced_3.py::test_logging_to_driver
+    kwargs.setdefault("buffering", 1)
+    kwargs.setdefault("mode", "a")
+    kwargs.setdefault("encoding", "utf-8")
+    stream = open(path, **kwargs)
+    if unbuffered:
+        return Unbuffered(stream)
+    else:
+        return stream
+
+
+def create_and_init_new_worker_log(path, worker_pid):
+    """Opens or creates and sets up a new worker log file. Note that because we
+    expect to dup the underlying file descriptor, then fdopen it, the python
+    level metadata is not important.
+
+    Args:
+        path (str): The name/path of the file to be opened.
+        worker_pid (int): The pid of the worker process.
+
+    Returns:
+        A file-like object which can be written to.
+
+    """
+    # TODO (Alex): We should eventually be able to replace this with
+    # named-pipes.
+    f = open_log(path)
+    # Check to see if we're creating this file. No one else should ever write
+    # to this file, so we don't have to worry about TOCTOU.
+    if f.tell() == 0:
+        # This should always be the first message to appear in the worker's
+        # stdout and stderr log files. The string "Ray worker pid:" is
+        # parsed in the log monitor process.
+        print(f"Ray worker pid: {worker_pid}", file=f)
+    return f
 
 
 def get_system_memory():
@@ -516,6 +599,8 @@ def detect_fate_sharing_support_win32():
             kernel32.SetInformationJobObject.restype = BOOL
             kernel32.AssignProcessToJobObject.argtypes = (HANDLE, HANDLE)
             kernel32.AssignProcessToJobObject.restype = BOOL
+            kernel32.IsDebuggerPresent.argtypes = ()
+            kernel32.IsDebuggerPresent.restype = BOOL
         except (AttributeError, TypeError, ImportError):
             kernel32 = None
         job = kernel32.CreateJobObjectW(None, None) if kernel32 else None
@@ -557,14 +642,18 @@ def detect_fate_sharing_support_win32():
                     ("PeakJobMemoryUsed", ctypes.c_size_t),
                 ]
 
+            debug = kernel32.IsDebuggerPresent()
+
             # Defined in <WinNT.h>; also available here:
             # https://docs.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-setinformationjobobject
             JobObjectExtendedLimitInformation = 9
             JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
+            JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION = 0x00000400
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
             buf = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
             buf.BasicLimitInformation.LimitFlags = (
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                (0 if debug else JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+                | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
                 | JOB_OBJECT_LIMIT_BREAKAWAY_OK)
             infoclass = JobObjectExtendedLimitInformation
             if not kernel32.SetInformationJobObject(
@@ -636,6 +725,17 @@ def set_kill_child_on_death_win32(child_proc):
         assert False, "AssignProcessToJobObject used despite being unavailable"
 
 
+def set_sigterm_handler(sigterm_handler):
+    """Registers a handler for SIGTERM in a platform-compatible manner."""
+    if sys.platform == "win32":
+        # Note that these signal handlers only work for console applications.
+        # TODO(mehrdadn): implement graceful process termination mechanism
+        # SIGINT is Ctrl+C, SIGBREAK is Ctrl+Break.
+        signal.signal(signal.SIGBREAK, sigterm_handler)
+    else:
+        signal.signal(signal.SIGTERM, sigterm_handler)
+
+
 def try_make_directory_shared(directory_path):
     try:
         os.chmod(directory_path, 0o0777)
@@ -693,3 +793,12 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_user():
+    if pwd is None:
+        return ""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except Exception:
+        return ""

@@ -1,19 +1,61 @@
 import os
+from traceback import format_exception
 
 import colorama
 
 import ray
+import ray.cloudpickle as pickle
+from ray.core.generated.common_pb2 import RayException, Language
 import setproctitle
 
 
 class RayError(Exception):
     """Super class of all ray exception types."""
-    pass
+
+    def to_bytes(self):
+        # Extract exc_info from exception object.
+        exc_info = (type(self), self, self.__traceback__)
+        formatted_exception_string = "\n".join(format_exception(*exc_info))
+        return RayException(
+            language=ray.Language.PYTHON.value(),
+            serialized_exception=pickle.dumps(self),
+            formatted_exception_string=formatted_exception_string
+        ).SerializeToString()
+
+    @staticmethod
+    def from_bytes(b):
+        ray_exception = RayException()
+        ray_exception.ParseFromString(b)
+        if ray_exception.language == ray.Language.PYTHON.value():
+            return pickle.loads(ray_exception.serialized_exception)
+        else:
+            return CrossLanguageError(ray_exception)
 
 
-class RayConnectionError(RayError):
-    """Raised when ray is not yet connected but needs to be."""
-    pass
+class CrossLanguageError(RayError):
+    """Raised from another language."""
+
+    def __init__(self, ray_exception):
+        super().__init__("An exception raised from {}:\n{}".format(
+            Language.Name(ray_exception.language),
+            ray_exception.formatted_exception_string))
+
+
+class TaskCancelledError(RayError):
+    """Raised when this task is cancelled.
+
+    Attributes:
+        task_id (TaskID): The TaskID of the function that was directly
+            cancelled.
+    """
+
+    def __init__(self, task_id=None):
+        self.task_id = task_id
+
+    def __str__(self):
+        if self.task_id is None:
+            return "This task or its dependency was cancelled by"
+        return "Task: " + str(self.task_id) + " was cancelled"
 
 
 class RayTaskError(RayError):
@@ -69,7 +111,7 @@ class RayTaskError(RayError):
                 RayTaskError.__init__(self, function_name, traceback_str,
                                       cause_cls, proctitle, pid, ip)
 
-        name = "RayTaskError({})".format(self.cause_cls.__name__)
+        name = f"RayTaskError({self.cause_cls.__name__})"
         cls.__name__ = name
         cls.__qualname__ = name
 
@@ -83,9 +125,10 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append("{}{}{} (pid={}, ip={})".format(
-                    colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
-                    self.pid, self.ip))
+                out.append(f"{colorama.Fore.CYAN}"
+                           f"{self.proctitle}"
+                           f"{colorama.Fore.RESET} "
+                           f"(pid={self.pid}, ip={self.ip})")
             elif in_worker:
                 in_worker = False
             elif "ray/worker.py" in line or "ray/function_manager.py" in line:
@@ -95,7 +138,7 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
-class RayWorkerError(RayError):
+class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
     def __str__(self):
@@ -113,8 +156,8 @@ class RayActorError(RayError):
         return "The actor died unexpectedly before finishing this task."
 
 
-class RayletError(RayError):
-    """Indicates that the Raylet client has errored.
+class RaySystemError(RayError):
+    """Indicates that Ray encountered a system error.
 
     This exception can be thrown when the raylet is killed.
     """
@@ -123,7 +166,7 @@ class RayletError(RayError):
         self.client_exc = client_exc
 
     def __str__(self):
-        return "The Raylet died with this message: {}".format(self.client_exc)
+        return f"System error: {self.client_exc}"
 
 
 class ObjectStoreFullError(RayError):
@@ -136,41 +179,26 @@ class ObjectStoreFullError(RayError):
     def __str__(self):
         return super(ObjectStoreFullError, self).__str__() + (
             "\n"
-            "The local object store is full of objects that are still in scope"
-            " and cannot be evicted. Try increasing the object store memory "
-            "available with ray.init(object_store_memory=<bytes>). "
-            "You can also try setting an option to fallback to LRU eviction "
-            "when the object store is full by calling "
-            "ray.init(lru_evict=True). See also: "
-            "https://ray.readthedocs.io/en/latest/memory-management.html.")
+            "The local object store is full of objects that are still in "
+            "scope and cannot be evicted. Tip: Use the `ray memory` command "
+            "to list active objects in the cluster.")
 
 
-class UnreconstructableError(RayError):
-    """Indicates that an object is lost and cannot be reconstructed.
-
-    Note, this exception only happens for actor objects. If actor's current
-    state is after object's creating task, the actor cannot re-run the task to
-    reconstruct the object.
+class ObjectLostError(RayError):
+    """Indicates that an object has been lost due to node failure.
 
     Attributes:
-        object_id: ID of the object.
+        object_ref: ID of the object.
     """
 
-    def __init__(self, object_id):
-        self.object_id = object_id
+    def __init__(self, object_ref):
+        self.object_ref = object_ref
 
     def __str__(self):
-        return (
-            "Object {} is lost (either LRU evicted or deleted by user) and "
-            "cannot be reconstructed. Try increasing the object store "
-            "memory available with ray.init(object_store_memory=<bytes>) "
-            "or setting object store limits with "
-            "ray.remote(object_store_memory=<bytes>). See also: {}".format(
-                self.object_id.hex(),
-                "https://ray.readthedocs.io/en/latest/memory-management.html"))
+        return (f"Object {self.object_ref.hex()} is lost due to node failure.")
 
 
-class RayTimeoutError(RayError):
+class GetTimeoutError(RayError):
     """Indicates that a call to the worker timed out."""
     pass
 
@@ -184,9 +212,9 @@ RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
-    RayWorkerError,
+    WorkerCrashedError,
     RayActorError,
     ObjectStoreFullError,
-    UnreconstructableError,
-    RayTimeoutError,
+    ObjectLostError,
+    GetTimeoutError,
 ]

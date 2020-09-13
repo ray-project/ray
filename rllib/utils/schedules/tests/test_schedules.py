@@ -1,18 +1,17 @@
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 from ray.rllib.utils.schedules import ConstantSchedule, \
     LinearSchedule, ExponentialSchedule, PiecewiseSchedule
-from ray.rllib.utils import check, try_import_tf
+from ray.rllib.utils import check, framework_iterator, try_import_tf, \
+    try_import_torch
 from ray.rllib.utils.from_config import from_config
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class TestSchedules(unittest.TestCase):
-    """
-    Tests all time-step dependent Schedule classes.
-    """
+    """Tests all time-step dependent Schedule classes."""
 
     def test_constant_schedule(self):
         value = 2.3
@@ -20,37 +19,42 @@ class TestSchedules(unittest.TestCase):
 
         config = {"value": value}
 
-        for fw in ["tf", "torch", None]:
+        for fw in framework_iterator(
+                frameworks=["tf2", "tf", "tfe", "torch", None]):
             constant = from_config(ConstantSchedule, config, framework=fw)
             for t in ts:
                 out = constant(t)
                 check(out, value)
 
-        # Test eager as well.
-        with eager_mode():
-            constant = from_config(ConstantSchedule, config, framework="tf")
-            for t in ts:
+            ts_as_tensors = self._get_framework_tensors(ts, fw)
+            for t in ts_as_tensors:
                 out = constant(t)
-                check(out, value)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
+                check(out, value, decimals=4)
 
     def test_linear_schedule(self):
-        ts = [0, 50, 10, 100, 90, 2, 1, 99, 23]
+        ts = [0, 50, 10, 100, 90, 2, 1, 99, 23, 1000]
+        expected = [2.1 - (min(t, 100) / 100) * (2.1 - 0.6) for t in ts]
         config = {"schedule_timesteps": 100, "initial_p": 2.1, "final_p": 0.6}
-        for fw in ["tf", "torch", None]:
-            linear = from_config(LinearSchedule, config, framework=fw)
-            for t in ts:
-                out = linear(t)
-                check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
 
-        # Test eager as well.
-        with eager_mode():
-            linear = from_config(LinearSchedule, config, framework="tf")
-            for t in ts:
+        for fw in framework_iterator(
+                frameworks=["tf2", "tf", "tfe", "torch", None]):
+            linear = from_config(LinearSchedule, config, framework=fw)
+            for t, e in zip(ts, expected):
                 out = linear(t)
-                check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
+                check(out, e, decimals=4)
+
+            ts_as_tensors = self._get_framework_tensors(ts, fw)
+            for t, e in zip(ts_as_tensors, expected):
+                out = linear(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
+                check(out, e, decimals=4)
 
     def test_polynomial_schedule(self):
-        ts = [0, 5, 10, 100, 90, 2, 1, 99, 23]
+        ts = [0, 5, 10, 100, 90, 2, 1, 99, 23, 1000]
+        expected = [
+            0.5 + (2.0 - 0.5) * (1.0 - min(t, 100) / 100)**2 for t in ts
+        ]
         config = dict(
             type="ray.rllib.utils.schedules.polynomial_schedule."
             "PolynomialSchedule",
@@ -58,38 +62,40 @@ class TestSchedules(unittest.TestCase):
             initial_p=2.0,
             final_p=0.5,
             power=2.0)
-        for fw in ["tf", "torch", None]:
-            config["framework"] = fw
-            polynomial = from_config(config)
-            for t in ts:
-                out = polynomial(t)
-                check(out, 0.5 + (2.0 - 0.5) * (1.0 - t / 100)**2, decimals=4)
 
-        # Test eager as well.
-        with eager_mode():
-            config["framework"] = "tf"
-            polynomial = from_config(config)
-            for t in ts:
+        for fw in framework_iterator(
+                frameworks=["tf2", "tf", "tfe", "torch", None]):
+            polynomial = from_config(config, framework=fw)
+            for t, e in zip(ts, expected):
                 out = polynomial(t)
-                check(out, 0.5 + (2.0 - 0.5) * (1.0 - t / 100)**2, decimals=4)
+                check(out, e, decimals=4)
+
+            ts_as_tensors = self._get_framework_tensors(ts, fw)
+            for t, e in zip(ts_as_tensors, expected):
+                out = polynomial(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
+                check(out, e, decimals=4)
 
     def test_exponential_schedule(self):
+        decay_rate = 0.2
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 23]
-        config = dict(initial_p=2.0, decay_rate=0.99, schedule_timesteps=100)
-        for fw in ["tf", "torch", None]:
-            config["framework"] = fw
-            exponential = from_config(ExponentialSchedule, config)
-            for t in ts:
-                out = exponential(t)
-                check(out, 2.0 * 0.99**(t / 100), decimals=4)
+        expected = [2.0 * decay_rate**(t / 100) for t in ts]
+        config = dict(
+            initial_p=2.0, decay_rate=decay_rate, schedule_timesteps=100)
 
-        # Test eager as well.
-        with eager_mode():
-            config["framework"] = "tf"
-            exponential = from_config(ExponentialSchedule, config)
-            for t in ts:
+        for fw in framework_iterator(
+                frameworks=["tf2", "tf", "tfe", "torch", None]):
+            exponential = from_config(
+                ExponentialSchedule, config, framework=fw)
+            for t, e in zip(ts, expected):
                 out = exponential(t)
-                check(out, 2.0 * 0.99**(t / 100), decimals=4)
+                check(out, e, decimals=4)
+
+            ts_as_tensors = self._get_framework_tensors(ts, fw)
+            for t, e in zip(ts_as_tensors, expected):
+                out = exponential(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
+                check(out, e, decimals=4)
 
     def test_piecewise_schedule(self):
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 27]
@@ -97,20 +103,27 @@ class TestSchedules(unittest.TestCase):
         config = dict(
             endpoints=[(0, 50.0), (25, 100.0), (30, 200.0)],
             outside_value=14.5)
-        for fw in ["tf", "torch", None]:
-            config["framework"] = fw
-            piecewise = from_config(PiecewiseSchedule, config)
+
+        for fw in framework_iterator(
+                frameworks=["tf2", "tf", "tfe", "torch", None]):
+            piecewise = from_config(PiecewiseSchedule, config, framework=fw)
             for t, e in zip(ts, expected):
                 out = piecewise(t)
                 check(out, e, decimals=4)
 
-        # Test eager as well.
-        with eager_mode():
-            config["framework"] = "tf"
-            piecewise = from_config(PiecewiseSchedule, config)
-            for t, e in zip(ts, expected):
+            ts_as_tensors = self._get_framework_tensors(ts, fw)
+            for t, e in zip(ts_as_tensors, expected):
                 out = piecewise(t)
+                assert fw != "tf" or isinstance(out, tf.Tensor)
                 check(out, e, decimals=4)
+
+    @staticmethod
+    def _get_framework_tensors(ts, fw):
+        if fw == "torch":
+            ts = [torch.tensor(t, dtype=torch.int32) for t in ts]
+        elif fw is not None and "tf" in fw:
+            ts = [tf.constant(t, dtype=tf.int32) for t in ts]
+        return ts
 
 
 if __name__ == "__main__":

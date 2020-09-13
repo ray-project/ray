@@ -1,30 +1,27 @@
 from gym.spaces import Tuple, Discrete, Dict
 import logging
 import numpy as np
-from torch.optim import RMSprop
-from torch.distributions import Categorical
+import tree
 
 import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
+from ray.rllib.env.multi_agent_env import ENV_STATE
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.model import _unpack_obs
+from ray.rllib.models.modelv2 import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.tuple_actions import TupleActions
 
 # Torch must be installed.
 torch, nn = try_import_torch(error=True)
 
 logger = logging.getLogger(__name__)
-
-# if the obs space is Dict type, look for the global state under this key
-ENV_STATE = "state"
 
 
 class QMixLoss(nn.Module):
@@ -197,6 +194,7 @@ class QMixTorchPolicy(Policy):
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.obs_size = _get_size(agent_obs_space)
+            self.env_global_state_shape = (self.obs_size, self.n_agents)
 
         self.model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -215,6 +213,8 @@ class QMixTorchPolicy(Policy):
             framework="torch",
             name="target_model",
             default_model=RNNModel).to(self.device)
+
+        self.exploration = self._create_exploration()
 
         # Setup the mixer network.
         if config["mixer"] is None:
@@ -242,6 +242,7 @@ class QMixTorchPolicy(Policy):
         self.loss = QMixLoss(self.model, self.target_model, self.mixer,
                              self.target_mixer, self.n_agents, self.n_actions,
                              self.config["double_q"], self.config["gamma"])
+        from torch.optim import RMSprop
         self.optimiser = RMSprop(
             params=self.params,
             lr=config["lr"],
@@ -257,6 +258,7 @@ class QMixTorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         explore=None,
+                        timestep=None,
                         **kwargs):
         explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
@@ -277,17 +279,18 @@ class QMixTorchPolicy(Policy):
                 action_mask, dtype=torch.float, device=self.device)
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
-            # epsilon-greedy action selector
-            random_numbers = torch.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < (self.cur_epsilon
-                                             if explore else 0.0)).long()
-            random_actions = Categorical(avail).sample().long()
-            actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.argmax(dim=2))
-            actions = actions.cpu().numpy()
+            masked_q_values_folded = torch.reshape(
+                masked_q_values, [-1] + list(masked_q_values.shape)[2:])
+            actions, _ = self.exploration.get_exploration_action(
+                action_distribution=TorchCategorical(masked_q_values_folded),
+                timestep=timestep,
+                explore=explore)
+            actions = torch.reshape(
+                actions,
+                list(masked_q_values.shape)[:-1]).cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
-        return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
+        return tuple(actions.transpose([1, 0])), hiddens, {}
 
     @override(Policy)
     def compute_log_likelihoods(self,
@@ -318,11 +321,11 @@ class QMixTorchPolicy(Policy):
 
         output_list, _, seq_lens = \
             chop_into_sequences(
-                samples[SampleBatch.EPS_ID],
-                samples[SampleBatch.UNROLL_ID],
-                samples[SampleBatch.AGENT_INDEX],
-                input_list,
-                [],  # RNN states not used here
+                episode_ids=samples[SampleBatch.EPS_ID],
+                unroll_ids=samples[SampleBatch.UNROLL_ID],
+                agent_indices=samples[SampleBatch.AGENT_INDEX],
+                feature_columns=input_list,
+                state_columns=[],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         # These will be padded to shape [B * T, ...]
@@ -464,31 +467,35 @@ class QMixTorchPolicy(Policy):
             state (np.ndarray or None): state tensor of shape [B, state_size]
                 or None if it is not in the batch
         """
+
         unpacked = _unpack_obs(
             np.array(obs_batch, dtype=np.float32),
             self.observation_space.original_space,
             tensorlib=np)
+
+        if isinstance(unpacked[0], dict):
+            assert "obs" in unpacked[0]
+            unpacked_obs = [
+                np.concatenate(tree.flatten(u["obs"]), 1) for u in unpacked
+            ]
+        else:
+            unpacked_obs = unpacked
+
+        obs = np.concatenate(
+            unpacked_obs,
+            axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
+
         if self.has_action_mask:
-            obs = np.concatenate(
-                [o["obs"] for o in unpacked],
-                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.concatenate(
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
                     [len(obs_batch), self.n_agents, self.n_actions])
         else:
-            if isinstance(unpacked[0], dict):
-                unpacked_obs = [u["obs"] for u in unpacked]
-            else:
-                unpacked_obs = unpacked
-            obs = np.concatenate(
-                unpacked_obs,
-                axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
                 [len(obs_batch), self.n_agents, self.n_actions],
                 dtype=np.float32)
 
         if self.has_env_global_state:
-            state = unpacked[0][ENV_STATE]
+            state = np.concatenate(tree.flatten(unpacked[0][ENV_STATE]), 1)
         else:
             state = None
         return obs, action_mask, state

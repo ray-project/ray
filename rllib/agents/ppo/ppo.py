@@ -1,17 +1,36 @@
+"""
+Proximal Policy Optimization (PPO)
+==================================
+
+This file defines the distributed Trainer class for proximal policy
+optimization.
+See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
+
+Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#ppo
+"""
+
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
+    StandardizeFields, SelectExperiences
+from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
+
+# Adds the following updates to the (base) `Trainer` config in
+# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
 DEFAULT_CONFIG = with_common_config({
     # Should use a critic as a baseline (otherwise don't use value baseline;
     # required for using GAE).
@@ -67,63 +86,118 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
-    # Use PyTorch as framework?
-    "use_pytorch": False
+    # Whether to fake GPUs (using CPUs).
+    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
+    "_fake_gpus": False,
 })
+
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def choose_policy_optimizer(workers, config):
-    if config["simple_optimizer"]:
-        return SyncSamplesOptimizer(
-            workers,
-            num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"],
-            sgd_minibatch_size=config["sgd_minibatch_size"],
-            standardize_fields=["advantages"])
+def validate_config(config: TrainerConfigDict) -> None:
+    """Validates the Trainer's config dict.
 
-    return LocalMultiGPUOptimizer(
-        workers,
-        sgd_batch_size=config["sgd_minibatch_size"],
-        num_sgd_iter=config["num_sgd_iter"],
-        num_gpus=config["num_gpus"],
-        rollout_fragment_length=config["rollout_fragment_length"],
-        num_envs_per_worker=config["num_envs_per_worker"],
-        train_batch_size=config["train_batch_size"],
-        standardize_fields=["advantages"],
-        shuffle_sequences=config["shuffle_sequences"])
+    Args:
+        config (TrainerConfigDict): The Trainer's config to check.
+
+    Throws:
+        ValueError: In case something is wrong with the config.
+    """
+    if isinstance(config["entropy_coeff"], int):
+        config["entropy_coeff"] = float(config["entropy_coeff"])
+
+    if config["entropy_coeff"] < 0.0:
+        raise DeprecationWarning("entropy_coeff must be >= 0.0")
+
+    # SGD minibatch size must be smaller than train_batch_size (b/c
+    # we subsample a batch of `sgd_minibatch_size` from the train-batch for
+    # each `sgd_num_iter`).
+    if config["sgd_minibatch_size"] > config["train_batch_size"]:
+        raise ValueError("`sgd_minibatch_size` ({}) must be <= "
+                         "`train_batch_size` ({}).".format(
+                             config["sgd_minibatch_size"],
+                             config["train_batch_size"]))
+
+    # Episodes may only be truncated (and passed into PPO's
+    # `postprocessing_fn`), iff generalized advantage estimation is used
+    # (value function estimate at end of truncated episode to estimate
+    # remaining value).
+    if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
+        raise ValueError(
+            "Episode truncation is not supported without a value "
+            "function. Consider setting batch_mode=complete_episodes.")
+
+    # Multi-gpu not supported for PyTorch and tf-eager.
+    if config["framework"] in ["tf2", "tfe", "torch"]:
+        config["simple_optimizer"] = True
+    # Performance warning, if "simple" optimizer used with (static-graph) tf.
+    elif config["simple_optimizer"]:
+        logger.warning(
+            "Using the simple minibatch optimizer. This will significantly "
+            "reduce performance, consider simple_optimizer=False.")
+    # Multi-agent mode and multi-GPU optimizer.
+    elif config["multiagent"]["policies"] and not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
 
 
-def update_kl(trainer, fetches):
-    # Single-agent.
-    if "kl" in fetches:
-        trainer.workers.local_worker().for_policy(
-            lambda pi: pi.update_kl(fetches["kl"]))
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
 
-    # Multi-agent.
-    else:
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
 
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
+    if config["framework"] == "torch":
+        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+        return PPOTorchPolicy
+
+
+class UpdateKL:
+    """Callback to update the KL based on optimization info.
+
+    This is used inside the execution_plan function. The Policy must define
+    a `update_kl` method for this to work. This is achieved for PPO via a
+    Policy mixin class (which adds the `update_kl` method),
+    defined in ppo_[tf|torch]_policy.py.
+    """
+
+    def __init__(self, workers):
+        self.workers = workers
+
+    def __call__(self, fetches):
         def update(pi, pi_id):
+            assert "kl" not in fetches, (
+                "kl should be nested under policy id key", fetches)
             if pi_id in fetches:
+                assert "kl" in fetches[pi_id], (fetches, pi_id)
+                # Make the actual `Policy.update_kl()` call.
                 pi.update_kl(fetches[pi_id]["kl"])
             else:
-                logger.debug("No data for {}, not updating kl".format(pi_id))
+                logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        trainer.workers.local_worker().foreach_trainable_policy(update)
+        # Update KL on all trainable policies within the local (trainer)
+        # Worker.
+        self.workers.local_worker().foreach_trainable_policy(update)
 
 
-def warn_about_bad_reward_scales(trainer, result):
+def warn_about_bad_reward_scales(config, result):
     if result["policy_reward_mean"]:
-        return  # Punt on handling multiagent case.
+        return result  # Punt on handling multiagent case.
 
     # Warn about excessively high VF loss.
     learner_stats = result["info"]["learner"]
     if "default_policy" in learner_stats:
-        scaled_vf_loss = (trainer.config["vf_loss_coeff"] *
+        scaled_vf_loss = (config["vf_loss_coeff"] *
                           learner_stats["default_policy"]["vf_loss"])
         policy_loss = learner_stats["default_policy"]["policy_loss"]
-        if trainer.config["vf_share_layers"] and scaled_vf_loss > 100:
+        if config["vf_share_layers"] and scaled_vf_loss > 100:
             logger.warning(
                 "The magnitude of your value function loss is extremely large "
                 "({}) compared to the policy loss ({}). This can prevent the "
@@ -132,12 +206,11 @@ def warn_about_bad_reward_scales(trainer, result):
                     scaled_vf_loss, policy_loss))
 
     # Warn about bad clipping configs
-    if trainer.config["vf_clip_param"] <= 0:
+    if config["vf_clip_param"] <= 0:
         rew_scale = float("inf")
     else:
         rew_scale = round(
-            abs(result["episode_reward_mean"]) /
-            trainer.config["vf_clip_param"], 0)
+            abs(result["episode_reward_mean"]) / config["vf_clip_param"], 0)
     if rew_scale > 200:
         logger.warning(
             "The magnitude of your environment rewards are more than "
@@ -147,47 +220,68 @@ def warn_about_bad_reward_scales(trainer, result):
             "function to converge. If this is not intended, consider "
             "increasing `vf_clip_param`.")
 
+    return result
 
-def validate_config(config):
-    if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("entropy_coeff must be >= 0")
-    if isinstance(config["entropy_coeff"], int):
-        config["entropy_coeff"] = float(config["entropy_coeff"])
-    if config["sgd_minibatch_size"] > config["train_batch_size"]:
-        raise ValueError(
-            "Minibatch size {} must be <= train batch size {}.".format(
-                config["sgd_minibatch_size"], config["train_batch_size"]))
-    if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
-        raise ValueError(
-            "Episode truncation is not supported without a value "
-            "function. Consider setting batch_mode=complete_episodes.")
-    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
-        logger.info(
-            "In multi-agent mode, policies will be optimized sequentially "
-            "by the multi-GPU optimizer. Consider setting "
-            "simple_optimizer=True if this doesn't work for you.")
+
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the PPO algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: The Policy class to use with PPOTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # Collect batches for the trainable policies.
+    rollouts = rollouts.for_each(
+        SelectExperiences(workers.trainable_policies()))
+    # Concatenate the SampleBatches into one.
+    rollouts = rollouts.combine(
+        ConcatBatches(min_batch_size=config["train_batch_size"]))
+    # Standardize advantages.
+    rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+
+    # Perform one training step on the combined + standardized batch.
     if config["simple_optimizer"]:
-        logger.warning(
-            "Using the simple minibatch optimizer. This will significantly "
-            "reduce performance, consider simple_optimizer=False.")
-    elif config["use_pytorch"] or (tf and tf.executing_eagerly()):
-        config["simple_optimizer"] = True  # multi-gpu not supported
-
-
-def get_policy_class(config):
-    if config.get("use_pytorch") is True:
-        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
-        return PPOTorchPolicy
+        train_op = rollouts.for_each(
+            TrainOneStep(
+                workers,
+                num_sgd_iter=config["num_sgd_iter"],
+                sgd_minibatch_size=config["sgd_minibatch_size"]))
     else:
-        return PPOTFPolicy
+        train_op = rollouts.for_each(
+            TrainTFMultiGPU(
+                workers,
+                sgd_minibatch_size=config["sgd_minibatch_size"],
+                num_sgd_iter=config["num_sgd_iter"],
+                num_gpus=config["num_gpus"],
+                rollout_fragment_length=config["rollout_fragment_length"],
+                num_envs_per_worker=config["num_envs_per_worker"],
+                train_batch_size=config["train_batch_size"],
+                shuffle_sequences=config["shuffle_sequences"],
+                _fake_gpus=config["_fake_gpus"],
+                framework=config.get("framework")))
+
+    # Update KL after each round of training.
+    train_op = train_op.for_each(lambda t: t[1]).for_each(UpdateKL(workers))
+
+    # Warn about bad reward scales and return training metrics.
+    return StandardMetricsReporting(train_op, workers, config) \
+        .for_each(lambda result: warn_about_bad_reward_scales(config, result))
 
 
+# Build a child class of `Trainer`, which uses the framework specific Policy
+# determined in `get_policy_class()` above.
 PPOTrainer = build_trainer(
     name="PPO",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    make_policy_optimizer=choose_policy_optimizer,
-    validate_config=validate_config,
-    after_optimizer_step=update_kl,
-    after_train_result=warn_about_bad_reward_scales)
+    execution_plan=execution_plan)

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_CONTEXT_H
-#define RAY_CORE_WORKER_CONTEXT_H
+#pragma once
 
 #include <boost/thread.hpp>
 
@@ -26,7 +25,7 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 
@@ -70,6 +69,7 @@ class WorkerContext {
 
   int GetNextTaskIndex();
 
+  // Returns the next put object index; used to calculate ObjectIDs for puts.
   int GetNextPutIndex();
 
  protected:
@@ -96,5 +96,3 @@ class WorkerContext {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_CONTEXT_H

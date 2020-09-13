@@ -9,20 +9,25 @@ start a MLFlow run inside the Trainable function/class.
 import mlflow
 from mlflow.tracking import MlflowClient
 import time
-import random
 
 from ray import tune
 from ray.tune.logger import MLFLowLogger, DEFAULT_LOGGERS
 
 
+def evaluation_fn(step, width, height):
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
+
+
 def easy_objective(config):
-    for i in range(20):
-        result = dict(
-            timesteps_total=i,
-            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
-        tune.track.log(**result)
-        time.sleep(0.02)
-    tune.track.log(done=True)
+    # Hyperparameters
+    width, height = config["width"], config["height"]
+
+    for step in range(config.get("steps", 100)):
+        # Iterative training function - can be any arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -35,10 +40,11 @@ if __name__ == "__main__":
         num_samples=5,
         loggers=DEFAULT_LOGGERS + (MLFLowLogger, ),
         config={
-            "mlflow_experiment_id": experiment_id,
-            "width": tune.sample_from(
-                lambda spec: 10 + int(90 * random.random())),
-            "height": tune.sample_from(lambda spec: int(100 * random.random()))
+            "logger_config": {
+                "mlflow_experiment_id": experiment_id,
+            },
+            "width": tune.randint(10, 100),
+            "height": tune.randint(0, 100),
         })
 
     df = mlflow.search_runs([experiment_id])

@@ -12,17 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CONSTANTS_H_
-#define RAY_CONSTANTS_H_
+#pragma once
 
 #include <limits.h>
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 20;
-
-/// Length of plasma ID in bytes.
-constexpr size_t kPlasmaIdSize = 20;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -38,15 +34,11 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
-constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
-    "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
+constexpr char kWorkerDynamicOptionPlaceholder[] =
+    "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
 constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
 
-/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
-/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
-/// otherwise gcs service is enabled.
-/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
-constexpr char kRayGcsServiceEnabled[] = "RAY_GCS_SERVICE_ENABLED";
-
-#endif  // RAY_CONSTANTS_H_
+/// Public DNS address which is is used to connect and get local IP.
+constexpr char kPublicDNSServerIp[] = "8.8.8.8";
+constexpr int kPublicDNSServerPort = 53;

@@ -12,7 +12,7 @@ The code is Pytorch based. It assumes that the environment is a gym environment,
  
  The model used in AlphaZero trainer should extend `ActorCriticModel` and implement the method `compute_priors_and_value`. 
  
-## Example on Cartpole
+## Example on CartPole
 
 Note that both mean and max rewards are obtained with the MCTS in exploration mode: dirichlet noise is added to priors and actions are sampled from the tree policy vectors. We will add later the display of the MCTS in exploitation mode: no dirichlet noise and actions are chosen as tree policy vectors argmax.
 ![cartpole_plot](doc/cartpole_plot.png)
@@ -21,4 +21,3 @@ Note that both mean and max rewards are obtained with the MCTS in exploration mo
 
 - AlphaZero: https://arxiv.org/abs/1712.01815
 - Ranked rewards: https://arxiv.org/abs/1807.01672
-    

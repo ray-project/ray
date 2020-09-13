@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_SERVER_CALL_H
-#define RAY_RPC_SERVER_CALL_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
+
 #include <boost/asio.hpp>
 
 #include "ray/common/grpc_util.h"
@@ -310,5 +310,3 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

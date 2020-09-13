@@ -3,12 +3,12 @@ This file defines the common pytest fixtures used in current directory.
 """
 
 from contextlib import contextmanager
-import json
 import pytest
 import subprocess
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.test_utils import init_error_pubsub
 
 
 @pytest.fixture
@@ -18,22 +18,22 @@ def shutdown_only():
     ray.shutdown()
 
 
-def get_default_fixure_internal_config():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
+def get_default_fixure_system_config():
+    system_config = {
+        "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
         "object_store_full_max_retries": 3,
         "object_store_full_initial_delay_ms": 100,
-    })
-    return internal_config
+    }
+    return system_config
 
 
 def get_default_fixture_ray_kwargs():
-    internal_config = get_default_fixure_internal_config()
+    system_config = get_default_fixure_system_config()
     ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
-        "_internal_config": internal_config,
+        "_system_config": system_config,
     }
     return ray_kwargs
 
@@ -47,6 +47,14 @@ def _ray_start(**kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_with_dashboard(request):
+    param = getattr(request, "param", {})
+    with _ray_start(
+            num_cpus=1, include_dashboard=True, **param) as address_info:
+        yield address_info
 
 
 # The following fixture will start ray with 0 cpu.
@@ -65,8 +73,20 @@ def ray_start_regular(request):
         yield res
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def ray_start_regular_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+@pytest.fixture(
+    scope="module", params=[{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }])
+def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -103,10 +123,14 @@ def _ray_start_cluster(**kwargs):
     init_kwargs.update(kwargs)
     cluster = Cluster()
     remote_nodes = []
-    for _ in range(num_nodes):
+    for i in range(num_nodes):
+        if i > 0 and "_system_config" in init_kwargs:
+            del init_kwargs["_system_config"]
         remote_nodes.append(cluster.add_node(**init_kwargs))
-    if do_init:
-        ray.init(address=cluster.address)
+        # We assume driver will connect to the head (first node),
+        # so ray init will be invoked if do_init is true
+        if len(remote_nodes) == 1 and do_init:
+            ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -139,10 +163,10 @@ def ray_start_cluster_2_nodes(request):
 def ray_start_object_store_memory(request):
     # Start the Ray processes.
     store_size = request.param
-    internal_config = get_default_fixure_internal_config()
+    system_config = get_default_fixure_system_config()
     init_kwargs = {
         "num_cpus": 1,
-        "_internal_config": internal_config,
+        "_system_config": system_config,
         "object_store_memory": store_size,
     }
     ray.init(**init_kwargs)
@@ -153,7 +177,10 @@ def ray_start_object_store_memory(request):
 
 @pytest.fixture
 def call_ray_start(request):
-    parameter = getattr(request, "param", "ray start --head --num-cpus=1")
+    parameter = getattr(
+        request, "param",
+        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0"
+    )
     command_args = parameter.split(" ")
     out = ray.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
@@ -169,29 +196,35 @@ def call_ray_start(request):
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
 
 @pytest.fixture
 def call_ray_stop_only():
     yield
-    subprocess.check_output(["ray", "stop"])
+    subprocess.check_call(["ray", "stop"])
 
 
 @pytest.fixture()
 def two_node_cluster():
-    internal_config = json.dumps({
-        "initial_reconstruction_timeout_milliseconds": 200,
+    system_config = {
+        "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-    })
+    }
     cluster = ray.cluster_utils.Cluster(
-        head_node_args={"_internal_config": internal_config})
+        head_node_args={"_system_config": system_config})
     for _ in range(2):
-        remote_node = cluster.add_node(
-            num_cpus=1, _internal_config=internal_config)
+        remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     yield cluster, remote_node
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.fixture()
+def error_pubsub():
+    p = init_error_pubsub()
+    yield p
+    p.close()

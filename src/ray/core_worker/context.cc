@@ -19,11 +19,26 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
+      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_counter_(0) {}
 
   int GetNextTaskIndex() { return ++task_index_; }
 
-  int GetNextPutIndex() { return ++put_index_; }
+  /// Returns the next put object index. The index starts at the number of
+  /// return values for the current task in order to keep the put indices from
+  /// conflicting with return object indices. 1 <= idx <= NumReturns() is reserved for
+  /// return objects, while idx > NumReturns is available for put objects.
+  int GetNextPutIndex() {
+    // If current_task_ is nullptr, we assume that we're in the event loop thread and
+    // are executing async tasks; in this case, we're using a fake, random task ID
+    // for put objects, so there's no risk of creating put object IDs that conflict with
+    // return object IDs (none of the latter are created). The put counter will never
+    // reset and will therefore continue to increment for the lifetime of the event
+    // loop thread (ResetCurrentTask and SetCurrenTask will never be called in the
+    // thread), so there's no risk of conflicting put object IDs, either.
+    // See https://github.com/ray-project/ray/issues/10324 for further details.
+    auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
+    return num_returns + ++put_counter_;
+  }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
 
@@ -35,15 +50,15 @@ struct WorkerThreadContext {
 
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
-    RAY_CHECK(put_index_ == 0);
+    RAY_CHECK(put_counter_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
-  void ResetCurrentTask(const TaskSpecification &task_spec) {
+  void ResetCurrentTask() {
     SetCurrentTaskId(TaskID::Nil());
     task_index_ = 0;
-    put_index_ = 0;
+    put_counter_ = 0;
   }
 
  private:
@@ -56,17 +71,18 @@ struct WorkerThreadContext {
   /// Number of tasks that have been submitted from current task.
   int task_index_;
 
-  /// Number of objects that have been put from current task.
-  int put_index_;
+  /// A running counter for the number of object puts carried out in the current task.
+  /// Used to calculate the object index for put object ObjectIDs.
+  int put_counter_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
+                             const JobID &job_id)
     : worker_type_(worker_type),
-      worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
-                                                    : WorkerID::FromRandom()),
+      worker_id_(worker_id),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       current_actor_id_(ActorID::Nil()),
       main_thread_id_(boost::this_thread::get_id()) {
@@ -121,7 +137,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 }
 
 void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
-  GetThreadContext().ResetCurrentTask(task_spec);
+  GetThreadContext().ResetCurrentTask();
   if (task_spec.IsNormalTask()) {
     SetCurrentJobId(JobID::Nil());
   }

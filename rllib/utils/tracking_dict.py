@@ -17,6 +17,11 @@ class UsageTrackingDict(dict):
     def set_get_interceptor(self, fn):
         self.get_interceptor = fn
 
+    def copy(self):
+        copy = UsageTrackingDict(**dict.copy(self))
+        copy.set_get_interceptor(self.get_interceptor)
+        return copy
+
     def __getitem__(self, key):
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)

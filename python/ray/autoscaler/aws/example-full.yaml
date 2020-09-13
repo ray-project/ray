@@ -23,7 +23,7 @@ autoscaling_mode: default
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    image: "" # e.g., rayproject/ray:0.8.7
     container_name: "" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -31,18 +31,18 @@ docker:
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "tensorflow/tensorflow:1.13.1-py3"
+    # head_image: "rayproject/ray:0.8.7-gpu"
     # head_run_options:
     #     - --runtime=nvidia
 
-    # worker_image: "ubuntu:18.04"
+    # worker_image: "rayproject/ray:0.8.7"
     # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
 # target_utilization is 0.8, it would resize the cluster to 13. This fraction
 # can be decreased to increase the aggressiveness of upscaling.
-# This value must be less than 1.0 for scaling to happen.
+# This max value allowed is 1.0, which is the most conservative setting.
 target_utilization_fraction: 0.8
 
 # If a node is idle for this many minutes, it will be removed.
@@ -56,6 +56,9 @@ provider:
     # Nodes are currently spread between zones by a round-robin approach,
     # however this implementation detail should not be relied upon.
     availability_zone: us-west-2a,us-west-2b
+    # Whether to allow node reuse. If set to False, nodes will be terminated
+    # instead of stopped.
+    cache_stopped_nodes: True # If not present, the default is True.
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -71,7 +74,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -87,7 +90,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
+    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -105,6 +108,16 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
@@ -116,9 +129,7 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -126,7 +137,7 @@ setup_commands:
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+    - pip install boto3>=1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
@@ -134,7 +145,7 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

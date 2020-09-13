@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_COMMON_H
-#define RAY_CORE_WORKER_COMMON_H
+#pragma once
 
 #include <string>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/raylet/raylet_client.h"
+#include "ray/raylet_client/raylet_client.h"
 #include "ray/util/util.h"
 
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
+using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -51,57 +51,15 @@ class RayFunction {
   ray::FunctionDescriptor function_descriptor_;
 };
 
-/// Argument of a task.
-class TaskArg {
- public:
-  /// Create a pass-by-reference task argument.
-  ///
-  /// \param[in] object_id Id of the argument.
-  /// \return The task argument.
-  static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
-  }
-
-  /// Create a pass-by-value task argument.
-  ///
-  /// \param[in] value Value of the argument.
-  /// \return The task argument.
-  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value) {
-    RAY_CHECK(value) << "Value can't be null.";
-    return TaskArg(nullptr, value);
-  }
-
-  /// Return true if this argument is passed by reference, false if passed by value.
-  bool IsPassedByReference() const { return id_ != nullptr; }
-
-  /// Get the reference object ID.
-  const ObjectID &GetReference() const {
-    RAY_CHECK(id_ != nullptr) << "This argument isn't passed by reference.";
-    return *id_;
-  }
-
-  /// Get the value.
-  const RayObject &GetValue() const {
-    RAY_CHECK(value_ != nullptr) << "This argument isn't passed by value.";
-    return *value_;
-  }
-
- private:
-  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
-      : id_(id), value_(value) {}
-
-  /// Id of the argument if passed by reference, otherwise nullptr.
-  const std::shared_ptr<ObjectID> id_;
-  /// Value of the argument if passed by value, otherwise nullptr.
-  const std::shared_ptr<RayObject> value_;
-};
-
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(std::string name, int num_returns,
+              std::unordered_map<std::string, double> &resources)
+      : name(name), num_returns(num_returns), resources(resources) {}
 
+  /// The name of this task.
+  std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.
@@ -111,22 +69,32 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions, int max_concurrency,
-                       const std::unordered_map<std::string, double> &resources,
-                       const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, bool is_asyncio)
-      : max_reconstructions(max_reconstructions),
+  ActorCreationOptions(
+      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
+      const std::unordered_map<std::string, double> &resources,
+      const std::unordered_map<std::string, double> &placement_resources,
+      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
+      std::string &name, bool is_asyncio,
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
+      : max_restarts(max_restarts),
+        max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
-        is_asyncio(is_asyncio){};
+        name(name),
+        is_asyncio(is_asyncio),
+        placement_options(placement_options){};
 
-  /// Maximum number of times that the actor should be reconstructed when it dies
-  /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
-  const uint64_t max_reconstructions = 0;
+  /// Maximum number of times that the actor should be restarted if it dies
+  /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
+  /// actor won't be restarted.
+  const int64_t max_restarts = 0;
+  /// Maximum number of times that individual tasks can be retried at the
+  /// actor, if the actor dies unexpectedly. If -1, then the task may be
+  /// retried infinitely many times.
+  const int64_t max_task_retries = 0;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
@@ -139,10 +107,32 @@ struct ActorCreationOptions {
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
+  /// The name to give this detached actor that can be used to get a handle to it from
+  /// other drivers. This must be globally unique across the cluster.
+  /// This should set if and only if is_detached is true.
+  const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  /// The placement_options include placement_group_id and bundle_index.
+  /// If the actor doesn't belong to a placement group, the placement_group_id will be
+  /// nil, and the bundle_index will be -1.
+  PlacementOptions placement_options;
+};
+
+using PlacementStrategy = rpc::PlacementStrategy;
+
+struct PlacementGroupCreationOptions {
+  PlacementGroupCreationOptions(
+      std::string name, PlacementStrategy strategy,
+      std::vector<std::unordered_map<std::string, double>> bundles)
+      : name(std::move(name)), strategy(strategy), bundles(std::move(bundles)) {}
+
+  /// The name of the placement group.
+  const std::string name;
+  /// The strategy to place the bundle in Placement Group.
+  const PlacementStrategy strategy = rpc::PACK;
+  /// The resource bundles in this placement group.
+  const std::vector<std::unordered_map<std::string, double>> bundles;
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_COMMON_H

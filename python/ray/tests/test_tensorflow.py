@@ -1,8 +1,10 @@
 from numpy.testing import assert_almost_equal
-import tensorflow.compat.v1 as tf
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.utils.framework import try_import_tf
+
+tf, _, _ = try_import_tf()
 
 
 def make_linear_network(w_name=None, b_name=None):
@@ -120,10 +122,9 @@ def test_tensorflow_variables(ray_start_2_cpus):
     variables2.set_flat(flat_weights)
     assert_almost_equal(flat_weights, variables2.get_flat())
 
-    variables3 = ray.experimental.tf_utils.TensorFlowVariables([loss2])
-    assert variables3.sess is None
     sess = tf.Session()
-    variables3.set_session(sess)
+    variables3 = ray.experimental.tf_utils.TensorFlowVariables(
+        [loss2], sess=sess)
     assert variables3.sess == sess
 
 

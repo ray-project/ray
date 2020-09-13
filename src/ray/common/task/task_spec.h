@@ -1,5 +1,4 @@
-#ifndef RAY_COMMON_TASK_TASK_SPEC_H
-#define RAY_COMMON_TASK_TASK_SPEC_H
+#pragma once
 
 #include <cstddef>
 #include <string>
@@ -18,8 +17,15 @@ extern "C" {
 }
 
 namespace ray {
-typedef std::pair<ResourceSet, ray::FunctionDescriptor> SchedulingClassDescriptor;
+typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
+
+static inline rpc::ObjectReference GetReferenceForActorDummyObject(
+    const ObjectID &object_id) {
+  rpc::ObjectReference ref;
+  ref.set_object_id(object_id.Binary());
+  return ref;
+};
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
@@ -70,15 +76,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ArgByRef(size_t arg_index) const;
 
-  size_t ArgIdCount(size_t arg_index) const;
+  ObjectID ArgId(size_t arg_index) const;
 
-  ObjectID ArgId(size_t arg_index, size_t id_index) const;
+  rpc::ObjectReference ArgRef(size_t arg_index) const;
 
-  ObjectID ReturnId(size_t return_index, TaskTransportType transport_type) const;
-
-  ObjectID ReturnIdForPlasma(size_t return_index) const {
-    return ReturnId(return_index, TaskTransportType::RAYLET);
-  }
+  ObjectID ReturnId(size_t return_index) const;
 
   const uint8_t *ArgData(size_t arg_index) const;
 
@@ -116,15 +118,25 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  /// Return the ObjectIDs of any dependencies passed by reference to this
+  /// task. This is recomputed each time, so it can be used if the task spec is
+  /// mutated.
+  ///
+  /// \return The recomputed IDs of the dependencies for the task.
+  std::vector<ObjectID> GetDependencyIds() const;
+
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
   ///
   /// \return The recomputed dependencies for the task.
-  std::vector<ObjectID> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies() const;
 
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
+
+  // Returns the task's name.
+  const std::string GetName() const;
 
   /// Whether this task is a normal task.
   bool IsNormalTask() const;
@@ -139,7 +151,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ActorID ActorCreationId() const;
 
-  uint64_t MaxActorReconstructions() const;
+  int64_t MaxActorRestarts() const;
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
@@ -150,6 +162,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskID CallerId() const;
 
   const rpc::Address &CallerAddress() const;
+
+  WorkerID CallerWorkerId() const;
 
   uint64_t ActorCounter() const;
 
@@ -172,16 +186,23 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // A one-word summary of the task func as a call site (e.g., __main__.foo).
   std::string CallSiteString() const;
 
+  // Lookup the resource shape that corresponds to the static key.
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+
+  // Compute a static key that represents the given resource shape.
+  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+
+  // Placement Group ID that this task or actor creation is associated with.
+  const PlacementGroupID PlacementGroupId() const;
 
  private:
   void ComputeResources();
 
-  /// Field storing required resources. Initalized in constructor.
+  /// Field storing required resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
-  /// instead of keeping shared ptrs here.
+  /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> required_resources_;
-  /// Field storing required placement resources. Initalized in constructor.
+  /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
@@ -198,17 +219,3 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 };
 
 }  // namespace ray
-
-/// We must define the hash since it's not auto-defined for vectors.
-namespace std {
-template <>
-struct hash<ray::SchedulingClassDescriptor> {
-  size_t operator()(ray::SchedulingClassDescriptor const &k) const {
-    size_t seed = std::hash<ray::ResourceSet>()(k.first);
-    seed ^= k.second->Hash();
-    return seed;
-  }
-};
-}  // namespace std
-
-#endif  // RAY_COMMON_TASK_TASK_SPEC_H

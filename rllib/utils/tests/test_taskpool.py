@@ -5,15 +5,15 @@ import ray
 from ray.rllib.utils.actors import TaskPool
 
 
-def createMockWorkerAndObjectId(obj_id):
-    return ({obj_id: 1}, obj_id)
+def createMockWorkerAndObjectRef(obj_ref):
+    return ({obj_ref: 1}, obj_ref)
 
 
 class TaskPoolTest(unittest.TestCase):
     @patch("ray.wait")
     def test_completed_prefetch_yieldsAllComplete(self, rayWaitMock):
-        task1 = createMockWorkerAndObjectId(1)
-        task2 = createMockWorkerAndObjectId(2)
+        task1 = createMockWorkerAndObjectRef(1)
+        task2 = createMockWorkerAndObjectRef(2)
         # Return the second task as complete and the first as pending
         rayWaitMock.return_value = ([2], [1])
 
@@ -32,12 +32,12 @@ class TaskPoolTest(unittest.TestCase):
         # items and the second call yields the final one
         pool = TaskPool()
         for i in range(1000):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(1000)), [])
 
-        # For this test, we're only checking the object ids
+        # For this test, we're only checking the object refs
         fetched = [pair[1] for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, list(range(999)))
 
@@ -53,7 +53,7 @@ class TaskPoolTest(unittest.TestCase):
         # and the second call yields the final one
         pool = TaskPool()
         for i in range(1000):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(1000)), [])
@@ -73,10 +73,10 @@ class TaskPoolTest(unittest.TestCase):
         # Test for issue #7106
         # In versions of Ray up to 0.8.1, if the pre-fetch generator failed to
         # run to completion, then the TaskPool would fail to clear up already
-        # fetched tasks resulting in stale object ids being returned
+        # fetched tasks resulting in stale object refs being returned
         pool = TaskPool()
         for i in range(10):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
 
         rayWaitMock.return_value = (list(range(10)), [])
@@ -102,7 +102,7 @@ class TaskPoolTest(unittest.TestCase):
         tasks = []
 
         for i in range(10):
-            task = createMockWorkerAndObjectId(i)
+            task = createMockWorkerAndObjectRef(i)
             pool.add(*task)
             tasks.append(task)
 

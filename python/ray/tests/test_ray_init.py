@@ -23,13 +23,13 @@ class TestRedisPassword:
         def f():
             return 1
 
-        info = ray.init(redis_password=password)
+        info = ray.init(_redis_password=password)
         address = info["redis_address"]
         redis_ip, redis_port = address.split(":")
 
         # Check that we can run a task
-        object_id = f.remote()
-        ray.get(object_id)
+        object_ref = f.remote()
+        ray.get(object_ref)
 
         # Check that Redis connections require a password
         redis_client = redis.StrictRedis(
@@ -55,22 +55,8 @@ class TestRedisPassword:
             initialize_head=True, connect=True, head_node_args=node_args)
         cluster.add_node(**node_args)
 
-        object_id = f.remote()
-        ray.get(object_id)
-
-    def test_redis_port(self, shutdown_only):
-        @ray.remote
-        def f():
-            return 1
-
-        info = ray.init(redis_port=1234, redis_password="testpassword")
-        address = info["redis_address"]
-        redis_ip, redis_port = address.split(":")
-        assert redis_port == "1234"
-
-        redis_client = redis.StrictRedis(
-            host=redis_ip, port=redis_port, password="testpassword")
-        assert redis_client.ping()
+        object_ref = f.remote()
+        ray.get(object_ref)
 
 
 if __name__ == "__main__":

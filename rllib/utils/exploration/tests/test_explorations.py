@@ -1,6 +1,5 @@
 import numpy as np
 import sys
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray
@@ -12,7 +11,7 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check
+from ray.rllib.utils import check, framework_iterator
 
 
 def do_test_explorations(run,
@@ -23,43 +22,31 @@ def do_test_explorations(run,
                          expected_mean_action=None):
     """Calls an Agent's `compute_actions` with different `explore` options."""
 
-    config = config.copy()
+    core_config = config.copy()
     if run not in [a3c.A3CTrainer]:
-        config["num_workers"] = 0
+        core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in ["torch", "eager", "tf"]:
-        if fw == "torch" and \
-                run in [ddpg.DDPGTrainer, dqn.DQNTrainer, dqn.SimpleQTrainer,
-                        impala.ImpalaTrainer, sac.SACTrainer, td3.TD3Trainer]:
-            continue
-        elif fw == "eager" and run in [ddpg.DDPGTrainer, td3.TD3Trainer]:
-            continue
-
-        print("Testing {} in framework={}".format(run, fw))
-        config["eager"] = (fw == "eager")
-        config["use_pytorch"] = (fw == "torch")
+    for _ in framework_iterator(core_config):
+        print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`
         # exploration class.
         for exploration in [None, "Random"]:
+            local_config = core_config.copy()
             if exploration == "Random":
                 # TODO(sven): Random doesn't work for IMPALA yet.
                 if run is impala.ImpalaTrainer:
                     continue
-                config["exploration_config"] = {"type": "Random"}
+                local_config["exploration_config"] = {"type": "Random"}
             print("exploration={}".format(exploration or "default"))
 
-            eager_mode_ctx = eager_mode()
-            if fw == "eager":
-                eager_mode_ctx.__enter__()
-
-            trainer = run(config=config, env=env)
+            trainer = run(config=local_config, env=env)
 
             # Make sure all actions drawn are the same, given same
             # observations.
             actions = []
-            for _ in range(100):
+            for _ in range(25):
                 actions.append(
                     trainer.compute_action(
                         observation=dummy_obs,
@@ -85,9 +72,6 @@ def do_test_explorations(run,
                 atol=0.3)
             # Check that the stddev is not 0.0 (values differ).
             check(np.std(actions), 0.0, false=True)
-
-            if fw == "eager":
-                eager_mode_ctx.__exit__(None, None, None)
 
 
 class TestExplorations(unittest.TestCase):
@@ -121,16 +105,20 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_ddpg(self):
+        # Switch off random timesteps at beginning. We want to test actual
+        # GaussianNoise right away.
+        config = ddpg.DEFAULT_CONFIG.copy()
+        config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             ddpg.DDPGTrainer,
             "Pendulum-v0",
-            ddpg.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 
     def test_simple_dqn(self):
-        do_test_explorations(dqn.SimpleQTrainer,
-                             "CartPole-v0", dqn.DEFAULT_CONFIG,
+        do_test_explorations(dqn.SimpleQTrainer, "CartPole-v0",
+                             dqn.SIMPLE_Q_DEFAULT_CONFIG,
                              np.array([0.0, 0.1, 0.0, 0.0]))
 
     def test_dqn(self):
@@ -179,10 +167,14 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_td3(self):
+        config = td3.TD3_DEFAULT_CONFIG.copy()
+        # Switch off random timesteps at beginning. We want to test actual
+        # GaussianNoise right away.
+        config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             td3.TD3Trainer,
             "Pendulum-v0",
-            td3.TD3_DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 

@@ -1,10 +1,9 @@
 Best Practices: Ray with Tensorflow
 ===================================
 
-This document describes best practices for using the Ray core APIs with TensorFlow. Ray also provides higher-level utilities for working with Tensorflow, such as distributed training APIs (`training tensorflow example`_), Tune for hyperparameter search (`Tune tensorflow example`_), RLlib for reinforcement learning (`RLlib tensorflow example`_).
+This document describes best practices for using the Ray core APIs with TensorFlow. Ray also provides higher-level utilities for working with Tensorflow, such as distributed training APIs (`training tensorflow example`_), Tune for hyperparameter search (:doc:`/tune/examples/tf_mnist_example`), RLlib for reinforcement learning (`RLlib tensorflow example`_).
 
 .. _`training tensorflow example`: tf_distributed_training.html
-.. _`Tune tensorflow example`: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tf_mnist_example.py
 .. _`RLlib tensorflow example`: rllib-models.html#tensorflow-models
 
 Feel free to contribute if you think this document is missing anything.

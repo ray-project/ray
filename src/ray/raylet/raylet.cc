@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "raylet.h"
+#include "ray/raylet/raylet.h"
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -20,7 +20,7 @@
 #include <iostream>
 
 #include "ray/common/status.h"
-#include "ray/util/url.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -59,22 +59,22 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client)
+               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
-      object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
+      object_directory_(
+          RayConfig::instance().ownership_based_object_directory_enabled()
+              ? std::dynamic_pointer_cast<ObjectDirectoryInterface>(
+                    std::make_shared<OwnershipBasedObjectDirectory>(main_service,
+                                                                    gcs_client_))
+              : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
+                    std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
       object_manager_(main_service, self_node_id_, object_manager_config,
                       object_directory_),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service,
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-                local_stream_protocol::endpoint(socket_name)
-#else
-                parse_ip_tcp_endpoint(socket_name)
-#endif
-                    ),
+      acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);
@@ -84,6 +84,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   self_node_info_.set_object_manager_port(object_manager_.GetServerPort());
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
+  self_node_info_.set_metrics_export_port(metrics_export_port);
 }
 
 Raylet::~Raylet() {}
@@ -96,6 +97,7 @@ void Raylet::Start() {
 }
 
 void Raylet::Stop() {
+  object_manager_.Stop();
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
   acceptor_.close();
 }
@@ -134,15 +136,16 @@ void Raylet::DoAccept() {
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // TODO: typedef these handlers.
-    ClientHandler<local_stream_protocol> client_handler =
-        [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
-    MessageHandler<local_stream_protocol> message_handler =
-        [this](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
-               const uint8_t *message) {
-          node_manager_.ProcessClientMessage(client, message_type, message);
-        };
+    ClientHandler client_handler = [this](ClientConnection &client) {
+      node_manager_.ProcessNewClient(client);
+    };
+    MessageHandler message_handler = [this](std::shared_ptr<ClientConnection> client,
+                                            int64_t message_type,
+                                            const std::vector<uint8_t> &message) {
+      node_manager_.ProcessClientMessage(client, message_type, message.data());
+    };
     // Accept a new local client and dispatch it to the node manager.
-    auto new_connection = LocalClientConnection::Create(
+    auto new_connection = ClientConnection::Create(
         client_handler, message_handler, std::move(socket_), "worker",
         node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));

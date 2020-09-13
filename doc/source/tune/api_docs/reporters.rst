@@ -1,3 +1,5 @@
+.. _tune-reporter-doc:
+
 Console Output (Reporters)
 ==========================
 
@@ -73,20 +75,22 @@ The default reporting style can also be overriden more broadly by extending the 
 
     tune.run(my_trainable, progress_reporter=CustomReporter())
 
-ProgressReporter
-----------------
-
-.. autoclass:: ray.tune.ProgressReporter
-    :members:
 
 CLIReporter
 -----------
 
 .. autoclass:: ray.tune.CLIReporter
+    :members: add_metric_column
 
 JupyterNotebookReporter
 -----------------------
 
 .. autoclass:: ray.tune.JupyterNotebookReporter
+    :members: add_metric_column
 
 
+ProgressReporter
+----------------
+
+.. autoclass:: ray.tune.ProgressReporter
+    :members:

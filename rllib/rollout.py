@@ -3,22 +3,23 @@
 import argparse
 import collections
 import copy
+import gym
+from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
 import pickle
 import shelve
 
-import gym
 import ray
-from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
+from ray.tune.registry import get_trainable_cls
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -32,8 +33,12 @@ Example Usage via executable:
 
 # Note: if you use any custom models or envs, register them here first, e.g.:
 #
+# from ray.rllib.examples.env.parametric_actions_cartpole import \
+#     ParametricActionsCartPole
+# from ray.rllib.examples.model.parametric_actions_model import \
+#     ParametricActionsModel
 # ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
-# register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
+# register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
 
 
 class RolloutSaver:
@@ -237,7 +242,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    config = {}
     # Load configuration from checkpoint file.
     config_dir = os.path.dirname(args.checkpoint)
     config_path = os.path.join(config_dir, "params.pkl")
@@ -251,6 +255,8 @@ def run(args, parser):
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory AND no config given on command line!")
+        else:
+            config = args.config
 
     # Load the config from pickled.
     else:
@@ -261,10 +267,14 @@ def run(args, parser):
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
-    # Merge with `evaluation_config`.
-    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
+    # Merge with `evaluation_config` (first try from command line, then from
+    # pkl file).
+    evaluation_config = copy.deepcopy(
+        args.config.get("evaluation_config", config.get(
+            "evaluation_config", {})))
     config = merge_dicts(config, evaluation_config)
-    # Merge with command line `--config` settings.
+    # Merge with command line `--config` settings (if not already the same
+    # anyways).
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
@@ -274,7 +284,7 @@ def run(args, parser):
     ray.init()
 
     # Create the Trainer from config.
-    cls = get_agent_class(args.run)
+    cls = get_trainable_cls(args.run)
     agent = cls(env=args.env, config=config)
     # Load state from checkpoint.
     agent.restore(args.checkpoint)
@@ -302,6 +312,7 @@ def run(args, parser):
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
                 args.no_render, video_dir)
+    agent.stop()
 
 
 class DefaultMapping(collections.defaultdict):
@@ -362,14 +373,14 @@ def rollout(agent,
         use_lstm = {DEFAULT_POLICY_ID: False}
 
     action_init = {
-        p: _flatten_action(m.action_space.sample())
+        p: flatten_to_single_ndarray(m.action_space.sample())
         for p, m in policy_map.items()
     }
 
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.
     if video_dir:
-        env = gym.wrappers.Monitor(
+        env = gym_wrappers.Monitor(
             env=env,
             directory=video_dir,
             video_callable=lambda x: True,
@@ -411,7 +422,7 @@ def rollout(agent,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id)
-                    a_action = _flatten_action(a_action)  # tuple actions
+                    a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action
             action = action_dict

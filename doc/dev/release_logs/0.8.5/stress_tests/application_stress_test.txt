@@ -1,0 +1,15 @@
+== Status ==
+Memory usage on this node: 23.4/480.3 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/640 CPUs, 0/8 GPUs, 0.0/1905.86 GiB heap, 0.0/566.21 GiB objects
+Result logdir: /home/ubuntu/ray_results/atari-impala
+Number of trials: 4 (4 TERMINATED)
++------------------------------------------+------------+-------+-----------------------------+--------+------------------+----------+----------+
+| Trial name                               | status     | loc   | env                         |   iter |   total time (s) |       ts |   reward |
+|------------------------------------------+------------+-------+-----------------------------+--------+------------------+----------+----------|
+| IMPALA_BreakoutNoFrameskip-v4_00000      | TERMINATED |       | BreakoutNoFrameskip-v4      |    360 |          5974.47 | 30014500 |  488.4   |
+| IMPALA_BeamRiderNoFrameskip-v4_00001     | TERMINATED |       | BeamRiderNoFrameskip-v4     |    366 |          6026.01 | 30031500 |  424.84  |
+| IMPALA_QbertNoFrameskip-v4_00002         | TERMINATED |       | QbertNoFrameskip-v4         |    356 |          5897.19 | 30077500 | 5230.25  |
+| IMPALA_SpaceInvadersNoFrameskip-v4_00003 | TERMINATED |       | SpaceInvadersNoFrameskip-v4 |    361 |          5990.74 | 30103500 |  806.043 |
++------------------------------------------+------------+-------+-----------------------------+--------+------------------+----------+----------+
+

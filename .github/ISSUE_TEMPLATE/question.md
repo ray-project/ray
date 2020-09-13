@@ -1,6 +1,6 @@
 ---
 name: Question
-about: 'Ask a question about Ray usage. '
+about: 'Ask a question about Ray usage. For possible bugs, please use the "Bug Report" template instead.'
 title: ''
 labels: question
 assignees: ''

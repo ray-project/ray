@@ -1,4 +1,4 @@
-from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
+from ray.rllib.agents.dqn.apex import apex_execution_plan
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, \
     DEFAULT_CONFIG as DDPG_CONFIG
 
@@ -27,7 +27,14 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     },
 )
 
+
+def validate_config(config):
+    if config.get("framework") == "tfe":
+        raise ValueError("APEX_DDPG does not support tf-eager yet!")
+
+
 ApexDDPGTrainer = DDPGTrainer.with_updates(
     name="APEX_DDPG",
     default_config=APEX_DDPG_DEFAULT_CONFIG,
-    **APEX_TRAINER_PROPERTIES)
+    validate_config=validate_config,
+    execution_plan=apex_execution_plan)

@@ -7,11 +7,11 @@
 # pygtk.require().
 #init-hook=
 
-# Add files or directories to the blacklist. They should be base names, not
+# Add files or directories to the ignore list. They should be base names, not
 # paths.
 ignore=CVS
 
-# Add files or directories matching the regex patterns to the blacklist. The
+# Add files or directories matching the regex patterns to the ignore list. The
 # regex matches against base names, not paths.
 ignore-patterns=
 
@@ -32,7 +32,7 @@ unsafe-load-any-extension=no
 # A comma-separated list of package or module names from where C extensions may
 # be loaded. Extensions are loading into the active Python interpreter and may
 # run arbitrary code
-extension-pkg-whitelist=
+extension-pkg-allow-list=
 
 # Allow optimization of some AST trees. This will activate a peephole AST
 # optimizer, which will apply various small optimizations. For instance, it can

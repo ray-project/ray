@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RAYLET_RAYLET_H
-#define RAY_RAYLET_RAYLET_H
-
-#include <list>
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <list>
 
 // clang-format off
 #include "ray/raylet/node_manager.h"
@@ -50,12 +48,13 @@ class Raylet {
   /// \param object_manager_config Configuration to initialize the object
   /// manager.
   /// \param gcs_client A client connection to the GCS.
+  /// \param metrics_export_port A port at which metrics are exposed to.
   Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
          const std::string &node_ip_address, const std::string &redis_address,
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::GcsClient> gcs_client);
+         std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port);
 
   /// Start this raylet.
   void Start();
@@ -97,11 +96,9 @@ class Raylet {
   /// An acceptor for new clients.
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
-  local_stream_protocol::socket socket_;
+  local_stream_socket socket_;
 };
 
 }  // namespace raylet
 
 }  // namespace ray
-
-#endif  // RAY_RAYLET_RAYLET_H

@@ -1,8 +1,7 @@
-from ray import serve
+from typing import Optional, Dict, Any, Union
+
 from ray.serve.context import TaskContext
-from ray.serve.exceptions import RayServeException
-from ray.serve.constants import DEFAULT_HTTP_ADDRESS
-from ray.serve.request_params import RequestMetadata
+from ray.serve.router import RequestMetadata
 
 
 class RayServeHandle:
@@ -16,111 +15,84 @@ class RayServeHandle:
        >>> handle
        RayServeHandle(
             Endpoint="my_endpoint",
-            URL="...",
             Traffic=...
        )
        >>> handle.remote(my_request_content)
-       ObjectID(...)
+       ObjectRef(...)
        >>> ray.get(handle.remote(...))
        # result
        >>> ray.get(handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
     """
 
-    def __init__(self,
-                 router_handle,
-                 endpoint_name,
-                 relative_slo_ms=None,
-                 absolute_slo_ms=None):
+    def __init__(
+            self,
+            router_handle,
+            endpoint_name,
+            *,
+            method_name=None,
+            shard_key=None,
+            http_method=None,
+            http_headers=None,
+    ):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
-        assert (relative_slo_ms is None
-                or absolute_slo_ms is None), ("Can't specify both "
-                                              "relative and absolute "
-                                              "slo's together!")
-        self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
-        self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
 
-    def _check_slo_ms(self, slo_value):
-        if slo_value is not None:
-            try:
-                slo_value = float(slo_value)
-                if slo_value < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            slo_value))
-                return slo_value
-            except ValueError as e:
-                raise RayServeException(str(e))
-        return None
+        self.method_name = method_name
+        self.shard_key = shard_key
+        self.http_method = http_method
+        self.http_headers = http_headers
 
-    def remote(self, *args, **kwargs):
-        if len(args) != 0:
-            raise RayServeException(
-                "handle.remote must be invoked with keyword arguments.")
+    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
+               **kwargs):
+        """Issue an asynchrounous request to the endpoint.
 
-        # create RequestMetadata instance
-        request_in_object = RequestMetadata(
-            self.endpoint_name, TaskContext.Python, self.relative_slo_ms,
-            self.absolute_slo_ms)
+        Returns a Ray ObjectRef whose results can be waited for or retrieved
+        using ray.wait or ray.get, respectively.
+
+        Returns:
+            ray.ObjectRef
+        Input:
+            request_data(dict, Any): If it's a dictionary, the data will be
+              available in ``request.json()`` or ``request.form()``. Otherwise,
+              it will be available in ``request.data``.
+            ``**kwargs``: All keyword arguments will be available in
+              ``request.args``.
+        """
+        request_metadata = RequestMetadata(
+            self.endpoint_name,
+            TaskContext.Python,
+            call_method=self.method_name or "__call__",
+            shard_key=self.shard_key,
+            http_method=self.http_method or "GET",
+            http_headers=self.http_headers or dict(),
+        )
         return self.router_handle.enqueue_request.remote(
-            request_in_object, **kwargs)
+            request_metadata, request_data, **kwargs)
 
-    def options(self, relative_slo_ms=None, absolute_slo_ms=None):
-        # If both the slo's are None then then we use a high default
-        # value so other queries can be prioritize and put in front of these
-        # queries.
-        assert (relative_slo_ms is None
-                or absolute_slo_ms is None), ("Can't specify both "
-                                              "relative and absolute "
-                                              "slo's together!")
-        return RayServeHandle(self.router_handle, self.endpoint_name,
-                              relative_slo_ms, absolute_slo_ms)
+    def options(self,
+                method_name: Optional[str] = None,
+                *,
+                shard_key: Optional[str] = None,
+                http_method: Optional[str] = None,
+                http_headers: Optional[Dict[str, str]] = None):
+        """Set options for this handle.
 
-    def get_traffic_policy(self):
-        policy_table = serve.api._get_global_state().policy_table
-        all_services = policy_table.list_traffic_policy()
-        return all_services[self.endpoint_name]
-
-    def get_http_endpoint(self):
-        return DEFAULT_HTTP_ADDRESS
-
-    def _ensure_backend_unique(self, backend_tag=None):
-        traffic_policy = self.get_traffic_policy()
-        if backend_tag is None:
-            assert len(traffic_policy) == 1, (
-                "Multiple backends detected. "
-                "Please pass in backend_tag=... argument to specify backend.")
-            backends = set(traffic_policy.keys())
-            return backends.pop()
-        else:
-            assert backend_tag in traffic_policy, (
-                "Backend {} not found in avaiable backends: {}.".format(
-                    backend_tag, list(traffic_policy.keys())))
-            return backend_tag
-
-    def scale(self, new_num_replicas, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.num_replicas = new_num_replicas
-        serve.set_backend_config(backend_tag, config)
-
-    def set_max_batch_size(self, new_max_batch_size, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.max_batch_size = new_max_batch_size
-        serve.set_backend_config(backend_tag, config)
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
+        return RayServeHandle(
+            self.router_handle,
+            self.endpoint_name,
+            # Don't override existing method
+            method_name=self.method_name or method_name,
+            shard_key=self.shard_key or shard_key,
+            http_method=self.http_method or http_method,
+            http_headers=self.http_headers or http_headers,
+        )
 
     def __repr__(self):
-        return """
-RayServeHandle(
-    Endpoint="{endpoint_name}",
-    URL="{http_endpoint}/{endpoint_name}",
-    Traffic={traffic_policy}
-)
-""".format(endpoint_name=self.endpoint_name,
-           http_endpoint=self.get_http_endpoint(),
-           traffic_policy=self.get_traffic_policy())
-
-    # TODO(simon): a convenience function that dumps equivalent requests
-    # code for a given call.
+        return f"RayServeHandle(endpoint='{self.endpoint_name}')"

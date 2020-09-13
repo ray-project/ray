@@ -1,0 +1,59 @@
+# This configuration can expect to reach 90 reward in 10k-20k timesteps
+mountaincarcontinuous-ddpg:
+    env: MountainCarContinuous-v0
+    run: DDPG
+    stop:
+        episode_reward_mean: 90
+        time_total_s: 600 # 10 minutes
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # === Model ===
+        actor_hiddens: [32, 64]
+        critic_hiddens: [64, 64]
+        n_step: 3
+        model: {}
+        gamma: 0.99
+        env_config: {}
+
+        # === Exploration ===
+        exploration_config:
+            initial_scale: 1.0
+            final_scale: 0.02
+            scale_timesteps: 40000
+            ou_base_scale: 0.75
+            ou_theta: 0.15
+            ou_sigma: 0.2
+
+        timesteps_per_iteration: 1000
+
+        target_network_update_freq: 0
+        tau: 0.01
+
+        # === Replay buffer ===
+        buffer_size: 50000
+        prioritized_replay: False
+        prioritized_replay_alpha: 0.6
+        prioritized_replay_beta: 0.4
+        prioritized_replay_eps: 0.000001
+        clip_rewards: False
+
+        # === Optimization ===
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: False
+        huber_threshold: 1.0
+        l2_reg: 0.00001
+        learning_starts: 1000
+        rollout_fragment_length: 1
+        train_batch_size: 64
+
+        # === Parallelism ===
+        num_workers: 0
+        num_gpus_per_worker: 0
+        per_worker_exploration: False
+        worker_side_prioritization: False
+
+        # === Evaluation ===
+        evaluation_interval: 5
+        evaluation_num_episodes: 10

@@ -1,141 +1,280 @@
-import itertools
 import copy
+import glob
+import logging
+import os
 
-from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.search import SearchAlgorithm
-from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
-from ray.tune.trial import Trial
-from ray.tune.utils import merge_dicts, flatten_dict
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 
-class SuggestionAlgorithm(SearchAlgorithm):
-    """Abstract class for suggestion-based algorithms.
+class Searcher:
+    """Abstract class for wrapping suggesting algorithms.
 
-    Custom search algorithms can extend this class easily by overriding the
+    Custom algorithms can extend this class easily by overriding the
     `suggest` method provide generated parameters for the trials.
+
+    Any subclass that implements ``__init__`` must also call the
+    constructor of this class: ``super(Subclass, self).__init__(...)``.
 
     To track suggestions and their corresponding evaluations, the method
     `suggest` will be passed a trial_id, which will be used in
     subsequent notifications.
 
+    Not all implementations support multi objectives.
+
+    Args:
+        metric (str or list): The training result objective value attribute. If
+            list then list of training result objective value attributes
+        mode (str or list): If string One of {min, max}. If list then
+            list of max and min, determines whether objective is minimizing
+            or maximizing the metric attribute. Must match type of metric.
+
     .. code-block:: python
 
-        suggester = SuggestionAlgorithm()
-        suggester.add_configurations({ ... })
-        new_parameters = suggester.suggest()
-        suggester.on_trial_complete(trial_id, result)
-        better_parameters = suggester.suggest()
+        class ExampleSearch(Searcher):
+            def __init__(self, metric="mean_loss", mode="min", **kwargs):
+                super(ExampleSearch, self).__init__(
+                    metric=metric, mode=mode, **kwargs)
+                self.optimizer = Optimizer()
+                self.configurations = {}
+
+            def suggest(self, trial_id):
+                configuration = self.optimizer.query()
+                self.configurations[trial_id] = configuration
+
+            def on_trial_complete(self, trial_id, result, **kwargs):
+                configuration = self.configurations[trial_id]
+                if result and self.metric in result:
+                    self.optimizer.update(configuration, result[self.metric])
+
+        tune.run(trainable_function, search_alg=ExampleSearch())
+
+
     """
+    FINISHED = "FINISHED"
+    CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
-    def __init__(self, metric=None, mode="max", use_early_stopped_trials=True):
-        """Constructs a generator given experiment specifications."""
-        self._parser = make_parser()
-        self._trial_generator = []
-        self._counter = 0
-        self._finished = False
+    def __init__(self,
+                 metric=None,
+                 mode=None,
+                 max_concurrent=None,
+                 use_early_stopped_trials=None):
+        if use_early_stopped_trials is False:
+            raise DeprecationWarning(
+                "Early stopped trials are now always used. If this is a "
+                "problem, file an issue: https://github.com/ray-project/ray.")
+        if max_concurrent is not None:
+            logger.warning(
+                "DeprecationWarning: `max_concurrent` is deprecated for this "
+                "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
+                "instead. This will raise an error in future versions of Ray.")
+
         self._metric = metric
-        assert mode in ["min", "max"]
         self._mode = mode
-        self._use_early_stopped = use_early_stopped_trials
 
-    def add_configurations(self, experiments):
-        """Chains generator given experiment specifications.
+        if not mode or not metric:
+            # Early return to avoid assertions
+            return
 
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
+        assert isinstance(
+            metric, type(mode)), "metric and mode must be of the same type"
+        if isinstance(mode, str):
+            assert mode in ["min", "max"
+                            ], "if `mode` is a str must be 'min' or 'max'!"
+        elif isinstance(mode, list):
+            assert len(mode) == len(
+                metric), "Metric and mode must be the same length"
+            assert all(mod in ["min", "max", "obs"] for mod in
+                       mode), "All of mode must be 'min' or 'max' or 'obs'!"
+        else:
+            raise ValueError("Mode most either be a list or string")
+
+    def set_search_properties(self, metric, mode, config):
+        """Pass search properties to searcher.
+
+        This method acts as an alternative to instantiating search algorithms
+        with their own specific search spaces. Instead they can accept a
+        Tune config through this method. A searcher should return ``True``
+        if setting the config was successful, or ``False`` if it was
+        unsuccessful, e.g. when the search space has already been set.
+
+        Args:
+            metric (str): Metric to optimize
+            mode (str): One of ["min", "max"]. Direction to optimize.
+            config (dict): Tune config dict.
         """
-        experiment_list = convert_to_experiment_list(experiments)
-        for experiment in experiment_list:
-            self._trial_generator = itertools.chain(
-                self._trial_generator,
-                self._generate_trials(
-                    experiment.spec.get("num_samples", 1), experiment.spec,
-                    experiment.name))
+        return False
 
-    def next_trials(self):
-        """Provides a batch of Trial objects to be queued into the TrialRunner.
+    def on_trial_result(self, trial_id, result):
+        """Optional notification for result during training.
 
-        A batch ends when self._trial_generator returns None.
+        Note that by default, the result dict may include NaNs or
+        may not include the optimization metric. It is up to the
+        subclass implementation to preprocess the result to
+        avoid breaking the optimization process.
 
-        Returns:
-            trials (list): Returns a list of trials.
+        Args:
+            trial_id (str): A unique string ID for the trial.
+            result (dict): Dictionary of metrics for current training progress.
+                Note that the result dict may include NaNs or
+                may not include the optimization metric. It is up to the
+                subclass implementation to preprocess the result to
+                avoid breaking the optimization process.
         """
-        trials = []
+        pass
 
-        for trial in self._trial_generator:
-            if trial is None:
-                return trials
-            trials += [trial]
+    def on_trial_complete(self, trial_id, result=None, error=False):
+        """Notification for the completion of trial.
 
-        self._finished = True
-        return trials
+        Typically, this method is used for notifying the underlying
+        optimizer of the result.
 
-    def _generate_trials(self, num_samples, experiment_spec, output_path=""):
-        """Generates trials with configurations from `suggest`.
+        Args:
+            trial_id (str): A unique string ID for the trial.
+            result (dict): Dictionary of metrics for current training progress.
+                Note that the result dict may include NaNs or
+                may not include the optimization metric. It is up to the
+                subclass implementation to preprocess the result to
+                avoid breaking the optimization process. Upon errors, this
+                may also be None.
+            error (bool): True if the training process raised an error.
 
-        Creates a trial_id that is passed into `suggest`.
-
-        Yields:
-            Trial objects constructed according to `spec`
         """
-        if "run" not in experiment_spec:
-            raise TuneError("Must specify `run` in {}".format(experiment_spec))
-        for _ in range(num_samples):
-            trial_id = Trial.generate_id()
-            while True:
-                suggested_config = self.suggest(trial_id)
-                if suggested_config is None:
-                    yield None
-                else:
-                    break
-            spec = copy.deepcopy(experiment_spec)
-            spec["config"] = merge_dicts(spec["config"],
-                                         copy.deepcopy(suggested_config))
-            flattened_config = resolve_nested_dict(spec["config"])
-            self._counter += 1
-            tag = "{0}_{1}".format(
-                str(self._counter), format_vars(flattened_config))
-            yield create_trial_from_spec(
-                spec,
-                output_path,
-                self._parser,
-                evaluated_params=flatten_dict(suggested_config),
-                experiment_tag=tag,
-                trial_id=trial_id)
-
-    def is_finished(self):
-        return self._finished
+        raise NotImplementedError
 
     def suggest(self, trial_id):
         """Queries the algorithm to retrieve the next set of parameters.
 
         Arguments:
-            trial_id: Trial ID used for subsequent notifications.
+            trial_id (str): Trial ID used for subsequent notifications.
 
         Returns:
-            dict|None: Configuration for a trial, if possible.
-                Else, returns None, which will temporarily stop the
-                TrialRunner from querying.
+            dict | FINISHED | None: Configuration for a trial, if possible.
+                If FINISHED is returned, Tune will be notified that
+                no more suggestions/configurations will be provided.
+                If None is returned, Tune will skip the querying of the
+                searcher for this step.
 
-        Example:
-            >>> suggester = SuggestionAlgorithm(max_concurrent=1)
-            >>> suggester.add_configurations({ ... })
-            >>> parameters_1 = suggester.suggest()
-            >>> parameters_2 = suggester.suggest()
-            >>> parameters_2 is None
-            >>> suggester.on_trial_complete(trial_id, result)
-            >>> parameters_2 = suggester.suggest()
-            >>> parameters_2 is not None
         """
         raise NotImplementedError
 
-    def save(self, checkpoint_dir):
+    def save(self, checkpoint_path):
+        """Save state to path for this search algorithm.
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be used later when
+                restoring from file.
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg = Searcher(...)
+
+            analysis = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                name=self.experiment_name,
+                local_dir=self.tmpdir)
+
+            search_alg.save("./my_favorite_path.pkl")
+
+        .. versionchanged:: 0.8.7
+            Save is automatically called by `tune.run`. You can use
+            `restore_from_dir` to restore from an experiment directory
+            such as `~/ray_results/trainable`.
+
+        """
         raise NotImplementedError
 
-    def restore(self, checkpoint_dir):
+    def restore(self, checkpoint_path):
+        """Restore state for this search algorithm
+
+
+        Args:
+            checkpoint_path (str): File where the search algorithm
+                state is saved. This path should be the same
+                as the one provided to "save".
+
+        Example:
+
+        .. code-block:: python
+
+            search_alg.save("./my_favorite_path.pkl")
+
+            search_alg2 = Searcher(...)
+            search_alg2 = ConcurrencyLimiter(search_alg2, 1)
+            search_alg2.restore(checkpoint_path)
+            tune.run(cost, num_samples=5, search_alg=search_alg2)
+
+        """
         raise NotImplementedError
+
+    def get_state(self):
+        raise NotImplementedError
+
+    def set_state(self, state):
+        raise NotImplementedError
+
+    def save_to_dir(self, checkpoint_dir, session_str="default"):
+        """Automatically saves the given searcher to the checkpoint_dir.
+
+        This is automatically used by tune.run during a Tune job.
+
+        Args:
+            checkpoint_dir (str): Filepath to experiment dir.
+            session_str (str): Unique identifier of the current run
+                session.
+        """
+        tmp_search_ckpt_path = os.path.join(checkpoint_dir,
+                                            ".tmp_searcher_ckpt")
+        success = True
+        try:
+            self.save(tmp_search_ckpt_path)
+        except NotImplementedError:
+            if log_once("suggest:save_to_dir"):
+                logger.warning(
+                    "save not implemented for Searcher. Skipping save.")
+            success = False
+
+        if success and os.path.exists(tmp_search_ckpt_path):
+            os.rename(
+                tmp_search_ckpt_path,
+                os.path.join(checkpoint_dir,
+                             self.CKPT_FILE_TMPL.format(session_str)))
+
+    def restore_from_dir(self, checkpoint_dir):
+        """Restores the state of a searcher from a given checkpoint_dir.
+
+        Typically, you should use this function to restore from an
+        experiment directory such as `~/ray_results/trainable`.
+
+        .. code-block:: python
+
+            experiment_1 = tune.run(
+                cost,
+                num_samples=5,
+                search_alg=search_alg,
+                verbose=0,
+                name=self.experiment_name,
+                local_dir="~/my_results")
+
+            search_alg2 = Searcher()
+            search_alg2.restore_from_dir(
+                os.path.join("~/my_results", self.experiment_name)
+        """
+
+        pattern = self.CKPT_FILE_TMPL.format("*")
+        full_paths = glob.glob(os.path.join(checkpoint_dir, pattern))
+        if not full_paths:
+            raise RuntimeError(
+                "Searcher unable to find checkpoint in {}".format(
+                    checkpoint_dir))  # TODO
+        most_recent_checkpoint = max(full_paths)
+        self.restore(most_recent_checkpoint)
 
     @property
     def metric(self):
@@ -148,36 +287,85 @@ class SuggestionAlgorithm(SearchAlgorithm):
         return self._mode
 
 
-class _MockSuggestionAlgorithm(SuggestionAlgorithm):
-    def __init__(self, max_concurrent=2, **kwargs):
-        self._max_concurrent = max_concurrent
-        self.live_trials = {}
-        self.counter = {"result": 0, "complete": 0}
-        self.final_results = []
-        self.stall = False
-        self.results = []
-        super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
+class ConcurrencyLimiter(Searcher):
+    """A wrapper algorithm for limiting the number of concurrent trials.
+
+    Args:
+        searcher (Searcher): Searcher object that the
+            ConcurrencyLimiter will manage.
+        max_concurrent (int): Maximum concurrent samples from the underlying
+            searcher.
+        batch (bool): Whether to wait for all concurrent samples
+            to finish before updating the underlying searcher.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray.tune.suggest import ConcurrencyLimiter
+        search_alg = HyperOptSearch(metric="accuracy")
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
+        tune.run(trainable, search_alg=search_alg)
+    """
+
+    def __init__(self, searcher, max_concurrent, batch=False):
+        assert type(max_concurrent) is int and max_concurrent > 0
+        self.searcher = searcher
+        self.max_concurrent = max_concurrent
+        self.batch = batch
+        self.live_trials = set()
+        self.cached_results = {}
+        super(ConcurrencyLimiter, self).__init__(
+            metric=self.searcher.metric, mode=self.searcher.mode)
 
     def suggest(self, trial_id):
-        if len(self.live_trials) < self._max_concurrent and not self.stall:
-            self.live_trials[trial_id] = 1
-            return {"test_variable": 2}
-        return None
+        assert trial_id not in self.live_trials, (
+            f"Trial ID {trial_id} must be unique: already found in set.")
+        if len(self.live_trials) >= self.max_concurrent:
+            logger.debug(
+                f"Not providing a suggestion for {trial_id} due to "
+                "concurrency limit: %s/%s.", len(self.live_trials),
+                self.max_concurrent)
+            return
 
-    def on_trial_result(self, trial_id, result):
-        self.counter["result"] += 1
-        self.results += [result]
+        suggestion = self.searcher.suggest(trial_id)
+        if suggestion not in (None, Searcher.FINISHED):
+            self.live_trials.add(trial_id)
+        return suggestion
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
-        self.counter["complete"] += 1
-        if result:
-            self._process_result(result, early_terminated)
-        del self.live_trials[trial_id]
+    def on_trial_complete(self, trial_id, result=None, error=False):
+        if trial_id not in self.live_trials:
+            return
+        elif self.batch:
+            self.cached_results[trial_id] = (result, error)
+            if len(self.cached_results) == self.max_concurrent:
+                # Update the underlying searcher once the
+                # full batch is completed.
+                for trial_id, (result, error) in self.cached_results.items():
+                    self.searcher.on_trial_complete(
+                        trial_id, result=result, error=error)
+                    self.live_trials.remove(trial_id)
+                self.cached_results = {}
+            else:
+                return
+        else:
+            self.searcher.on_trial_complete(
+                trial_id, result=result, error=error)
+            self.live_trials.remove(trial_id)
 
-    def _process_result(self, result, early_terminated):
-        if early_terminated and self._use_early_stopped:
-            self.final_results += [result]
+    def get_state(self):
+        state = self.__dict__.copy()
+        del state["searcher"]
+        return copy.deepcopy(state)
+
+    def set_state(self, state):
+        self.__dict__.update(state)
+
+    def on_pause(self, trial_id):
+        self.searcher.on_pause(trial_id)
+
+    def on_unpause(self, trial_id):
+        self.searcher.on_unpause(trial_id)
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)

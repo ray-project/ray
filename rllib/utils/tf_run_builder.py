@@ -3,9 +3,9 @@ import os
 import time
 
 from ray.util.debug import log_once
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
@@ -63,8 +63,8 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
     if timeline_dir:
         from tensorflow.python.client import timeline
 
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
+        run_options = tf1.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf1.RunMetadata()
         start = time.time()
         fetches = sess.run(
             ops,

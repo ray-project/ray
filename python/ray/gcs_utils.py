@@ -1,10 +1,11 @@
+from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated.gcs_pb2 import (
     ActorCheckpointIdData,
     ActorTableData,
     GcsNodeInfo,
     JobTableData,
+    JobConfig,
     ErrorTableData,
-    ErrorType,
     GcsEntry,
     HeartbeatBatchTableData,
     HeartbeatTableData,
@@ -13,7 +14,12 @@ from ray.core.generated.gcs_pb2 import (
     TablePrefix,
     TablePubsub,
     TaskTableData,
+    ResourceMap,
     ResourceTableData,
+    ObjectLocationInfo,
+    PubSubMessage,
+    WorkerTableData,
+    PlacementGroupTableData,
 )
 
 __all__ = [
@@ -21,6 +27,7 @@ __all__ = [
     "ActorTableData",
     "GcsNodeInfo",
     "JobTableData",
+    "JobConfig",
     "ErrorTableData",
     "ErrorType",
     "GcsEntry",
@@ -31,8 +38,13 @@ __all__ = [
     "TablePrefix",
     "TablePubsub",
     "TaskTableData",
+    "ResourceMap",
     "ResourceTableData",
     "construct_error_message",
+    "ObjectLocationInfo",
+    "PubSubMessage",
+    "WorkerTableData",
+    "PlacementGroupTableData",
 ]
 
 FUNCTION_PREFIX = "RemoteFunction:"
@@ -40,13 +52,19 @@ LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
 REPORTER_CHANNEL = "RAY_REPORTER"
 
 # xray heartbeats
-XRAY_HEARTBEAT_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_PUBSUB")).encode("ascii")
-XRAY_HEARTBEAT_BATCH_CHANNEL = str(
-    TablePubsub.Value("HEARTBEAT_BATCH_PUBSUB")).encode("ascii")
+XRAY_HEARTBEAT_PATTERN = "HEARTBEAT:*".encode("ascii")
+XRAY_HEARTBEAT_BATCH_PATTERN = "HEARTBEAT_BATCH:".encode("ascii")
 
 # xray job updates
-XRAY_JOB_CHANNEL = str(TablePubsub.Value("JOB_PUBSUB")).encode("ascii")
+XRAY_JOB_PATTERN = "JOB:*".encode("ascii")
+
+# Actor pub/sub updates
+RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
+
+# Reporter pub/sub updates
+RAY_REPORTER_PUBSUB_PATTERN = "RAY_REPORTER.*".encode("ascii")
+
+RAY_ERROR_PUBSUB_PATTERN = "ERROR_INFO:*".encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.
@@ -54,10 +72,12 @@ XRAY_JOB_CHANNEL = str(TablePubsub.Value("JOB_PUBSUB")).encode("ascii")
 # just access the flatbuffer generated values.
 TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
 TablePrefix_OBJECT_string = "OBJECT"
-TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 TablePrefix_JOB_string = "JOB"
 TablePrefix_ACTOR_string = "ACTOR"
+
+WORKER = 0
+DRIVER = 1
 
 
 def construct_error_message(job_id, error_type, message, timestamp):

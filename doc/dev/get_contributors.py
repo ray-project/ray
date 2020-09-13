@@ -3,6 +3,7 @@ from subprocess import check_output
 import shlex
 from tqdm import tqdm
 import click
+from collections import defaultdict
 
 
 @click.command()
@@ -62,6 +63,27 @@ def run(access_token, prev_release_commit, curr_release_commit):
     print("@" + ", @".join(logins))
     print()
     print("=" * 10)
+
+    # Organize commits
+    NO_CATEGORY = "[NO_CATEGORY]"
+
+    def get_category(line):
+        if line[0] == "[":
+            return (line.split("]")[0].strip(" ") + "]").upper()
+        else:
+            return NO_CATEGORY
+
+    commits = defaultdict(list)
+
+    with open("commits.txt") as file:
+        for line in file.readlines():
+            commits[get_category(line)].append(line.strip())
+
+    with open("commits.txt", "a") as file:
+        for category, commit_msgs in commits.items():
+            file.write("\n{}\n".format(category))
+            for commit_msg in commit_msgs:
+                file.write("{}\n".format(commit_msg))
 
 
 if __name__ == "__main__":

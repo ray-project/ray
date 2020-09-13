@@ -1,9 +1,10 @@
 from collections import deque, OrderedDict
 import numpy as np
 
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import force_list
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def unflatten(vector, shapes):
@@ -41,14 +42,14 @@ class TensorFlowVariables:
         Args:
             output (tf.Operation, List[tf.Operation]): The tensorflow
                 operation to extract all variables from.
-            sess (tf.Session): Session used for running the get and set
-                methods.
+            sess (Optional[tf.Session]): Optional tf.Session used for running
+                the get and set methods in tf graph mode.
+                Use None for tf eager.
             input_variables (List[tf.Variables]): Variables to include in the
                 list.
         """
         self.sess = sess
-        if not isinstance(output, (list, tuple)):
-            output = [output]
+        output = force_list(output)
         queue = deque(output)
         variable_names = []
         explored_inputs = set(output)
@@ -79,32 +80,29 @@ class TensorFlowVariables:
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
         variable_list = [
-            v for v in tf.global_variables()
+            v for v in tf1.global_variables()
             if v.op.node_def.name in variable_names
         ]
         if input_variables is not None:
             variable_list += input_variables
-        for v in variable_list:
-            self.variables[v.op.node_def.name] = v
 
-        self.placeholders = {}
-        self.assignment_nodes = {}
+        if not tf1.executing_eagerly():
+            for v in variable_list:
+                self.variables[v.op.node_def.name] = v
 
-        # Create new placeholders to put in custom weights.
-        for k, var in self.variables.items():
-            self.placeholders[k] = tf.placeholder(
-                var.value().dtype,
-                var.get_shape().as_list(),
-                name="Placeholder_" + k)
-            self.assignment_nodes[k] = var.assign(self.placeholders[k])
+            self.placeholders = {}
+            self.assignment_nodes = {}
 
-    def set_session(self, sess):
-        """Sets the current session used by the class.
-
-        Args:
-            sess (tf.Session): Session to set the attribute with.
-        """
-        self.sess = sess
+            # Create new placeholders to put in custom weights.
+            for k, var in self.variables.items():
+                self.placeholders[k] = tf1.placeholder(
+                    var.value().dtype,
+                    var.get_shape().as_list(),
+                    name="Placeholder_" + k)
+                self.assignment_nodes[k] = var.assign(self.placeholders[k])
+        else:
+            for v in variable_list:
+                self.variables[v.name] = v
 
     def get_flat_size(self):
         """Returns the total length of all of the flattened variables.
@@ -115,20 +113,17 @@ class TensorFlowVariables:
         return sum(
             np.prod(v.get_shape().as_list()) for v in self.variables.values())
 
-    def _check_sess(self):
-        """Checks if the session is set, and if not throw an error message."""
-        assert self.sess is not None, ("The session is not set. Set the "
-                                       "session either by passing it into the "
-                                       "TensorFlowVariables constructor or by "
-                                       "calling set_session(sess).")
-
     def get_flat(self):
         """Gets the weights and returns them as a flat array.
 
         Returns:
             1D Array containing the flattened weights.
         """
-        self._check_sess()
+        # Eager mode.
+        if not self.sess:
+            return np.concatenate(
+                [v.numpy().flatten() for v in self.variables.values()])
+        # Graph mode.
         return np.concatenate([
             v.eval(session=self.sess).flatten()
             for v in self.variables.values()
@@ -144,15 +139,18 @@ class TensorFlowVariables:
         Args:
             new_weights (np.ndarray): Flat array containing weights.
         """
-        self._check_sess()
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
         arrays = unflatten(new_weights, shapes)
-        placeholders = [
-            self.placeholders[k] for k, v in self.variables.items()
-        ]
-        self.sess.run(
-            list(self.assignment_nodes.values()),
-            feed_dict=dict(zip(placeholders, arrays)))
+        if not self.sess:
+            for v, a in zip(self.variables.values(), arrays):
+                v.assign(a)
+        else:
+            placeholders = [
+                self.placeholders[k] for k, v in self.variables.items()
+            ]
+            self.sess.run(
+                list(self.assignment_nodes.values()),
+                feed_dict=dict(zip(placeholders, arrays)))
 
     def get_weights(self):
         """Returns a dictionary containing the weights of the network.
@@ -160,11 +158,11 @@ class TensorFlowVariables:
         Returns:
             Dictionary mapping variable names to their weights.
         """
-        self._check_sess()
-        return {
-            k: v.eval(session=self.sess)
-            for k, v in self.variables.items()
-        }
+        # Eager mode.
+        if not self.sess:
+            return self.variables
+        # Graph mode.
+        return self.sess.run(self.variables)
 
     def set_weights(self, new_weights):
         """Sets the weights to new_weights.
@@ -177,20 +175,23 @@ class TensorFlowVariables:
             new_weights (Dict): Dictionary mapping variable names to their
                 weights.
         """
-        self._check_sess()
-        assign_list = [
-            self.assignment_nodes[name] for name in new_weights.keys()
-            if name in self.assignment_nodes
-        ]
-        assert assign_list, ("No variables in the input matched those in the "
-                             "network. Possible cause: Two networks were "
-                             "defined in the same TensorFlow graph. To fix "
-                             "this, place each network definition in its own "
-                             "tf.Graph.")
-        self.sess.run(
-            assign_list,
-            feed_dict={
-                self.placeholders[name]: value
-                for (name, value) in new_weights.items()
-                if name in self.placeholders
-            })
+        if self.sess is None:
+            for name, var in self.variables.items():
+                var.assign(new_weights[name])
+        else:
+            assign_list = [
+                self.assignment_nodes[name] for name in new_weights.keys()
+                if name in self.assignment_nodes
+            ]
+            assert assign_list, \
+                "No variables in the input matched those in the network. " \
+                "Possible cause: Two networks were defined in the same " \
+                "TensorFlow graph. To fix this, place each network " \
+                "definition in its own tf.Graph."
+            self.sess.run(
+                assign_list,
+                feed_dict={
+                    self.placeholders[name]: value
+                    for (name, value) in new_weights.items()
+                    if name in self.placeholders
+                })

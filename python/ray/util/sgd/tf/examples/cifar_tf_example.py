@@ -203,11 +203,12 @@ if __name__ == "__main__":
         })
 
     training_start = time.time()
-    for i in range(3):
+    num_epochs = 1 if args.smoke_test else 3
+    for i in range(num_epochs):
         # Trains num epochs
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
+        print(f"iter {i}:", train_stats1)
 
     dt = (time.time() - training_start) / 3
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")

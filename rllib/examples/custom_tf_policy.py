@@ -5,12 +5,12 @@ from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iters", type=int, default=200)
+parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--num-cpus", type=int, default=0)
 
 
@@ -47,8 +47,9 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None)
     tune.run(
         MyTrainer,
-        stop={"training_iteration": args.iters},
+        stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",
             "num_workers": 2,
+            "framework": "tf",
         })

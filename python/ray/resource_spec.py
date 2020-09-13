@@ -3,6 +3,9 @@ from collections import namedtuple
 import logging
 import multiprocessing
 import os
+import re
+import subprocess
+import sys
 
 import ray
 import ray.ray_constants as ray_constants
@@ -121,8 +124,14 @@ class ResourceSpec(
 
         return resources
 
-    def resolve(self, is_head):
-        """Returns a copy with values filled out with system defaults."""
+    def resolve(self, is_head, node_ip_address=None):
+        """Returns a copy with values filled out with system defaults.
+
+        Args:
+            is_head (bool): Whether this is the head node.
+            node_ip_address (str): The IP address of the node that we are on.
+                This is used to automatically create a node id resource.
+        """
 
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
@@ -130,9 +139,12 @@ class ResourceSpec(
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
+        if node_ip_address is None:
+            node_ip_address = ray.services.get_node_ip_address()
+
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
-        resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
+        resources[NODE_ID_PREFIX + node_ip_address] = 1.0
 
         num_cpus = self.num_cpus
         if num_cpus is None:
@@ -153,6 +165,13 @@ class ResourceSpec(
             # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
             if gpu_ids is not None:
                 num_gpus = min(num_gpus, len(gpu_ids))
+
+        try:
+            info_string = _get_gpu_info_string()
+            gpu_types = _constraints_from_gpu_info(info_string)
+            resources.update(gpu_types)
+        except Exception:
+            logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
         system_memory = ray.utils.get_system_memory()
@@ -201,16 +220,6 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-        logger.info(
-            "Starting Ray with {} GiB memory available for workers and up to "
-            "{} GiB for objects. You can adjust these settings "
-            "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).".format(
-                round(
-                    ray_constants.round_to_memory_units(
-                        memory, round_up=False) / (1024**3), 2),
-                round(object_store_memory / (1024**3), 2)))
-
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
         assert spec.resolved()
@@ -220,12 +229,85 @@ class ResourceSpec(
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes Nvidia GPUs and Linux.
+    TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
+    TODO(mehrdadn): This currently does not work on macOS.
+    TODO(mehrdadn): Use a better mechanism for Windows.
+
+    Possibly useful: tensorflow.config.list_physical_devices()
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
-    proc_gpus_path = "/proc/driver/nvidia/gpus"
-    if os.path.isdir(proc_gpus_path):
-        return len(os.listdir(proc_gpus_path))
-    return 0
+    result = 0
+    if sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            result = len(os.listdir(proc_gpus_path))
+    elif sys.platform == "win32":
+        props = "AdapterCompatibility"
+        cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
+        lines = subprocess.check_output(cmdargs).splitlines()[1:]
+        result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
+    return result
+
+
+def _constraints_from_gpu_info(info_str):
+    """Parse the contents of a /proc/driver/nvidia/gpus/*/information to get the
+gpu model type.
+
+    Args:
+        info_str (str): The contents of the file.
+
+    Returns:
+        (str) The full model name.
+    """
+    if info_str is None:
+        return {}
+    lines = info_str.split("\n")
+    full_model_name = None
+    for line in lines:
+        split = line.split(":")
+        if len(split) != 2:
+            continue
+        k, v = split
+        if k.strip() == "Model":
+            full_model_name = v.strip()
+            break
+    pretty_name = _pretty_gpu_name(full_model_name)
+    if pretty_name:
+        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                           f"{pretty_name}")
+        return {constraint_name: 1}
+    return {}
+
+
+def _get_gpu_info_string():
+    """Get the gpu type for this machine.
+
+    TODO(Alex): All the caveats of _autodetect_num_gpus and we assume only one
+    gpu type.
+
+    Returns:
+        (str) The gpu's model name.
+    """
+    if sys.platform.startswith("linux"):
+        proc_gpus_path = "/proc/driver/nvidia/gpus"
+        if os.path.isdir(proc_gpus_path):
+            gpu_dirs = os.listdir(proc_gpus_path)
+            if len(gpu_dirs) > 0:
+                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
+                info_str = open(gpu_info_path).read()
+                return info_str
+    return None
+
+
+# TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
+# the form "Tesla V100-SXM2-16GB" or "Tesla K80").
+GPU_NAME_PATTERN = re.compile("\w+\s+([A-Z0-9]+)")
+
+
+def _pretty_gpu_name(name):
+    if name is None:
+        return None
+    match = GPU_NAME_PATTERN.match(name)
+    return match.group(1) if match else None

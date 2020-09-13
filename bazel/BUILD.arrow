@@ -1,0 +1,97 @@
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+
+# TODO(mehrdadn): (How to) support dynamic linking?
+PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
+
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-D" + define
+        for define in PROPAGATED_WINDOWS_DEFINES
+    ],
+    "//conditions:default": [
+        "-DARROW_USE_GLOG",
+    ],
+})
+
+LINKOPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-DefaultLib:" + "ws2_32.lib",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+cc_library(
+    name = "arrow",
+    srcs = [
+        "cpp/src/arrow/buffer.cc",
+        "cpp/src/arrow/device.cc",
+        "cpp/src/arrow/io/interfaces.cc",
+        "cpp/src/arrow/io/memory.cc",
+        "cpp/src/arrow/memory_pool.cc",
+        "cpp/src/arrow/result.cc",
+        "cpp/src/arrow/status.cc",
+        "cpp/src/arrow/util/future.cc",
+        "cpp/src/arrow/util/io_util.cc",
+        "cpp/src/arrow/util/logging.cc",
+        "cpp/src/arrow/util/memory.cc",
+        "cpp/src/arrow/util/string.cc",
+        "cpp/src/arrow/util/string_builder.cc",
+        "cpp/src/arrow/util/thread_pool.cc",
+        "cpp/src/arrow/util/utf8.cc",
+    ],
+    hdrs = [
+        "cpp/src/arrow/buffer.h",
+        "cpp/src/arrow/device.h",
+        "cpp/src/arrow/io/concurrency.h",
+        "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/io/memory.h",
+        "cpp/src/arrow/io/mman.h",
+        "cpp/src/arrow/io/type_fwd.h",
+        "cpp/src/arrow/io/util_internal.h",
+        "cpp/src/arrow/memory_pool.h",
+        "cpp/src/arrow/result.h",
+        "cpp/src/arrow/status.h",
+        "cpp/src/arrow/type_fwd.h",
+        "cpp/src/arrow/util/bit_util.h",
+        "cpp/src/arrow/util/checked_cast.h",
+        "cpp/src/arrow/util/compare.h",
+        "cpp/src/arrow/util/functional.h",
+        "cpp/src/arrow/util/future.h",
+        "cpp/src/arrow/util/io_util.h",
+        "cpp/src/arrow/util/iterator.h",
+        "cpp/src/arrow/util/logging.h",
+        "cpp/src/arrow/util/macros.h",
+        "cpp/src/arrow/util/make_unique.h",
+        "cpp/src/arrow/util/memory.h",
+        "cpp/src/arrow/util/optional.h",
+        "cpp/src/arrow/util/string.h",
+        "cpp/src/arrow/util/string_builder.h",
+        "cpp/src/arrow/util/string_view.h",
+        "cpp/src/arrow/util/thread_pool.h",
+        "cpp/src/arrow/util/type_traits.h",
+        "cpp/src/arrow/util/ubsan.h",
+        "cpp/src/arrow/util/utf8.h",
+        "cpp/src/arrow/util/variant.h",
+        "cpp/src/arrow/util/visibility.h",
+        "cpp/src/arrow/util/windows_compatibility.h",
+        "cpp/src/arrow/util/windows_fixup.h",
+        "cpp/src/arrow/vendored/optional.hpp",
+        "cpp/src/arrow/vendored/string_view.hpp",
+        "cpp/src/arrow/vendored/utf8cpp/checked.h",
+        "cpp/src/arrow/vendored/utf8cpp/core.h",
+        "cpp/src/arrow/vendored/variant.hpp",
+        "cpp/src/arrow/vendored/xxhash.h",
+        "cpp/src/arrow/vendored/xxhash/xxh3.h",
+        "cpp/src/arrow/vendored/xxhash/xxhash.c",
+        "cpp/src/arrow/vendored/xxhash/xxhash.h",
+    ],
+    copts = COPTS,
+    linkopts = LINKOPTS,
+    strip_include_prefix = "cpp/src",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@boost//:filesystem",
+        "@com_github_google_glog//:glog",
+    ],
+)

@@ -1,6 +1,10 @@
+import logging
+
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
-from ray.rllib.agents.sac.sac_policy import SACTFPolicy
+from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
+
+logger = logging.getLogger(__name__)
 
 OPTIMIZER_SHARED_CONFIGS = [
     "buffer_size", "prioritized_replay", "prioritized_replay_alpha",
@@ -14,15 +18,15 @@ DEFAULT_CONFIG = with_common_config({
     # === Model ===
     "twin_q": True,
     "use_state_preprocessor": False,
-    # RLlib model options for the Q function
+    # RLlib model options for the Q function(s).
     "Q_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
     },
-    # RLlib model options for the policy function
+    # RLlib model options for the policy function.
     "policy_model": {
-        "hidden_activation": "relu",
-        "hidden_layer_sizes": (256, 256),
+        "fcnet_activation": "relu",
+        "fcnet_hiddens": [256, 256],
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
@@ -57,8 +61,13 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
-
+    # Whether to LZ4 compress observations
     "compress_observations": False,
+    # If set, this will fix the ratio of replayed from a buffer and learned on
+    # timesteps to sampled from an environment and stored in the replay buffer
+    # timesteps. Otherwise, the replay will proceed at the native ratio
+    # determined by (train_batch_size / rollout_fragment_length).
+    "training_intensity": None,
 
     # === Optimization ===
     "optimization": {
@@ -67,7 +76,7 @@ DEFAULT_CONFIG = with_common_config({
         "entropy_learning_rate": 3e-4,
     },
     # If not None, clip gradients during optimization at this value.
-    "grad_norm_clipping": None,
+    "grad_clip": None,
     # How many steps of the model to sample before learning starts.
     "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
@@ -95,12 +104,42 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
+
+    # Whether the loss should be calculated deterministically (w/o the
+    # stochastic action sampling step). True only useful for cont. actions and
+    # for debugging!
+    "_deterministic_loss": False,
+    # Use a Beta-distribution instead of a SquashedGaussian for bounded,
+    # continuous action spaces (not recommended, for debugging only).
+    "_use_beta_distribution": False,
 })
 # __sphinx_doc_end__
 # yapf: enable
+
+
+def get_policy_class(config):
+    if config["framework"] == "torch":
+        from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
+        return SACTorchPolicy
+    else:
+        return SACTFPolicy
+
+
+def validate_config(config):
+    if config["model"].get("custom_model"):
+        logger.warning(
+            "Setting use_state_preprocessor=True since a custom model "
+            "was specified.")
+        config["use_state_preprocessor"] = True
+
+    if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
+        raise ValueError("`grad_clip` value must be > 0.0!")
+
 
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
     default_policy=SACTFPolicy,
+    get_policy_class=get_policy_class,
+    validate_config=validate_config,
 )

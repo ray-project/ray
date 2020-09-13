@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.stats import norm
-from tensorflow.python.eager.context import eager_mode
 import unittest
 
 import ray.rllib.agents.dqn as dqn
@@ -8,18 +7,19 @@ import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 
 def do_test_log_likelihood(run,
                            config,
                            prev_a=None,
                            continuous=False,
-                           layer_key=("fc", (0, 4)),
+                           layer_key=("fc", (0, 4), ("_hidden_layers.0.",
+                                                     "_logits.")),
                            logp_func=None):
     config = config.copy()
     # Run locally.
@@ -37,22 +37,9 @@ def do_test_log_likelihood(run,
     prev_r = None if prev_a is None else np.array(0.0)
 
     # Test against all frameworks.
-    for fw in ["tf", "eager", "torch"]:
-        if run in [dqn.DQNTrainer, sac.SACTrainer] and fw == "torch":
-            continue
-        print("Testing {} with framework={}".format(run, fw))
-        config["eager"] = fw == "eager"
-        config["use_pytorch"] = fw == "torch"
-
-        eager_ctx = None
-        if fw == "eager":
-            eager_ctx = eager_mode()
-            eager_ctx.__enter__()
-            assert tf.executing_eagerly()
-        elif fw == "tf":
-            assert not tf.executing_eagerly()
-
+    for fw in framework_iterator(config):
         trainer = run(config=config, env=env)
+
         policy = trainer.get_policy()
         vars = policy.get_weights()
         # Sample n actions, then roughly check their logp against their
@@ -72,7 +59,7 @@ def do_test_log_likelihood(run,
         if continuous:
             for idx in range(num_actions):
                 a = actions[idx]
-                if fw == "tf" or fw == "eager":
+                if fw != "torch":
                     if isinstance(vars, list):
                         expected_mean_logstd = fc(
                             fc(obs_batch, vars[layer_key[1][0]]),
@@ -88,8 +75,10 @@ def do_test_log_likelihood(run,
                 else:
                     expected_mean_logstd = fc(
                         fc(obs_batch,
-                           vars["_hidden_layers.0._model.0.weight"]),
-                        vars["_logits._model.0.weight"])
+                           vars["{}_model.0.weight".format(layer_key[2][0])],
+                           framework=fw),
+                        vars["{}_model.0.weight".format(layer_key[2][1])],
+                        framework=fw)
                 mean, log_std = np.split(expected_mean_logstd, 2, axis=-1)
                 if logp_func is None:
                     expected_logp = np.log(norm.pdf(a, mean, np.exp(log_std)))
@@ -113,9 +102,6 @@ def do_test_log_likelihood(run,
                     prev_reward_batch=np.array([prev_r]))
                 check(np.exp(logp), expected_prob, atol=0.2)
 
-        if eager_ctx:
-            eager_ctx.__exit__(None, None, None)
-
 
 class TestComputeLogLikelihood(unittest.TestCase):
     def test_dqn(self):
@@ -136,7 +122,7 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("fc", (0, 2)))
+            layer_key=("fc", (0, 2), ("_hidden_layers.0.", "_logits.")))
 
     def test_pg_discr(self):
         """Tests PG's (cont. actions) compute_log_likelihoods method."""
@@ -160,8 +146,8 @@ class TestComputeLogLikelihood(unittest.TestCase):
     def test_sac_cont(self):
         """Tests SAC's (cont. actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
-        config["policy_model"]["hidden_layer_sizes"] = [10]
-        config["policy_model"]["hidden_activation"] = "linear"
+        config["policy_model"]["fcnet_hiddens"] = [10]
+        config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array([0.0])
 
         # SAC cont uses a squashed normal distribution. Implement it's logp
@@ -182,21 +168,23 @@ class TestComputeLogLikelihood(unittest.TestCase):
             config,
             prev_a,
             continuous=True,
-            layer_key=("sequential/action", (0, 2)),
+            layer_key=("sequential/action", (2, 4),
+                       ("action_model.action_0.", "action_model.action_out.")),
             logp_func=logp_func)
 
     def test_sac_discr(self):
         """Tests SAC's (discrete actions) compute_log_likelihoods method."""
         config = sac.DEFAULT_CONFIG.copy()
-        config["policy_model"]["hidden_layer_sizes"] = [10]
-        config["policy_model"]["hidden_activation"] = "linear"
+        config["policy_model"]["fcnet_hiddens"] = [10]
+        config["policy_model"]["fcnet_activation"] = "linear"
         prev_a = np.array(0)
 
         do_test_log_likelihood(
             sac.SACTrainer,
             config,
             prev_a,
-            layer_key=("sequential/action", (0, 2)))
+            layer_key=("sequential/action", (0, 2),
+                       ("action_model.action_0.", "action_model.action_out.")))
 
 
 if __name__ == "__main__":

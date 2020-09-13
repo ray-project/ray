@@ -18,55 +18,55 @@ import gym
 
 import ray
 from ray import tune
-from ray.rllib.policy import Policy
-from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=20)
-
-
-class RandomPolicy(Policy):
-    """Hand-coded policy that returns random actions."""
-
-    def compute_actions(self,
-                        obs_batch,
-                        state_batches=None,
-                        prev_action_batch=None,
-                        prev_reward_batch=None,
-                        info_batch=None,
-                        episodes=None,
-                        **kwargs):
-        """Compute actions on a batch of observations."""
-        return [self.action_space.sample() for _ in obs_batch], [], {}
-
-    def learn_on_batch(self, samples):
-        """No learning."""
-        return {}
-
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=20)
+parser.add_argument("--stop-reward", type=float, default=150)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
     # Simple environment with 4 independent cartpole entities
-    register_env("multi_cartpole", lambda _: MultiCartpole(4))
+    register_env("multi_agent_cartpole",
+                 lambda _: MultiAgentCartPole({"num_agents": 4}))
     single_env = gym.make("CartPole-v0")
     obs_space = single_env.observation_space
     act_space = single_env.action_space
 
-    tune.run(
+    stop = {
+        "training_iteration": args.stop_iters,
+        "episode_reward_mean": args.stop_reward,
+        "timesteps_total": args.stop_timesteps,
+    }
+
+    results = tune.run(
         "PG",
-        stop={"training_iteration": args.num_iters},
+        stop=stop,
         config={
-            "env": "multi_cartpole",
+            "env": "multi_agent_cartpole",
             "multiagent": {
                 "policies": {
-                    "pg_policy": (None, obs_space, act_space, {}),
+                    "pg_policy": (None, obs_space, act_space, {
+                        "framework": "torch" if args.torch else "tf",
+                    }),
                     "random": (RandomPolicy, obs_space, act_space, {}),
                 },
                 "policy_mapping_fn": (
                     lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
             },
+            "framework": "torch" if args.torch else "tf",
         },
     )
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_NODE_MANAGER_SERVER_H
-#define RAY_RPC_NODE_MANAGER_SERVER_H
+#pragma once
 
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
@@ -24,14 +23,19 @@ namespace ray {
 namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
-#define RAY_NODE_MANAGER_RPC_HANDLERS                         \
-  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease) \
-  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)       \
-  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)           \
-  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                             \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
+  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
+  RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -55,9 +59,28 @@ class NodeManagerServiceHandler {
                                   ReturnWorkerReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleForwardTask(const ForwardTaskRequest &request,
-                                 ForwardTaskReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
+                                          ReleaseUnusedWorkersReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
+                                       rpc::CancelWorkerLeaseReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePrepareBundleResources(
+      const rpc::PrepareBundleResourcesRequest &request,
+      rpc::PrepareBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCommitBundleResources(
+      const rpc::CommitBundleResourcesRequest &request,
+      rpc::CommitBundleResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleCancelResourceReserve(
+      const rpc::CancelResourceReserveRequest &request,
+      rpc::CancelResourceReserveReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
                                   PinObjectIDsReply *reply,
@@ -73,6 +96,10 @@ class NodeManagerServiceHandler {
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRequestObjectSpillage(const RequestObjectSpillageRequest &request,
+                                           RequestObjectSpillageReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -105,5 +132,3 @@ class NodeManagerGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

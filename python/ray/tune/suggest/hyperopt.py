@@ -1,8 +1,16 @@
+from typing import Dict
+
 import numpy as np
 import copy
 import logging
 from functools import partial
 import pickle
+
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Normal, \
+    Quantized, \
+    Uniform
+from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
+
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
@@ -11,27 +19,34 @@ except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
 
-class HyperOptSearch(SuggestionAlgorithm):
+class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
-    Requires HyperOpt to be installed from source.
-    Uses the Tree-structured Parzen Estimators algorithm, although can be
-    trivially extended to support any algorithm HyperOpt uses. Externally
-    added trials will not be tracked by HyperOpt. Trials of the current run
-    can be saved using save method, trials of a previous run can be loaded
-    using restore method, thus enabling a warm start feature.
+    HyperOpt a Python library for serial and parallel optimization
+    over awkward search spaces, which may include real-valued, discrete,
+    and conditional dimensions. More info can be found at
+    http://hyperopt.github.io/hyperopt.
+
+    HyperOptSearch uses the Tree-structured Parzen Estimators algorithm,
+    though it can be trivially extended to support any algorithm HyperOpt
+    supports.
+
+    To use this search algorithm, you will need to install HyperOpt:
+
+    .. code-block:: bash
+
+        pip install -U hyperopt
+
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -49,8 +64,33 @@ class HyperOptSearch(SuggestionAlgorithm):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
-        use_early_stopped_trials (bool): Whether to use early terminated
-            trial results in the optimization process.
+        max_concurrent: Deprecated.
+        use_early_stopped_trials: Deprecated.
+
+    Tune automatically converts search spaces to HyperOpt's format:
+
+    .. code-block:: python
+
+        config = {
+            'width': tune.uniform(0, 20),
+            'height': tune.uniform(-100, 100),
+            'activation': tune.choice(["relu", "tanh"])
+        }
+
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+
+        hyperopt_search = HyperOptSearch(
+            metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(trainable, config=config, search_alg=hyperopt_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
 
     .. code-block:: python
 
@@ -59,48 +99,51 @@ class HyperOptSearch(SuggestionAlgorithm):
             'height': hp.uniform('height', -100, 100),
             'activation': hp.choice("activation", ["relu", "tanh"])
         }
+
         current_best_params = [{
             'width': 10,
             'height': 0,
             'activation': 0, # The index of "relu"
         }]
-        algo = HyperOptSearch(
-            space, max_concurrent=4, metric="mean_loss", mode="min",
+
+        hyperopt_search = HyperOptSearch(
+            space, metric="mean_loss", mode="min",
             points_to_evaluate=current_best_params)
+
+        tune.run(trainable, search_alg=hyperopt_search)
+
 
     """
 
-    def __init__(self,
-                 space,
-                 max_concurrent=10,
-                 reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
-                 points_to_evaluate=None,
-                 n_initial_points=20,
-                 random_state_seed=None,
-                 gamma=0.25,
-                 **kwargs):
-        assert hpo is not None, "HyperOpt must be installed!"
+    def __init__(
+            self,
+            space=None,
+            metric=None,
+            mode=None,
+            points_to_evaluate=None,
+            n_initial_points=20,
+            random_state_seed=None,
+            gamma=0.25,
+            max_concurrent=None,
+            use_early_stopped_trials=None,
+    ):
+        assert hpo is not None, (
+            "HyperOpt must be installed! Run `pip install hyperopt`.")
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         from hyperopt.fmin import generate_trials_to_calculate
-        assert type(max_concurrent) is int and max_concurrent > 0
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
-        self._max_concurrent = max_concurrent
-        self._metric = metric
+        super(HyperOptSearch, self).__init__(
+            metric=metric,
+            mode=mode,
+            max_concurrent=max_concurrent,
+            use_early_stopped_trials=use_early_stopped_trials)
+        self.max_concurrent = max_concurrent
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
-            self._metric_op = -1.
+            self.metric_op = -1.
         elif mode == "min":
-            self._metric_op = 1.
+            self.metric_op = 1.
+
         if n_initial_points is None:
             self.algo = hpo.tpe.suggest
         else:
@@ -108,12 +151,11 @@ class HyperOptSearch(SuggestionAlgorithm):
                 hpo.tpe.suggest, n_startup_jobs=n_initial_points)
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
-        self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
             self._hpopt_trials = hpo.Trials()
             self._points_to_evaluate = 0
         else:
-            assert type(points_to_evaluate) == list
+            assert isinstance(points_to_evaluate, (list, tuple))
             self._hpopt_trials = generate_trials_to_calculate(
                 points_to_evaluate)
             self._hpopt_trials.refresh()
@@ -124,13 +166,38 @@ class HyperOptSearch(SuggestionAlgorithm):
         else:
             self.rstate = np.random.RandomState(random_state_seed)
 
-        super(HyperOptSearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
+        self.domain = None
+        if space:
+            self.domain = hpo.Domain(lambda spc: spc, space)
+
+    def set_search_properties(self, metric, mode, config):
+        if self.domain:
+            return False
+        space = self.convert_search_space(config)
+        self.domain = hpo.Domain(lambda spc: spc, space)
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self.metric_op = -1.
+        elif self._mode == "min":
+            self.metric_op = 1.
+
+        return True
 
     def suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
+        if not self.domain:
+            raise RuntimeError(
+                "Trying to sample a configuration from {}, but no search "
+                "space has been defined. Either pass the `{}` argument when "
+                "instantiating the search algorithm, or pass a `config` to "
+                "`tune.run()`.".format(self.__class__.__name__, "space"))
+        if self.max_concurrent:
+            if len(self._live_trial_mapping) >= self.max_concurrent:
+                return None
         if self._points_to_evaluate > 0:
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
@@ -167,11 +234,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         ho_trial["book_time"] = now
         ho_trial["refresh_time"] = now
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with HyperOpt
@@ -185,18 +248,15 @@ class HyperOptSearch(SuggestionAlgorithm):
             ho_trial["state"] = hpo.base.JOB_STATE_ERROR
             ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
             self._hpopt_trials.refresh()
-        else:
-            self._process_result(trial_id, result, early_terminated)
+        elif result:
+            self._process_result(trial_id, result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result, early_terminated=False):
+    def _process_result(self, trial_id, result):
         ho_trial = self._get_hyperopt_trial(trial_id)
-        ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
-
-        if early_terminated and self._use_early_stopped is False:
-            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
-            ho_trial["misc"]["error"] = (str(TuneError), "Tune Removed")
+        if not ho_trial:
             return
+        ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
 
         ho_trial["state"] = hpo.base.JOB_STATE_DONE
         hp_result = self._to_hyperopt_result(result)
@@ -204,7 +264,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         self._hpopt_trials.refresh()
 
     def _to_hyperopt_result(self, result):
-        return {"loss": self._metric_op * result[self._metric], "status": "ok"}
+        return {"loss": self.metric_op * result[self.metric], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:
@@ -214,16 +274,98 @@ class HyperOptSearch(SuggestionAlgorithm):
             t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
         ][0]
 
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
+    def get_state(self):
+        return {
+            "hyperopt_trials": self._hpopt_trials,
+            "rstate": self.rstate.get_state()
+        }
 
-    def save(self, checkpoint_dir):
-        trials_object = (self._hpopt_trials, self.rstate.get_state())
-        with open(checkpoint_dir, "wb") as outputFile:
-            pickle.dump(trials_object, outputFile)
+    def set_state(self, state):
+        self._hpopt_trials = state["hyperopt_trials"]
+        self.rstate.set_state(state["rstate"])
 
-    def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as inputFile:
+    def save(self, checkpoint_path):
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(self.get_state(), outputFile)
+
+    def restore(self, checkpoint_path):
+        with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
-        self._hpopt_trials = trials_object[0]
-        self.rstate.set_state(trials_object[1])
+
+        if isinstance(trials_object, tuple):
+            self._hpopt_trials = trials_object[0]
+            self.rstate.set_state(trials_object[1])
+        else:
+            self.set_state(trials_object)
+
+    @staticmethod
+    def convert_search_space(spec: Dict):
+        spec = copy.deepcopy(spec)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        if not domain_vars and not grid_vars:
+            return []
+
+        if grid_vars:
+            raise ValueError(
+                "Grid search parameters cannot be automatically converted "
+                "to a HyperOpt search space.")
+
+        def resolve_value(par, domain):
+            quantize = None
+
+            sampler = domain.get_sampler()
+            if isinstance(sampler, Quantized):
+                quantize = sampler.q
+                sampler = sampler.sampler
+
+            if isinstance(domain, Float):
+                if isinstance(sampler, LogUniform):
+                    if quantize:
+                        return hpo.hp.qloguniform(par, domain.lower,
+                                                  domain.upper, quantize)
+                    return hpo.hp.loguniform(par, np.log(domain.lower),
+                                             np.log(domain.upper))
+                elif isinstance(sampler, Uniform):
+                    if quantize:
+                        return hpo.hp.quniform(par, domain.lower, domain.upper,
+                                               quantize)
+                    return hpo.hp.uniform(par, domain.lower, domain.upper)
+                elif isinstance(sampler, Normal):
+                    if quantize:
+                        return hpo.hp.qnormal(par, sampler.mean, sampler.sd,
+                                              quantize)
+                    return hpo.hp.normal(par, sampler.mean, sampler.sd)
+
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, Uniform):
+                    if quantize:
+                        logger.warning(
+                            "HyperOpt does not support quantization for "
+                            "integer values. Reverting back to 'randint'.")
+                    if domain.lower != 0:
+                        raise ValueError(
+                            "HyperOpt only allows integer sampling with "
+                            f"lower bound 0. Got: {domain.lower}.")
+                    if domain.upper < 1:
+                        raise ValueError(
+                            "HyperOpt does not support integer sampling "
+                            "of values lower than 0. Set your maximum range "
+                            "to something above 0 (currently {})".format(
+                                domain.upper))
+                    return hpo.hp.randint(par, domain.upper)
+            elif isinstance(domain, Categorical):
+                if isinstance(sampler, Uniform):
+                    return hpo.hp.choice(par, domain.categories)
+
+            raise ValueError("HyperOpt does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
+
+        for path, domain in domain_vars:
+            par = "/".join(path)
+            value = resolve_value(par, domain)
+            assign_value(spec, path, value)
+
+        return spec

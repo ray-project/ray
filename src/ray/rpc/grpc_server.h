@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_RPC_GRPC_SERVER_H
-#define RAY_RPC_GRPC_SERVER_H
+#pragma once
 
 #include <grpcpp/grpcpp.h>
 
@@ -134,7 +133,7 @@ class GrpcService {
       : main_service_(main_service) {}
 
   /// Destruct this gRPC service.
-  ~GrpcService() = default;
+  virtual ~GrpcService() = default;
 
  protected:
   /// Return the underlying grpc::Service object for this class.
@@ -160,5 +159,3 @@ class GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
-
-#endif

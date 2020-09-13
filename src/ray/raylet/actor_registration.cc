@@ -65,12 +65,19 @@ const JobID ActorRegistration::GetJobId() const {
   return JobID::FromBinary(actor_table_data_.job_id());
 }
 
-const int64_t ActorRegistration::GetMaxReconstructions() const {
-  return actor_table_data_.max_reconstructions();
+const int64_t ActorRegistration::GetMaxRestarts() const {
+  return actor_table_data_.max_restarts();
 }
 
-const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  return actor_table_data_.remaining_reconstructions();
+const int64_t ActorRegistration::GetRemainingRestarts() const {
+  if (actor_table_data_.max_restarts() == -1) {
+    return -1;
+  }
+  return actor_table_data_.max_restarts() - actor_table_data_.num_restarts();
+}
+
+const uint64_t ActorRegistration::GetNumRestarts() const {
+  return actor_table_data_.num_restarts();
 }
 
 const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>

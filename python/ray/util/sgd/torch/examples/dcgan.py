@@ -9,6 +9,9 @@ import torch.utils.data
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 import numpy as np
+from filelock import FileLock
+
+from tqdm import trange
 
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -19,21 +22,7 @@ from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import override
 from ray.util.sgd.torch import TrainingOperator
 
-
-def data_creator(config):
-    dataset = datasets.MNIST(
-        root="~/mnist/",
-        download=True,
-        transform=transforms.Compose([
-            transforms.Resize(32),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, ), (0.5, )),
-        ]))
-    if config.get("test_mode"):
-        dataset = torch.utils.data.Subset(dataset, list(range(64)))
-    dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=config.get("batch_size", 32))
-    return dataloader
+MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
 
 
 class Generator(nn.Module):
@@ -97,37 +86,56 @@ class LeNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def model_creator(config):
-    def weights_init(m):
-        classname = m.__class__.__name__
-        if classname.find("Conv") != -1:
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
-        elif classname.find("BatchNorm") != -1:
-            nn.init.normal_(m.weight.data, 1.0, 0.02)
-            nn.init.constant_(m.bias.data, 0)
-
-    discriminator = Discriminator()
-    discriminator.apply(weights_init)
-
-    generator = Generator(
-        latent_vector_size=config.get("latent_vector_size", 100))
-    generator.apply(weights_init)
-    return discriminator, generator
-
-
-def optimizer_creator(models, config):
-    net_d, net_g = models
-    discriminator_opt = optim.Adam(
-        net_d.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999))
-    generator_opt = optim.Adam(
-        net_g.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999))
-    return discriminator_opt, generator_opt
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find("Conv") != -1:
+        nn.init.normal_(m.weight.data, 0.0, 0.02)
+    elif classname.find("BatchNorm") != -1:
+        nn.init.normal_(m.weight.data, 1.0, 0.02)
+        nn.init.constant_(m.bias.data, 0)
 
 
 class GANOperator(TrainingOperator):
     def setup(self, config):
-        self.device = torch.device("cuda"
-                                   if torch.cuda.is_available() else "cpu")
+        discriminator = Discriminator()
+        discriminator.apply(weights_init)
+
+        generator = Generator(
+            latent_vector_size=config.get("latent_vector_size", 100))
+        generator.apply(weights_init)
+        models = (discriminator, generator)
+
+        discriminator_opt = optim.Adam(
+            discriminator.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(0.5, 0.999))
+        generator_opt = optim.Adam(
+            generator.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(0.5, 0.999))
+        optimizers = (discriminator_opt, generator_opt)
+
+        with FileLock(".ray.lock"):
+            dataset = datasets.MNIST(
+                root="~/mnist/",
+                download=True,
+                transform=transforms.Compose([
+                    transforms.Resize(32),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, ), (0.5, )),
+                ]))
+        if config.get("test_mode"):
+            dataset = torch.utils.data.Subset(dataset, list(range(64)))
+        train_dataloader = torch.utils.data.DataLoader(
+            dataset, batch_size=config.get("batch_size", 32))
+
+        self.models, self.optimizers, self.criterion = self.register(
+            models=models, optimizers=optimizers, criterion=nn.BCELoss())
+        self.register_data(
+            train_loader=train_dataloader, validation_loader=None)
+
+        self.model = self.models[0]
+        self.optimizer = self.optimizers[0]
 
         self.classifier = LeNet()
         self.classifier.load_state_dict(
@@ -181,6 +189,7 @@ class GANOperator(TrainingOperator):
 
         # Compute a discriminator update for real images
         discriminator.zero_grad()
+        # self.device is set automatically
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
         label = torch.full((batch_size, ), real_label, device=self.device)
@@ -227,33 +236,39 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
         "batch_size": 16 if test_mode else 512 // num_workers,
-        "classification_model_path": os.path.join(
-            os.path.dirname(ray.__file__),
-            "util/sgd/torch/examples/mnist_cnn.pt")
+        "classification_model_path": MODEL_PATH
     }
     trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.BCELoss,
         training_operator_cls=GANOperator,
         num_workers=num_workers,
         config=config,
         use_gpu=use_gpu,
-        backend="nccl" if use_gpu else "gloo")
+        use_tqdm=True)
 
     from tabulate import tabulate
-    for itr in range(5):
-        stats = trainer.train()
+    pbar = trange(5, unit="epoch")
+    for itr in pbar:
+        stats = trainer.train(info=dict(epoch_idx=itr, num_epochs=5))
+        pbar.set_postfix(dict(loss_g=stats["loss_g"], loss_d=stats["loss_d"]))
         formatted = tabulate([stats], headers="keys")
         if itr > 0:  # Get the last line of the stats.
             formatted = formatted.split("\n")[-1]
-        print(formatted)
+        pbar.write(formatted)
 
     return trainer
 
 
 if __name__ == "__main__":
+    import urllib.request
+    # Download a pre-trained MNIST model for inception score calculation.
+    # This is a tiny model (<100kb).
+    if not os.path.exists(MODEL_PATH):
+        print("downloading model")
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")

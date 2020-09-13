@@ -4,18 +4,19 @@ Fault-Tolerant Fairseq Training
 This document provides a walkthrough of adapting the `Fairseq library <https://github.com/pytorch/fairseq>`__ to perform fault-tolerant distributed training on AWS.
 As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 
-To run this example, you will need to install Ray on your local machine to use Ray Autoscaler.
+To run this example, you will need to install Ray on your local machine to use the Ray cluster launcher.
 
 You can view the `code for this example`_.
 
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/lm
 
 
-To use Ray Autoscaler on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on  `Automatic Cluster Setup page <../autoscaling.html>`__. We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
+To use Ray cluster launcher on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on the  :ref:`Automatic Cluster Setup page <ref-automatic-cluster>`.
+We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
 
 In the example config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
 
-We also mount `Amazon EFS <../autoscaling.html#using-amazon-efs>`__ to store code, data and checkpoints.
+We also mount :ref:`Amazon EFS <aws-cluster-efs>` to store code, data and checkpoints.
 
 .. note::
 
@@ -265,7 +266,7 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
   WARMUP_UPDATES=10000       # Warmup the learning rate over this many updates
   PEAK_LR=0.0005             # Peak learning rate, adjust as needed
   TOKENS_PER_SAMPLE=512      # Max sequence length
-  MAX_POSITIONS=512          # Num. positional embeddings (usually same as above)
+  #MAX_POSITIONS=512         # Num. positional embeddings (usually same as above)
   MAX_SENTENCES=8            # Number of sequences per batch on one GPU (batch size)
   FIX_BATCH_SIZE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
   SAVE_INTERVAL_UPDATES=1000 # save a checkpoint every N updates
@@ -308,4 +309,3 @@ To test the fault-tolerance, you can run the following command on your local mac
 .. code-block:: bash
 
   ray kill-random-node lm-cluster.yaml
-

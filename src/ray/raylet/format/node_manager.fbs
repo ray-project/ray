@@ -33,6 +33,8 @@ enum MessageType:int {
   // Send a reply confirming the successful registration of a worker or driver.
   // This is sent from the raylet to a worker or driver.
   RegisterClientReply,
+  // Send the worker's gRPC port to the raylet.
+  AnnounceWorkerPort,
   // Notify the raylet that this client is disconnecting unexpectedly.
   // This is sent from a worker to a raylet.
   DisconnectClient,
@@ -53,22 +55,6 @@ enum MessageType:int {
   NotifyDirectCallTaskBlocked,
   // Notify the current worker is unblocked. This is only used by direct task calls.
   NotifyDirectCallTaskUnblocked,
-  // A request to get the task frontier for an actor, called by the actor when
-  // saving a checkpoint.
-  GetActorFrontierRequest,
-  // The ActorFrontier response to a GetActorFrontierRequest. The raylet
-  // returns the actor's per-handle task counts and execution dependencies,
-  // which can later be used as the argument to SetActorFrontier
-  // when resuming from the checkpoint.
-  GetActorFrontierReply,
-  // A request to set the task frontier for an actor, called when resuming from
-  // a checkpoint. The raylet will update the actor's per-handle task
-  // counts and execution dependencies, discard any tasks that already executed
-  // before the checkpoint, and make any tasks on the frontier runnable by
-  // making their execution dependencies available.
-  SetActorFrontier,
-  // A node manager request to process a task forwarded from another node manager.
-  ForwardTaskRequest,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -96,6 +82,9 @@ enum MessageType:int {
   SetResourceRequest,
   // Subscribe to Plasma updates
   SubscribePlasmaReady,
+  // Manually restore objects from external storage.
+  ForceRestoreSpilledObjectsRequest,
+  ForceRestoreSpilledObjectsReply,
 }
 
 table TaskExecutionSpecification {
@@ -140,8 +129,9 @@ table ResourceIdSetInfos {
 // This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
-  // True if the client is a worker and false if the client is a driver.
-  is_worker: bool;
+  // Type of the worker.
+  // TODO(suquark): Use `WorkerType` in `common.proto`.
+  worker_type: int;
   // The ID of the worker or driver.
   worker_id: string;
   // The process ID of this worker.
@@ -151,13 +141,28 @@ table RegisterClientRequest {
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
+  // IP address of this worker.
+  ip_address: string;
   // Port that this worker is listening on.
   port: int;
+  // The config bytes of this job serialized with protobuf.
+  serialized_job_config: string;
 }
 
 table RegisterClientReply {
   // GCS ClientID of the local node manager.
   raylet_id: string;
+  // Port that this worker should listen on.
+  port: int;
+  // Keys for internal config options.
+  system_config_keys: [string];
+  // Values for internal config options corresponding to keys above.
+  system_config_values: [string];
+}
+
+table AnnounceWorkerPort {
+  // Port that this worker is listening on.
+  port: int;
 }
 
 table RegisterNodeManagerRequest {
@@ -165,17 +170,20 @@ table RegisterNodeManagerRequest {
   client_id: string;
 }
 
-table ForwardTaskRequest {
-  // The ID of the task to be forwarded.
-  task_id: string;
-  // The tasks in the uncommitted lineage of the forwarded task. This
-  // should include task_id.
-  uncommitted_tasks: [Task];
+// Mimics the Address protobuf.
+table Address {
+  raylet_id: string;
+  ip_address: string;
+  port: int;
+  // Optional unique id for the worker.
+  worker_id: string;
 }
 
 table FetchOrReconstruct {
   // List of object IDs of the objects that we want to reconstruct or fetch.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
   // False for direct call tasks. Blocking for those tasks is handled via the
@@ -199,6 +207,8 @@ table NotifyDirectCallTaskUnblocked {
 table WaitRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Number of objects expected to be returned, if available.
   num_ready_objects: int;
   // timeout
@@ -222,6 +232,8 @@ table WaitReply {
 table WaitForDirectActorCallArgsRequest {
   // List of object ids we'll be waiting on.
   object_ids: [string];
+  // The RPC addresses of the workers that own the objects in object_ids.
+  owner_addresses: [Address];
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
   tag: int;
@@ -281,6 +293,22 @@ table SetResourceRequest {
 }
 
 table SubscribePlasmaReady {
-  // ObjectID to wait for 
+  // ObjectID to wait for
   object_id: string;
+}
+
+table ForceSpillObjectsRequest {
+  // List of object IDs to be spilled to external storage.
+  object_ids: [string];
+}
+
+table ForceSpillObjectsReply {
+}
+
+table ForceRestoreSpilledObjectsRequest {
+  // List of object IDs to be restored from external storage.
+  object_ids: [string];
+}
+
+table ForceRestoreSpilledObjectsReply {
 }

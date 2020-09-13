@@ -6,7 +6,7 @@ to run concurrently, otherwise PBT will round-robin train the trials which
 is less efficient (or you can set {"gpu": 0} to use CPUs for SGD instead).
 
 Note that Tune in general does not need 8 GPUs, and this is just a more
-computationally demainding example.
+computationally demanding example.
 """
 
 import random

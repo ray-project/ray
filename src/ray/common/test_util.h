@@ -12,19 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_TEST_UTIL_H
-#define RAY_COMMON_TEST_UTIL_H
+#pragma once
 
-#include <unistd.h>
-
+#include <boost/optional.hpp>
 #include <functional>
 #include <string>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+
+static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
+    std::vector<ObjectID> object_ids) {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    refs.push_back(ref);
+  }
+  return refs;
+}
 
 class Buffer;
 class RayObject;
@@ -39,8 +49,28 @@ static const int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
 /// \return Whether the condition is met.
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms);
 
+/// Wait until the expected count is met, or timeout is reached.
+///
+/// \param[in] current_count The current count.
+/// \param[in] expected_count The expected count.
+/// \param[in] timeout_ms Timeout in milliseconds to wait for for.
+/// \return Whether the expected count is met.
+void WaitForExpectedCount(std::atomic<int> &current_count, int expected_count,
+                          int timeout_ms = 60000);
+
+/// Used to kill process whose pid is stored in `socket_name.id` file.
+void KillProcessBySocketName(std::string socket_name);
+
+/// Kills all processes with the given executable name (similar to killall).
+/// Note: On Windows, this should include the file extension (e.g. ".exe"), if any.
+/// This cannot be done automatically as doing so may be incorrect in some cases.
+int KillAllExecutable(const std::string &executable_with_suffix);
+
 // A helper function to return a random task id.
 TaskID RandomTaskId();
+
+// A helper function to return a random job id.
+JobID RandomJobId();
 
 std::shared_ptr<Buffer> GenerateRandomBuffer();
 
@@ -48,23 +78,57 @@ std::shared_ptr<RayObject> GenerateRandomObject(
     const std::vector<ObjectID> &inlined_ids = {});
 
 /// Path to redis server executable binary.
-extern std::string REDIS_SERVER_EXEC_PATH;
+extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
-extern std::string REDIS_CLIENT_EXEC_PATH;
+extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
 /// Path to redis module library.
-extern std::string REDIS_MODULE_LIBRARY_PATH;
-/// Port of redis server.
-extern int REDIS_SERVER_PORT;
+extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
+/// Ports of redis server.
+extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
-/// Test helper class, it will start redis server before the test runs,
-/// and stop redis server after the test is completed.
-class RedisServiceManagerForTest : public ::testing::Test {
+/// Path to object store executable binary.
+extern std::string TEST_STORE_EXEC_PATH;
+
+/// Path to gcs server executable binary.
+extern std::string TEST_GCS_SERVER_EXEC_PATH;
+
+/// Path to raylet executable binary.
+extern std::string TEST_RAYLET_EXEC_PATH;
+/// Path to mock worker executable binary. Required by raylet.
+extern std::string TEST_MOCK_WORKER_EXEC_PATH;
+
+//--------------------------------------------------------------------------------
+// COMPONENT MANAGEMENT CLASSES FOR TEST CASES
+//--------------------------------------------------------------------------------
+/// Test cases can use it to
+/// 1. start/stop/flush redis server(s)
+/// 2. start/stop object store
+/// 3. start/stop gcs server
+/// 4. start/stop raylet
+/// 5. start/stop raylet monitor
+class TestSetupUtil {
  public:
-  static void SetUpTestCase();
-  static void TearDownTestCase();
-  static void FlushAll();
+  static void StartUpRedisServers(const std::vector<int> &redis_server_ports);
+  static void ShutDownRedisServers();
+  static void FlushAllRedisServers();
+
+  static std::string StartObjectStore(
+      const boost::optional<std::string> &socket_name = boost::none);
+  static void StopObjectStore(const std::string &store_socket_name);
+
+  static std::string StartGcsServer(const std::string &redis_address);
+  static void StopGcsServer(const std::string &gcs_server_socket_name);
+
+  static std::string StartRaylet(const std::string &store_socket_name,
+                                 const std::string &node_ip_address, const int &port,
+                                 const std::string &redis_address,
+                                 const std::string &resource);
+  static void StopRaylet(const std::string &raylet_socket_name);
+
+ private:
+  static int StartUpRedisServer(const int &port);
+  static void ShutDownRedisServer(const int &port);
+  static void FlushRedisServer(const int &port);
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_TEST_UTIL_H

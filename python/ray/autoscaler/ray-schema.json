@@ -58,7 +58,7 @@
             "type": "object",
             "description": "Cloud-provider specific configuration.",
             "required": [ "type" ],
-            "additionalProperties": false,
+            "additionalProperties": true,
             "properties": {
                 "type": {
                     "type": "string",
@@ -128,10 +128,6 @@
                     "type": "object",
                     "description": "k8s autoscaler permissions, if using k8s"
                 },
-                "extra_config": {
-                    "type": "object",
-                    "description": "provider-specific config"
-                },
                 "cache_stopped_nodes": {
                     "type": "boolean",
                     "description": " Whether to try to reuse previously stopped nodes instead of launching nodes. This will also cause the autoscaler to stop nodes instead of terminating them. Only implemented for AWS."
@@ -143,6 +139,23 @@
                 "project_id": {
                     "type": ["string", "null"],
                     "description": "GCP globally unique project id"
+                },
+                "gcp_credentials": {
+                    "type": "object",
+                    "description": "Credentials for authenticating with the GCP client",
+                    "required": [ "type" ],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["credentials_token", "service_account"],
+                            "description": "Credentials type: either temporary OAuth 2.0 token or permanent service account credentials blob."
+                        },
+                        "credentials": {
+                            "type": "string",
+                            "description": "Oauth token or JSON string constituting service account credentials"
+                        }
+                    }
                 }
             }
         },
@@ -160,6 +173,10 @@
                 },
                 "ssh_private_key": { 
                     "type": "string"
+                },
+                "ssh_proxy_command": {
+                    "description": "A value for ProxyCommand ssh option, for connecting through proxies. Example: nc -x proxy.example.com:1234 %h %p",
+                    "type": "string"
                 }
             }
         },
@@ -171,7 +188,7 @@
                 "image": {
                     "type": "string",
                     "description": "the docker image name",
-                    "default": "tensorflow/tensorflow:1.5.0-py3"
+                    "default": "rayproject/ray:0.8.7"
                 },
                 "container_name": {
                     "type": "string",
@@ -203,6 +220,14 @@
                 }
             }
         },
+        "head_node_type": {
+            "type": "string",
+            "description": "If using multiple node types, specifies the head node type."
+        },
+        "worker_default_node_type": {
+            "type": "string",
+            "description": "If using multiple node types, specifies the default worker node type."
+        },
         "head_node": {
             "type": "object",
             "description": "Provider-specific config for the head node, e.g. instance type."
@@ -214,6 +239,18 @@
         "file_mounts": {
             "type": "object",
             "description": "Map of remote paths to local paths, e.g. {\"/tmp/data\": \"/my/local/data\"}"
+        },
+        "cluster_synced_files": {
+            "type": "array",
+            "description": "List of paths on the head node which should sync to the worker nodes, e.g. [\"/some/data/somehwere\"]"
+        },
+        "file_mounts_sync_continuously": {
+            "type": "boolean",
+            "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Metadata field that can be used to store user-defined data in the cluster config. Ray does not interpret these fields."
         },
         "initialization_commands": {
             "$ref": "#/definitions/commands",
@@ -241,6 +278,55 @@
         },
         "no_restart": {
             "description": "Whether to avoid restarting the cluster during updates. This field is controlled by the ray --no-restart flag and cannot be set by the user."
+        },
+        "available_node_types": {
+            "type": "object",
+            "description": "A list of node types for multi-node-type autoscaling.",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "required": [ "resources", "node_config" ],
+                    "properties": {
+                       "node_config": {
+                           "type": "object",
+                           "description": "Provider-specific config for the node, e.g. instance type."
+                       },
+                       "max_workers": {"type": "integer"},
+                       "resources": {
+                           "type": "object",
+                           ".*": {"type": "number"}
+                       },
+                       "initialization_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of commands that will be run before `setup_commands`. If docker is enabled, these commands will run outside the container and before docker is setup."
+                       },
+                       "worker_setup_commands": {
+                           "$ref": "#/definitions/commands",
+                           "description": "List of common shell commands to run to setup nodes. This node specfic list will override the global setup_commands and worker_setup_commands."
+                       },
+                       "docker": {
+                        "description": "Configuration of Worker nodes.",
+                        "type": "object",
+                        "properties": {
+                            "pull_before_run": {
+                                "type": "boolean",
+                                "description": "run `docker pull` first"
+                            },
+                            "worker_image": {
+                                "type": "string",
+                                "description": "analogous to head_image"
+                            },
+                            "worker_run_options": {
+                                "type": "array",
+                                "description": "analogous to head_run_options, merged with the global docker run_options."
+                            }
+                        }
+                    }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
         }
     }
 }

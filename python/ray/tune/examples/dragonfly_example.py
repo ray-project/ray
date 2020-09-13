@@ -6,16 +6,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import time
+
 import ray
-from ray.tune import run
+from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.dragonfly import DragonflySearch
 
 
-def objective(config, reporter):
-    import numpy as np
-    import time
-    time.sleep(0.2)
+def objective(config):
     for i in range(config["iterations"]):
         vol1 = config["point"][0]  # LiNO3
         vol2 = config["point"][1]  # Li2SO4
@@ -25,15 +26,12 @@ def objective(config, reporter):
         conductivity = vol1 + 0.1 * (vol2 + vol3)**2 + 2.3 * vol4 * (vol1**1.5)
         # Add Gaussian noise to simulate experimental noise
         conductivity += np.random.normal() * 0.01
-        reporter(timesteps_total=i, objective=conductivity)
+        tune.report(timesteps_total=i, objective=conductivity)
         time.sleep(0.02)
 
 
 if __name__ == "__main__":
     import argparse
-    from dragonfly.opt.gp_bandit import EuclideanGPBandit
-    from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-    from dragonfly import load_config
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -41,43 +39,47 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
+            "LiNO3_vol": tune.uniform(0, 7),
+            "Li2SO4_vol": tune.uniform(0, 7),
+            "NaClO4_vol": tune.uniform(0, 7)
         },
     }
 
-    domain_vars = [{
-        "name": "LiNO3_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }, {
-        "name": "Li2SO4_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }, {
-        "name": "NaClO4_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }]
+    # Optional: Pass the parameter space yourself
+    # space = [{
+    #     "name": "LiNO3_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }, {
+    #     "name": "Li2SO4_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }, {
+    #     "name": "NaClO4_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }]
 
-    domain_config = load_config({"domain": domain_vars})
+    df_search = DragonflySearch(
+        optimizer="bandit",
+        domain="euclidean",
+        # space=space,  # If you want to set the space manually
+    )
+    df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
-    func_caller = EuclideanFunctionCaller(
-        None, domain_config.domain.list_of_domains[0])
-    optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-    algo = DragonflySearch(
-        optimizer, max_concurrent=4, metric="objective", mode="max")
-    scheduler = AsyncHyperBandScheduler(metric="objective", mode="max")
-    run(objective,
+    scheduler = AsyncHyperBandScheduler()
+    tune.run(
+        objective,
+        metric="objective",
+        mode="max",
         name="dragonfly_search",
-        search_alg=algo,
+        search_alg=df_search,
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

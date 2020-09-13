@@ -1,16 +1,30 @@
-#ifndef _QUEUE_SERVICE_H_
-#define _QUEUE_SERVICE_H_
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread.hpp>
 #include <thread>
 
-#include "queue.h"
+#include "queue/queue.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {
+
+enum class StreamingQueueStatus : uint32_t {
+  OK = 0,
+  Timeout = 1,
+  DataLost = 2,  // The data in upstream has been evicted when downstream try to pull data
+                 // from upstream.
+  NoValidData = 3,  // There is no data written into queue, or start_msg_id is bigger than
+                    // all items in queue now.
+};
+
+static inline std::ostream &operator<<(std::ostream &os,
+                                       const StreamingQueueStatus &status) {
+  os << static_cast<std::underlying_type<StreamingQueueStatus>::type>(status);
+  return os;
+}
 
 /// Base class of UpstreamQueueMessageHandler and DownstreamQueueMessageHandler.
 /// A queue service manages a group of queues, upstream queues or downstream queues of
@@ -24,18 +38,9 @@ namespace streaming {
 class QueueMessageHandler {
  public:
   /// Construct a QueueMessageHandler instance.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor, used to call Core
-  /// Worker's api.
-  ///            For Python worker, the pointer can be obtained from
-  ///            ray.worker.global_worker.core_worker; For Java worker, obtained from
-  ///            RayNativeRuntime object through java reflection.
   /// \param[in] actor_id actor id of current actor.
-  QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : core_worker_(core_worker),
-        actor_id_(actor_id),
-        queue_dummy_work_(queue_service_) {
-    Start();
-  }
+  QueueMessageHandler(const ActorID &actor_id)
+      : actor_id_(actor_id), queue_dummy_work_(queue_service_) {}
 
   virtual ~QueueMessageHandler() { Stop(); }
 
@@ -69,7 +74,8 @@ class QueueMessageHandler {
   /// downstream queue with same queue_id, and vice versa.
   /// \param[in] queue_id queue id of current queue.
   /// \param[in] actor_id actor_id actor id of corresponded peer actor.
-  void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id);
+  void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id,
+                      RayFunction &async_func, RayFunction &sync_func);
 
   /// Obtain the actor id of the peer actor specified by queue_id.
   /// \return actor id
@@ -78,17 +84,15 @@ class QueueMessageHandler {
   /// Release all queues in current queue service.
   void Release();
 
- private:
+ protected:
   /// Start asio service
-  void Start();
+  virtual void Start();
   /// Stop asio service
-  void Stop();
+  virtual void Stop();
   /// The callback function of internal thread.
   void QueueThreadCallback() { queue_service_.run(); }
 
  protected:
-  /// CoreWorker C++ pointer of current actor
-  CoreWorker *core_worker_;
   /// actor_id actor id of current actor
   ActorID actor_id_;
   /// Helper function, parse message buffer to Message object.
@@ -111,8 +115,10 @@ class QueueMessageHandler {
 class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
   /// Construct a UpstreamQueueMessageHandler instance.
-  UpstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  UpstreamQueueMessageHandler(const ActorID &actor_id)
+      : QueueMessageHandler(actor_id), handler_service_dummy_worker_(handler_service_) {
+    Start();
+  }
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -130,6 +136,9 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
                   std::vector<ObjectID> &failed_queues);
   /// Handle notify message from corresponded downstream queue.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
+  /// Handle pull request message from corresponded downstream queue.
+  void OnPullRequest(std::shared_ptr<PullRequestMessage> pull_msg,
+                     std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
   /// Obtain upstream queue specified by queue_id.
   std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID &queue_id);
   /// Release all upstream queues
@@ -140,48 +149,61 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) override;
 
   static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(
-      CoreWorker *core_worker, const ActorID &actor_id);
+      const ActorID &actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
-
-  static RayFunction peer_sync_function_;
-  static RayFunction peer_async_function_;
+  virtual void Start() override;
 
  private:
   bool CheckQueueSync(const ObjectID &queue_ids);
+  virtual void Stop() override;
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
   static std::shared_ptr<UpstreamQueueMessageHandler> upstream_handler_;
+  boost::asio::io_service handler_service_;
+  boost::asio::io_service::work handler_service_dummy_worker_;
+  std::thread handle_service_thread_;
 };
 
-/// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
+/// DownstreamQueueMessageHandler holds and manages all downstream queues of current
+/// actor.
 class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueMessageHandler(core_worker, actor_id) {}
+  DownstreamQueueMessageHandler(const ActorID &actor_id) : QueueMessageHandler(actor_id) {
+    Start();
+  }
+  /// Create a downstream queue.
+  /// \param queue_id, queue id of the queue to be created.
+  /// \param peer_actor_id, actor id of peer actor.
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
+  /// Request to pull messages from corresponded upstream queue, whose message id
+  /// is larger than `start_msg_id`. Multiple attempts to pull until timeout.
+  /// \param queue_id, queue id of the queue to be pulled.
+  /// \param start_msg_id, the starting message id reqeust by downstream queue.
+  /// \param is_upstream_first_pull
+  /// \param timeout_ms, the maxmium timeout.
+  StreamingQueueStatus PullQueue(const ObjectID &queue_id, uint64_t start_msg_id,
+                                 bool &is_upstream_first_pull,
+                                 uint64_t timeout_ms = 2000);
+  /// Check whether the downstream queue specified by queue_id exists or not.
   bool DownstreamQueueExists(const ObjectID &queue_id);
-
-  void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
-
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
-
+  /// Obtain downstream queue specified by queue_id.
   std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID &queue_id);
-
+  /// Release all downstream queues
   void ReleaseAllDownQueues();
-
+  /// The callback function called when downstream queue receives a queue item.
   void OnData(std::shared_ptr<DataMessage> msg);
   virtual void DispatchMessageInternal(
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
-
   static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
-      CoreWorker *core_worker, const ActorID &actor_id);
+      const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
-  static RayFunction peer_sync_function_;
-  static RayFunction peer_async_function_;
+  StreamingQueueStatus PullPeerAsync(const ObjectID &queue_id, uint64_t start_msg_id,
+                                     bool &is_upstream_first_pull, uint64_t timeout_ms);
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>>
@@ -191,4 +213,3 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
 
 }  // namespace streaming
 }  // namespace ray
-#endif

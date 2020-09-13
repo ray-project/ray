@@ -16,7 +16,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
 )
 
-cdef extern from "ray/protobuf/common.pb.h" nogil:
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CFunctionDescriptorType \
             "ray::FunctionDescriptorType":
         pass

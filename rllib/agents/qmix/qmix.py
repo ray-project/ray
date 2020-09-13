@@ -1,7 +1,12 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
-from ray.rllib.optimizers import SyncBatchReplayOptimizer
+from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
+    StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.concurrency_ops import Concurrently
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -16,6 +21,22 @@ DEFAULT_CONFIG = with_common_config({
     # Optimize over complete episodes by default.
     "batch_mode": "complete_episodes",
 
+    # === Exploration Settings ===
+    "exploration_config": {
+        # The Exploration class to use.
+        "type": "EpsilonGreedy",
+        # Config for the Exploration class' constructor:
+        "initial_epsilon": 1.0,
+        "final_epsilon": 0.02,
+        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+
+        # For soft_q, use:
+        # "exploration_config" = {
+        #   "type": "SoftQ"
+        #   "temperature": [float, e.g. 1.0]
+        # }
+    },
+
     # === Evaluation ===
     # Evaluate with epsilon=0 every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -24,21 +45,13 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 10,
+    # Switch to greedy actions in evaluation workers.
+    "evaluation_config": {
+        "explore": False,
+    },
 
-    # === Exploration ===
-    # Max num timesteps for annealing schedules. Exploration is annealed from
-    # 1.0 to exploration_fraction over this number of timesteps scaled by
-    # exploration_fraction
-    "schedule_max_timesteps": 100000,
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    "exploration_fraction": 0.1,
-    # Initial value of random action probability.
-    "exploration_initial_eps": 1.0,
-    # Final value of random action probability.
-    "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
 
@@ -87,16 +100,29 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def make_sync_batch_optimizer(workers, config):
-    return SyncBatchReplayOptimizer(
-        workers,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        train_batch_size=config["train_batch_size"])
+def execution_plan(workers, config):
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+
+    store_op = rollouts \
+        .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+
+    train_op = Replay(local_buffer=replay_buffer) \
+        .combine(
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    merged_op = Concurrently(
+        [store_op, train_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(merged_op, workers, config)
 
 
 QMixTrainer = GenericOffPolicyTrainer.with_updates(
     name="QMIX",
     default_config=DEFAULT_CONFIG,
     default_policy=QMixTorchPolicy,
-    make_policy_optimizer=make_sync_batch_optimizer)
+    get_policy_class=None,
+    execution_plan=execution_plan)

@@ -4,9 +4,9 @@
   xmlns="http://maven.apache.org/POM/4.0.0"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <parent>
-    <groupId>org.ray</groupId>
+    <groupId>io.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.9.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 

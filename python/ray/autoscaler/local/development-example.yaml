@@ -26,7 +26,7 @@ setup_commands:
 #    - source activate ray && cd ray/python && pip install -e .
 head_start_ray_commands:
     - source activate ray && ray stop
-    - source activate ray && ulimit -c unlimited && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - source activate ray && ulimit -c unlimited && ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 worker_start_ray_commands:
     - source activate ray && ray stop
     - source activate ray && ray start --address=$RAY_HEAD_IP:6379

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "stats_handler_impl.h"
+#include "ray/gcs/gcs_server/stats_handler_impl.h"
 
 namespace ray {
 namespace rpc {
@@ -34,12 +34,32 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_client_.Stats().AsyncAddProfileData(profile_table_data, on_done);
+  Status status = gcs_table_storage_->ProfileTable().Put(UniqueID::FromRandom(),
+                                                         *profile_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
   RAY_LOG(DEBUG) << "Finished adding profile data, component type = "
                  << request.profile_data().component_type() << ", node id = " << node_id;
+}
+
+void DefaultStatsHandler::HandleGetAllProfileInfo(
+    const rpc::GetAllProfileInfoRequest &request, rpc::GetAllProfileInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all profile info.";
+  auto on_done = [reply, send_reply_callback](
+                     const std::unordered_map<UniqueID, ProfileTableData> &result) {
+    for (auto &data : result) {
+      reply->add_profile_info_list()->CopyFrom(data.second);
+    }
+    RAY_LOG(DEBUG) << "Finished getting all profile info.";
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  };
+
+  Status status = gcs_table_storage_->ProfileTable().GetAll(on_done);
+  if (!status.ok()) {
+    on_done(std::unordered_map<UniqueID, ProfileTableData>());
+  }
 }
 
 }  // namespace rpc

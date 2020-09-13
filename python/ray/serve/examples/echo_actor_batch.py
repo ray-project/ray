@@ -5,14 +5,25 @@ The queries incoming to this actor are batched.
 This actor can be called from HTTP as well as from Python.
 """
 
+import json
 import time
+
+from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import pformat_color_json
-from ray.serve import BackendConfig
+
+
+def pformat_color_json(d):
+    """Use pygments to pretty format and colorize dictionary"""
+    formatted_json = json.dumps(d, sort_keys=True, indent=4)
+
+    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
+                              formatters.TerminalFormatter())
+
+    return colorful_json
 
 
 class MagicCounter:
@@ -36,12 +47,11 @@ class MagicCounter:
             return result
 
 
-serve.init(blocking=True)
-serve.create_endpoint("magic_counter", "/counter", blocking=True)
-b_config = BackendConfig(max_batch_size=5)
-serve.create_backend(
-    MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
-serve.link("magic_counter", "counter:v1")
+client = serve.start()
+client.create_backend(
+    "counter:v1", MagicCounter, 42,
+    config={"max_batch_size": 5})  # increment=42
+client.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 print("Sending ten queries via HTTP")
 for i in range(10):
@@ -53,7 +63,7 @@ for i in range(10):
     time.sleep(0.2)
 
 print("Sending ten queries via Python")
-handle = serve.get_handle("magic_counter")
+handle = client.get_handle("magic_counter")
 for i in range(10):
     print("> Pinging handle.remote(base_number={})".format(i))
     result = ray.get(handle.remote(base_number=i))

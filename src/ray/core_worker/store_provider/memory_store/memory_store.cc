@@ -157,10 +157,11 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
+bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
                                                   object.GetNestedIds(), true);
+  bool stored_in_direct_memory = true;
 
   // TODO(edoakes): we should instead return a flag to the caller to put the object in
   // plasma.
@@ -170,7 +171,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return Status::OK();  // Object already exists in the store, which is fine.
+      return true;  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -217,6 +218,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
   // in-memory store (would cause deadlock).
   if (should_put_in_plasma) {
     store_in_plasma_(object, object_id);
+    stored_in_direct_memory = false;
   }
 
   // It's important for performance to run the callbacks outside the lock.
@@ -224,7 +226,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     cb(object_entry);
   }
 
-  return Status::OK();
+  return stored_in_direct_memory;
 }
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
@@ -314,15 +316,15 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  while (!(done = get_request->Wait(iteration_timeout)) && !timed_out &&
-         signal_status.ok()) {
+  while (!timed_out && signal_status.ok() &&
+         !(done = get_request->Wait(iteration_timeout))) {
     if (check_signals_) {
       signal_status = check_signals_();
     }
 
     if (remaining_timeout >= 0) {
-      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       remaining_timeout -= iteration_timeout;
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
       timed_out = remaining_timeout <= 0;
     }
   }
@@ -453,7 +455,9 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   absl::MutexLock lock(&mu_);
   MemoryStoreStats item;
   for (const auto &it : objects_) {
-    if (!it.second->IsInPlasmaError()) {
+    if (it.second->IsInPlasmaError()) {
+      item.num_in_plasma += 1;
+    } else {
       item.num_local_objects += 1;
       item.used_object_store_memory += it.second->GetSize();
     }

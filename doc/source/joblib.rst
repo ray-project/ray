@@ -1,10 +1,12 @@
+.. _ray-joblib:
+
 Distributed Scikit-learn / Joblib
 =================================
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-Ray supports running distributed `scikit-learn`_ programs by 
-implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__ 
+Ray supports running distributed `scikit-learn`_ programs by
+implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__
 instead of local processes. This makes it easy to scale existing applications
 that use scikit-learn from a single node to a cluster.
 
@@ -19,12 +21,12 @@ that use scikit-learn from a single node to a cluster.
 Quickstart
 ----------
 
-To get started, first `install Ray <installation.html>`__, then use 
+To get started, first `install Ray <installation.html>`__, then use
 ``from ray.util.joblib import register_ray`` and run ``register_ray()``.
 This will register Ray as a joblib backend for scikit-learn to use.
-Then run your original scikit-learn code inside 
-``with joblib.parallel_backend('ray')``. This will start a local Ray cluster. 
-See the `Run on a Cluster`_ section below for instructions to run on 
+Then run your original scikit-learn code inside
+``with joblib.parallel_backend('ray')``. This will start a local Ray cluster.
+See the `Run on a Cluster`_ section below for instructions to run on
 a multi-node Ray cluster instead.
 
 .. code-block:: python
@@ -62,6 +64,6 @@ You can also start Ray manually by calling ``ray.init()`` (with any of its suppo
 configuration options) before calling ``with joblib.parallel_backend('ray')``.
 
 .. warning::
-    
+
     If you do not set the ``RAY_ADDRESS`` environment variable and do not provide
     ``address`` in ``ray.init(address=<address>)`` then scikit-learn will run on a SINGLE node!

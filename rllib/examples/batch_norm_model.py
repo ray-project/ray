@@ -4,54 +4,47 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib.models import Model, ModelCatalog
-from ray.rllib.models.tf.misc import normc_initializer
-from ray.rllib.utils import try_import_tf
+from ray.rllib.examples.models.batch_norm_model import BatchNormModel, \
+    TorchBatchNormModel
+from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import check_learning_achieved
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-iters", type=int, default=200)
 parser.add_argument("--run", type=str, default="PPO")
-
-
-class BatchNormModel(Model):
-    def _build_layers_v2(self, input_dict, num_outputs, options):
-        last_layer = input_dict["obs"]
-        hiddens = [256, 256]
-        for i, size in enumerate(hiddens):
-            label = "fc{}".format(i)
-            last_layer = tf.layers.dense(
-                last_layer,
-                size,
-                kernel_initializer=normc_initializer(1.0),
-                activation=tf.nn.tanh,
-                name=label)
-            # Add a batch norm layer
-            last_layer = tf.layers.batch_normalization(
-                last_layer, training=input_dict["is_training"])
-        output = tf.layers.dense(
-            last_layer,
-            num_outputs,
-            kernel_initializer=normc_initializer(0.01),
-            activation=None,
-            name="fc_out")
-        return output, last_layer
-
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument("--stop-reward", type=float, default=150)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=True)
 
-    ModelCatalog.register_custom_model("bn_model", BatchNormModel)
-    tune.run(
-        args.run,
-        stop={"training_iteration": args.num_iters},
-        config={
-            "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
-            "model": {
-                "custom_model": "bn_model",
-            },
-            "num_workers": 0,
+    ModelCatalog.register_custom_model(
+        "bn_model", TorchBatchNormModel if args.torch else BatchNormModel)
+
+    config = {
+        "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
+        "model": {
+            "custom_model": "bn_model",
         },
-    )
+        "num_workers": 0,
+        "framework": "torch" if args.torch else "tf",
+    }
+
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
+    results = tune.run(args.run, stop=stop, config=config)
+
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward)
+
+    ray.shutdown()

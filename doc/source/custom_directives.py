@@ -11,8 +11,6 @@ try:
 except NameError:
     FileNotFoundError = IOError
 
-# This is not a top level item in the directory, so we use `../` to refer
-# to images located at the top level.
 GALLERY_TEMPLATE = """
 .. raw:: html
 
@@ -20,7 +18,7 @@ GALLERY_TEMPLATE = """
 
 .. only:: html
 
-    .. figure:: ../{thumbnail}
+    .. figure:: {thumbnail}
 
         {description}
 
@@ -78,9 +76,11 @@ class CustomGalleryItemDirective(Directive):
             os.makedirs(thumb_dir, exist_ok=True)
             image_path = os.path.join(thumb_dir, os.path.basename(figname))
             sphinx_gallery.gen_rst.scale_image(figname, image_path, 400, 280)
-
             thumbnail = os.path.relpath(image_path, env.srcdir)
+            # https://stackoverflow.com/questions/52138336/sphinx-reference-to-an-image-from-different-locations
+            thumbnail = "/" + thumbnail
         else:
+            # "/" is the top level srcdir
             thumbnail = "/_static/img/thumbnails/default.png"
 
         if "description" in self.options:

@@ -1,37 +1,60 @@
-import Typography from "@material-ui/core/Typography";
+import { Typography } from "@material-ui/core";
 import React from "react";
 import { formatUsage } from "../../../../common/formatUtils";
+import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import {
-  ClusterFeatureComponent,
-  NodeFeatureComponent,
-  WorkerFeatureComponent
+  ClusterFeatureRenderFn,
+  NodeFeatureData,
+  NodeFeatureRenderFn,
+  NodeInfoFeature,
+  WorkerFeatureRenderFn,
 } from "./types";
 
-export const ClusterDisk: ClusterFeatureComponent = ({ nodes }) => {
+export const ClusterDisk: ClusterFeatureRenderFn = ({ nodes }) => {
   let used = 0;
   let total = 0;
   for (const node of nodes) {
-    used += node.disk["/"].used;
-    total += node.disk["/"].total;
+    if ("/" in node.disk) {
+      used += node.disk["/"].used;
+      total += node.disk["/"].total;
+    }
   }
   return (
     <UsageBar
       percent={(100 * used) / total}
-      text={formatUsage(used, total, "gibibyte")}
+      text={formatUsage(used, total, "gibibyte", true)}
     />
   );
 };
 
-export const NodeDisk: NodeFeatureComponent = ({ node }) => (
+export const NodeDisk: NodeFeatureRenderFn = ({ node }) => (
   <UsageBar
     percent={(100 * node.disk["/"].used) / node.disk["/"].total}
-    text={formatUsage(node.disk["/"].used, node.disk["/"].total, "gibibyte")}
+    text={formatUsage(
+      node.disk["/"].used,
+      node.disk["/"].total,
+      "gibibyte",
+      true,
+    )}
   />
 );
 
-export const WorkerDisk: WorkerFeatureComponent = () => (
+export const nodeDiskAccessor: Accessor<NodeFeatureData> = ({ node }) =>
+  node.disk["/"].used;
+
+export const WorkerDisk: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">
     N/A
   </Typography>
 );
+
+const diskFeature: NodeInfoFeature = {
+  id: "disk",
+  ClusterFeatureRenderFn: ClusterDisk,
+  NodeFeatureRenderFn: NodeDisk,
+  WorkerFeatureRenderFn: WorkerDisk,
+  nodeAccessor: nodeDiskAccessor,
+};
+
+export default diskFeature;

@@ -210,7 +210,7 @@ template class SubscriptionExecutor<ClientID, ResourceChangeNotification,
 template class SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>;
 template class SubscriptionExecutor<ClientID, HeartbeatBatchTableData,
                                     HeartbeatBatchTable>;
-template class SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>;
+template class SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>;
 
 }  // namespace gcs
 

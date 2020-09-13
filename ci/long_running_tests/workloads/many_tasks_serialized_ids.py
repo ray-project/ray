@@ -1,8 +1,7 @@
 # This workload stresses distributed reference counting by passing and
-# returning serialized ObjectIDs.
+# returning serialized ObjectRefs.
 
 import time
-import json
 import random
 
 import numpy as np
@@ -18,13 +17,10 @@ num_nodes = 10
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
 assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
-        ray.utils.get_system_memory() / 2)
+        ray.utils.get_system_memory() / 2), message
 
 # Simulate a cluster on one machine.
 
-config = json.dumps({
-    "distributed_ref_counting_enabled": 1,
-})
 cluster = Cluster()
 for i in range(num_nodes):
     cluster.add_node(
@@ -35,9 +31,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        webui_host="0.0.0.0",
-        _internal_config=config,
-    )
+        dashboard_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
@@ -50,8 +44,8 @@ def churn():
 
 @ray.remote(max_retries=0)
 def child(*xs):
-    oid = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-    return oid
+    obj_ref = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
+    return obj_ref
 
 
 @ray.remote(max_retries=0)

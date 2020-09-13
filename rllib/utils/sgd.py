@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 import random
 
+from ray.util import log_once
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -12,7 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 logger = logging.getLogger(__name__)
 
 
-def averaged(kv):
+def averaged(kv, axis=None):
     """Average the value lists of a dictionary.
 
     For non-scalar values, we simply pick the first value.
@@ -26,7 +27,7 @@ def averaged(kv):
     out = {}
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v)
+            out[k] = np.mean(v, axis=axis)
         else:
             out[k] = v[0]
     return out
@@ -62,16 +63,31 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    if "state_in_0" in samples.data:
-        logger.warning("Not shuffling RNN data for SGD in simple mode")
+    # Replace with `if samples.seq_lens` check.
+    if "state_in_0" in samples.data or "state_out_0" in samples.data:
+        if log_once("not_shuffling_rnn_data_in_simple_mode"):
+            logger.warning("Not shuffling RNN data for SGD in simple mode")
     else:
         samples.shuffle()
 
     i = 0
     slices = []
-    while i < samples.count:
-        slices.append((i, i + sgd_minibatch_size))
-        i += sgd_minibatch_size
+    if samples.seq_lens:
+        seq_no = 0
+        while i < samples.count:
+            seq_no_end = seq_no
+            actual_count = 0
+            while actual_count < sgd_minibatch_size and len(
+                    samples.seq_lens) > seq_no_end:
+                actual_count += samples.seq_lens[seq_no_end]
+                seq_no_end += 1
+            slices.append((seq_no, seq_no_end))
+            i += actual_count
+            seq_no = seq_no_end
+    else:
+        while i < samples.count:
+            slices.append((i, i + sgd_minibatch_size))
+            i += sgd_minibatch_size
     random.shuffle(slices)
 
     for i, j in slices:
@@ -98,7 +114,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
     fetches = {}
-    for policy_id, policy in policies.items():
+    for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
 

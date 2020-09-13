@@ -9,7 +9,7 @@ from socketserver import ThreadingMixIn
 import ray.cloudpickle as pickle
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.env.policy_client import PolicyClient, \
-    create_embedded_rollout_worker
+    _create_embedded_rollout_worker
 from ray.rllib.utils.annotations import override, PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         ...         "num_workers": 0,  # Run just 1 server, in the trainer.
         ...     }
         >>> while True:
-                pg.train()
+        >>>     pg.train()
 
         >>> client = PolicyClient("localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()
@@ -90,6 +90,7 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         logger.info("Starting connector server at {}:{}".format(address, port))
         logger.info("")
         thread = threading.Thread(name="server", target=self.serve_forever)
+        thread.daemon = True
         thread.start()
 
     @override(InputReader)
@@ -113,7 +114,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         with lock:
             if child_rollout_worker is None:
                 (child_rollout_worker,
-                 inference_thread) = create_embedded_rollout_worker(
+                 inference_thread) = _create_embedded_rollout_worker(
                      rollout_worker.creation_args(), report_data)
                 child_rollout_worker.set_weights(rollout_worker.get_weights())
 
@@ -178,8 +179,13 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
                     args["episode_id"], args["observation"], args["action"])
             elif command == PolicyClient.LOG_RETURNS:
                 assert inference_thread.is_alive()
-                child_rollout_worker.env.log_returns(
-                    args["episode_id"], args["reward"], args["info"])
+                if args["done"]:
+                    child_rollout_worker.env.log_returns(
+                        args["episode_id"], args["reward"], args["info"],
+                        args["done"])
+                else:
+                    child_rollout_worker.env.log_returns(
+                        args["episode_id"], args["reward"], args["info"])
             elif command == PolicyClient.END_EPISODE:
                 assert inference_thread.is_alive()
                 child_rollout_worker.env.end_episode(args["episode_id"],

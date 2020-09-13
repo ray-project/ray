@@ -1,7 +1,9 @@
 import numpy as np
+import tree
 
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 SMALL_NUMBER = 1e-6
@@ -12,6 +14,25 @@ LARGE_INTEGER = 100000000
 # distribution).
 MIN_LOG_NN_OUTPUT = -20
 MAX_LOG_NN_OUTPUT = 2
+
+
+def huber_loss(x, delta=1.0):
+    """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+    return np.where(
+        np.abs(x) < delta,
+        np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta))
+
+
+def l2_loss(x):
+    """Computes half the L2 norm of a tensor (w/o the sqrt): sum(x**2) / 2
+
+    Args:
+        x (np.ndarray): The input tensor.
+
+    Returns:
+        The l2-loss output according to the above formula given `x`.
+    """
+    return np.sum(np.square(x)) / 2.0
 
 
 def sigmoid(x, derivative=False):
@@ -45,7 +66,10 @@ def softmax(x, axis=-1):
     Returns:
         np.ndarray: The softmax over x.
     """
+    # x_exp = np.maximum(np.exp(x), SMALL_NUMBER)
     x_exp = np.exp(x)
+    # return x_exp /
+    #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
     return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
 
 
@@ -79,6 +103,10 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     Returns:
         np.ndarray: The one-hot encoded equivalent of the input array.
     """
+    # Handle torch arrays properly.
+    if torch and isinstance(x, torch.Tensor):
+        x = x.numpy()
+
     # Handle bool arrays correctly.
     if x.dtype == np.bool_:
         x = x.astype(np.int)
@@ -110,7 +138,7 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
     return out
 
 
-def fc(x, weights, biases=None):
+def fc(x, weights, biases=None, framework=None):
     """
     Calculates the outputs of a fully-connected (dense) layer given
     weights/biases and an input.
@@ -119,13 +147,31 @@ def fc(x, weights, biases=None):
         x (np.ndarray): The input to the dense layer.
         weights (np.ndarray): The weights matrix.
         biases (Optional[np.ndarray]): The biases vector. All 0s if None.
+        framework (Optional[str]): An optional framework hint (to figure out,
+            e.g. whether to transpose torch weight matrices).
 
     Returns:
         The dense layer's output.
     """
+
+    def map_(data, transpose=False):
+        if torch:
+            if isinstance(data, torch.Tensor):
+                data = data.cpu().detach().numpy()
+        if tf and tf.executing_eagerly():
+            if isinstance(data, tf.Variable):
+                data = data.numpy()
+        if transpose:
+            data = np.transpose(data)
+        return data
+
+    x = map_(x)
     # Torch stores matrices in transpose (faster for backprop).
-    if torch and isinstance(weights, torch.Tensor):
-        weights = np.transpose(weights.numpy())
+    transpose = (framework == "torch" and (x.shape[1] != weights.shape[0]
+                                           and x.shape[1] == weights.shape[1]))
+    weights = map_(weights, transpose=transpose)
+    biases = map_(biases)
+
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
@@ -202,3 +248,38 @@ def lstm(x,
             unrolled_outputs[:, t, :] = h_states
 
     return unrolled_outputs, (c_states, h_states)
+
+
+# TODO: (sven) this will replace `TorchPolicy._convert_to_non_torch_tensor()`.
+def convert_to_numpy(x, reduce_floats=False):
+    """Converts values in `stats` to non-Tensor numpy or python types.
+
+    Args:
+        stats (any): Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all torch/tf tensors
+            being converted to numpy types.
+        reduce_floats (bool): Whether to reduce all float64 data into float32
+            automatically.
+
+    Returns:
+        Any: A new struct with the same structure as `stats`, but with all
+            values converted to numpy arrays (on CPU).
+    """
+
+    # The mapping function used to numpyize torch/tf Tensors (and move them
+    # to the CPU beforehand).
+    def mapping(item):
+        if torch and isinstance(item, torch.Tensor):
+            ret = item.cpu().item() if len(item.size()) == 0 else \
+                item.cpu().detach().numpy()
+        elif tf and isinstance(item, tf.Tensor):
+            assert tf.executing_eagerly()
+            ret = item.cpu().numpy()
+        else:
+            ret = item
+        if reduce_floats and isinstance(ret, np.ndarray) and \
+                ret.dtype == np.float64:
+            ret = ret.astype(np.float32)
+        return ret
+
+    return tree.map_structure(mapping, x)

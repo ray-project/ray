@@ -1,5 +1,5 @@
-Package Reference
-=================
+RaySGD API Documentation
+========================
 
 .. _ref-torch-trainer:
 
@@ -9,8 +9,6 @@ TorchTrainer
 .. autoclass:: ray.util.sgd.torch.TorchTrainer
     :members:
 
-    .. automethod:: __init__
-
 .. _ref-torch-operator:
 
 PyTorch TrainingOperator
@@ -19,12 +17,14 @@ PyTorch TrainingOperator
 .. autoclass:: ray.util.sgd.torch.TrainingOperator
     :members:
 
+.. _BaseTorchTrainable-doc:
 
-TorchTrainable
---------------
+BaseTorchTrainable
+------------------
 
-.. autoclass:: ray.util.sgd.torch.TorchTrainable
+.. autoclass:: ray.util.sgd.torch.BaseTorchTrainable
     :members:
+    :private-members:
 
 TFTrainer
 ---------
@@ -33,3 +33,25 @@ TFTrainer
     :members:
 
     .. automethod:: __init__
+
+Dataset
+-------
+
+.. autoclass:: ray.util.sgd.data.Dataset
+    :members:
+
+    .. automethod:: __init__
+
+.. _ref-utils:
+
+Utils
+-----
+
+.. autoclass:: ray.util.sgd.utils.AverageMeter
+    :members:
+
+.. autoclass:: ray.util.sgd.utils.AverageMeterCollection
+    :members:
+
+
+

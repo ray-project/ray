@@ -1,26 +1,28 @@
+#include "event_service.h"
+
+#include <chrono>
 #include <unordered_set>
 
-#include "event_service.h"
 namespace ray {
 namespace streaming {
 
 EventQueue::~EventQueue() {
-  is_freezed_ = false;
+  is_active_ = false;
   no_full_cv_.notify_all();
   no_empty_cv_.notify_all();
 };
 
-void EventQueue::Unfreeze() { is_freezed_ = true; }
+void EventQueue::Unfreeze() { is_active_ = true; }
 
 void EventQueue::Freeze() {
-  is_freezed_ = false;
+  is_active_ = false;
   no_empty_cv_.notify_all();
   no_full_cv_.notify_all();
 }
 
 void EventQueue::Push(const Event &t) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Size() >= capacity_ && is_freezed_) {
+  while (Size() >= capacity_ && is_active_) {
     STREAMING_LOG(WARNING) << " EventQueue is full, its size:" << Size()
                            << " capacity:" << capacity_
                            << " buffer size:" << buffer_.size()
@@ -28,7 +30,7 @@ void EventQueue::Push(const Event &t) {
     no_full_cv_.wait(lock);
     STREAMING_LOG(WARNING) << "Event server is full_sleep be notified";
   }
-  if (!is_freezed_) {
+  if (!is_active_) {
     return;
   }
   if (t.urgent) {
@@ -55,12 +57,24 @@ void EventQueue::Pop() {
   no_full_cv_.notify_all();
 }
 
+constexpr int EventQueue::kConditionTimeoutMs;
+void EventQueue::WaitFor(std::unique_lock<std::mutex> &lock) {
+  // To avoid deadlock when EventQueue is empty but is_active is changed in other
+  // thread, Event queue should awaken this condtion variable and check it again.
+  while (is_active_ && Empty()) {
+    int timeout = kConditionTimeoutMs;  // This avoids const & to static (linking error)
+    if (!no_empty_cv_.wait_for(lock, std::chrono::milliseconds(timeout),
+                               [this]() { return !is_active_ || !Empty(); })) {
+      STREAMING_LOG(DEBUG) << "No empty condition variable wait timeout."
+                           << " Empty => " << Empty() << ", is active " << is_active_;
+    }
+  }
+}
+
 bool EventQueue::Get(Event &evt) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Empty() && is_freezed_) {
-    no_empty_cv_.wait(lock);
-  }
-  if (!is_freezed_) {
+  WaitFor(lock);
+  if (!is_active_) {
     return false;
   }
   if (!urgent_buffer_.empty()) {
@@ -75,11 +89,9 @@ bool EventQueue::Get(Event &evt) {
 
 Event EventQueue::PopAndGet() {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Empty() && is_freezed_) {
-    no_empty_cv_.wait(lock);
-  }
-  if (!is_freezed_) {
-    // Return error event if queue is freezed.
+  WaitFor(lock);
+  if (!is_active_) {
+    // Return error event if queue is active.
     return Event({nullptr, EventType::ErrorEvent, false});
   }
   if (!urgent_buffer_.empty()) {
@@ -105,7 +117,11 @@ Event &EventQueue::Front() {
 }
 
 EventService::EventService(uint32_t event_size)
-    : event_queue_(std::make_shared<EventQueue>(event_size)), stop_flag_(false) {}
+    : worker_id_(CoreWorkerProcess::IsInitialized()
+                     ? CoreWorkerProcess::GetCoreWorker().GetWorkerID()
+                     : WorkerID::Nil()),
+      event_queue_(std::make_shared<EventQueue>(event_size)),
+      stop_flag_(false) {}
 EventService::~EventService() {
   stop_flag_ = true;
   // No need to join if loop thread has never been created.
@@ -154,6 +170,9 @@ void EventService::Execute(Event &event) {
 }
 
 void EventService::LoopThreadHandler() {
+  if (CoreWorkerProcess::IsInitialized()) {
+    CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id_);
+  }
   while (true) {
     if (stop_flag_) {
       break;
@@ -174,7 +193,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
   STREAMING_LOG(INFO) << "Remove Destroyed channel event, removed_ids size "
                       << removed_ids.size() << ", total event size " << total_event_nums;
   size_t removed_related_num = 0;
-  event_queue_->Freeze();
+  event_queue_->Unfreeze();
   for (size_t i = 0; i < total_event_nums; ++i) {
     Event event;
     if (!event_queue_->Get(event) || !event.channel_info) {
@@ -188,7 +207,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
     }
     event_queue_->Pop();
   }
-  event_queue_->Unfreeze();
+  event_queue_->Freeze();
   STREAMING_LOG(INFO) << "Total event num => " << total_event_nums
                       << ", removed related num => " << removed_related_num;
 }

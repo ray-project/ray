@@ -130,11 +130,7 @@ class AutoMLSearcher(SearchAlgorithm):
                     > self.best_trial.best_result[self.reward_attr]):
             self.best_trial = self._running_trials[trial_id]
 
-    def on_trial_complete(self,
-                          trial_id,
-                          result=None,
-                          error=False,
-                          early_terminated=False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         self.on_trial_result(trial_id, result)
         self._unfinished_count -= 1
         if self._unfinished_count == 0:

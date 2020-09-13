@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_GRPC_UTIL_H
-#define RAY_COMMON_GRPC_UTIL_H
+#pragma once
 
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
@@ -21,7 +20,7 @@
 
 #include <sstream>
 
-#include "status.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -121,5 +120,3 @@ inline std::unordered_map<K, V> MapFromProtobuf(::google::protobuf::Map<K, V> pb
 }
 
 }  // namespace ray
-
-#endif

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_CORE_WORKER_ACTOR_HANDLE_H
-#define RAY_CORE_WORKER_ACTOR_HANDLE_H
+#pragma once
 
 #include <gtest/gtest_prod.h>
 
@@ -21,8 +20,9 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/protobuf/core_worker.pb.h"
-#include "ray/protobuf/gcs.pb.h"
+#include "ray/gcs/redis_gcs_client.h"
+#include "src/ray/protobuf/core_worker.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -36,10 +36,13 @@ class ActorHandle {
               const rpc::Address &owner_address, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor,
-              const std::string &extension_data);
+              const std::string &extension_data, int64_t max_task_retries);
 
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized);
+
+  /// Constructs an ActorHandle from a gcs::ActorTableData message.
+  ActorHandle(const gcs::ActorTableData &actor_table_data);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -60,37 +63,29 @@ class ActorHandle {
 
   std::string ExtensionData() const { return inner_.extension_data(); }
 
+  /// Set the actor task spec fields.
+  ///
+  /// \param[in] builder Task spec builder.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
   void SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor);
+
+  /// Reset the actor task spec fields of an existing task so that the task can
+  /// be re-executed.
+  ///
+  /// \param[in] spec An existing task spec that has executed on the actor
+  /// before.
+  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
+  /// raylet-based actor restart.
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 
-  /// Reset the handle state next task submitted.
-  ///
-  /// This should be called whenever the actor is restarted, since the new
-  /// instance of the actor does not have the previous sequence number.
-  /// TODO: We should also move the other actor state (status and IP) inside
-  /// ActorHandle and reset them in this method.
-  void Reset();
-
-  // Mark the actor handle as dead.
-  void MarkDead() {
-    absl::MutexLock lock(&mutex_);
-    state_ = rpc::ActorTableData::DEAD;
-  }
-
-  // Returns whether the actor is known to be dead.
-  bool IsDead() const {
-    absl::MutexLock lock(&mutex_);
-    return state_ == rpc::ActorTableData::DEAD;
-  }
+  int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
-
-  /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
-  /// DEAD, the actor handle can never go back to being ALIVE.
-  rpc::ActorTableData::ActorState state_ GUARDED_BY(mutex_) = rpc::ActorTableData::ALIVE;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
@@ -107,5 +102,3 @@ class ActorHandle {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_ACTOR_HANDLE_H

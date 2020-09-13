@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 import threading
@@ -9,22 +10,27 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
-from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
-    fillout_defaults, validate_config
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+from ray.autoscaler.util import prepare_config, validate_config
+from ray.autoscaler.commands import get_or_create_head_node
+from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler.load_metrics import LoadMetrics
+from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags):
+    def __init__(self, node_id, tags, node_config, node_type):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
+        self.node_config = node_config
+        self.node_type = node_type
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -37,6 +43,7 @@ class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds
+        self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
@@ -44,18 +51,48 @@ class MockProcessRunner:
                 raise Exception("Failing command on purpose")
         self.calls.append(cmd)
 
-    def assert_has_call(self, ip, pattern):
+    def check_output(self, cmd):
+        self.check_call(cmd)
+        return_string = "command-output"
+        key_to_shrink = None
+        for pattern, response_list in self.call_response.items():
+            if pattern in str(cmd):
+                return_string = response_list[0]
+                key_to_shrink = pattern
+                break
+        if key_to_shrink:
+            self.call_response[key_to_shrink] = self.call_response[
+                key_to_shrink][1:]
+            if len(self.call_response[key_to_shrink]) == 0:
+                del self.call_response[key_to_shrink]
+
+        return return_string.encode()
+
+    def assert_has_call(self, ip, pattern=None, exact=None):
+        assert pattern or exact, \
+            "Must specify either a pattern or exact match."
         out = ""
-        for cmd in self.calls:
-            msg = " ".join(cmd)
-            if ip in msg:
-                out += msg
-                out += "\n"
-        if pattern in out:
-            return True
+        if pattern is not None:
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+            if pattern in out:
+                return True
+            else:
+                raise Exception("Did not find [{}] in [{}] for {}".format(
+                    pattern, out, ip))
         else:
-            raise Exception("Did not find [{}] in [{}] for {}".format(
-                pattern, out, ip))
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+                if cmd == exact:
+                    return True
+            raise Exception("Did not find {} in {} for {}".format(
+                exact, out, ip))
 
     def assert_not_has_call(self, ip, pattern):
         out = ""
@@ -73,6 +110,9 @@ class MockProcessRunner:
     def clear_history(self):
         self.calls = []
 
+    def respond_to_call(self, pattern, response_list):
+        self.call_response[pattern] = response_list
+
 
 class MockProvider(NodeProvider):
     def __init__(self, cache_stopped=False):
@@ -83,24 +123,30 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
+        # Many of these functions are called by node_launcher or updater in
+        # different threads. This can be treated as a global lock for
+        # everything.
+        self.lock = threading.Lock()
 
     def non_terminated_nodes(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.node_id for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.node_id for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def non_terminated_node_ips(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.internal_ip for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.internal_ip for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
@@ -121,29 +167,34 @@ class MockProvider(NodeProvider):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
-        if self.cache_stopped:
-            for node in self.mock_nodes.values():
-                if node.state == "stopped" and count > 0:
-                    count -= 1
-                    node.state = "pending"
-                    node.tags.update(tags)
-        for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy())
-            self.next_id += 1
+        with self.lock:
+            if self.cache_stopped:
+                for node in self.mock_nodes.values():
+                    if node.state == "stopped" and count > 0:
+                        count -= 1
+                        node.state = "pending"
+                        node.tags.update(tags)
+            for _ in range(count):
+                self.mock_nodes[self.next_id] = MockNode(
+                    self.next_id, tags.copy(), node_config,
+                    tags.get(TAG_RAY_USER_NODE_TYPE))
+                self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
-        if self.cache_stopped:
-            self.mock_nodes[node_id].state = "stopped"
-        else:
-            self.mock_nodes[node_id].state = "terminated"
+        with self.lock:
+            if self.cache_stopped:
+                self.mock_nodes[node_id].state = "stopped"
+            else:
+                self.mock_nodes[node_id].state = "terminated"
 
     def finish_starting_nodes(self):
-        for node in self.mock_nodes.values():
-            if node.state == "pending":
-                node.state = "running"
+        with self.lock:
+            for node in self.mock_nodes.values():
+                if node.state == "pending":
+                    node.state = "running"
 
 
 SMALL_CLUSTER = {
@@ -165,7 +216,7 @@ SMALL_CLUSTER = {
     },
     "auth": {
         "ssh_user": "ubuntu",
-        "ssh_private_key": "/dev/null",
+        "ssh_private_key": os.devnull,
     },
     "head_node": {
         "TestProp": 1,
@@ -174,6 +225,7 @@ SMALL_CLUSTER = {
         "TestProp": 2,
     },
     "file_mounts": {},
+    "cluster_synced_files": [],
     "initialization_commands": ["init_cmd"],
     "setup_commands": ["setup_cmd"],
     "head_setup_commands": ["head_setup_cmd"],
@@ -258,21 +310,22 @@ class LoadMetricsTest(unittest.TestCase):
             "object_store_memory": 20
         }, {})
         debug = lm.info_string()
-        assert ("ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU, "
+        assert ("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
                 "1.05 GiB/2.1 GiB object_store_memory") in debug
-        assert "NumNodesConnected=3" in debug
-        assert "NumNodesUsed=2.88" in debug
+        assert "NumNodesConnected: 3" in debug
+        assert "NumNodesUsed: 2.88" in debug
 
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
         NODE_PROVIDERS["mock"] = \
-            lambda: (None, self.create_provider)
+            lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
+        self.provider = None
         del NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
@@ -304,13 +357,13 @@ class AutoscalingTest(unittest.TestCase):
         return self.provider
 
     def write_config(self, config):
-        path = self.tmpdir + "/simple.yaml"
+        path = os.path.join(self.tmpdir, "simple.yaml")
         with open(path, "w") as f:
             f.write(yaml.dump(config))
         return path
 
     def testInvalidConfig(self):
-        invalid_config = "/dev/null"
+        invalid_config = os.devnull
         with pytest.raises(ValueError):
             StandardAutoscaler(
                 invalid_config, LoadMetrics(), update_interval_s=0)
@@ -328,11 +381,6 @@ class AutoscalingTest(unittest.TestCase):
             validate_config(config)
         del config["blah"]
 
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValidationError):
-            validate_config(config)
-        del config["provider"]["blah"]
-
         del config["provider"]
         with pytest.raises(ValidationError):
             validate_config(config)
@@ -344,11 +392,43 @@ class AutoscalingTest(unittest.TestCase):
             "region": "us-east-1",
             "availability_zone": "us-east-1a",
         }
-        config = fillout_defaults(config)
+        config = prepare_config(config)
         try:
             validate_config(config)
         except ValidationError:
             self.fail("Default config did not pass validation test!")
+
+    def testGetOrCreateHeadNode(self):
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, one before run, two final calls to cp
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "true", "true"])
+        get_or_create_head_node(
+            SMALL_CLUSTER,
+            config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+        runner.assert_not_has_call(
+            "1.2.3.4", pattern="-v /tmp/ray_tmp_mount/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_key.pem")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
 
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -403,7 +483,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -487,9 +567,9 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
         head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
         runner = MockProcessRunner()
 
         lm = LoadMetrics()
@@ -512,7 +592,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Connect the head and workers to end the bringup phase
         addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
             lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
@@ -549,13 +629,13 @@ class AutoscalingTest(unittest.TestCase):
         # Update will try to create, but will block until we set the flag
         self.provider.ready_to_create.clear()
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 2
+        assert autoscaler.pending_launches.value == 2
         assert len(self.provider.non_terminated_nodes({})) == 0
 
         # Set the flag, check it updates
         self.provider.ready_to_create.set()
         self.waitForNodes(2)
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
 
         # Update the config to reduce the cluster size
         new_config = SMALL_CLUSTER.copy()
@@ -587,12 +667,9 @@ class AutoscalingTest(unittest.TestCase):
         rtc1.clear()
         autoscaler.update()
         # Synchronization: wait for launchy thread to be blocked on rtc1
-        if hasattr(rtc1, "_cond"):  # Python 3.5
-            waiters = rtc1._cond._waiters
-        else:  # Python 2.7
-            waiters = rtc1._Event__cond._Condition__waiters
+        waiters = rtc1._cond._waiters
         self.waitFor(lambda: len(waiters) == 1)
-        assert autoscaler.num_launches_pending.value == 5
+        assert autoscaler.pending_launches.value == 5
         assert len(self.provider.non_terminated_nodes({})) == 0
 
         # Call update() to launch a second wave of 3 nodes,
@@ -603,24 +680,24 @@ class AutoscalingTest(unittest.TestCase):
         rtc2.set()
         autoscaler.update()
         self.waitForNodes(3)
-        assert autoscaler.num_launches_pending.value == 5
+        assert autoscaler.pending_launches.value == 5
 
         # The first wave of 5 will now tragically fail
         self.provider.fail_creates = True
         rtc1.set()
-        self.waitFor(lambda: autoscaler.num_launches_pending.value == 0)
+        self.waitFor(lambda: autoscaler.pending_launches.value == 0)
         assert len(self.provider.non_terminated_nodes({})) == 3
 
         # Retry the first wave, allowing it to succeed this time
         self.provider.fail_creates = False
         autoscaler.update()
         self.waitForNodes(8)
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
 
         # Final wave of 2 nodes
         autoscaler.update()
         self.waitForNodes(10)
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
 
     def testUpdateThrottling(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -636,7 +713,7 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=10)
         autoscaler.update()
         self.waitForNodes(2)
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         new_config = SMALL_CLUSTER.copy()
         new_config["max_workers"] = 1
         self.write_config(new_config)
@@ -645,7 +722,7 @@ class AutoscalingTest(unittest.TestCase):
         # note that node termination happens in the main thread, so
         # we do not need to add any delay here before checking
         assert len(self.provider.non_terminated_nodes({})) == 2
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
 
     def testLaunchConfigChange(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -686,7 +763,7 @@ class AutoscalingTest(unittest.TestCase):
         for _ in range(10):
             autoscaler.update()
         time.sleep(0.1)
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 2
 
         # New a good config again
@@ -753,7 +830,7 @@ class AutoscalingTest(unittest.TestCase):
     def testReportsConfigFailures(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["provider"]["type"] = "external"
-        config = fillout_defaults(config)
+        config = prepare_config(config)
         config["provider"]["type"] = "mock"
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -816,7 +893,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1)
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 1
 
         # Scales up as nodes are reported as used
@@ -833,19 +910,19 @@ class AutoscalingTest(unittest.TestCase):
         lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
         lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 5
 
         # Scales down as nodes become unused
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         lm.last_used_time_by_ip["172.0.0.1"] = 0
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 3
         lm.last_used_time_by_ip["172.0.0.2"] = 0
         lm.last_used_time_by_ip["172.0.0.3"] = 0
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 1
 
     def testDontScaleBelowTarget(self):
@@ -865,7 +942,7 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
+        assert autoscaler.pending_launches.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 0
 
         # Scales up as nodes are reported as used
@@ -1078,6 +1155,135 @@ class AutoscalingTest(unittest.TestCase):
         for i in [3, 4, 5, 6, 7, 8, 9]:
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call("172.0.0.{}".format(i), "start_ray_worker")
+
+    def testContinuousFileMounts(self):
+        file_mount_dir = tempfile.mkdtemp()
+
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/home/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
+            runner.assert_has_call(
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+
+        runner.clear_history()
+
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
+            temp_file.write("hello".encode())
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
+            runner.assert_has_call(
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+
+    def testFileMountsNonContinuous(self):
+        file_mount_dir = tempfile.mkdtemp()
+
+        self.provider = MockProvider()
+        config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/home/test-folder": file_mount_dir}
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        config_path = self.write_config(config)
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
+            runner.assert_has_call(
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+
+        runner.clear_history()
+
+        with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
+            temp_file.write("hello".encode())
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+
+        for i in [0, 1]:
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
+            runner.assert_not_has_call(
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
+
+        # Simulate a second `ray up` call
+        from ray.autoscaler import util
+        util._hash_cache = {}
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+
+        for i in [0, 1]:
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
+            runner.assert_has_call(
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
 
 if __name__ == "__main__":

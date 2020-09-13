@@ -81,6 +81,41 @@ provider:
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
 
+    services:
+      # Service that maps to the head node of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: ray-head
+        spec:
+            # This selector must match the head node pod's selector below.
+            selector:
+                component: ray-head
+            ports:
+                - protocol: TCP
+                  port: 8000
+                  targetPort: 8000
+
+      # Service that maps to the worker nodes of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: ray-workers
+        spec:
+            # This selector must match the worker node pods' selector below.
+            selector:
+                component: ray-worker
+            ports:
+                - protocol: TCP
+                  port: 8000
+                  targetPort: 8000
+
 # Kubernetes pod config for the head node pod.
 head_node:
     apiVersion: v1
@@ -88,6 +123,11 @@ head_node:
     metadata:
         # Automatically generates a name for the pod with this prefix.
         generateName: ray-head-
+
+        # Must match the head node service selector above if a head node
+        # service is required.
+        labels:
+            component: ray-head
     spec:
         # Change this if you altered the autoscaler_service_account above
         # or want to provide your own.
@@ -160,6 +200,11 @@ worker_nodes:
     metadata:
         # Automatically generates a name for the pod with this prefix.
         generateName: ray-worker-
+
+        # Must match the worker node service selector above if a worker node
+        # service is required.
+        labels:
+            component: ray-worker
     spec:
         serviceAccountName: default
 
@@ -220,6 +265,16 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
@@ -238,7 +293,7 @@ worker_setup_commands: []
 # Note webui-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --webui-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --webui-host 0.0.0.0
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

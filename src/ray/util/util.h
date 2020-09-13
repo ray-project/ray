@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_UTIL_H
-#define RAY_UTIL_UTIL_H
+#pragma once
 
 #include <chrono>
 #include <iterator>
@@ -23,6 +22,38 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+
+// Boost forward-declarations (to avoid forcing slow header inclusions)
+namespace boost {
+
+namespace asio {
+
+namespace generic {
+
+template <class Protocol>
+class basic_endpoint;
+
+class stream_protocol;
+
+}  // namespace generic
+
+}  // namespace asio
+
+}  // namespace boost
+
+enum class CommandLineSyntax { System, POSIX, Windows };
+
+// Transfer the string to the Hex format. It can be more readable than the ANSI mode
+inline std::string StringToHex(const std::string &str) {
+  constexpr char hex[] = "0123456789abcdef";
+  std::string result;
+  for (size_t i = 0; i < str.size(); i++) {
+    unsigned char val = str[i];
+    result.push_back(hex[val >> 4]);
+    result.push_back(hex[val & 0xf]);
+  }
+  return result;
+}
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
 /// returned timestamp may be used for accurately measuring intervals but has
@@ -47,17 +78,43 @@ inline int64_t current_sys_time_ms() {
   return ms_since_epoch.count();
 }
 
-/// A helper function to split a string by whitespaces.
-///
-/// \param str The string with whitespaces.
-///
-/// \return A vector that contains strings split by whitespaces.
-inline std::vector<std::string> SplitStrByWhitespaces(const std::string &str) {
-  std::istringstream iss(str);
-  std::vector<std::string> result(std::istream_iterator<std::string>{iss},
-                                  std::istream_iterator<std::string>());
-  return result;
+inline int64_t current_sys_time_us() {
+  std::chrono::microseconds mu_since_epoch =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return mu_since_epoch.count();
 }
+
+/// A helper function to parse command-line arguments in a platform-compatible manner.
+///
+/// \param cmdline The command-line to split.
+///
+/// \return The command-line arguments, after processing any escape sequences.
+std::vector<std::string> ParseCommandLine(
+    const std::string &cmdline, CommandLineSyntax syntax = CommandLineSyntax::System);
+
+/// A helper function to combine command-line arguments in a platform-compatible manner.
+/// The result of this function is intended to be suitable for the shell used by popen().
+///
+/// \param cmdline The command-line arguments to combine.
+///
+/// \return The command-line string, including any necessary escape sequences.
+std::string CreateCommandLine(const std::vector<std::string> &args,
+                              CommandLineSyntax syntax = CommandLineSyntax::System);
+
+/// Converts the given endpoint (such as TCP or UNIX domain socket address) to a string.
+/// \param include_scheme Whether to include the scheme prefix (such as tcp://).
+///                       This is recommended to avoid later ambiguity when parsing.
+std::string EndpointToUrl(
+    const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
+    bool include_scheme = true);
+
+/// Parses the endpoint socket address of a URL.
+/// If a scheme:// prefix is absent, the address family is guessed automatically.
+/// For TCP/IP, the endpoint comprises the IP address and port number in the URL.
+/// For UNIX domain sockets, the endpoint comprises the socket path.
+boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
+ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 
 class InitShutdownRAII {
  public:
@@ -123,9 +180,7 @@ void FillRandom(T *data) {
   std::lock_guard<std::mutex> lock(random_engine_mutex);
   static std::mt19937 generator = randomly_seeded_mersenne_twister();
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
-  for (int i = 0; i < data->size(); i++) {
+  for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }
-
-#endif  // RAY_UTIL_UTIL_H

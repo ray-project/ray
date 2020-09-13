@@ -5,16 +5,15 @@ PID=$$
 
 # Print output to avoid travis killing us
 watchdog() {
-    for i in `seq 5 5 150`; do
-        sleep 300
+    for i in $(seq 2 2 150); do
+        sleep 120
         echo "(running, ${i}m total)"
     done
-    echo "Command timed out after 2.5h, dumping logs:"
     echo "TIMED OUT"
     kill -SIGKILL $PID
 }
 
-watchdog & 2>/dev/null
+watchdog 2>/dev/null &
 WATCHDOG_PID=$!
 
 time "$@"

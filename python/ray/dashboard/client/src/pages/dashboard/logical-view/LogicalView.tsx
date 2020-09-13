@@ -1,50 +1,75 @@
-import { Theme } from "@material-ui/core/styles/createMuiTheme";
-import createStyles from "@material-ui/core/styles/createStyles";
-import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import Typography from "@material-ui/core/Typography";
-import WarningRoundedIcon from "@material-ui/icons/WarningRounded";
-import React from "react";
-import { connect } from "react-redux";
+import {
+  Box,
+  createStyles,
+  FormControl,
+  FormHelperText,
+  Input,
+  InputLabel,
+  makeStyles,
+  Theme,
+  Typography,
+} from "@material-ui/core";
+import React, { useState } from "react";
+import { useSelector } from "react-redux";
+import { useDebounce } from "use-debounce";
 import { StoreState } from "../../../store";
-import Actors from "./Actors";
+import ActorClassGroups from "./ActorClassGroups";
 
-const styles = (theme: Theme) =>
+const useLogicalViewStyles = makeStyles((theme: Theme) =>
   createStyles({
-    warning: {
-      fontSize: "0.8125rem",
-      marginBottom: theme.spacing(2)
+    container: {
+      marginBottom: theme.spacing(1),
     },
-    warningIcon: {
-      fontSize: "1.25em",
-      verticalAlign: "text-bottom"
-    }
-  });
+  }),
+);
 
-const mapStateToProps = (state: StoreState) => ({
-  rayletInfo: state.dashboard.rayletInfo
-});
+const actorClassMatchesSearch = (
+  actorClass: string,
+  nameFilter: string,
+): boolean => {
+  const loweredNameFilter = nameFilter.toLowerCase();
+  return actorClass.toLowerCase().search(loweredNameFilter) !== -1;
+};
 
-class LogicalView extends React.Component<
-  WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
-> {
-  render() {
-    const { classes, rayletInfo } = this.props;
-    return (
-      <div>
-        <Typography className={classes.warning} color="textSecondary">
-          <WarningRoundedIcon className={classes.warningIcon} /> Note: This tab
-          is experimental.
-        </Typography>
-        {rayletInfo === null ? (
-          <Typography color="textSecondary">Loading...</Typography>
-        ) : Object.entries(rayletInfo.actors).length === 0 ? (
-          <Typography color="textSecondary">No actors found.</Typography>
-        ) : (
-          <Actors actors={rayletInfo.actors} />
-        )}
-      </div>
-    );
+const rayletInfoSelector = (state: StoreState) => state.dashboard.rayletInfo;
+
+const LogicalView: React.FC = () => {
+  const [nameFilter, setNameFilter] = useState("");
+  const [debouncedNameFilter] = useDebounce(nameFilter, 500);
+  const classes = useLogicalViewStyles();
+  const rayletInfo = useSelector(rayletInfoSelector);
+  if (rayletInfo === null || !rayletInfo.actorGroups) {
+    return <Typography color="textSecondary">Loading...</Typography>;
   }
-}
+  const actorGroups =
+    debouncedNameFilter === ""
+      ? Object.entries(rayletInfo.actorGroups)
+      : Object.entries(rayletInfo.actorGroups).filter(([key, _]) =>
+          actorClassMatchesSearch(key, debouncedNameFilter),
+        );
+  return (
+    <Box className={classes.container}>
+      {actorGroups.length === 0 ? (
+        <Typography color="textSecondary">No actors found.</Typography>
+      ) : (
+        <React.Fragment>
+          <FormControl>
+            <InputLabel htmlFor="actor-name-filter">Actor Search</InputLabel>
+            <Input
+              id="actor-name-filter"
+              aria-describedby="actor-name-helper-text"
+              value={nameFilter}
+              onChange={(event) => setNameFilter(event.target.value)}
+            />
+            <FormHelperText id="actor-name-helper-text">
+              Search for an actor by name
+            </FormHelperText>
+          </FormControl>
+          <ActorClassGroups actorGroups={Object.fromEntries(actorGroups)} />
+        </React.Fragment>
+      )}
+    </Box>
+  );
+};
 
-export default connect(mapStateToProps)(withStyles(styles)(LogicalView));
+export default LogicalView;

@@ -44,6 +44,8 @@ head_setup_commands:
     - wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    - pip install -U pip 
+    - conda uninstall -y terminado
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

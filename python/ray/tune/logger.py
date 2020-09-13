@@ -18,7 +18,7 @@ from ray.tune.utils import flatten_dict
 logger = logging.getLogger(__name__)
 
 tf = None
-VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
+VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
 class Logger:
@@ -78,9 +78,12 @@ class MLFLowLogger(Logger):
     """
 
     def _init(self):
+        logger_config = self.config.get("logger_config", {})
         from mlflow.tracking import MlflowClient
-        client = MlflowClient()
-        run = client.create_run(self.config.get("mlflow_experiment_id"))
+        client = MlflowClient(
+            tracking_uri=logger_config.get("mlflow_tracking_uri"),
+            registry_uri=logger_config.get("mlflow_registry_uri"))
+        run = client.create_run(logger_config.get("mlflow_experiment_id"))
         self._run_id = run.info.run_id
         for key, value in self.config.items():
             client.log_param(self._run_id, key, value)
@@ -186,11 +189,16 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
+    # NoneType is not supported on the last TBX release yet.
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+
     def _init(self):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
+            if log_once("tbx-install"):
+                logger.info(
+                    "pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -215,8 +223,17 @@ class TBXLogger(Logger):
                 valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
-            elif type(value) is list and len(value) > 0:
+            elif (type(value) == list
+                  and len(value) > 0) or (type(value) == np.ndarray
+                                          and value.size > 0):
                 valid_result[full_attr] = value
+
+                # Must be video
+                if type(value) == np.ndarray and value.ndim == 5:
+                    self._file_writer.add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
                 try:
                     self._file_writer.add_histogram(
                         full_attr, value, global_step=step)
@@ -239,9 +256,10 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
+                flat_result = flatten_dict(self.last_result, delimiter="/")
                 scrubbed_result = {
                     k: value
-                    for k, value in self.last_result.items()
+                    for k, value in flat_result.items()
                     if type(value) in VALID_SUMMARY_TYPES
                 }
                 self._try_log_hparams(scrubbed_result)
@@ -249,16 +267,34 @@ class TBXLogger(Logger):
 
     def _try_log_hparams(self, result):
         # TBX currently errors if the hparams value is None.
+        flat_params = flatten_dict(self.trial.evaluated_params)
         scrubbed_params = {
             k: v
-            for k, v in self.trial.evaluated_params.items() if v is not None
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_HPARAMS)
         }
+
+        removed = {
+            k: v
+            for k, v in flat_params.items()
+            if not isinstance(v, self.VALID_HPARAMS)
+        }
+        if removed:
+            logger.info(
+                "Removed the following hyperparameter values when "
+                "logging to tensorboard: %s", str(removed))
+
         from tensorboardX.summary import hparams
-        experiment_tag, session_start_tag, session_end_tag = hparams(
-            hparam_dict=scrubbed_params, metric_dict=result)
-        self._file_writer.file_writer.add_summary(experiment_tag)
-        self._file_writer.file_writer.add_summary(session_start_tag)
-        self._file_writer.file_writer.add_summary(session_end_tag)
+        try:
+            experiment_tag, session_start_tag, session_end_tag = hparams(
+                hparam_dict=scrubbed_params, metric_dict=result)
+            self._file_writer.file_writer.add_summary(experiment_tag)
+            self._file_writer.file_writer.add_summary(session_start_tag)
+            self._file_writer.file_writer.add_summary(session_end_tag)
+        except Exception:
+            logger.exception("TensorboardX failed to log hparams. "
+                             "This may be due to an unsupported type "
+                             "in the hyperparameter values.")
 
 
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
@@ -302,8 +338,9 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
-                logger.warning("Could not instantiate %s: %s.", cls.__name__,
-                               str(exc))
+                if log_once(f"instantiate:{cls.__name__}"):
+                    logger.warning("Could not instantiate %s: %s.",
+                                   cls.__name__, str(exc))
         self._log_syncer = get_node_syncer(
             self.logdir,
             remote_dir=self.logdir,

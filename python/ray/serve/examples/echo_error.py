@@ -13,24 +13,34 @@ This shows that error is hidden from HTTP side but always visible when calling
 from Python.
 """
 
+import json
 import time
+
+from pygments import formatters, highlight, lexers
 
 import requests
 
 import ray
 from ray import serve
-from ray.serve.utils import pformat_color_json
+
+
+def pformat_color_json(d):
+    """Use pygments to pretty format and colorize dictionary"""
+    formatted_json = json.dumps(d, sort_keys=True, indent=4)
+
+    colorful_json = highlight(formatted_json, lexers.JsonLexer(),
+                              formatters.TerminalFormatter())
+
+    return colorful_json
 
 
 def echo(_):
     raise Exception("Something went wrong...")
 
 
-serve.init(blocking=True)
+client = serve.start()
 
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
-serve.create_backend(echo, "echo:v1")
-serve.link("my_endpoint", "echo:v1")
+client.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 for _ in range(2):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
@@ -39,6 +49,6 @@ for _ in range(2):
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
 
-handle = serve.get_handle("my_endpoint")
+handle = client.get_handle("my_endpoint")
 print("Invoke from python will raise exception with traceback:")
 ray.get(handle.remote())
