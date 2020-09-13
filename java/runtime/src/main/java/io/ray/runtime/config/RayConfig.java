@@ -53,7 +53,6 @@ public class RayConfig {
   public String sessionDir;
   public String logDir;
   public final List<String> libraryPath;
-  public final List<String> classpath;
   public final List<String> jvmParameters;
 
   private String redisAddress;
@@ -174,8 +173,6 @@ public class RayConfig {
 
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
-    // Custom classpath.
-    classpath = config.getStringList("ray.classpath");
     // Custom worker jvm parameters.
     if (config.hasPath("ray.worker.jvm-parameters")) {
       jvmParameters = config.getStringList("ray.worker.jvm-parameters");

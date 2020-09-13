@@ -27,26 +27,16 @@ public class RunManager {
 
   private static final Pattern pattern = Pattern.compile("--address='([^']+)'");
 
-  private static String concatPath(Stream<String> stream) {
-    // TODO (hchen): Right now, raylet backend doesn't support worker command with spaces.
-    // Thus, we have to drop some some paths until that is fixed.
-    return stream.filter(s -> !s.contains(" ")).collect(Collectors.joining(":"));
-  }
-
   /**
    * Start the head node.
    */
   public static void startRayHead(RayConfig rayConfig) {
-    String codeSearchPath = concatPath(Stream.concat(
-        rayConfig.classpath.stream(),
-        Stream.of(System.getProperty("java.class.path").split(":"))
-    ));
     List<String> command = Arrays.asList(
       "ray",
       "start",
       "--head",
       "--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters),
-      "--code-search-path=" + codeSearchPath
+      "--code-search-path=" + System.getProperty("java.class.path")
     );
     String output;
     try {
