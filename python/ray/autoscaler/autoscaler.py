@@ -13,10 +13,11 @@ import yaml
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+                                 TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
+                                 NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -146,10 +147,12 @@ class StandardAutoscaler:
         nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
-        # additional nodes are launched.
+        # additional nodes (managed and unmanaged) are launched.
         num_pending = self.pending_launches.value
-        self.load_metrics.prune_active_ips(
-            [self.provider.internal_ip(node_id) for node_id in nodes])
+        self.load_metrics.prune_active_ips([
+            self.provider.internal_ip(node_id)
+            for node_id in self.all_workers()
+        ])
         target_workers = self.target_num_workers()
 
         if len(nodes) >= target_workers:
@@ -165,8 +168,9 @@ class StandardAutoscaler:
         nodes_to_terminate = []
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - len(nodes_to_terminate) > target_workers:
+            if (node_ip in last_used and last_used[node_ip] < horizon) and \
+                    (len(nodes) - len(nodes_to_terminate)
+                     > target_workers):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -182,11 +186,12 @@ class StandardAutoscaler:
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        while len(nodes) > self.config["max_workers"]:
+        while (len(nodes) -
+               len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
+            to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node".format(nodes[-1]))
-            nodes_to_terminate.append(nodes[-1])
-            nodes = nodes[:-1]
+                        "{}: Terminating unneeded node".format(to_terminate))
+            nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
@@ -511,9 +516,16 @@ class StandardAutoscaler:
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
 
+    def all_workers(self):
+        return self.workers() + self.unmanaged_workers()
+
     def workers(self):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+    def unmanaged_workers(self):
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "
