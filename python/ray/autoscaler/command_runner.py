@@ -166,7 +166,7 @@ class CommandRunnerInterface:
         raise NotImplementedError
 
     def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
-        """Currently used by DockerCommandRunner to run initialization commands.
+        """Used to run extra initialization commands.
 
         Args:
             as_head (bool): Run as head image or worker.
