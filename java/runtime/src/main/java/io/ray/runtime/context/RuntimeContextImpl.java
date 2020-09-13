@@ -44,16 +44,6 @@ public class RuntimeContextImpl implements RuntimeContext {
   }
 
   @Override
-  public String getRayletSocketName() {
-    return runtime.getRayConfig().rayletSocketName;
-  }
-
-  @Override
-  public String getObjectStoreSocketName() {
-    return runtime.getRayConfig().objectStoreSocketName;
-  }
-
-  @Override
   public boolean isSingleProcess() {
     return RunMode.SINGLE_PROCESS == runtime.getRayConfig().runMode;
   }

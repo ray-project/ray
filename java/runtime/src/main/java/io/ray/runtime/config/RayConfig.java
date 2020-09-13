@@ -153,6 +153,16 @@ public class RayConfig {
     workerEnv = workerEnvBuilder.build();
     updateSessionDir();
 
+    // Object store socket name.
+    if (config.hasPath("ray.object-store.socket-name")) {
+      objectStoreSocketName = config.getString("ray.object-store.socket-name");
+    }
+
+    // Raylet socket name.
+    if (config.hasPath("ray.raylet.socket-name")) {
+      rayletSocketName = config.getString("ray.raylet.socket-name");
+    }
+
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
     if (config.hasPath("ray.worker.python-command")) {
@@ -294,29 +304,6 @@ public class RayConfig {
     } else {
       logDir = localLogDir;
     }
-
-    // Object store socket name.
-    String localObjectStoreSocketName = null;
-    if (config.hasPath("ray.object-store.socket-name")) {
-      localObjectStoreSocketName = config.getString("ray.object-store.socket-name");
-    }
-    if (Strings.isNullOrEmpty(localObjectStoreSocketName)) {
-      objectStoreSocketName = String.format("%s/sockets/object_store", sessionDir);
-    } else {
-      objectStoreSocketName = localObjectStoreSocketName;
-    }
-
-    // Raylet socket name.
-    String localRayletSocketName = null;
-    if (config.hasPath("ray.raylet.socket-name")) {
-      localRayletSocketName = config.getString("ray.raylet.socket-name");
-    }
-    if (Strings.isNullOrEmpty(localRayletSocketName)) {
-      rayletSocketName = String.format("%s/sockets/raylet", sessionDir);
-    } else {
-      rayletSocketName = localRayletSocketName;
-    }
-
   }
 
   @Override

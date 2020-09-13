@@ -27,9 +27,6 @@ public abstract class BaseMultiLanguageTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseMultiLanguageTest.class);
 
-  private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/test/plasma_store_socket";
-  private static final String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
-
   /**
    * Execute an external command.
    *
@@ -78,8 +75,6 @@ public abstract class BaseMultiLanguageTest {
         "--redis-port=6379",
         "--min-worker-port=0",
         "--max-worker-port=0",
-        String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
-        String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
@@ -93,8 +88,6 @@ public abstract class BaseMultiLanguageTest {
     // Connect to the cluster.
     Assert.assertFalse(Ray.isInitialized());
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
-    System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
-    System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
     Ray.init();
   }
@@ -111,8 +104,6 @@ public abstract class BaseMultiLanguageTest {
     // Disconnect to the cluster.
     Ray.shutdown();
     System.clearProperty("ray.redis.address");
-    System.clearProperty("ray.object-store.socket-name");
-    System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");
 
     // Stop ray cluster.
