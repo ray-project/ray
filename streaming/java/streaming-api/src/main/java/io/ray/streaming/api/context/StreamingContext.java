@@ -65,11 +65,10 @@ public class StreamingContext implements Serializable {
 
     if (!Ray.isInitialized()) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
-        Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
-        ClusterStarter.startCluster(false, true);
+        ClusterStarter.startCluster(true);
         LOG.info("Created local cluster for job {}.", jobName);
       } else {
-        ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), false);
+        ClusterStarter.startCluster(false);
         LOG.info("Created multi process cluster for job {}.", jobName);
       }
       Runtime.getRuntime().addShutdownHook(new Thread(StreamingContext.this::stop));
@@ -103,7 +102,7 @@ public class StreamingContext implements Serializable {
 
   public void stop() {
     if (Ray.isInitialized()) {
-      ClusterStarter.stopCluster(jobGraph.isCrossLanguageGraph());
+      ClusterStarter.stopCluster();
     }
   }
 }

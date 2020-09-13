@@ -138,14 +138,4 @@ public class JobGraph implements Serializable {
     }
   }
 
-  public boolean isCrossLanguageGraph() {
-    Language language = jobVertices.get(0).getLanguage();
-    for (JobVertex jobVertex : jobVertices) {
-      if (jobVertex.getLanguage() != language) {
-        return true;
-      }
-    }
-    return false;
-  }
-
 }
