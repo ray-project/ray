@@ -51,7 +51,6 @@ public class RayConfig {
   private JobId jobId;
   public String sessionDir;
   public String logDir;
-  public final List<String> libraryPath;
 
   private String redisAddress;
   public final String redisPassword;
@@ -161,9 +160,6 @@ public class RayConfig {
     if (config.hasPath("ray.raylet.socket-name")) {
       rayletSocketName = config.getString("ray.raylet.socket-name");
     }
-
-    // Library path.
-    libraryPath = config.getStringList("ray.library.path");
 
     // Redis configurations.
     String redisAddress = config.getString("ray.redis.address");
