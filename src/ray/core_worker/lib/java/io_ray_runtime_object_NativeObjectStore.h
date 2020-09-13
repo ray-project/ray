@@ -94,6 +94,25 @@ JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
                                                                          jclass);
 
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativePromoteAndGetOwnershipInfo
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JNIEnv *,
+                                                                              jclass,
+                                                                              jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeRegisterOwnershipInfoAndResolveFuture
+ * Signature: ([B[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif
