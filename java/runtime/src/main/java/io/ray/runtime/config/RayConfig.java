@@ -52,7 +52,6 @@ public class RayConfig {
   public String sessionDir;
   public String logDir;
   public final List<String> libraryPath;
-  public final List<String> jvmParameters;
 
   private String redisAddress;
   public final String redisPassword;
@@ -156,13 +155,6 @@ public class RayConfig {
 
     // Library path.
     libraryPath = config.getStringList("ray.library.path");
-    // Custom worker jvm parameters.
-    if (config.hasPath("ray.worker.jvm-parameters")) {
-      jvmParameters = config.getStringList("ray.worker.jvm-parameters");
-    } else {
-      jvmParameters = ImmutableList.of();
-    }
-
     if (config.hasPath("ray.worker.python-command")) {
       pythonWorkerCommand = config.getString("ray.worker.python-command");
     } else {
