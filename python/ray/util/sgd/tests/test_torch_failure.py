@@ -82,6 +82,8 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
             use_local=use_local,
             num_workers=2)
 
+        original_state_dict = trainer1.state_dict()
+
         @ray.remote
         def try_test():
             import time
@@ -90,6 +92,7 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         try_test.remote()
         trainer1.train(max_retries=1)
         assert len(trainer1.worker_group.remote_workers) == 1
+        assert trainer1.state_dict() == original_state_dict
 
         trainer1.shutdown()
 

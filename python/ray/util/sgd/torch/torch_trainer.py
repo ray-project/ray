@@ -390,8 +390,6 @@ class TorchTrainer:
                 list of metric dictionaries whose length will be equal to
                 ``num_workers``.
         """
-        import pdb
-        pdb.set_trace()
         assert max_retries >= 0, "`max_retries` must be non-negative."
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
