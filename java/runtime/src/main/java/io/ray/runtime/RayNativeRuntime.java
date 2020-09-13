@@ -50,25 +50,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private static void loadConfigFromGcs(RayConfig rayConfig) {
+  private static void loadConfigFromGcs(RayConfig rayConfig, GcsClient gcsClient) {
     if (rayConfig.workerMode == WorkerType.DRIVER) {
-      // Fetch session dir from GCS if this is a driver that is connecting to the existing GCS.
+      // Fetch session dir from GCS if this is a driver.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       final String sessionDir = client.get("session_dir", null);
       Preconditions.checkNotNull(sessionDir);
       rayConfig.setSessionDir(sessionDir);
     }
-    // Expose ray ABI symbols which may be depended by other shared
-    // libraries such as libstreaming_java.so.
-    // See BUILD.bazel:libcore_worker_library_java.so
-    Preconditions.checkNotNull(rayConfig.sessionDir);
-    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
-    GcsClient tempGcsClient =
-        new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
     rayConfig.rayletConfigParameters.clear();
     for (Map.Entry<String, String> entry :
-        tempGcsClient.getInternalConfig().entrySet()) {
+      gcsClient.getInternalConfig().entrySet()) {
       rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
     }
   }
@@ -83,12 +76,18 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     Preconditions.checkNotNull(rayConfig.getRedisAddress());
     if (rayConfig.workerMode == WorkerType.DRIVER) {
-      RunManager.fillDriverInfo(rayConfig);
+      RunManager.fillConfigForDriver(rayConfig);
     }
 
-    loadConfigFromGcs(rayConfig);
-
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+
+    loadConfigFromGcs(rayConfig, gcsClient);
+
+    // Expose ray ABI symbols which may be depended by other shared
+    // libraries such as libstreaming_java.so.
+    // See BUILD.bazel:libcore_worker_library_java.so
+    Preconditions.checkNotNull(rayConfig.sessionDir);
+    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
     if (rayConfig.getJobId() == JobId.NIL) {
       rayConfig.setJobId(gcsClient.nextJobId());

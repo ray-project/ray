@@ -68,7 +68,7 @@ public class RunManager {
     }
   }
 
-  public static void fillDriverInfo(RayConfig rayConfig) {
+  public static void fillConfigForDriver(RayConfig rayConfig) {
     List<String> command = Arrays.asList(
       "python",
       "-c",
