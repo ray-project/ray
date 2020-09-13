@@ -539,12 +539,12 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
 }
 
 bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                            bool *pinned) const {
+                                            ClientID *pinned_at) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
-      *pinned = it->second.pinned_at_raylet_id.has_value();
+      *pinned_at = it->second.pinned_at_raylet_id.value_or(ClientID::Nil());
       return true;
     }
   }

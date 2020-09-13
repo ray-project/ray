@@ -67,41 +67,12 @@ ray.get_gpu_ids
 
 .. autofunction:: ray.get_gpu_ids
 
-.. _ray-get_resource_ids-ref:
-
-ray.get_resource_ids
-~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_resource_ids
-
-.. _ray-get_webui_url-ref:
-
-ray.get_webui_url
-~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.get_webui_url
-
 .. _ray-shutdown-ref:
 
 ray.shutdown
 ~~~~~~~~~~~~
 
 .. autofunction:: ray.shutdown
-
-
-.. _ray-register_custom_serializer-ref:
-
-ray.register_custom_serializer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.register_custom_serializer
-
-.. _ray-profile-ref:
-
-ray.profile
-~~~~~~~~~~~
-
-.. autofunction:: ray.profile
 
 .. _ray-method-ref:
 
@@ -116,6 +87,14 @@ ray.util.ActorPool
 .. autoclass:: ray.util.ActorPool
    :members:
 
+ray.util.queue.Queue
+~~~~~~~~~~~~~~~~~~~~
+
+.. _ray-queue-ref:
+
+.. autoclass:: ray.util.queue.Queue
+   :members:
+
 .. _ray-nodes-ref:
 
 ray.nodes
@@ -123,26 +102,12 @@ ray.nodes
 
 .. autofunction:: ray.nodes
 
-.. _ray-objects-ref:
-
-ray.objects
-~~~~~~~~~~~
-
-.. autofunction:: ray.objects
-
 .. _ray-timeline-ref:
 
 ray.timeline
 ~~~~~~~~~~~~
 
 .. autofunction:: ray.timeline
-
-.. _ray-object_transfer_timeline-ref:
-
-ray.object_transfer_timeline
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: ray.object_transfer_timeline
 
 .. _ray-cluster_resources-ref:
 
@@ -158,11 +123,19 @@ ray.available_resources
 
 .. autofunction:: ray.available_resources
 
+ray.cross_language
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.java_function
+
+.. autofunction:: ray.java_actor_class
+
 Experimental APIs
 -----------------
 
 .. automodule:: ray.experimental
    :members:
+
 
 The Ray Command Line API
 ------------------------
@@ -221,22 +194,10 @@ The Ray Command Line API
    :prog: ray stack
    :show-nested:
 
-.. _ray-stat-doc:
-
-.. click:: ray.scripts.scripts:statistics
-   :prog: ray statistics
-   :show-nested:
-
 .. _ray-memory-doc:
 
 .. click:: ray.scripts.scripts:memory
    :prog: ray memory
-   :show-nested:
-
-.. _ray-globalgc-doc:
-
-.. click:: ray.scripts.scripts:globalgc
-   :prog: ray globalgc
    :show-nested:
 
 .. _ray-timeline-doc:

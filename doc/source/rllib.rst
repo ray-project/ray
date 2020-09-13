@@ -23,7 +23,7 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install 'ray[rllib]'  # also recommended: ray[debug]
 
 Then, you can try out training in the following equivalent ways:
 
@@ -117,7 +117,9 @@ RLlib provides ways to customize almost all aspects of training, including the `
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 24
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 24

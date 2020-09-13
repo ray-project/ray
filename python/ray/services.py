@@ -6,21 +6,19 @@ import logging
 import multiprocessing
 import os
 import random
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
-import redis
 
 import colorama
+import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
-import psutil
-
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
+import redis
 
 resource = None
 if sys.platform != "win32":
@@ -66,10 +64,10 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
-DEFAULT_JAVA_WORKER_CLASSPATH = [
-    os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "../../../build/java/*"),
-]
+# Location of the cpp default worker executables.
+DEFAULT_WORKER_EXECUTABLE = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -124,18 +122,6 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def include_java_from_redis(redis_client):
-    """This is used for query include_java bool from redis.
-
-    Args:
-        redis_client (StrictRedis): The redis client to GCS.
-
-    Returns:
-        True if this cluster backend enables Java worker.
-    """
-    return redis_client.get("INCLUDE_JAVA") == b"1"
-
-
 def find_redis_address_or_die():
     pids = psutil.pids()
     redis_addresses = set()
@@ -163,8 +149,8 @@ def find_redis_address_or_die():
             pass
     if len(redis_addresses) > 1:
         raise ConnectionError(
-            "Found multiple active Ray instances: {}. ".format(redis_addresses)
-            + "Please specify the one to connect to by setting `address`.")
+            f"Found multiple active Ray instances: {redis_addresses}. "
+            "Please specify the one to connect to by setting `address`.")
         sys.exit(1)
     elif not redis_addresses:
         raise ConnectionError(
@@ -251,35 +237,18 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
-def validate_redis_address(address, redis_address):
-    """Validates redis address parameter and splits it into host/ip components.
-
-    We temporarily support both 'address' and 'redis_address', so both are
-    handled here.
+def validate_redis_address(address):
+    """Validates address parameter.
 
     Returns:
         redis_address: string containing the full <host:port> address.
         redis_ip: string representing the host portion of the address.
         redis_port: integer representing the port portion of the address.
-
-    Raises:
-        ValueError: if both address and redis_address were specified or the
-            address was malformed.
     """
 
-    if redis_address == "auto":
-        raise ValueError("auto address resolution not supported for "
-                         "redis_address parameter. Please use address.")
-
-    if address:
-        if redis_address:
-            raise ValueError(
-                "Both address and redis_address specified. Use only address.")
-        if address == "auto":
-            address = find_redis_address_or_die()
-        redis_address = address
-
-    redis_address = address_to_ip(redis_address)
+    if address == "auto":
+        address = find_redis_address_or_die()
+    redis_address = address_to_ip(address)
 
     redis_address_parts = redis_address.split(":")
     if len(redis_address_parts) != 2:
@@ -419,27 +388,26 @@ def start_ray_process(command,
             the process that was started.
     """
     # Detect which flags are set through environment variables.
-    valgrind_env_var = "RAY_{}_VALGRIND".format(process_type.upper())
+    valgrind_env_var = f"RAY_{process_type.upper()}_VALGRIND"
     if os.environ.get(valgrind_env_var) == "1":
         logger.info("Detected environment variable '%s'.", valgrind_env_var)
         use_valgrind = True
-    valgrind_profiler_env_var = "RAY_{}_VALGRIND_PROFILER".format(
-        process_type.upper())
+    valgrind_profiler_env_var = f"RAY_{process_type.upper()}_VALGRIND_PROFILER"
     if os.environ.get(valgrind_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.",
                     valgrind_profiler_env_var)
         use_valgrind_profiler = True
-    perftools_profiler_env_var = "RAY_{}_PERFTOOLS_PROFILER".format(
-        process_type.upper())
+    perftools_profiler_env_var = (f"RAY_{process_type.upper()}"
+                                  "_PERFTOOLS_PROFILER")
     if os.environ.get(perftools_profiler_env_var) == "1":
         logger.info("Detected environment variable '%s'.",
                     perftools_profiler_env_var)
         use_perftools_profiler = True
-    tmux_env_var = "RAY_{}_TMUX".format(process_type.upper())
+    tmux_env_var = f"RAY_{process_type.upper()}_TMUX"
     if os.environ.get(tmux_env_var) == "1":
         logger.info("Detected environment variable '%s'.", tmux_env_var)
         use_tmux = True
-    gdb_env_var = "RAY_{}_GDB".format(process_type.upper())
+    gdb_env_var = f"RAY_{process_type.upper()}_GDB"
     if os.environ.get(gdb_env_var) == "1":
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
@@ -468,14 +436,13 @@ def start_ray_process(command,
                 "If 'use_gdb' is true, then 'use_tmux' must be true as well.")
 
         # TODO(suquark): Any better temp file creation here?
-        gdb_init_path = os.path.join(
-            ray.utils.get_ray_temp_dir(), "gdb_init_{}_{}".format(
-                process_type, time.time()))
+        gdb_init_path = os.path.join(ray.utils.get_ray_temp_dir(),
+                                     f"gdb_init_{process_type}_{time.time()}")
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
         with open(gdb_init_path, "w") as gdb_init_file:
-            gdb_init_file.write("run {}".format(run_args))
+            gdb_init_file.write(f"run {run_args}")
         command = ["gdb", ray_process_path, "-x", gdb_init_path]
 
     if use_valgrind:
@@ -499,7 +466,7 @@ def start_ray_process(command,
         # The command has to be created exactly as below to ensure that it
         # works on all versions of tmux. (Tested with tmux 1.8-5, travis'
         # version, and tmux 2.1)
-        command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
+        command = ["tmux", "new-session", "-d", f"{' '.join(command)}"]
 
     if fate_share:
         assert ray.utils.detect_fate_sharing_support(), (
@@ -582,12 +549,6 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
         else:
             break
     else:
-        cli_logger.error(
-            "Unable to connect to Redis at "
-            "`{c.underlined}{}:{}{c.no_underlined}` after {} retries.",
-            redis_ip_address, redis_port, num_retries)
-        cli_logger.abort("Check your firewall and network settings.")
-
         raise RuntimeError("Unable to connect to Redis. If the Redis instance "
                            "is on a different machine, check that your "
                            "firewall is configured properly.")
@@ -703,7 +664,6 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 use_credis=None,
-                include_java=False,
                 fate_share=None):
     """Start the Redis global state store.
 
@@ -729,8 +689,6 @@ def start_redis(node_ip_address,
         use_credis: If True, additionally load the chain-replicated libraries
             into the redis servers.  Defaults to None, which means its value is
             set by the presence of "RAY_USE_NEW_GCS" in os.environ.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -803,10 +761,6 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     primary_redis_client.set("RedirectOutput", 1
                              if redirect_worker_output else 0)
-
-    # put the include_java bool to primary redis-server, so that other nodes
-    # can access it and know whether or not to enable cross-languages.
-    primary_redis_client.set("INCLUDE_JAVA", 1 if include_java else 0)
 
     # Init job counter to GCS.
     primary_redis_client.set("JobCounter", 0)
@@ -1059,8 +1013,8 @@ def start_log_monitor(redis_address,
         sys.executable,
         "-u",
         log_monitor_filepath,
-        "--redis-address={}".format(redis_address),
-        "--logs-dir={}".format(logs_dir),
+        f"--redis-address={redis_address}",
+        f"--logs-dir={logs_dir}",
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1099,8 +1053,8 @@ def start_reporter(redis_address,
         os.path.dirname(os.path.abspath(__file__)), "reporter.py")
     command = [
         sys.executable, "-u", reporter_filepath,
-        "--redis-address={}".format(redis_address), "--port={}".format(port),
-        "--metrics-export-port={}".format(metrics_export_port)
+        f"--redis-address={redis_address}", f"--port={port}",
+        f"--metrics-export-port={metrics_export_port}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1159,19 +1113,25 @@ def start_dashboard(require_dashboard,
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
         except socket.error:
-            raise ValueError("The given dashboard port {}"
-                             " is already in use".format(port))
+            raise ValueError(
+                f"The given dashboard port {port} is already in use")
+
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        dashboard_dir = "new_dashboard"
+    else:
+        dashboard_dir = "dashboard"
 
     dashboard_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
+        os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
+        "dashboard.py")
     command = [
         sys.executable,
         "-u",
         dashboard_filepath,
-        "--host={}".format(host),
-        "--port={}".format(port),
-        "--redis-address={}".format(redis_address),
-        "--temp-dir={}".format(temp_dir),
+        f"--host={host}",
+        f"--port={port}",
+        f"--redis-address={redis_address}",
+        f"--temp-dir={temp_dir}",
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1198,15 +1158,12 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        dashboard_url = "{}:{}".format(
-            host if host != "0.0.0.0" else get_node_ip_address(), port)
+        dashboard_url = (
+            f"{host if host != '0.0.0.0' else get_node_ip_address()}:{port}")
 
-        cli_logger.labeled_value("Dashboard URL", cf.underlined("http://{}"),
-                                 dashboard_url)
-        cli_logger.old_info(logger, "View the Ray dashboard at {}{}{}{}{}",
-                            colorama.Style.BRIGHT, colorama.Fore.GREEN,
-                            dashboard_url, colorama.Fore.RESET,
-                            colorama.Style.NORMAL)
+        logger.info("View the Ray dashboard at {}{}http://{}{}{}".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
 
         return dashboard_url, process_info
     else:
@@ -1244,14 +1201,14 @@ def start_gcs_server(redis_address,
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        "--redis_address={}".format(gcs_ip_address),
-        "--redis_port={}".format(gcs_port),
-        "--config_list={}".format(config_str),
-        "--gcs_server_port={}".format(gcs_server_port),
-        "--metrics-agent-port={}".format(metrics_agent_port),
+        f"--redis_address={gcs_ip_address}",
+        f"--redis_port={gcs_port}",
+        f"--config_list={config_str}",
+        f"--gcs_server_port={gcs_server_port}",
+        f"--metrics-agent-port={metrics_agent_port}",
     ]
     if redis_password:
-        command += ["--redis_password={}".format(redis_password)]
+        command += [f"--redis_password={redis_password}"]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
@@ -1270,6 +1227,8 @@ def start_raylet(redis_address,
                  temp_dir,
                  session_dir,
                  resource_spec,
+                 plasma_directory,
+                 object_store_memory,
                  min_worker_port=None,
                  max_worker_port=None,
                  object_manager_port=None,
@@ -1281,16 +1240,15 @@ def start_raylet(redis_address,
                  stdout_file=None,
                  stderr_file=None,
                  config=None,
-                 include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 plasma_directory=None,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
                  start_initial_python_workers_for_first_job=False,
-                 object_spilling_config=None):
+                 object_spilling_config=None,
+                 code_search_path=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1325,9 +1283,10 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
         java_worker_options (list): The command options for Java worker.
+        code_search_path (list): Code search path for worker. code_search_path
+            is added to worker command in non-multi-tenancy mode and job_config
+            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1355,11 +1314,36 @@ def start_raylet(redis_address,
 
     gcs_ip_address, gcs_port = redis_address.split(":")
 
+    has_java_command = False
+    if shutil.which("java") is not None:
+        has_java_command = True
+
+    ray_java_installed = False
+    try:
+        jars_dir = get_ray_jars_dir()
+        if os.path.exists(jars_dir):
+            ray_java_installed = True
+    except Exception:
+        pass
+
+    include_java = has_java_command and ray_java_installed
     if include_java is True:
-        default_cp = os.pathsep.join(DEFAULT_JAVA_WORKER_CLASSPATH)
         java_worker_command = build_java_worker_command(
-            json.loads(java_worker_options)
-            if java_worker_options else ["-classpath", default_cp],
+            json.loads(java_worker_options) if java_worker_options else [],
+            redis_address,
+            node_manager_port,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+            code_search_path,
+        )
+    else:
+        java_worker_command = []
+
+    if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
+        cpp_worker_command = build_cpp_worker_command(
+            "",
             redis_address,
             node_manager_port,
             plasma_store_name,
@@ -1368,22 +1352,21 @@ def start_raylet(redis_address,
             session_dir,
         )
     else:
-        java_worker_command = []
+        cpp_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path,
-        "--node-ip-address={}".format(node_ip_address),
-        "--node-manager-port={}".format(node_manager_port),
-        "--object-store-name={}".format(plasma_store_name),
-        "--raylet-name={}".format(raylet_name),
-        "--redis-address={}".format(redis_address),
-        "--config-list={}".format(config_str),
-        "--temp-dir={}".format(temp_dir),
+        sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
+        f"--node-manager-port={node_manager_port}",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
+        f"--config-list={config_str}", f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}"
     ]
+    if code_search_path:
+        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
-        start_worker_command += ["--redis-password={}".format(redis_password)]
+        start_worker_command += [f"--redis-password={redis_password}"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1396,6 +1379,9 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
+    if code_search_path is not None and len(code_search_path) > 0:
+        load_code_from_local = True
+
     if load_code_from_local:
         start_worker_command += ["--load-code-from-local"]
 
@@ -1403,41 +1389,59 @@ def start_raylet(redis_address,
         start_worker_command.append(
             f"--object-spilling-config={json.dumps(object_spilling_config)}")
 
+    # Create agent command
+    agent_command = [
+        sys.executable,
+        "-u",
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "new_dashboard/agent.py"),
+        "--redis-address={}".format(redis_address),
+        "--metrics-export-port={}".format(metrics_export_port),
+        "--node-manager-port={}".format(node_manager_port),
+        "--object-store-name={}".format(plasma_store_name),
+        "--raylet-name={}".format(raylet_name),
+        "--temp-dir={}".format(temp_dir),
+    ]
+
+    if redis_password is not None and len(redis_password) != 0:
+        agent_command.append("--redis-password={}".format(redis_password))
+
     command = [
         RAYLET_EXECUTABLE,
-        "--raylet_socket_name={}".format(raylet_name),
-        "--store_socket_name={}".format(plasma_store_name),
-        "--object_manager_port={}".format(object_manager_port),
-        "--min_worker_port={}".format(min_worker_port),
-        "--max_worker_port={}".format(max_worker_port),
-        "--node_manager_port={}".format(node_manager_port),
-        "--node_ip_address={}".format(node_ip_address),
-        "--redis_address={}".format(gcs_ip_address),
-        "--redis_port={}".format(gcs_port),
-        "--num_initial_workers={}".format(num_initial_workers),
-        "--maximum_startup_concurrency={}".format(maximum_startup_concurrency),
-        "--static_resource_list={}".format(resource_argument),
-        "--config_list={}".format(config_str),
-        "--python_worker_command={}".format(
-            subprocess.list2cmdline(start_worker_command)),
-        "--java_worker_command={}".format(
-            subprocess.list2cmdline(java_worker_command)),
-        "--redis_password={}".format(redis_password or ""),
-        "--temp_dir={}".format(temp_dir),
-        "--session_dir={}".format(session_dir),
-        "--metrics-agent-port={}".format(metrics_agent_port),
-        "--metrics_export_port={}".format(metrics_export_port),
+        f"--raylet_socket_name={raylet_name}",
+        f"--store_socket_name={plasma_store_name}",
+        f"--object_manager_port={object_manager_port}",
+        f"--min_worker_port={min_worker_port}",
+        f"--max_worker_port={max_worker_port}",
+        f"--node_manager_port={node_manager_port}",
+        f"--node_ip_address={node_ip_address}",
+        f"--redis_address={gcs_ip_address}",
+        f"--redis_port={gcs_port}",
+        f"--num_initial_workers={num_initial_workers}",
+        f"--maximum_startup_concurrency={maximum_startup_concurrency}",
+        f"--static_resource_list={resource_argument}",
+        f"--config_list={config_str}",
+        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
+        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
+        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--redis_password={redis_password or ''}",
+        f"--temp_dir={temp_dir}",
+        f"--session_dir={session_dir}",
+        f"--metrics-agent-port={metrics_agent_port}",
+        f"--metrics_export_port={metrics_export_port}",
     ]
     if start_initial_python_workers_for_first_job:
         command.append("--num_initial_python_workers_for_first_job={}".format(
             resource_spec.num_cpus))
+    if "RAY_USE_NEW_DASHBOARD" in os.environ:
+        command.append("--agent_command={}".format(
+            subprocess.list2cmdline(agent_command)))
     if config.get("plasma_store_as_thread"):
         # command related to the plasma store
-        plasma_directory, object_store_memory = determine_plasma_store_config(
-            resource_spec.object_store_memory, plasma_directory, huge_pages)
         command += [
-            "--object_store_memory={}".format(object_store_memory),
-            "--plasma_directory={}".format(plasma_directory),
+            f"--object_store_memory={object_store_memory}",
+            f"--plasma_directory={plasma_directory}",
         ]
         if huge_pages:
             command.append("--huge_pages")
@@ -1471,15 +1475,10 @@ def get_ray_jars_dir():
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
-def build_java_worker_command(
-        java_worker_options,
-        redis_address,
-        node_manager_port,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-):
+def build_java_worker_command(java_worker_options, redis_address,
+                              node_manager_port, plasma_store_name,
+                              raylet_name, redis_password, session_dir,
+                              code_search_path):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1490,6 +1489,7 @@ def build_java_worker_command(
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
+        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1510,7 +1510,7 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-
+    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]
@@ -1538,6 +1538,36 @@ def build_java_worker_command(
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+
+    return command
+
+
+def build_cpp_worker_command(
+        cpp_worker_options,
+        redis_address,
+        node_manager_port,
+        plasma_store_name,
+        raylet_name,
+        redis_password,
+        session_dir,
+):
+    """This method assembles the command used to start a CPP worker.
+
+    Args:
+        cpp_worker_options (list): The command options for CPP worker.
+        redis_address (str): Redis address of GCS.
+        plasma_store_name (str): The name of the plasma store socket to connect
+           to.
+        raylet_name (str): The name of the raylet socket to create.
+        redis_password (str): The password of connect to redis.
+        session_dir (str): The path of this session.
+    Returns:
+        The command string for starting CPP worker.
+    """
+    command = [
+        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
+        str(node_manager_port), redis_password, session_dir
+    ]
 
     return command
 
@@ -1603,13 +1633,12 @@ def determine_plasma_store_config(object_store_memory,
                 "than the total available memory.")
     else:
         plasma_directory = os.path.abspath(plasma_directory)
-        logger.warning("WARNING: object_store_memory is not verified when "
-                       "plasma_directory is set.")
+        logger.info("object_store_memory is not verified when "
+                    "plasma_directory is set.")
 
     if not os.path.isdir(plasma_directory):
-        raise ValueError(
-            "The file {} does not exist or is not a directory.".format(
-                plasma_directory))
+        raise ValueError(f"The file {plasma_directory} does not "
+                         "exist or is not a directory.")
 
     if huge_pages and plasma_directory is None:
         raise ValueError("If huge_pages is True, then the "
@@ -1631,10 +1660,11 @@ def determine_plasma_store_config(object_store_memory,
 
 
 def start_plasma_store(resource_spec,
+                       plasma_directory,
+                       object_store_memory,
                        plasma_store_socket_name,
                        stdout_file=None,
                        stderr_file=None,
-                       plasma_directory=None,
                        keep_idle=False,
                        huge_pages=False,
                        fate_share=None,
@@ -1663,8 +1693,6 @@ def start_plasma_store(resource_spec,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    plasma_directory, object_store_memory = determine_plasma_store_config(
-        resource_spec.object_store_memory, plasma_directory, huge_pages)
 
     command = [
         PLASMA_STORE_EXECUTABLE,

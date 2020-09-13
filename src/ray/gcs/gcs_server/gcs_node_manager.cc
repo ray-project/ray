@@ -342,16 +342,16 @@ void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest
 void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                              rpc::GetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  auto get_internal_config = [reply, send_reply_callback](
-                                 ray::Status status,
-                                 const boost::optional<rpc::StoredConfig> &config) {
+  auto get_system_config = [reply, send_reply_callback](
+                               ray::Status status,
+                               const boost::optional<rpc::StoredConfig> &config) {
     if (config.has_value()) {
       reply->mutable_config()->CopyFrom(config.get());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(),
-                                                             get_internal_config));
+  RAY_CHECK_OK(
+      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
@@ -395,6 +395,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
     cluster_resources_.erase(node_id);
+    // Remove from cluster realtime resources.
+    cluster_realtime_resources_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.

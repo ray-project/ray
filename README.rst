@@ -6,7 +6,7 @@
 |
 
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a simple, universal API for building distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -120,7 +120,7 @@ This example runs a parallel grid search to optimize an example objective functi
     print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
     # Get a dataframe for analyzing trial results.
-    df = analysis.dataframe()
+    df = analysis.results_df
 
 If TensorBoard is installed, automatically visualize all trial results:
 
@@ -261,14 +261,21 @@ More Information
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older documents:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `Blog (old)`_
+
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://ray-project.github.io/
+.. _`Blog (old)`: https://ray-project.github.io/
+.. _`Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

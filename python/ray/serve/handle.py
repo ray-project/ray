@@ -1,8 +1,7 @@
-import ray
-from ray import serve
+from typing import Optional, Dict, Any, Union
+
 from ray.serve.context import TaskContext
-from ray.serve.exceptions import RayServeException
-from ray.serve.request_params import RequestMetadata
+from ray.serve.router import RequestMetadata
 
 
 class RayServeHandle:
@@ -16,7 +15,6 @@ class RayServeHandle:
        >>> handle
        RayServeHandle(
             Endpoint="my_endpoint",
-            URL="...",
             Traffic=...
        )
        >>> handle.remote(my_request_content)
@@ -31,97 +29,70 @@ class RayServeHandle:
             self,
             router_handle,
             endpoint_name,
-            relative_slo_ms=None,
-            absolute_slo_ms=None,
+            *,
             method_name=None,
             shard_key=None,
+            http_method=None,
+            http_headers=None,
     ):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
-        assert relative_slo_ms is None or absolute_slo_ms is None, (
-            "Can't specify both "
-            "relative and absolute "
-            "slo's together!")
-        self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
-        self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
+
         self.method_name = method_name
         self.shard_key = shard_key
+        self.http_method = http_method
+        self.http_headers = http_headers
 
-    def _check_slo_ms(self, slo_value):
-        if slo_value is not None:
-            try:
-                slo_value = float(slo_value)
-                if slo_value < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            slo_value))
-                return slo_value
-            except ValueError as e:
-                raise RayServeException(str(e))
-        return None
+    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
+               **kwargs):
+        """Issue an asynchrounous request to the endpoint.
 
-    def remote(self, *args, **kwargs):
-        if len(args) != 0:
-            raise RayServeException(
-                "handle.remote must be invoked with keyword arguments.")
+        Returns a Ray ObjectRef whose results can be waited for or retrieved
+        using ray.wait or ray.get, respectively.
 
-        method_name = self.method_name
-        if method_name is None:
-            method_name = "__call__"
-
-        # create RequestMetadata instance
-        request_in_object = RequestMetadata(
+        Returns:
+            ray.ObjectRef
+        Input:
+            request_data(dict, Any): If it's a dictionary, the data will be
+              available in ``request.json()`` or ``request.form()``. Otherwise,
+              it will be available in ``request.data``.
+            ``**kwargs``: All keyword arguments will be available in
+              ``request.args``.
+        """
+        request_metadata = RequestMetadata(
             self.endpoint_name,
             TaskContext.Python,
-            self.relative_slo_ms,
-            self.absolute_slo_ms,
-            call_method=method_name,
+            call_method=self.method_name or "__call__",
             shard_key=self.shard_key,
+            http_method=self.http_method or "GET",
+            http_headers=self.http_headers or dict(),
         )
         return self.router_handle.enqueue_request.remote(
-            request_in_object, **kwargs)
+            request_metadata, request_data, **kwargs)
 
     def options(self,
-                method_name=None,
-                shard_key=None,
-                relative_slo_ms=None,
-                absolute_slo_ms=None):
-        # If both the slo's are None then then we use a high default
-        # value so other queries can be prioritize and put in front of these
-        # queries.
-        assert not all([absolute_slo_ms, relative_slo_ms
-                        ]), ("Can't specify both "
-                             "relative and absolute "
-                             "slo's together!")
+                method_name: Optional[str] = None,
+                *,
+                shard_key: Optional[str] = None,
+                http_method: Optional[str] = None,
+                http_headers: Optional[Dict[str, str]] = None):
+        """Set options for this handle.
 
-        # Don't override existing method
-        if method_name is None and self.method_name is not None:
-            method_name = self.method_name
-
-        if shard_key is None and self.shard_key is not None:
-            shard_key = self.shard_key
-
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
         return RayServeHandle(
             self.router_handle,
             self.endpoint_name,
-            relative_slo_ms,
-            absolute_slo_ms,
-            method_name=method_name,
-            shard_key=shard_key,
+            # Don't override existing method
+            method_name=self.method_name or method_name,
+            shard_key=self.shard_key or shard_key,
+            http_method=self.http_method or http_method,
+            http_headers=self.http_headers or http_headers,
         )
-
-    def get_traffic_policy(self):
-        controller = serve.api._get_controller()
-        return ray.get(
-            controller.get_traffic_policy.remote(self.endpoint_name))
 
     def __repr__(self):
-        return """
-RayServeHandle(
-    Endpoint="{endpoint_name}",
-    Traffic={traffic_policy}
-)
-""".format(
-            endpoint_name=self.endpoint_name,
-            traffic_policy=self.get_traffic_policy(),
-        )
+        return f"RayServeHandle(endpoint='{self.endpoint_name}')"

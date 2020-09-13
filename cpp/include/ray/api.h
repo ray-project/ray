@@ -33,6 +33,9 @@ class Ray {
   /// Initialize Ray runtime.
   static void Init();
 
+  /// Shutdown Ray runtime.
+  static void Shutdown();
+
   /// Store an object in the object store.
   ///
   /// \param[in] obj The object which should be stored.
@@ -233,10 +236,21 @@ inline ActorTaskCaller<ReturnType> Ray::CallActorInternal(FuncType &actor_func,
   return ActorTaskCaller<ReturnType>(runtime_, actor.ID(), ptr, buffer);
 }
 
-#include <ray/api/generated/call_actors_impl.generated.h>
-#include <ray/api/generated/call_funcs_impl.generated.h>
-#include <ray/api/generated/create_actors_impl.generated.h>
+// TODO(barakmich): These includes are generated files that do not contain their
+// relevant headers. Since they're only used here, they must appear in this
+// particular order, which is a code smell and breaks lint.
+//
+// The generated files, and their generator, should be fixed. Until then, we can
+// force the order by way of comments
+//
+// #1
 #include <ray/api/generated/exec_funcs.generated.h>
+// #2
+#include <ray/api/generated/call_funcs_impl.generated.h>
+// #3
+#include <ray/api/generated/create_actors_impl.generated.h>
+// #4
+#include <ray/api/generated/call_actors_impl.generated.h>
 
 }  // namespace api
 }  // namespace ray

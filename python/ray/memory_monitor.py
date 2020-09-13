@@ -49,7 +49,7 @@ class RayOutOfMemoryError(Exception):
         return ("More than {}% of the memory on ".format(int(
             100 * threshold)) + "node {} is used ({} / {} GB). ".format(
                 platform.node(), round(used_gb, 2), round(total_gb, 2)) +
-                "The top 10 memory consumers are:\n\n{}".format(proc_str) +
+                f"The top 10 memory consumers are:\n\n{proc_str}" +
                 "\n\nIn addition, up to {} GiB of shared memory is ".format(
                     round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
                 + "currently being used by the Ray object store. You can set "
@@ -102,40 +102,44 @@ class MemoryMonitor:
         self.heap_limit = limit_bytes
         self.worker_name = worker_name
 
+    def get_memory_usage(self):
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / (1024**3)
+        used_gb = total_gb - psutil_mem.available / (1024**3)
+
+        # Linux, BSD has cached memory, which should
+        # also be considered as unused memory
+        if hasattr(psutil_mem, "cached"):
+            used_gb -= psutil_mem.cached / (1024**3)
+
+        if self.cgroup_memory_limit_gb < total_gb:
+            total_gb = self.cgroup_memory_limit_gb
+            with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
+                      "rb") as f:
+                used_gb = int(f.read()) / (1024**3)
+            # Exclude the page cache
+            with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
+                for line in f.readlines():
+                    if line.split(" ")[0] == "cache":
+                        used_gb = \
+                            used_gb - int(line.split(" ")[1]) / (1024**3)
+            assert used_gb >= 0
+        return used_gb, total_gb
+
     def raise_if_low_memory(self):
         if time.time() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
                 return  # escape hatch, not intended for user use
 
             self.last_checked = time.time()
-            psutil_mem = psutil.virtual_memory()
-            total_gb = psutil_mem.total / (1024**3)
-            used_gb = total_gb - psutil_mem.available / (1024**3)
+            used_gb, total_gb = self.get_memory_usage()
 
-            # Linux, BSD has cached memory, which should
-            # also be considered as unused memory
-            if hasattr(psutil_mem, "cached"):
-                used_gb -= psutil_mem.cached / (1024**3)
-
-            if self.cgroup_memory_limit_gb < total_gb:
-                total_gb = self.cgroup_memory_limit_gb
-                with open("/sys/fs/cgroup/memory/memory.usage_in_bytes",
-                          "rb") as f:
-                    used_gb = int(f.read()) / (1024**3)
-                # Exclude the page cache
-                with open("/sys/fs/cgroup/memory/memory.stat", "r") as f:
-                    for line in f.readlines():
-                        if line.split(" ")[0] == "cache":
-                            used_gb = \
-                                used_gb - int(line.split(" ")[1]) / (1024**3)
-                assert used_gb >= 0
             if used_gb > total_gb * self.error_threshold:
                 raise RayOutOfMemoryError(
                     RayOutOfMemoryError.get_message(used_gb, total_gb,
                                                     self.error_threshold))
             else:
-                logger.debug("Memory usage is {} / {}".format(
-                    used_gb, total_gb))
+                logger.debug(f"Memory usage is {used_gb} / {total_gb}")
 
             if self.heap_limit:
                 mem_info = psutil.Process(os.getpid()).memory_info()

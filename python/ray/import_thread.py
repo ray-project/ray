@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 class ImportThread:
     """A thread used to import exports from the driver or other workers.
 
-    Note: The driver also has an import thread, which is used only to import
-    custom class definitions from calls to _register_custom_serializer that
-    happen under the hood on workers.
-
     Attributes:
         worker: the worker object in this process.
         mode: worker mode
@@ -90,7 +86,7 @@ class ImportThread:
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
         except (OSError, redis.exceptions.ConnectionError) as e:
-            logger.error("ImportThread: {}".format(e))
+            logger.error(f"ImportThread: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()

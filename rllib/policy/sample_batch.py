@@ -7,7 +7,6 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Union
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
@@ -59,19 +58,33 @@ class SampleBatch:
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor)."""
 
-        self._initial_inputs = kwargs.pop("_initial_inputs", {})
+        # Possible seq_lens (TxB or BxT) setup.
+        self.time_major = kwargs.pop("_time_major", None)
+        self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.max_seq_len = None
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.max_seq_len = max(self.seq_lens)
 
+        # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
+
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
             lengths.append(len(v))
-            self.data[k] = np.array(v, copy=False)
+            if isinstance(v, list):
+                self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, ("data columns must be same length",
-                                        self.data, lengths)
-        self.count = lengths[0]
+        assert len(set(lengths)) == 1, \
+            "Data columns must be same length, but lens are {}".format(lengths)
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            self.count = sum(self.seq_lens)
+        else:
+            self.count = len(self.data[k])
+
+        # Keeps track of new columns added after initial ones.
+        self.new_columns = []
 
     @staticmethod
     @PublicAPI
@@ -88,11 +101,21 @@ class SampleBatch:
         """
         if isinstance(samples[0], MultiAgentBatch):
             return MultiAgentBatch.concat_samples(samples)
+        seq_lens = []
+        concat_samples = []
+        for s in samples:
+            if s.count > 0:
+                concat_samples.append(s)
+                if s.seq_lens is not None:
+                    seq_lens.extend(s.seq_lens)
+
         out = {}
-        samples = [s for s in samples if s.count > 0]
-        for k in samples[0].keys():
-            out[k] = concat_aligned([s[k] for s in samples])
-        return SampleBatch(out)
+        for k in concat_samples[0].keys():
+            out[k] = concat_aligned(
+                [s[k] for s in concat_samples],
+                time_major=concat_samples[0].time_major)
+        return SampleBatch(
+            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -222,8 +245,18 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-
-        return SampleBatch({k: v[start:end] for k, v in self.data.items()})
+        if self.time_major is not None:
+            return SampleBatch(
+                {k: v[:, start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=self.seq_lens[start:end],
+                _time_major=self.time_major)
+        else:
+            return SampleBatch(
+                {k: v[start:end]
+                 for k, v in self.data.items()},
+                _seq_lens=None,
+                _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:
@@ -290,7 +323,7 @@ class SampleBatch:
             key (str): The key (column name) to return.
 
         Returns:
-            TensorType]: The data under the given key.
+            TensorType: The data under the given key.
         """
         return self.data[key]
 
@@ -302,6 +335,8 @@ class SampleBatch:
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        if key not in self.data:
+            self.new_columns.append(key)
         self.data[key] = item
 
     @DeveloperAPI
@@ -575,8 +610,3 @@ class MultiAgentBatch:
     def __repr__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count)
-
-    # Deprecated.
-    def total(self):
-        deprecation_warning("batch.total()", "batch.agent_steps()")
-        return self.agent_steps()

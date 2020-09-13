@@ -1,5 +1,7 @@
 import copy
 import logging
+import os
+import inspect
 import threading
 import time
 from collections import defaultdict, deque, Mapping, Sequence
@@ -95,9 +97,9 @@ class UtilMonitor(Thread):
 
 
 def pin_in_object_store(obj):
-    """Deprecated, use ray.put(value, weakref=False) instead."""
+    """Deprecated, use ray.put(value) instead."""
 
-    obj_ref = ray.put(obj, weakref=False)
+    obj_ref = ray.put(obj)
     _pinned_objects.append(obj_ref)
     return obj_ref
 
@@ -149,6 +151,17 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+
+def env_integer(key, default):
+    # TODO(rliaw): move into ray.constants
+    if key in os.environ:
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+        raise ValueError(f"Found {key} in environment, but value must "
+                         f"be an integer. Got: {value}.")
+    return default
 
 
 def merge_dicts(d1, d2):
@@ -214,20 +227,43 @@ def deep_update(original,
     return original
 
 
-def flatten_dict(dt, delimiter="/"):
+def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
     dt = copy.deepcopy(dt)
+    if prevent_delimiter and any(delimiter in key for key in dt):
+        # Raise if delimiter is any of the keys
+        raise ValueError(
+            "Found delimiter `{}` in key when trying to flatten array."
+            "Please avoid using the delimiter in your specification.")
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
             if isinstance(value, dict):
                 for subkey, v in value.items():
+                    if prevent_delimiter and delimiter in subkey:
+                        # Raise  if delimiter is in any of the subkeys
+                        raise ValueError(
+                            "Found delimiter `{}` in key when trying to "
+                            "flatten array. Please avoid using the delimiter "
+                            "in your specification.")
                     add[delimiter.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
             del dt[k]
     return dt
+
+
+def unflatten_dict(dt, delimiter="/"):
+    """Unflatten dict. Does not support unflattening lists."""
+    out = defaultdict(dict)
+    for key, val in dt.items():
+        path = key.split(delimiter)
+        item = out
+        for k in path[:-1]:
+            item = item[k]
+        item[path[-1]] = val
+    return dict(out)
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
@@ -267,6 +303,92 @@ def _from_pinnable(obj):
     """Retrieve from _to_pinnable format."""
 
     return obj[0]
+
+
+def diagnose_serialization(trainable):
+    """Utility for detecting accidentally-scoped objects.
+
+    Args:
+        trainable (cls | func): The trainable object passed to
+            tune.run(trainable).
+
+    Returns:
+        bool | set of unserializable objects.
+
+    Example:
+
+    .. code-block::
+
+        import threading
+        # this is not serializable
+        e = threading.Event()
+
+        def test():
+            print(e)
+
+        diagnose_serialization(test)
+        # should help identify that 'e' should be moved into
+        # the `test` scope.
+
+        # correct implementation
+        def test():
+            e = threading.Event()
+            print(e)
+
+        assert diagnose_serialization(test) is True
+
+    """
+    from ray.tune.registry import register_trainable, check_serializability
+
+    def check_variables(objects, failure_set, printer):
+        for var_name, variable in objects.items():
+            msg = None
+            try:
+                check_serializability(var_name, variable)
+                status = "PASSED"
+            except Exception as e:
+                status = "FAILED"
+                msg = f"{e.__class__.__name__}: {str(e)}"
+                failure_set.add(var_name)
+            printer(f"{str(variable)}[name='{var_name}'']... {status}")
+            if msg:
+                printer(msg)
+
+    print(f"Trying to serialize {trainable}...")
+    try:
+        register_trainable("__test:" + str(trainable), trainable, warn=False)
+        print("Serialization succeeded!")
+        return True
+    except Exception as e:
+        print(f"Serialization failed: {e}")
+
+    print("Inspecting the scope of the trainable by running "
+          f"`inspect.getclosurevars({str(trainable)})`...")
+    closure = inspect.getclosurevars(trainable)
+    failure_set = set()
+    if closure.globals:
+        print(f"Detected {len(closure.globals)} global variables. "
+              "Checking serializability...")
+        check_variables(closure.globals, failure_set,
+                        lambda s: print("   " + s))
+
+    if closure.nonlocals:
+        print(f"Detected {len(closure.nonlocals)} nonlocal variables. "
+              "Checking serializability...")
+        check_variables(closure.nonlocals, failure_set,
+                        lambda s: print("   " + s))
+
+    if not failure_set:
+        print("Nothing was found to have failed the diagnostic test, though "
+              "serialization did not succeed. Feel free to raise an "
+              "issue on github.")
+        return failure_set
+    else:
+        print(f"Variable(s) {failure_set} was found to be non-serializable. "
+              "Consider either removing the instantiation/imports "
+              "of these objects or moving them into the scope of "
+              "the trainable. ")
+        return failure_set
 
 
 def validate_save_restore(trainable_cls,
@@ -311,6 +433,50 @@ def validate_save_restore(trainable_cls,
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
+
+
+def detect_checkpoint_function(train_func, abort=False):
+    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
+    func_sig = inspect.signature(train_func)
+    validated = True
+    try:
+        # check if signature is func(config, checkpoint_dir=None)
+        func_sig.bind({}, checkpoint_dir="tmp/path")
+    except Exception as e:
+        logger.debug(str(e))
+        validated = False
+    if abort and not validated:
+        func_args = inspect.getfullargspec(train_func).args
+        raise ValueError(
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
+            "contain `checkpoint_dir`. For example: "
+            "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
+    return validated
+
+
+def detect_reporter(func):
+    """Use reporter if any arg has "reporter" and args = 2"""
+    func_sig = inspect.signature(func)
+    use_reporter = True
+    try:
+        func_sig.bind({}, reporter=None)
+    except Exception as e:
+        logger.debug(str(e))
+        use_reporter = False
+    return use_reporter
+
+
+def detect_config_single(func):
+    """Check if func({}) works."""
+    func_sig = inspect.signature(func)
+    use_config_single = True
+    try:
+        func_sig.bind({})
+    except Exception as e:
+        logger.debug(str(e))
+        use_config_single = False
+    return use_config_single
 
 
 if __name__ == "__main__":

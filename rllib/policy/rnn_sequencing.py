@@ -13,12 +13,14 @@ current algorithms: https://github.com/ray-project/ray/issues/2992
 
 import logging
 import numpy as np
+from typing import List, Optional
 
-from ray.util import log_once
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.typing import TensorType
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -27,11 +29,14 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def pad_batch_to_sequences_of_same_size(batch,
-                                        max_seq_len,
-                                        shuffle=False,
-                                        batch_divisibility_req=1,
-                                        feature_keys=None):
+def pad_batch_to_sequences_of_same_size(
+        batch: SampleBatch,
+        max_seq_len: int,
+        shuffle: bool = False,
+        batch_divisibility_req: int = 1,
+        feature_keys: Optional[List[str]] = None,
+        _use_trajectory_view_api: bool = False,
+):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
     Shuffles `batch` (if desired), makes sure divisibility requirement is met,
@@ -51,7 +56,26 @@ def pad_batch_to_sequences_of_same_size(batch,
         feature_keys (Optional[List[str]]): An optional list of keys to apply
             sequence-chopping to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
+        _use_trajectory_view_api (bool): Whether we are using the Trajectory
+            View API to collect and process samples.
     """
+    if _use_trajectory_view_api:
+        if batch.time_major is not None:
+            batch["seq_lens"] = torch.tensor(batch.seq_lens)
+            t = 0 if batch.time_major else 1
+            for col in batch.data.keys():
+                # Cut time-dim from states.
+                if "state_" in col[:6]:
+                    batch[col] = batch[col][t]
+                # Flatten all other data.
+                else:
+                    # Cut time-dim at `max_seq_len`.
+                    if batch.time_major:
+                        batch[col] = batch[col][:batch.max_seq_len]
+                    batch[col] = batch[col].reshape((-1, ) +
+                                                    batch[col].shape[2:])
+        return
+
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
@@ -61,7 +85,7 @@ def pad_batch_to_sequences_of_same_size(batch,
         meets_divisibility_reqs = True
 
     # RNN-case.
-    if "state_in_0" in batch:
+    if "state_in_0" in batch or "state_out_0" in batch:
         dynamic_max = True
     # Multi-agent case.
     elif not meets_divisibility_reqs:
@@ -109,31 +133,32 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs,
-                       seq_lens,
-                       framework="tf",
-                       time_major=False):
+def add_time_dimension(padded_inputs: TensorType,
+                       *,
+                       max_seq_len: int,
+                       framework: str = "tf",
+                       time_major: bool = False):
     """Adds a time dimension to padded inputs.
 
-    Arguments:
-        padded_inputs (Tensor): a padded batch of sequences. That is,
+    Args:
+        padded_inputs (TensorType): a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        seq_lens (Tensor): the sequence lengths within the input batch,
-            suitable for passing to tf.nn.dynamic_rnn().
+        max_seq_len (int): The max. sequence length in padded_inputs.
+        framework (str): The framework string ("tf2", "tf", "tfe", "torch").
+        time_major (bool): Whether data should be returned in time-major (TxB)
+            format or not (BxT).
 
     Returns:
-        Reshaped tensor of shape [NUM_SEQUENCES, MAX_SEQ_LEN, ...].
+        TensorType: Reshaped tensor of shape [B, T, ...] or [T, B, ...].
     """
 
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    if framework == "tf":
+    if framework in ["tf2", "tf", "tfe"]:
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
-        max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
-
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +
@@ -142,7 +167,6 @@ def add_time_dimension(padded_inputs,
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
-        max_seq_len = padded_batch_size // seq_lens.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
@@ -153,6 +177,9 @@ def add_time_dimension(padded_inputs,
         return torch.reshape(padded_inputs, new_shape)
 
 
+# NOTE: This function will be deprecated once chunks already come padded and
+#  correctly chopped from the _SampleCollector object (in time-major fashion
+#  or not). It is already no longer user iff `_use_trajectory_view_api` = True.
 @DeveloperAPI
 def chop_into_sequences(episode_ids,
                         unroll_ids,
@@ -166,11 +193,11 @@ def chop_into_sequences(episode_ids,
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
-        episode_ids (list): List of episode ids for each step.
-        unroll_ids (list): List of identifiers for the sample batch. This is
-            used to make sure sequences are cut between sample batches.
-        agent_indices (list): List of agent ids for each step. Note that this
-            has to be combined with episode_ids for uniqueness.
+        episode_ids (List[EpisodeID]): List of episode ids for each step.
+        unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
+            This is used to make sure sequences are cut between sample batches.
+        agent_indices (List[AgentID]): List of agent ids for each step. Note
+            that this has to be combined with episode_ids for uniqueness.
         feature_columns (list): List of arrays containing features.
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.

@@ -11,7 +11,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.aws.config import bootstrap_aws
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE, TAG_RAY_INSTANCE_TYPE
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
@@ -193,21 +193,12 @@ class AWSNodeProvider(NodeProvider):
 
             self.tag_cache_update_event.set()
 
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        assert instance_type is not None
-        node_config["InstanceType"] = instance_type
-        return self.create_node(node_config, tags, count)
-
-    def get_instance_type(self, node_config):
-        return node_config["InstanceType"]
-
     def create_node(self, node_config, tags, count):
-        # Always add the instance type tag, since node reuse is unsafe
-        # otherwise.
         tags = copy.deepcopy(tags)
-        tags[TAG_RAY_INSTANCE_TYPE] = node_config["InstanceType"]
         # Try to reuse previously stopped nodes with compatible configs
         if self.cache_stopped_nodes:
+            # TODO(ekl) this is breaking the abstraction boundary a little by
+            # peeking into the tag set.
             filters = [
                 {
                     "Name": "instance-state-name",
@@ -218,18 +209,20 @@ class AWSNodeProvider(NodeProvider):
                     "Values": [self.cluster_name],
                 },
                 {
-                    "Name": "tag:{}".format(TAG_RAY_NODE_TYPE),
-                    "Values": [tags[TAG_RAY_NODE_TYPE]],
-                },
-                {
-                    "Name": "tag:{}".format(TAG_RAY_INSTANCE_TYPE),
-                    "Values": [tags[TAG_RAY_INSTANCE_TYPE]],
+                    "Name": "tag:{}".format(TAG_RAY_NODE_KIND),
+                    "Values": [tags[TAG_RAY_NODE_KIND]],
                 },
                 {
                     "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
                     "Values": [tags[TAG_RAY_LAUNCH_CONFIG]],
                 },
             ]
+            # This tag may not always be present.
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                filters.append({
+                    "Name": "tag:{}".format(TAG_RAY_USER_NODE_TYPE),
+                    "Values": [tags[TAG_RAY_USER_NODE_TYPE]],
+                })
 
             reuse_nodes = list(
                 self.ec2.instances.filter(Filters=filters))[:count]
@@ -337,21 +330,32 @@ class AWSNodeProvider(NodeProvider):
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launching {} nodes",
+                        "Launched {} nodes",
                         count,
                         _tags=dict(subnet_id=subnet_id)):
                     for instance in created:
+                        # NOTE(maximsmol): This is needed for mocking
+                        # boto3 for tests. This is likely a bug in moto
+                        # but AWS docs don't seem to say.
+                        # You can patch moto/ec2/responses/instances.py
+                        # to fix this (add <stateReason> to EC2_RUN_INSTANCES)
+
+                        # The correct value is technically
+                        # {"code": "0", "Message": "pending"}
+                        state_reason = instance.state_reason or {
+                            "Message": "pending"
+                        }
+
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=instance.state_reason["Message"]))
+                                info=state_reason["Message"]))
                         cli_logger.old_info(
                             logger, "NodeProvider: Created instance "
                             "[id={}, name={}, info={}]", instance.instance_id,
-                            instance.state["Name"],
-                            instance.state_reason["Message"])
+                            instance.state["Name"], state_reason["Message"])
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
@@ -364,8 +368,9 @@ class AWSNodeProvider(NodeProvider):
                         BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
-                    # todo: err msg
-                    cli_logger.abort(exc)
+                    cli_logger.print(
+                        "create_instances: Attempt failed with {}, retrying.",
+                        exc)
                     cli_logger.old_error(logger, exc)
 
     def terminate_node(self, node_id):
@@ -374,7 +379,7 @@ class AWSNodeProvider(NodeProvider):
             if node.spot_instance_request_id:
                 cli_logger.print(
                     "Terminating instance {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     node_id)  # todo: show node name?
 
                 cli_logger.old_info(
@@ -383,7 +388,7 @@ class AWSNodeProvider(NodeProvider):
                     "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
-                cli_logger.print("Stopping instance {} " + cf.gray(
+                cli_logger.print("Stopping instance {} " + cf.dimmed(
                     "(to terminate instead, "
                     "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration)"),
@@ -417,7 +422,7 @@ class AWSNodeProvider(NodeProvider):
             if on_demand_ids:
                 # todo: show node names?
                 cli_logger.print(
-                    "Stopping instances {} " + cf.gray(
+                    "Stopping instances {} " + cf.dimmed(
                         "(to terminate instead, "
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),
@@ -432,7 +437,7 @@ class AWSNodeProvider(NodeProvider):
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
                 cli_logger.old_info(
                     logger,

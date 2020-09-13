@@ -253,11 +253,6 @@ std::string ReconstructionPolicy::DebugString() const {
   return result.str();
 }
 
-void ReconstructionPolicy::RecordMetrics() const {
-  stats::ReconstructionPolicyStats().Record(
-      listening_tasks_.size(), {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
-}
-
 }  // namespace raylet
 
 }  // end namespace ray

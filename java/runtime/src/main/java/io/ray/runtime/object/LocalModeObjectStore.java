@@ -111,4 +111,14 @@ public class LocalModeObjectStore extends ObjectStore {
   public Address getOwnerAddress(ObjectId id) {
     return Address.getDefaultInstance();
   }
+
+  @Override
+  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+    return new byte[0];
+  }
+
+  @Override
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
+  }
 }

@@ -175,6 +175,30 @@ cc_library(
     ],
 )
 
+# Agent manager.
+cc_grpc_library(
+    name = "agent_manager_cc_grpc",
+    srcs = ["//src/ray/protobuf:agent_manager_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:agent_manager_cc_proto"],
+)
+
+cc_library(
+    name = "agent_manager_rpc",
+    hdrs = glob([
+        "src/ray/rpc/agent_manager/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":agent_manager_cc_grpc",
+        ":grpc_common_lib",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 # === End of rpc definitions ===
 
 # === Begin of plasma definitions ===
@@ -343,6 +367,29 @@ cc_library(
     ],
 )
 
+# This header is used to warp some streaming code so we can reduce suspicious
+# symbols export.
+cc_library(
+    name = "exported_streaming_internal",
+    srcs = glob(
+        [
+            "src/ray/streaming/streaming.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/streaming/streaming.h",
+        ],
+    ),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_worker_lib",
+    ],
+    alwayslink = 1,
+)
+
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -415,6 +462,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":agent_manager_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
@@ -506,6 +554,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
+        ":agent_manager_rpc",
         ":gcs",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -549,6 +598,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//streaming:__subpackages__"],
     deps = [
+        ":agent_manager_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
@@ -1472,6 +1522,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":agent_manager_rpc",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
@@ -1674,6 +1725,7 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -1728,6 +1780,7 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
+        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -1755,11 +1808,6 @@ filegroup(
         "python/ray/experimental/*.py",
         "python/ray/util/*.py",
         "python/ray/internal/*.py",
-        "python/ray/projects/*.py",
-        "python/ray/projects/schema.json",
-        "python/ray/projects/templates/cluster_template.yaml",
-        "python/ray/projects/templates/project_template.yaml",
-        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )
@@ -1811,9 +1859,11 @@ cc_binary(
 filegroup(
     name = "all_py_proto",
     srcs = [
+        "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
+        "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
     ],
@@ -1902,17 +1952,11 @@ genrule(
         fi
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        files=(
-            python/ray/core/generated/gcs_pb2.py
-            python/ray/core/generated/common_pb2.py
-            python/ray/core/generated/node_manager_pb2.py
-            python/ray/core/generated/node_manager_pb2_grpc.py
-            python/ray/core/generated/reporter_pb2.py
-            python/ray/core/generated/reporter_pb2_grpc.py
-            python/ray/core/generated/core_worker_pb2.py
-            python/ray/core/generated/core_worker_pb2_grpc.py
-        )
+        # shellcheck disable=SC2006
+        files=(`ls python/ray/core/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
+        sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

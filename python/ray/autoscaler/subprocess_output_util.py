@@ -10,14 +10,15 @@ import colorful as cf
 
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run
 
-_config = {"redirect_output": True}
+_redirect_output = False  # Whether to log command output to a temporary file
+_allow_interactive = True  # whether to pass on stdin to running commands.
 
 
 def is_output_redirected():
-    return _config["redirect_output"]
+    return _redirect_output
 
 
-def set_output_redirected(val):
+def set_output_redirected(val: bool):
     """Choose between logging to a temporary file and to `sys.stdout`.
 
     The default is to log to a file.
@@ -26,7 +27,24 @@ def set_output_redirected(val):
         val (bool): If true, subprocess output will be redirected to
                     a temporary file.
     """
-    _config["redirect_output"] = val
+    global _redirect_output
+    _redirect_output = val
+
+
+def does_allow_interactive():
+    return _allow_interactive
+
+
+def set_allow_interactive(val: bool):
+    """Choose whether to pass on stdin to running commands.
+
+    The default is to pipe stdin and close it immediately.
+
+    Args:
+        val (bool): If true, stdin will be passed to commands.
+    """
+    global _allow_interactive
+    _allow_interactive = val
 
 
 class ProcessRunnerError(Exception):
@@ -155,9 +173,12 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
 
 def _run_and_process_output(cmd,
                             stdout_file,
+                            process_runner=subprocess,
                             stderr_file=None,
                             use_login_shells=False):
     """Run a command and process its output for special cases.
+
+    Calls a standard 'check_call' if process_runner is not subprocess.
 
     Specifically, run all command output through regex to detect
     error conditions and filter out non-error messages that went to stderr
@@ -166,14 +187,16 @@ def _run_and_process_output(cmd,
 
     Args:
         cmd (List[str]): Command to run.
+        process_runner: Used for command execution. Assumed to have
+            'check_call' and 'check_output' inplemented.
         stdout_file: File to redirect stdout to.
-        stdout_file: File to redirect stderr to.
+        stderr_file: File to redirect stderr to.
 
     Implementation notes:
     1. `use_login_shells` disables special processing
     If we run interactive apps, output processing will likely get
-    overwhelemed with the interactive output elements.
-    Thus we disable output processing for login shells. This makes
+    overwhelmed with the interactive output elements.
+    Thus, we disable output processing for login shells. This makes
     the logging experience considerably worse, but it only degrades
     to old-style logging.
 
@@ -205,25 +228,32 @@ def _run_and_process_output(cmd,
     The code is thus 100% thread-safe as long as the stream readers
     are read-only except for return values and possible exceptions.
     """
+    stdin_overwrite = subprocess.PIPE
+    # This already should be validated in a higher place of the stack.
+    assert not (does_allow_interactive() and is_output_redirected()), (
+        "Cannot redirect output while in interactive mode.")
+    if process_runner != subprocess or (does_allow_interactive()
+                                        and not is_output_redirected()):
+        stdin_overwrite = None
 
-    if use_login_shells:
-        # See implementation note #1
+    # See implementation note #1
+
+    if use_login_shells or process_runner != subprocess:
         if stdout_file is None:
-            stdout_file = subprocess.DEVNULL
+            stdout_file = sys.stdout
         if stderr_file is None:
-            stderr_file = subprocess.DEVNULL
-
-        return subprocess.check_call(
+            stderr_file = sys.stderr
+        return process_runner.check_call(
             cmd,
             # See implementation note #2
-            stdin=subprocess.PIPE,
+            stdin=stdin_overwrite,
             stdout=stdout_file,
             stderr=stderr_file)
 
     with subprocess.Popen(
             cmd,
             # See implementation note #2
-            stdin=subprocess.PIPE,
+            stdin=stdin_overwrite,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,  # line buffering
@@ -286,11 +316,15 @@ def _run_and_process_output(cmd,
             return p.returncode
 
 
-def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
+def run_cmd_redirected(cmd,
+                       process_runner=subprocess,
+                       silent=False,
+                       use_login_shells=False):
     """Run a command and optionally redirect output to a file.
 
     Args:
         cmd (List[str]): Command to run.
+        process_runner: Process runner used for executing commands.
         silent (bool): If true, the command output will be silenced completely
                        (redirected to /dev/null), unless verbose logging
                        is enabled. Use this for runnign utility commands like
@@ -298,11 +332,17 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
     """
     if silent and cli_logger.verbosity < 1:
         return _run_and_process_output(
-            cmd, stdout_file=None, use_login_shells=use_login_shells)
+            cmd,
+            process_runner=process_runner,
+            stdout_file=None,
+            use_login_shells=use_login_shells)
 
     if not is_output_redirected():
         return _run_and_process_output(
-            cmd, stdout_file=sys.stdout, use_login_shells=use_login_shells)
+            cmd,
+            process_runner=process_runner,
+            stdout_file=sys.stdout,
+            use_login_shells=use_login_shells)
     else:
         tmpfile_path = os.path.join(
             tempfile.gettempdir(), "ray-up-{}-{}.txt".format(
@@ -314,12 +354,10 @@ def run_cmd_redirected(cmd, silent=False, use_login_shells=False):
                 buffering=1) as tmp:
             cli_logger.verbose("Command stdout is redirected to {}",
                                cf.bold(tmp.name))
-            cli_logger.verbose(
-                cf.gray("Use --dump-command-output to "
-                        "dump to terminal instead."))
 
             return _run_and_process_output(
                 cmd,
+                process_runner=process_runner,
                 stdout_file=tmp,
                 stderr_file=tmp,
                 use_login_shells=use_login_shells)

@@ -11,23 +11,26 @@ from jsonschema.exceptions import ValidationError
 import ray
 import ray.services as services
 from ray.autoscaler.util import prepare_config, validate_config
+from ray.autoscaler.commands import get_or_create_head_node
+from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
 from ray.autoscaler.load_metrics import LoadMetrics
 from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
 class MockNode:
-    def __init__(self, node_id, tags, instance_type=None):
+    def __init__(self, node_id, tags, node_config, node_type):
         self.node_id = node_id
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
         self.internal_ip = "172.0.0.{}".format(self.node_id)
-        self.instance_type = instance_type
+        self.node_config = node_config
+        self.node_type = node_type
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -40,6 +43,7 @@ class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds
+        self.call_response = {}
 
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
@@ -49,20 +53,46 @@ class MockProcessRunner:
 
     def check_output(self, cmd):
         self.check_call(cmd)
-        return "command-output".encode()
+        return_string = "command-output"
+        key_to_shrink = None
+        for pattern, response_list in self.call_response.items():
+            if pattern in str(cmd):
+                return_string = response_list[0]
+                key_to_shrink = pattern
+                break
+        if key_to_shrink:
+            self.call_response[key_to_shrink] = self.call_response[
+                key_to_shrink][1:]
+            if len(self.call_response[key_to_shrink]) == 0:
+                del self.call_response[key_to_shrink]
 
-    def assert_has_call(self, ip, pattern):
+        return return_string.encode()
+
+    def assert_has_call(self, ip, pattern=None, exact=None):
+        assert pattern or exact, \
+            "Must specify either a pattern or exact match."
         out = ""
-        for cmd in self.calls:
-            msg = " ".join(cmd)
-            if ip in msg:
-                out += msg
-                out += "\n"
-        if pattern in out:
-            return True
+        if pattern is not None:
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+            if pattern in out:
+                return True
+            else:
+                raise Exception("Did not find [{}] in [{}] for {}".format(
+                    pattern, out, ip))
         else:
-            raise Exception("Did not find [{}] in [{}] for {}".format(
-                pattern, out, ip))
+            for cmd in self.calls:
+                msg = " ".join(cmd)
+                if ip in msg:
+                    out += msg
+                    out += "\n"
+                if cmd == exact:
+                    return True
+            raise Exception("Did not find {} in {} for {}".format(
+                exact, out, ip))
 
     def assert_not_has_call(self, ip, pattern):
         out = ""
@@ -80,9 +110,12 @@ class MockProcessRunner:
     def clear_history(self):
         self.calls = []
 
+    def respond_to_call(self, pattern, response_list):
+        self.call_response[pattern] = response_list
+
 
 class MockProvider(NodeProvider):
-    def __init__(self, cache_stopped=False, default_instance_type=None):
+    def __init__(self, cache_stopped=False):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
@@ -90,25 +123,30 @@ class MockProvider(NodeProvider):
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
         self.cache_stopped = cache_stopped
-        self.default_instance_type = default_instance_type
+        # Many of these functions are called by node_launcher or updater in
+        # different threads. This can be treated as a global lock for
+        # everything.
+        self.lock = threading.Lock()
 
     def non_terminated_nodes(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.node_id for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.node_id for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def non_terminated_node_ips(self, tag_filters):
-        if self.throw:
-            raise Exception("oops")
-        return [
-            n.internal_ip for n in self.mock_nodes.values()
-            if n.matches(tag_filters)
-            and n.state not in ["stopped", "terminated"]
-        ]
+        with self.lock:
+            if self.throw:
+                raise Exception("oops")
+            return [
+                n.internal_ip for n in self.mock_nodes.values()
+                if n.matches(tag_filters)
+                and n.state not in ["stopped", "terminated"]
+            ]
 
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
@@ -125,41 +163,38 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count, instance_type=None):
+    def create_node(self, node_config, tags, count):
         self.ready_to_create.wait()
         if self.fail_creates:
             return
-        if self.cache_stopped:
-            for node in self.mock_nodes.values():
-                if node.state == "stopped" and count > 0:
-                    count -= 1
-                    node.state = "pending"
-                    node.tags.update(tags)
-        for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy(),
-                                                     instance_type)
-            self.next_id += 1
-
-    def create_node_of_type(self, node_config, tags, instance_type, count):
-        return self.create_node(
-            node_config, tags, count, instance_type=instance_type)
-
-    def get_instance_type(self, node_config):
-        return self.default_instance_type
+        with self.lock:
+            if self.cache_stopped:
+                for node in self.mock_nodes.values():
+                    if node.state == "stopped" and count > 0:
+                        count -= 1
+                        node.state = "pending"
+                        node.tags.update(tags)
+            for _ in range(count):
+                self.mock_nodes[self.next_id] = MockNode(
+                    self.next_id, tags.copy(), node_config,
+                    tags.get(TAG_RAY_USER_NODE_TYPE))
+                self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
         self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
-        if self.cache_stopped:
-            self.mock_nodes[node_id].state = "stopped"
-        else:
-            self.mock_nodes[node_id].state = "terminated"
+        with self.lock:
+            if self.cache_stopped:
+                self.mock_nodes[node_id].state = "stopped"
+            else:
+                self.mock_nodes[node_id].state = "terminated"
 
     def finish_starting_nodes(self):
-        for node in self.mock_nodes.values():
-            if node.state == "pending":
-                node.state = "running"
+        with self.lock:
+            for node in self.mock_nodes.values():
+                if node.state == "pending":
+                    node.state = "running"
 
 
 SMALL_CLUSTER = {
@@ -363,6 +398,38 @@ class AutoscalingTest(unittest.TestCase):
         except ValidationError:
             self.fail("Default config did not pass validation test!")
 
+    def testGetOrCreateHeadNode(self):
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, one before run, two final calls to cp
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "true", "true"])
+        get_or_create_head_node(
+            SMALL_CLUSTER,
+            config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+        runner.assert_not_has_call(
+            "1.2.3.4", pattern="-v /tmp/ray_tmp_mount/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_key.pem")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern="docker cp /tmp/ray_tmp_mount/~/ray_bootstrap_config.yaml")
+
     def testScaleUp(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -416,7 +483,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -500,9 +567,9 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
         head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+            tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
         runner = MockProcessRunner()
 
         lm = LoadMetrics()
@@ -525,7 +592,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Connect the head and workers to end the bringup phase
         addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+            tag_filters={TAG_RAY_NODE_KIND: "worker"}, )
         addrs += head_ip
         for addr in addrs:
             lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
@@ -1117,11 +1184,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1137,11 +1203,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
         file_mount_dir = tempfile.mkdtemp()
@@ -1170,11 +1236,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         runner.clear_history()
 
@@ -1188,11 +1254,10 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
         for i in [0, 1]:
-            runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_not_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         # Simulate a second `ray up` call
         from ray.autoscaler import util
@@ -1214,11 +1279,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         for i in [0, 1]:
-            runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
+            runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                "172.0.0.{}".format(i),
-                "{}/ ubuntu@172.0.0.{}:/home/test-folder/".format(
-                    file_mount_dir, i))
+                f"172.0.0.{i}", f"172.0.0.{i}",
+                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
 
 if __name__ == "__main__":

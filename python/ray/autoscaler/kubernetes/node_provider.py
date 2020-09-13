@@ -161,20 +161,20 @@ def _add_service_name_to_service_port(spec, svc_name):
         for k in dict_keys:
             spec[k] = _add_service_name_to_service_port(spec[k], svc_name)
 
-            # The magic string ${RAY_POD_NAME} is replaced with
-            # the true service name, which is equal to the worker pod name.
-            if k == "serviceName":
-                if spec[k] != "${RAY_POD_NAME}":
-                    raise ValueError(
-                        "The value of serviceName must be set to "
-                        "${RAY_POD_NAME}. It is automatically replaced "
-                        "when using the autoscaler.")
-                else:
-                    spec["serviceName"] = svc_name
+            if k == "serviceName" and spec[k] != svc_name:
+                raise ValueError(
+                    "The value of serviceName must be set to "
+                    "${RAY_POD_NAME}. It is automatically replaced "
+                    "when using the autoscaler.")
 
     elif isinstance(spec, list):
         spec = [
             _add_service_name_to_service_port(item, svc_name) for item in spec
         ]
 
+    elif isinstance(spec, str):
+        # The magic string ${RAY_POD_NAME} is replaced with
+        # the true service name, which is equal to the worker pod name.
+        if "${RAY_POD_NAME}" in spec:
+            spec = spec.replace("${RAY_POD_NAME}", svc_name)
     return spec

@@ -169,6 +169,11 @@ service PlacementGroupInfoGcsService {
   // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
+
+  // Remove placement group via gcs service.
+  rpc RemovePlacementGroup(RemovePlacementGroupRequest)
+      returns (RemovePlacementGroupReply);
+
   // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
 }
@@ -496,6 +501,14 @@ message CreatePlacementGroupRequest {
 }
 
 message CreatePlacementGroupReply {
+  GcsStatus status = 1;
+}
+
+message RemovePlacementGroupRequest {
+  bytes placement_group_id = 1;
+}
+
+message RemovePlacementGroupReply {
   GcsStatus status = 1;
 }
 

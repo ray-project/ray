@@ -23,7 +23,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
     // with a borrowed reference executes on the object's owning worker.
     return;
   }
-  auto conn = owner_clients_.GetOrConnect(owner_address);
+  auto conn = owner_clients_->GetOrConnect(owner_address);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());

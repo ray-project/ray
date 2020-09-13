@@ -1,12 +1,17 @@
 from gym.spaces import Space
-from typing import Union
+from typing import List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, TensorType
+from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
 
-torch, nn = try_import_torch()
+if TYPE_CHECKING:
+    from ray.rllib.policy.policy import Policy
+
+_, nn = try_import_torch()
 
 
 @DeveloperAPI
@@ -19,13 +24,13 @@ class Exploration:
     """
 
     def __init__(self, action_space: Space, *, framework: str,
-                 policy_config: dict, model: ModelV2, num_workers: int,
-                 worker_index: int):
+                 policy_config: TrainerConfigDict, model: ModelV2,
+                 num_workers: int, worker_index: int):
         """
         Args:
             action_space (Space): The action space in which to explore.
             framework (str): One of "tf" or "torch".
-            policy_config (dict): The Policy's config dict.
+            policy_config (TrainerConfigDict): The Policy's config dict.
             model (ModelV2): The Policy's model.
             num_workers (int): The overall number of workers used.
             worker_index (int): The index of the worker using this class.
@@ -45,17 +50,20 @@ class Exploration:
                 self.device = params[0].device
 
     @DeveloperAPI
-    def before_compute_actions(self,
-                               *,
-                               timestep=None,
-                               explore=None,
-                               tf_sess=None,
-                               **kwargs):
+    def before_compute_actions(
+            self,
+            *,
+            timestep: Optional[Union[TensorType, int]] = None,
+            explore: Optional[Union[TensorType, bool]] = None,
+            tf_sess: Optional["tf.Session"] = None,
+            **kwargs):
         """Hook for preparations before policy.compute_actions() is called.
 
         Args:
-            timestep (Optional[TensorType]): An optional timestep tensor.
-            explore (Optional[TensorType]): An optional explore boolean flag.
+            timestep (Optional[Union[TensorType, int]]): An optional timestep
+                tensor.
+            explore (Optional[Union[TensorType, bool]]): An optional explore
+                boolean flag.
             tf_sess (Optional[tf.Session]): The tf-session object to use.
             **kwargs: Forward compatibility kwargs.
         """
@@ -65,7 +73,7 @@ class Exploration:
     def get_exploration_action(self,
                                *,
                                action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
+                               timestep: Union[TensorType, int],
                                explore: bool = True):
         """Returns a (possibly) exploratory action and its log-likelihood.
 
@@ -76,11 +84,11 @@ class Exploration:
             action_distribution (ActionDistribution): The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
-            timestep (int|TensorType): The current sampling time step. It can
-                be a tensor for TF graph mode, otherwise an integer.
-            explore (bool): True: "Normal" exploration behavior.
-                False: Suppress all exploratory behavior and return
-                    a deterministic action.
+            timestep (Union[TensorType, int]): The current sampling time step.
+                It can be a tensor for TF graph mode, otherwise an integer.
+            explore (Union[TensorType, bool]): True: "Normal" exploration
+                behavior. False: Suppress all exploratory behavior and return
+                a deterministic action.
 
         Returns:
             Tuple:
@@ -89,28 +97,6 @@ class Exploration:
             - The log-likelihood of the exploration action.
         """
         pass
-
-    @DeveloperAPI
-    def get_exploration_loss(self, policy_loss, sample_batch):
-        """Modifies the policy loss with a loss associated to the exploration
-        strategy.
-
-        Args:
-            policy_loss (TODO): Loss from the Policy
-            sample_batch (SampleBatch): The SampleBatch object to post-process.
-        """
-        return policy_loss
-
-    @DeveloperAPI
-    def get_exploration_optimizer(self, config=None):
-        """
-        Returns: an optimizer for the loss from get_exploration_loss (in case
-        the exploration strategy has trainable components)
-
-        Args:
-            config: configuration for an optimizer
-        """
-        return []
 
     @DeveloperAPI
     def on_episode_start(self,
@@ -147,7 +133,10 @@ class Exploration:
         pass
 
     @DeveloperAPI
-    def postprocess_trajectory(self, policy, sample_batch, tf_sess=None):
+    def postprocess_trajectory(self,
+                               policy: "Policy",
+                               sample_batch,
+                               tf_sess=None):
         """Handles post-processing of done episode trajectories.
 
         Changes the given batch in place. This callback is invoked by the
@@ -159,6 +148,43 @@ class Exploration:
             tf_sess (Optional[tf.Session]): An optional tf.Session object.
         """
         return sample_batch
+
+    @DeveloperAPI
+    def get_exploration_optimizer(self, optimizers: List[LocalOptimizer]):
+        """May add optimizer(s) to the Policy's own `optimizers`.
+
+        The number of optimizers (Policy's plus Exploration's optimizers) must
+        match the number of loss terms produced by the Policy's loss function
+        and the Exploration component's loss terms.
+
+        Args:
+            optimizers (List[LocalOptimizer]): The list of the Policy's
+                local optimizers.
+
+        Returns:
+            List[LocalOptimizer]: The updated list of local optimizers to use
+                on the different loss terms.
+        """
+        return optimizers
+
+    @DeveloperAPI
+    def get_exploration_loss(self, policy_loss: List[TensorType],
+                             train_batch: SampleBatch):
+        """May add loss term(s) to the Policy's own loss(es).
+
+        Args:
+            policy_loss (List[TensorType]): Loss(es) already calculated by the
+                Policy's own loss function and maybe the Model's custom loss.
+            train_batch (SampleBatch): The training data to calculate the
+                loss(es) for. This train data has already gone through
+                this Exploration's `preprocess_train_batch()` method.
+
+        Returns:
+            List[TensorType]: The updated list of loss terms.
+                This may be the original Policy loss(es), altered, and/or new
+                loss terms added to it.
+        """
+        return policy_loss
 
     @DeveloperAPI
     def get_info(self, sess=None):

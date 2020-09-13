@@ -128,9 +128,9 @@ message ActorTableData {
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
   int64 max_restarts = 7;
-  // Number of restarts that have been successfully performed on this
-  // actor. This is the equal to the number of ALIVE messages that have been
-  // previously published for this actor.
+  // Number of restarts that has been tried on this actor.
+  // This will be greater by 1 than what's published before in ALIVE.
+  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
   uint64 num_restarts = 8;
   // The address of the the actor.
   Address address = 9;
@@ -165,10 +165,12 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
-    // Placement Group is alive.
-    ALIVE = 1;
-    // Placement Group is already dead and won't be reschedule.
-    DEAD = 2;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
   }
 
   // ID of the PlacementGroup.
@@ -319,6 +321,10 @@ message JobConfig {
   uint32 num_java_workers_per_process = 2;
   // The jvm options for java workers of the job.
   repeated string jvm_options = 3;
+  // A list of directories or jar files that specify the search path for user
+  // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
+  // Python.
+  repeated string code_search_path = 4;
 }
 
 message JobTableData {
@@ -419,38 +425,4 @@ message NodeResourceChange {
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
-}
-
-// This enum type is used as object's metadata to indicate the object's
-// creating task has failed because of a certain error.
-// TODO(hchen): We may want to make these errors more specific. E.g., we may
-// want to distinguish between intentional and expected actor failures, and
-// between worker process failure and node failure.
-enum ErrorType {
-  // Indicates that a task failed because the worker died unexpectedly while
-  // executing it.
-  WORKER_DIED = 0;
-  // Indicates that a task failed because the actor died unexpectedly before
-  // finishing it.
-  ACTOR_DIED = 1;
-  // Indicates that an object is lost and cannot be restarted.
-  // Note, this currently only happens to actor objects. When the actor's
-  // state is already after the object's creating task, the actor cannot
-  // re-run the task.
-  // TODO(hchen): we may want to reuse this error type for more cases. E.g.,
-  // 1) A object that was put by the driver.
-  // 2) The object's creating task is already cleaned up from GCS (this
-  // currently
-  //    crashes raylet).
-  OBJECT_UNRECONSTRUCTABLE = 2;
-  // Indicates that a task failed due to user code failure.
-  TASK_EXECUTION_EXCEPTION = 3;
-  // Indicates that the object has been placed in plasma. This error shouldn't
-  // ever be exposed to user code; it is only used internally to indicate the
-  // result of a direct call has been placed in plasma.
-  OBJECT_IN_PLASMA = 4;
-  // Indicates that an object has been cancelled.
-  TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
-  ACTOR_CREATION_FAILED = 6;
 }

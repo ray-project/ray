@@ -1,22 +1,21 @@
 import pytest
-import time
 
 import ray
-from ray.experimental.queue import Queue, Empty, Full
+from ray.exceptions import GetTimeoutError
+from ray.util.queue import Queue, Empty, Full
 
 
-def test_queue(ray_start_regular):
-    @ray.remote
-    def get_async(queue, block, timeout, sleep):
-        time.sleep(sleep)
-        return queue.get(block, timeout)
+@ray.remote
+def async_get(queue):
+    return queue.get(block=True)
 
-    @ray.remote
-    def put_async(queue, item, block, timeout, sleep):
-        time.sleep(sleep)
-        queue.put(item, block, timeout)
 
-    # Test simple usage.
+@ray.remote
+def async_put(queue, item):
+    return queue.put(item, block=True)
+
+
+def test_simple_usage(ray_start_regular_shared):
 
     q = Queue()
 
@@ -28,21 +27,30 @@ def test_queue(ray_start_regular):
     for item in items:
         assert item == q.get()
 
-    # Test asynchronous usage.
+
+def test_get(ray_start_regular_shared):
 
     q = Queue()
 
-    items = set(range(10))
-    producers = [  # noqa
-        put_async.remote(q, item, True, None, 0.5) for item in items
-    ]
-    consumers = [get_async.remote(q, True, None, 0) for _ in items]
+    item = 0
+    q.put(item)
+    assert q.get(block=False) == item
 
-    result = set(ray.get(consumers))
+    item = 1
+    q.put(item)
+    assert q.get(timeout=0.2) == item
 
-    assert items == result
+    with pytest.raises(ValueError):
+        q.get(timeout=-1)
 
-    # Test put.
+    with pytest.raises(Empty):
+        q.get_nowait()
+
+    with pytest.raises(Empty):
+        q.get(timeout=0.2)
+
+
+def test_put(ray_start_regular_shared):
 
     q = Queue(1)
 
@@ -64,40 +72,37 @@ def test_queue(ray_start_regular):
     with pytest.raises(Full):
         q.put(1, timeout=0.2)
 
-    q.get()
-    q.put(1)
 
-    get_id = get_async.remote(q, False, None, 0.2)
-    q.put(2)
-
-    assert ray.get(get_id) == 1
-
-    # Test get.
-
+def test_async_get(ray_start_regular_shared):
     q = Queue()
-
-    item = 0
-    q.put(item)
-    assert q.get(block=False) == item
-
-    item = 1
-    q.put(item)
-    assert q.get(timeout=0.2) == item
-
-    with pytest.raises(ValueError):
-        q.get(timeout=-1)
+    future = async_get.remote(q)
 
     with pytest.raises(Empty):
         q.get_nowait()
 
-    with pytest.raises(Empty):
-        q.get(timeout=0.2)
+    with pytest.raises(GetTimeoutError):
+        ray.get(future, timeout=0.1)  # task not canceled on timeout.
 
-    item = 0
-    put_async.remote(q, item, True, None, 0.2)
-    assert q.get() == item
+    q.put(1)
+    assert ray.get(future) == 1
 
-    # Test qsize.
+
+def test_async_put(ray_start_regular_shared):
+    q = Queue(1)
+    q.put(1)
+    future = async_put.remote(q, 2)
+
+    with pytest.raises(Full):
+        q.put_nowait(3)
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(future, timeout=0.1)  # task not canceled on timeout.
+
+    assert q.get() == 1
+    assert q.get() == 2
+
+
+def test_qsize(ray_start_regular_shared):
 
     q = Queue()
 

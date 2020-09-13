@@ -1,116 +1,11 @@
-import {
-  createStyles,
-  Divider,
-  Grid,
-  makeStyles,
-  Theme,
-  Tooltip,
-} from "@material-ui/core";
+import { Divider, Grid, makeStyles, Theme } from "@material-ui/core";
 import React from "react";
-import { ActorState, InvalidStateType } from "../../../api";
-
-type LabeledDatumProps = {
-  label: string;
-  datum: any;
-  tooltip?: string;
-};
-
-const useLabeledDatumStyles = makeStyles({
-  label: {
-    textDecorationLine: "underline",
-    textDecorationColor: "#a6c3e3",
-    textDecorationThickness: "1px",
-    textDecorationStyle: "dotted",
-    cursor: "help",
-  },
-});
-
-const LabeledDatum: React.FC<LabeledDatumProps> = ({
-  label,
-  datum,
-  tooltip,
-}) => {
-  const classes = useLabeledDatumStyles();
-  const innerHtml = (
-    <Grid container item xs={6}>
-      <Grid item xs={6}>
-        <span className={classes.label}>{label}</span>
-      </Grid>
-      <Grid item xs={6}>
-        <span>{datum}</span>
-      </Grid>
-    </Grid>
-  );
-  return tooltip ? <Tooltip title={tooltip}>{innerHtml}</Tooltip> : innerHtml;
-};
-
-type ActorStateReprProps = {
-  state: ActorState;
-  ist?: InvalidStateType;
-};
-
-const actorStateReprStyles = makeStyles((theme: Theme) =>
-  createStyles({
-    infeasible: {
-      color: theme.palette.error.light,
-    },
-    pending: {
-      color: theme.palette.warning.light,
-    },
-    unknown: {
-      color: theme.palette.warning.light,
-    },
-    creating: {
-      color: theme.palette.success.light,
-    },
-    alive: {
-      color: theme.palette.success.dark,
-    },
-    restarting: {
-      color: theme.palette.warning.light,
-    },
-    dead: {
-      color: "#cccccc",
-    },
-  }),
-);
-
-const ActorStateRepr: React.FC<ActorStateReprProps> = ({ state, ist }) => {
-  const classes = actorStateReprStyles();
-  const {
-    Alive,
-    Dead,
-    PendingCreation,
-    Restarting,
-    DependenciesUnready,
-    Invalid,
-  } = ActorState;
-  switch (state) {
-    case Invalid:
-      console.log(ist);
-      if (ist === "infeasibleActor") {
-        return <div className={classes.infeasible}>Infeasible</div>;
-      }
-      if (ist === "pendingActor") {
-        return <div className={classes.pending}>Pending</div>;
-      }
-      return <div className={classes.unknown}>Unknown</div>;
-    case PendingCreation:
-      return <div className={classes.creating}>Creating</div>;
-    case DependenciesUnready:
-      return <div className={classes.creating}>Dependencies Unready</div>;
-    case Alive:
-      return <div className={classes.alive}>Alive</div>;
-    case Restarting:
-      return <div className={classes.restarting}>Restarting</div>;
-    case Dead:
-      return <div className={classes.dead}>Dead</div>;
-  }
-};
+import { ActorState } from "../../../api";
+import LabeledDatum from "../../../common/LabeledDatum";
+import ActorStateRepr from "./ActorStateRepr";
 
 type ActorDetailsPaneProps = {
   actorTitle: string;
-  invalidStateType?: InvalidStateType;
   actorState: ActorState;
   actorDetails: {
     label: string;
@@ -139,14 +34,13 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
   actorTitle,
   actorDetails,
   actorState,
-  invalidStateType,
 }) => {
   const classes = useStyles();
   return (
     <React.Fragment>
       <div className={classes.actorTitleWrapper}>
         <div>{actorTitle}</div>
-        <ActorStateRepr ist={invalidStateType} state={actorState} />
+        <ActorStateRepr state={actorState} />
       </div>
       <Divider className={classes.divider} />
       <Grid container className={classes.detailsPane}>

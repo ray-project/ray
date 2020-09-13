@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
  */
 @SuppressWarnings("unchecked")
 public class PythonOperator extends StreamOperator {
+
   private final String moduleName;
   private final String className;
 
@@ -80,7 +81,7 @@ public class PythonOperator extends StreamOperator {
     StringBuilder builder = new StringBuilder();
     builder.append(PythonOperator.class.getSimpleName()).append("[");
     if (function != null) {
-      builder.append(((PythonFunction)function).toSimpleString());
+      builder.append(((PythonFunction) function).toSimpleString());
     } else {
       builder.append(moduleName).append(".").append(className);
     }
@@ -101,6 +102,7 @@ public class PythonOperator extends StreamOperator {
   }
 
   public static class ChainedPythonOperator extends PythonOperator {
+
     private final List<PythonOperator> operators;
     private final PythonOperator headOperator;
     private final PythonOperator tailOperator;

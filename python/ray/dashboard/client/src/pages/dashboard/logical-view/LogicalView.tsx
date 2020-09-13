@@ -1,80 +1,58 @@
 import {
+  Box,
+  createStyles,
   FormControl,
   FormHelperText,
   Input,
   InputLabel,
+  makeStyles,
+  Theme,
   Typography,
 } from "@material-ui/core";
 import React, { useState } from "react";
-import { connect } from "react-redux";
-import {
-  isFullActorInfo,
-  RayletActorInfo,
-  RayletInfoResponse,
-} from "../../../api";
-import { filterObj } from "../../../common/util";
+import { useSelector } from "react-redux";
+import { useDebounce } from "use-debounce";
 import { StoreState } from "../../../store";
-import Actors from "./Actors";
+import ActorClassGroups from "./ActorClassGroups";
 
-const actorMatchesSearch = (
-  actor: RayletActorInfo,
+const useLogicalViewStyles = makeStyles((theme: Theme) =>
+  createStyles({
+    container: {
+      marginBottom: theme.spacing(1),
+    },
+  }),
+);
+
+const actorClassMatchesSearch = (
+  actorClass: string,
   nameFilter: string,
 ): boolean => {
-  // Performs a case insensitive search for the name filter string within the
-  // actor and all of its nested subactors.
-  const actorTitles = getNestedActorTitles(actor);
   const loweredNameFilter = nameFilter.toLowerCase();
-  const match = actorTitles.find(
-    (actorTitle) => actorTitle.toLowerCase().search(loweredNameFilter) !== -1,
-  );
-  return match !== undefined;
+  return actorClass.toLowerCase().search(loweredNameFilter) !== -1;
 };
 
-const getNestedActorTitles = (actor: RayletActorInfo): string[] => {
-  const actorTitle = actor.actorTitle;
-  const titles: string[] = actorTitle ? [actorTitle] : [];
-  if (!isFullActorInfo(actor)) {
-    return titles;
-  }
-  const children = actor["children"];
-  if (children === undefined || Object.entries(children).length === 0) {
-    return titles;
-  }
-  const childrenTitles = Object.values(children).flatMap((actor) =>
-    getNestedActorTitles(actor),
-  );
-  return titles.concat(childrenTitles);
-};
+const rayletInfoSelector = (state: StoreState) => state.dashboard.rayletInfo;
 
-const mapStateToProps = (state: StoreState) => ({
-  rayletInfo: state.dashboard.rayletInfo,
-});
-
-type LogicalViewProps = {
-  rayletInfo: RayletInfoResponse | null;
-} & ReturnType<typeof mapStateToProps>;
-
-const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
+const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");
-
-  if (rayletInfo === null) {
+  const [debouncedNameFilter] = useDebounce(nameFilter, 500);
+  const classes = useLogicalViewStyles();
+  const rayletInfo = useSelector(rayletInfoSelector);
+  if (rayletInfo === null || !rayletInfo.actorGroups) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
-  let filteredActors = rayletInfo.actors;
-  if (nameFilter !== "") {
-    filteredActors = filterObj(
-      filteredActors,
-      ([_, actor]: [any, RayletActorInfo]) =>
-        actorMatchesSearch(actor, nameFilter),
-    );
-  }
-
+  const actorGroups =
+    debouncedNameFilter === ""
+      ? Object.entries(rayletInfo.actorGroups)
+      : Object.entries(rayletInfo.actorGroups).filter(([key, _]) =>
+          actorClassMatchesSearch(key, debouncedNameFilter),
+        );
   return (
-    <div>
-      {Object.entries(rayletInfo.actors).length === 0 ? (
+    <Box className={classes.container}>
+      {actorGroups.length === 0 ? (
         <Typography color="textSecondary">No actors found.</Typography>
       ) : (
-        <div>
+        <React.Fragment>
           <FormControl>
             <InputLabel htmlFor="actor-name-filter">Actor Search</InputLabel>
             <Input
@@ -87,11 +65,11 @@ const LogicalView: React.FC<LogicalViewProps> = ({ rayletInfo }) => {
               Search for an actor by name
             </FormHelperText>
           </FormControl>
-          <Actors actors={filteredActors} />
-        </div>
+          <ActorClassGroups actorGroups={Object.fromEntries(actorGroups)} />
+        </React.Fragment>
       )}
-    </div>
+    </Box>
   );
 };
 
-export default connect(mapStateToProps)(LogicalView);
+export default LogicalView;

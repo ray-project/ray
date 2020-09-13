@@ -176,6 +176,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::PlacementStrategy::SPREAD"
     cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_PACK \
         "ray::PlacementStrategy::STRICT_PACK"
+    cdef CPlacementStrategy PLACEMENT_STRATEGY_STRICT_SPREAD \
+        "ray::PlacementStrategy::STRICT_SPREAD"
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
     cdef cppclass ResourceSet "ray::ResourceSet":
@@ -239,7 +241,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns,
+        CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":

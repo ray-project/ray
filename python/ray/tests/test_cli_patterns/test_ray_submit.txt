@@ -1,0 +1,5 @@
+Bootstrapping AWS config
+Fetched IP: .+
+Bootstrapping AWS config
+Fetched IP: .+
+This is a test!

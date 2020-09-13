@@ -7,7 +7,7 @@ import os
 import pickle
 import time
 import tempfile
-from typing import Callable, List, Dict, Union
+from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
@@ -23,7 +23,6 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -69,8 +68,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
-    "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
     # `rollout_fragment_length` length unrolls. Episode truncation guarantees
     # evenly sized batches, but increases variance as the reward-to-go will
@@ -370,14 +367,15 @@ COMMON_CONFIG: TrainerConfigDict = {
         "replay_mode": "independent",
     },
 
+    # === Logger ===
+    # Define logger-specific configuration to be used inside Logger
+    # Default value None allows overwriting with nested dicts
+    "logger_config": None,
+
     # === Replay Settings ===
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
-
-    # Deprecated keys:
-    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
-    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -386,19 +384,18 @@ COMMON_CONFIG: TrainerConfigDict = {
 @DeveloperAPI
 def with_common_config(
         extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with common agent confs."""
+    """Returns the given config dict merged with common agent confs.
 
-    return with_base_config(COMMON_CONFIG, extra_config)
+    Args:
+        extra_config (PartialTrainerConfigDict): A user defined partial config
+            which will get merged with COMMON_CONFIG and returned.
 
-
-def with_base_config(
-        base_config: TrainerConfigDict,
-        extra_config: PartialTrainerConfigDict) -> TrainerConfigDict:
-    """Returns the given config dict merged with a base agent conf."""
-
-    config = copy.deepcopy(base_config)
-    config.update(extra_config)
-    return config
+    Returns:
+        TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
+            plus `extra_config`.
+    """
+    return Trainer.merge_trainer_configs(
+        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -569,7 +566,8 @@ class Trainer(Trainable):
             # Try gym.
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env)
+                self.env_creator = \
+                    lambda env_config: gym.make(env, **env_config)
         else:
             self.env_creator = lambda env_config: None
 
@@ -580,18 +578,6 @@ class Trainer(Trainable):
                                                     config)
 
         # Check and resolve DL framework settings.
-        if "use_pytorch" in self.config and \
-                self.config["use_pytorch"] != DEPRECATED_VALUE:
-            deprecation_warning("use_pytorch", "framework=torch", error=False)
-            if self.config["use_pytorch"]:
-                self.config["framework"] = "torch"
-            self.config.pop("use_pytorch")
-        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning("eager", "framework=tfe", error=False)
-            if self.config["eager"]:
-                self.config["framework"] = "tfe"
-            self.config.pop("eager")
-
         # Enable eager/tracing support.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
@@ -659,7 +645,7 @@ class Trainer(Trainable):
 
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
-                    self._policy,
+                    self._policy_class,
                     merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
@@ -686,7 +672,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy: type, config: TrainerConfigDict,
+                      policy_class: Type[Policy], config: TrainerConfigDict,
                       num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
@@ -696,9 +682,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
-            policy (class): The Policy class to use for creating the policies
-                of the workers.
-            config (dict): The Trainer's config.
+            policy (Type[Policy]): The Policy class to use for creating the
+                policies of the workers.
+            config (TrainerConfigDict): The Trainer's config.
             num_workers (int): Number of remote rollout workers to create.
                 0 for local only.
 
@@ -706,9 +692,9 @@ class Trainer(Trainable):
             WorkerSet: The created WorkerSet.
         """
         return WorkerSet(
-            env_creator,
-            policy,
-            config,
+            env_creator=env_creator,
+            policy_class=policy_class,
+            trainer_config=config,
             num_workers=num_workers,
             logdir=self.logdir)
 
@@ -1039,20 +1025,12 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls, config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict) -> dict:
+    def merge_trainer_configs(cls,
+                              config1: TrainerConfigDict,
+                              config2: PartialTrainerConfigDict,
+                              _allow_unknown_configs: Optional[bool] = None
+                              ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
-        # Error if trainer default has deprecated value.
-        if config1["sample_batch_size"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length", error=True)
-        # Warning if user override config has deprecated value.
-        if ("sample_batch_size" in config2
-                and config2["sample_batch_size"] != DEPRECATED_VALUE):
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length")
-            config2["rollout_fragment_length"] = config2["sample_batch_size"]
-            del config2["sample_batch_size"]
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]
 
@@ -1062,7 +1040,9 @@ class Trainer(Trainable):
                     legacy_callbacks_dict=legacy_callbacks_dict)
 
             config2["callbacks"] = make_callbacks
-        return deep_update(config1, config2, cls._allow_unknown_configs,
+        if _allow_unknown_configs is None:
+            _allow_unknown_configs = cls._allow_unknown_configs
+        return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
 
@@ -1073,19 +1053,11 @@ class Trainer(Trainable):
             raise ValueError(
                 "`_use_trajectory_view_api` only supported for PyTorch so "
                 "far!")
-        if "policy_graphs" in config["multiagent"]:
-            deprecation_warning("policy_graphs", "policies")
-            # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop(
-                "policy_graphs")
-        if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=0|1", error=True)
-        if "gpu_fraction" in config:
-            deprecation_warning(
-                "gpu_fraction", "num_gpus=<fraction>", error=True)
-        if "use_gpu_for_workers" in config:
-            deprecation_warning(
-                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
+        elif not config.get("_use_trajectory_view_api") and \
+                config.get("model", {}).get("_time_major"):
+            raise ValueError("`model._time_major` only supported "
+                             "iff `_use_trajectory_view_api` is True!")
+
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
@@ -1187,6 +1159,13 @@ class Trainer(Trainable):
                 r.restore.remote(remote_state)
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
+
+    @staticmethod
+    def with_updates(**overrides) -> Type["Trainer"]:
+        raise NotImplementedError(
+            "`with_updates` may only be called on Trainer sub-classes "
+            "that were generated via the `ray.rllib.agents.trainer_template."
+            "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):

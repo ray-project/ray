@@ -37,6 +37,8 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
+pydantic
+dataclasses
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -46,8 +48,10 @@ dataclasses
 dask[complete]
 feather-format
 gym
+gym-minigrid
 kubernetes
 lxml
+moto
 mypy
 networkx
 numba
@@ -62,5 +66,7 @@ pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow
+testfixtures
 werkzeug
 xlrd
+starlette

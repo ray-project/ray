@@ -82,6 +82,9 @@ class WorkerInterface {
 
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
+  virtual const PlacementGroupID &GetPlacementGroupId() const = 0;
+  virtual void SetPlacementGroupId(const PlacementGroupID &placement_group_id) = 0;
+
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
       std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
@@ -168,6 +171,9 @@ class Worker : public WorkerInterface {
 
   void DirectActorCallArgWaitComplete(int64_t tag);
 
+  const PlacementGroupID &GetPlacementGroupId() const;
+  void SetPlacementGroupId(const PlacementGroupID &placement_group_id);
+
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
       std::shared_ptr<TaskResourceInstances> &allocated_instances) {
@@ -236,6 +242,9 @@ class Worker : public WorkerInterface {
   JobID assigned_job_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
+  /// The worker's placement group ID. It is used to detect if the worker is
+  /// associated with a placement group.
+  PlacementGroupID placement_group_id_;
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if

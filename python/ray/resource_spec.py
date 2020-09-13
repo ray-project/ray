@@ -10,9 +10,6 @@ import sys
 import ray
 import ray.ray_constants as ray_constants
 
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
-
 logger = logging.getLogger(__name__)
 
 # Prefix for the node id resource that is automatically added to each node.
@@ -223,32 +220,6 @@ class ResourceSpec(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
 
-        rounded_memory = ray_constants.round_to_memory_units(
-            memory, round_up=False)
-        worker_ram = round(rounded_memory / (1024**3), 2)
-        object_ram = round(object_store_memory / (1024**3), 2)
-
-        # TODO(maximsmol): this behavior is strange since we do not have a
-        # good grasp on when this will get called
-        # (you have to study node.py to make a guess)
-        with cli_logger.group("Available RAM"):
-            cli_logger.labeled_value("Workers", "{} GiB", str(worker_ram))
-            cli_logger.labeled_value("Objects", "{} GiB", str(object_ram))
-            cli_logger.newline()
-            cli_logger.print("To adjust these values, use")
-            with cf.with_style("monokai") as c:
-                cli_logger.print(
-                    "  ray{0}init(memory{1}{2}, "
-                    "object_store_memory{1}{2})", c.magenta("."),
-                    c.magenta("="), c.purple("<bytes>"))
-
-        cli_logger.old_info(
-            logger,
-            "Starting Ray with {} GiB memory available for workers and up to "
-            "{} GiB for objects. You can adjust these settings "
-            "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).", worker_ram, object_ram)
-
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)
         assert spec.resolved()
@@ -304,8 +275,8 @@ gpu model type.
             break
     pretty_name = _pretty_gpu_name(full_model_name)
     if pretty_name:
-        constraint_name = "{}{}".format(
-            ray_constants.RESOURCE_CONSTRAINT_PREFIX, pretty_name)
+        constraint_name = (f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                           f"{pretty_name}")
         return {constraint_name: 1}
     return {}
 
@@ -324,8 +295,7 @@ def _get_gpu_info_string():
         if os.path.isdir(proc_gpus_path):
             gpu_dirs = os.listdir(proc_gpus_path)
             if len(gpu_dirs) > 0:
-                gpu_info_path = "{}/{}/information".format(
-                    proc_gpus_path, gpu_dirs[0])
+                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
                 info_str = open(gpu_info_path).read()
                 return info_str
     return None

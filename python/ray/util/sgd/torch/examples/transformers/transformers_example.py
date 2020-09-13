@@ -92,81 +92,76 @@ def announce_training(args, dataset_len, t_total):
     logger.info("  Total optimization steps = %d", t_total)
 
 
-def model_creator(config):
-    with FileLock(os.path.expanduser("~/.download.lock")):
-        args = config["args"]
-        processor = processors[args.task_name]()
-        label_list = processor.get_labels()
-        num_labels = len(label_list)
-        config = AutoConfig.from_pretrained(
-            args.config_name if args.config_name else args.model_name_or_path,
-            num_labels=num_labels,
-            finetuning_task=args.task_name,
-            cache_dir=args.cache_dir if args.cache_dir else None,
-        )
-        model = AutoModelForSequenceClassification.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir if args.cache_dir else None,
-        )
-    return model
-
-
-def optimizer_creator(model, cfg):
-    args = cfg["args"]
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [
-                p for n, p in model.named_parameters()
-                if not any(nd in n for nd in no_decay)
-            ],
-            "weight_decay": args.weight_decay,
-        },
-        {
-            "params": [
-                p for n, p in model.named_parameters()
-                if any(nd in n for nd in no_decay)
-            ],
-            "weight_decay": 0.0
-        },
-    ]
-
-    return AdamW(
-        optimizer_grouped_parameters,
-        lr=args.learning_rate,
-        eps=args.adam_epsilon)
-
-
-def data_creator(config):
-    args = config["args"]
-    start = time.time()
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.tokenizer_name
-        if args.tokenizer_name else args.model_name_or_path,
-        cache_dir=args.cache_dir if args.cache_dir else None,
-    )
-    logger.info("tokenizer instantiation time: {}".format(time.time() - start))
-
-    train_dataset = load_and_cache_examples(
-        args, args.task_name, tokenizer, evaluate=False)
-    train_sampler = RandomSampler(
-        train_dataset) if not dist.is_initialized() else None
-    return DataLoader(
-        train_dataset,
-        sampler=train_sampler,
-        batch_size=args.per_device_train_batch_size)
-
-
 class TransformerOperator(TrainingOperator):
     def setup(self, config):
         self.args = args = config["args"]
+        start = time.time()
         self.tokenizer = AutoTokenizer.from_pretrained(
             args.tokenizer_name
             if args.tokenizer_name else args.model_name_or_path,
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
+        logger.info(f"tokenizer instantiation time: {time.time() - start}")
+
+        # Load data.
+        train_dataset = load_and_cache_examples(
+            args, args.task_name, self.tokenizer, evaluate=False)
+        train_sampler = RandomSampler(
+            train_dataset) if not dist.is_initialized() else None
+        train_loader = DataLoader(
+            train_dataset,
+            sampler=train_sampler,
+            batch_size=args.per_device_train_batch_size)
+
+        # Create model.
+        with FileLock(os.path.expanduser("~/.download.lock")):
+            processor = processors[args.task_name]()
+            label_list = processor.get_labels()
+            num_labels = len(label_list)
+            model_config = AutoConfig.from_pretrained(
+                args.config_name
+                if args.config_name else args.model_name_or_path,
+                num_labels=num_labels,
+                finetuning_task=args.task_name,
+                cache_dir=args.cache_dir if args.cache_dir else None,
+            )
+            model = AutoModelForSequenceClassification.from_pretrained(
+                args.model_name_or_path,
+                from_tf=bool(".ckpt" in args.model_name_or_path),
+                config=model_config,
+                cache_dir=args.cache_dir if args.cache_dir else None,
+            )
+
+        # Create optimizer.
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": args.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in model.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ],
+                "weight_decay": 0.0
+            },
+        ]
+
+        optimizer = AdamW(
+            optimizer_grouped_parameters,
+            lr=args.learning_rate,
+            eps=args.adam_epsilon)
+
+        # Register components.
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+            train_loader=train_loader,
+            validation_loader=None)
 
         self.train_data_len = len(self.train_loader)
         self._warmup_scheduler = get_linear_schedule_with_warmup(
@@ -322,7 +317,7 @@ def main():
     # Prepare GLUE task
     args.task_name = args.task_name.lower()
     if args.task_name not in processors:
-        raise ValueError("Task not found: %s" % (args.task_name))
+        raise ValueError(f"Task not found: {args.task_name}")
     args.output_mode = output_modes[args.task_name]
 
     logging.basicConfig(
@@ -334,9 +329,6 @@ def main():
     # Training
 
     trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
         training_operator_cls=TransformerOperator,
         use_fp16=args.fp16,
         apex_args={"opt_level": args.fp16_opt_level},

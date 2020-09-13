@@ -38,8 +38,10 @@ You can experiment with this behavior by running the following code.
             # exception.
             ray.get(potentially_fail.remote(0.5))
             print('SUCCESS')
-        except ray.exceptions.RayWorkerError:
+        except ray.exceptions.WorkerCrashedError:
             print('FAILURE')
+
+.. _actor-fault-tolerance:
 
 Actors
 ------
@@ -170,13 +172,13 @@ Task outputs over a configurable threshold (default 100KB) may be stored in
 Ray's distributed object store. Thus, a node failure can cause the loss of a
 task output. If this occurs, Ray will automatically attempt to recover the
 value by looking for copies of the same object on other nodes. If there are no
-other copies left, an ``UnreconstructableError`` will be raised.
+other copies left, an ``ObjectLostError`` will be raised.
 
 When there are no copies of an object left, Ray also provides an option to
 automatically recover the value by re-executing the task that created the
 value. Arguments to the task are recursively reconstructed with the same
 method. This option can be enabled with
-``ray.init(enable_object_reconstruction=True)`` in standalone mode or ``ray
+``ray.init(_enable_object_reconstruction=True)`` in standalone mode or ``ray
 start --enable-object-reconstruction`` in cluster mode.
 During reconstruction, each task will only be re-executed up to the specified
 number of times, using ``max_retries`` for normal tasks and

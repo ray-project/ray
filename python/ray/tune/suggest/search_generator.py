@@ -1,9 +1,9 @@
-import pickle
 import os
 import copy
 import logging
 import glob
 
+import ray.cloudpickle as cloudpickle
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
@@ -29,7 +29,7 @@ def _atomic_save(state, checkpoint_dir, file_name):
     tmp_search_ckpt_path = os.path.join(checkpoint_dir,
                                         ".tmp_search_generator_ckpt")
     with open(tmp_search_ckpt_path, "wb") as f:
-        pickle.dump(state, f)
+        cloudpickle.dump(state, f)
 
     os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
@@ -41,7 +41,7 @@ def _find_newest_ckpt(dirpath, pattern):
         return
     most_recent_checkpoint = max(full_paths)
     with open(most_recent_checkpoint, "rb") as f:
-        search_alg_state = pickle.load(f)
+        search_alg_state = cloudpickle.load(f)
     return search_alg_state
 
 
@@ -68,6 +68,9 @@ class SearchGenerator(SearchAlgorithm):
         self._counter = 0  # Keeps track of number of trials created.
         self._total_samples = None  # int: total samples to evaluate.
         self._finished = False
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)
 
     def add_configurations(self, experiments):
         """Registers experiment specifications.

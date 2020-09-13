@@ -470,6 +470,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// Client id - object manager gRPC client.
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
+
+  /// Running sum of the amount of memory used in the object store.
+  int64_t used_memory_ = 0;
 };
 
 }  // namespace ray

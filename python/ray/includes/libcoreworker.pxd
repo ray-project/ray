@@ -98,6 +98,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)
+        CRayStatus RemovePlacementGroup(
+            const CPlacementGroupID &placement_group_id)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -193,7 +195,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
-        CRayStatus ForceSpillObjects(const c_vector[CObjectID] &object_ids)
+        CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
         CRayStatus ForceRestoreSpilledObjects(
                 const c_vector[CObjectID] &object_ids)
 
@@ -215,6 +217,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string stderr_file
         (CRayStatus(
             CTaskType task_type,
+            const c_string name,
             const CRayFunction &ray_function,
             const unordered_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,

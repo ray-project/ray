@@ -1,5 +1,5 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -22,7 +22,9 @@ torch, _ = try_import_torch()
 def build_torch_policy(
         name: str,
         *,
-        loss_fn: Callable[[Policy, ModelV2, type, SampleBatch], TensorType],
+        loss_fn: Callable[[
+            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
+        ], Union[TensorType, List[TensorType]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -80,9 +82,10 @@ def build_torch_policy(
             super's `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],
             Dict[str, TensorType]]]): Optional callable that returns a dict of
-            values given the policy and batch input tensors. If None,
-            will use `TorchPolicy.extra_grad_info()` instead.
-        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType,
+            values given the policy and training batch. If None,
+            will use `TorchPolicy.extra_grad_info()` instead. The stats dict is
+            used for logging (e.g. in TensorBoard).
+        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType],
             List[TensorType], ModelV2, TorchDistributionWrapper]], Dict[str,
             TensorType]]]): Optional callable that returns a dict of extra
             values to include in experiences. If None, no extra computations
@@ -221,15 +224,12 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            if callable(training_view_requirements_fn):
+                self.training_view_requirements.update(
+                    training_view_requirements_fn(self))
+
             if after_init:
                 after_init(self, obs_space, action_space, config)
-
-        @override(TorchPolicy)
-        def training_view_requirements(self):
-            req = super().training_view_requirements()
-            if callable(training_view_requirements_fn):
-                req.update(training_view_requirements_fn(self))
-            return req
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -298,9 +298,8 @@ def build_torch_policy(
                 optimizers = TorchPolicy.optimizer(self)
             optimizers = force_list(optimizers)
             if hasattr(self, "exploration"):
-                exploration_optimizers = force_list(
-                    self.exploration.get_exploration_optimizer(self.config))
-                optimizers.extend(exploration_optimizers)
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
             return optimizers
 
         @override(TorchPolicy)

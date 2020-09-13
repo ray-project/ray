@@ -118,6 +118,7 @@ void ObjectManager::HandleObjectAdded(
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
+  used_memory_ += object_info.data_size + object_info.metadata_size;
   ray::Status status =
       object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
@@ -146,6 +147,8 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   RAY_CHECK(it != local_objects_.end());
   auto object_info = it->second.object_info;
   local_objects_.erase(it);
+  used_memory_ -= object_info.data_size + object_info.metadata_size;
+  RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
   ray::Status status =
       object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 }
@@ -227,10 +230,12 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
   if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
-    RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
-                   << " is trying to pull object " << object_id
-                   << " but the object table suggests that this object manager "
-                   << "already has the object. The object may have been evicted.";
+    RAY_LOG(WARNING) << "The object manager with ID " << self_node_id_
+                     << " is trying to pull object " << object_id
+                     << " but the object table suggests that this object manager "
+                     << "already has the object. The object may have been evicted. It is "
+                     << "most likely due to memory pressure, object pull has been "
+                     << "requested before object location is updated.";
     it->second.timer_set = false;
     return;
   }
@@ -245,10 +250,11 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
   if (node_id == self_node_id_) {
     std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
     node_vector.pop_back();
-    RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
-                   << " is trying to pull object " << object_id
-                   << " but the object table suggests that this object manager "
-                   << "already has the object.";
+    RAY_LOG(WARNING)
+        << "The object manager with ID " << self_node_id_ << " is trying to pull object "
+        << object_id << " but the object table suggests that this object manager "
+        << "already has the object. It is most likely due to memory pressure, object "
+        << "pull has been requested before object location is updated.";
     node_id = node_vector[node_index % node_vector.size()];
     RAY_CHECK(node_id != self_node_id_);
   }
@@ -902,24 +908,13 @@ std::string ObjectManager::DebugString() const {
 }
 
 void ObjectManager::RecordMetrics() const {
-  int64_t used_memory = 0;
-  for (const auto &it : local_objects_) {
-    object_manager::protocol::ObjectInfoT object_info = it.second.object_info;
-    used_memory += object_info.data_size + object_info.metadata_size;
-  }
-  stats::ObjectManagerStats().Record(used_memory,
-                                     {{stats::ValueTypeKey, "used_object_store_memory"}});
-  stats::ObjectManagerStats().Record(local_objects_.size(),
-                                     {{stats::ValueTypeKey, "num_local_objects"}});
-  stats::ObjectManagerStats().Record(active_wait_requests_.size(),
-                                     {{stats::ValueTypeKey, "num_active_wait_requests"}});
-  stats::ObjectManagerStats().Record(
-      unfulfilled_push_requests_.size(),
-      {{stats::ValueTypeKey, "num_unfulfilled_push_requests"}});
-  stats::ObjectManagerStats().Record(pull_requests_.size(),
-                                     {{stats::ValueTypeKey, "num_pull_requests"}});
-  stats::ObjectManagerStats().Record(profile_events_.size(),
-                                     {{stats::ValueTypeKey, "num_profile_events"}});
+  stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
+  stats::ObjectStoreUsedMemory().Record(used_memory_);
+  stats::ObjectStoreLocalObjects().Record(local_objects_.size());
+  stats::ObjectManagerWaitRequests().Record(active_wait_requests_.size());
+  stats::ObjectManagerPullRequests().Record(pull_requests_.size());
+  stats::ObjectManagerUnfulfilledPushRequests().Record(unfulfilled_push_requests_.size());
+  stats::ObjectManagerProfileEvents().Record(profile_events_.size());
 }
 
 }  // namespace ray

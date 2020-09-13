@@ -78,9 +78,12 @@ class MLFLowLogger(Logger):
     """
 
     def _init(self):
+        logger_config = self.config.get("logger_config", {})
         from mlflow.tracking import MlflowClient
-        client = MlflowClient()
-        run = client.create_run(self.config.get("mlflow_experiment_id"))
+        client = MlflowClient(
+            tracking_uri=logger_config.get("mlflow_tracking_uri"),
+            registry_uri=logger_config.get("mlflow_registry_uri"))
+        run = client.create_run(logger_config.get("mlflow_experiment_id"))
         self._run_id = run.info.run_id
         for key, value in self.config.items():
             client.log_param(self._run_id, key, value)
@@ -193,7 +196,9 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
+            if log_once("tbx-install"):
+                logger.info(
+                    "pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -222,6 +227,13 @@ class TBXLogger(Logger):
                   and len(value) > 0) or (type(value) == np.ndarray
                                           and value.size > 0):
                 valid_result[full_attr] = value
+
+                # Must be video
+                if type(value) == np.ndarray and value.ndim == 5:
+                    self._file_writer.add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
                 try:
                     self._file_writer.add_histogram(
                         full_attr, value, global_step=step)
@@ -326,8 +338,9 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
-                logger.warning("Could not instantiate %s: %s.", cls.__name__,
-                               str(exc))
+                if log_once(f"instantiate:{cls.__name__}"):
+                    logger.warning("Could not instantiate %s: %s.",
+                                   cls.__name__, str(exc))
         self._log_syncer = get_node_syncer(
             self.logdir,
             remote_dir=self.logdir,

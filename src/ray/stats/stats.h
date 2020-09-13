@@ -83,8 +83,7 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   // Default exporter is a metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
-    exporter.reset(new MetricsAgentExporter(stdout_exporter, metrics_agent_port,
-                                            (*metrics_io_service), "127.0.0.1"));
+    exporter.reset(new MetricsAgentExporter(stdout_exporter));
   } else {
     exporter = exporter_to_use;
   }
@@ -96,7 +95,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
       absl::Milliseconds(std::max(RayConfig::instance().metrics_report_interval_ms() / 2,
                                   static_cast<uint64_t>(500))));
 
-  MetricExporter::Register(exporter, metrics_report_batch_size);
+  MetricPointExporter::Register(exporter, metrics_report_batch_size);
+  OpenCensusProtoExporter::Register(metrics_agent_port, (*metrics_io_service),
+                                    "127.0.0.1");
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(

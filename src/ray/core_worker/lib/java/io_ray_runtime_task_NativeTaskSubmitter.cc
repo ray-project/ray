@@ -96,13 +96,18 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
+  std::string name = "";
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
+    auto java_name = (jstring)env->GetObjectField(callOptions, java_call_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
   }
 
-  ray::TaskOptions task_options{numReturns, resources};
+  ray::TaskOptions task_options{name, numReturns, resources};
   return task_options;
 }
 
@@ -172,8 +177,10 @@ inline ray::PlacementStrategy ConvertStrategy(jint java_strategy) {
     return ray::rpc::PACK;
   case 1:
     return ray::rpc::SPREAD;
-  default:
+  case 2:
     return ray::rpc::STRICT_PACK;
+  default:
+    return ray::rpc::STRICT_SPREAD;
   }
 }
 

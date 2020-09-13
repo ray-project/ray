@@ -8,9 +8,9 @@ from ray.autoscaler.node_provider import NODE_PROVIDERS, get_node_provider
 from ray.autoscaler.local.node_provider import LocalNodeProvider
 from ray.autoscaler.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
-from ray.autoscaler.tags import (TAG_RAY_NODE_TYPE, TAG_RAY_CLUSTER_NAME,
-                                 TAG_RAY_NODE_NAME, NODE_TYPE_WORKER,
-                                 NODE_TYPE_HEAD)
+from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, TAG_RAY_CLUSTER_NAME,
+                                 TAG_RAY_NODE_NAME, NODE_KIND_WORKER,
+                                 NODE_KIND_HEAD)
 import pytest
 
 
@@ -65,13 +65,13 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         expected_workers = {}
         expected_workers[provider_config["head_ip"]] = {
             "tags": {
-                TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             },
             "state": "terminated",
         }
         expected_workers[provider_config["worker_ips"][0]] = {
             "tags": {
-                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
             },
             "state": "terminated",
         }
@@ -93,7 +93,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Test adding back workers updates the cluster state.
         expected_workers[removed_ip] = {
             "tags": {
-                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
             },
             "state": "terminated",
         }
@@ -171,7 +171,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         assert node_provider_1.is_terminated(self.list_of_node_ips[0])
         assert not node_provider_1.node_tags(self.list_of_node_ips[0])
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
         }
         assert not node_provider_1.non_terminated_nodes(head_node_tags)
         head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
@@ -232,17 +232,17 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         worker_node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                 cluster_config["cluster_name"]),
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
         }
         node_provider_3.create_node(cluster_config["worker_nodes"],
                                     worker_node_tags, 1)
         assert node_provider_3.non_terminated_nodes(
             {}) == self.list_of_node_ips
-        worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
+        worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
         assert node_provider_3.non_terminated_nodes(worker_filter) == [
             self.list_of_node_ips[1]
         ]
-        head_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD}
+        head_filter = {TAG_RAY_NODE_KIND: NODE_KIND_HEAD}
         assert node_provider_3.non_terminated_nodes(head_filter) == [
             self.list_of_node_ips[0]
         ]

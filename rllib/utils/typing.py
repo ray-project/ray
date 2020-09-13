@@ -19,6 +19,10 @@ EnvConfigDict = dict
 # the model catalog.
 ModelConfigDict = dict
 
+# Objects that can be created through the `from_config()` util method
+# need a config dict with a "type" key, a class path (str), or a type directly.
+FromConfigSpec = Union[Dict[str, Any], type, str]
+
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
 # VectorEnv, or gym.Env.
 EnvType = Any
@@ -38,6 +42,9 @@ EnvID = int
 
 # Represents an episode id.
 EpisodeID = int
+
+# Represents an "unroll" (maybe across different sub-envs in a vector env).
+UnrollID = int
 
 # A dict keyed by agent ids, e.g. {"agent-1": value}.
 MultiAgentDict = Dict[AgentID, Any]
@@ -60,6 +67,10 @@ FileType = Any
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
+
+# A tf or torch local optimizer object.
+LocalOptimizer = Union["tf.keras.optimizers.Optimizer",
+                       "torch.optim.Optimizer"]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

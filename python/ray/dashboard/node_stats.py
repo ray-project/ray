@@ -7,13 +7,66 @@ import json
 import traceback
 import copy
 import logging
-import datetime
+from datetime import datetime
 import time
+from typing import Dict
 import re
 
 from operator import itemgetter
 
 logger = logging.getLogger(__name__)
+
+PYCLASSNAME_RE = re.compile(r"(.+?)\(")
+
+
+def _group_actors_by_python_class(actors):
+    groups = defaultdict(list)
+    for actor in actors.values():
+        actor_title = actor.get("actorTitle")
+        if not actor_title:
+            groups["Unknown Class"].append(actor)
+        else:
+            match = PYCLASSNAME_RE.search(actor_title)
+            if match:
+                # Catches case of actorTitle like
+                # Foo(bar, baz, [1,2,3]) -> Foo
+                class_name = match.groups()[0]
+                groups[class_name].append(actor)
+            else:
+                # Catches case of e.g. just Foo
+                # in case of actor task
+                groups[actor_title].append(actor)
+    return groups
+
+
+def _get_actor_group_stats(group):
+    state_to_count = defaultdict(lambda: 0)
+    executed_tasks = 0
+    min_timestamp = None
+    num_timestamps = 0
+    sum_timestamps = 0
+    now = time.time() * 1000  # convert S -> MS
+    for actor in group:
+        state_to_count[actor["state"]] += 1
+        if "timestamp" in actor:
+            if not min_timestamp or actor["timestamp"] < min_timestamp:
+                min_timestamp = actor["timestamp"]
+            num_timestamps += 1
+            sum_timestamps += now - actor["timestamp"]
+        if "numExecutedTasks" in actor:
+            executed_tasks += actor["numExecutedTasks"]
+    if num_timestamps > 0:
+        avg_lifetime = int((sum_timestamps / num_timestamps) / 1000)
+        max_lifetime = int((now - min_timestamp) / 1000)
+    else:
+        avg_lifetime = 0
+        max_lifetime = 0
+    return {
+        "stateToCount": state_to_count,
+        "avgLifetime": avg_lifetime,
+        "maxLifetime": max_lifetime,
+        "numExecutedTasks": executed_tasks,
+    }
 
 
 class NodeStats(threading.Thread):
@@ -58,13 +111,17 @@ class NodeStats(threading.Thread):
 
     def _insert_log_counts(self):
         for ip, logs_by_pid in self._logs.items():
-            hostname = self._ip_to_hostname[ip]
+            hostname = self._ip_to_hostname.get(ip)
+            if not hostname or hostname not in self._node_stats:
+                continue
             logs_by_pid = {pid: len(logs) for pid, logs in logs_by_pid.items()}
             self._node_stats[hostname]["log_count"] = logs_by_pid
 
     def _insert_error_counts(self):
         for ip, errs_by_pid in self._errors.items():
-            hostname = self._ip_to_hostname[ip]
+            hostname = self._ip_to_hostname.get(ip)
+            if not hostname or hostname not in self._node_stats:
+                continue
             errs_by_pid = {pid: len(errs) for pid, errs in errs_by_pid.items()}
             self._node_stats[hostname]["error_count"] = errs_by_pid
 
@@ -75,7 +132,7 @@ class NodeStats(threading.Thread):
 
             return True
 
-        now = to_unix_time(datetime.datetime.utcnow())
+        now = to_unix_time(datetime.utcnow())
         self._node_stats = {
             k: v
             for k, v in self._node_stats.items() if current(v["now"], now)
@@ -91,20 +148,15 @@ class NodeStats(threading.Thread):
                 key=itemgetter("boot_time"))
             return {"clients": node_stats}
 
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
-                       ready_tasks):
+    # Gets actors in a flat way to allow for grouping by actor type.
+    def get_actors(self, workers_info_by_node, infeasible_tasks, ready_tasks):
         now = time.time()
+        actors: Dict[str, Dict[str, any]] = {}
         # construct flattened actor tree
-        flattened_tree = {"root": {"children": {}}}
-        child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
-                flattened_tree[actor_id].update(
-                    self._addr_to_extra_info_dict[addr])
-                parent_id = self._addr_to_actor_id.get(
-                    self._addr_to_owner_addr[addr], "root")
-                child_to_parent[actor_id] = parent_id
+                actors[actor_id] = copy.deepcopy(self._default_info)
+                actors[actor_id].update(self._addr_to_extra_info_dict[addr])
 
             for node_id, workers_info in workers_info_by_node.items():
                 for worker_info in workers_info:
@@ -113,8 +165,7 @@ class NodeStats(threading.Thread):
                         addr = (core_worker_stats["ipAddress"],
                                 str(core_worker_stats["port"]))
                         if addr in self._addr_to_actor_id:
-                            actor_info = flattened_tree[self._addr_to_actor_id[
-                                addr]]
+                            actor_info = actors[self._addr_to_actor_id[addr]]
                             format_reply_id(core_worker_stats)
                             actor_info.update(core_worker_stats)
                             actor_info["averageTaskExecutionSpeed"] = round(
@@ -123,33 +174,43 @@ class NodeStats(threading.Thread):
                             actor_info["nodeId"] = node_id
                             actor_info["pid"] = worker_info["pid"]
 
-            def _update_flatten_tree(task, task_spec_type, invalid_state_type):
+            def _update_from_actor_tasks(task, task_spec_type,
+                                         invalid_state_type):
                 actor_id = ray.utils.binary_to_hex(
                     b64decode(task[task_spec_type]["actorId"]))
-                caller_addr = (task["callerAddress"]["ipAddress"],
-                               str(task["callerAddress"]["port"]))
-                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
-                child_to_parent[actor_id] = caller_id
-                task["state"] = -1
-                task["invalidStateType"] = invalid_state_type
+                if invalid_state_type == "pendingActor":
+                    task["state"] = -1
+                elif invalid_state_type == "infeasibleActor":
+                    task["state"] = -2
+                else:
+                    raise ValueError(f"Invalid argument"
+                                     "invalid_state_type={invalid_state_type}")
                 task["actorTitle"] = task["functionDescriptor"][
                     "pythonFunctionDescriptor"]["className"]
                 format_reply_id(task)
-                flattened_tree[actor_id] = task
+                actors[actor_id] = task
 
             for infeasible_task in infeasible_tasks:
-                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
-                                     "infeasibleActor")
+                _update_from_actor_tasks(infeasible_task,
+                                         "actorCreationTaskSpec",
+                                         "infeasibleActor")
 
             for ready_task in ready_tasks:
-                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
-                                     "pendingActor")
+                _update_from_actor_tasks(ready_task, "actorCreationTaskSpec",
+                                         "pendingActor")
+        actor_groups = _group_actors_by_python_class(actors)
+        stats_by_group = {
+            name: _get_actor_group_stats(group)
+            for name, group in actor_groups.items()
+        }
 
-        # construct actor tree
-        actor_tree = flattened_tree
-        for actor_id, parent_id in child_to_parent.items():
-            actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
-        return actor_tree["root"]["children"]
+        response_data = {}
+        for name, group in actor_groups.items():
+            response_data[name] = {
+                "entries": group,
+                "summary": stats_by_group[name]
+            }
+        return response_data
 
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]
@@ -249,10 +310,12 @@ class NodeStats(threading.Thread):
                         self._ip_to_hostname[data["ip"]] = data["hostname"]
                         self._node_stats[data["hostname"]] = data
                     else:
+                        try:
+                            data = json.loads(ray.utils.decode(data))
+                        except Exception as e:
+                            data = f"Failed to load data because of {e}"
                         logger.warning("Unexpected channel data received, "
-                                       "channel: {}, data: {}".format(
-                                           channel,
-                                           json.loads(ray.utils.decode(data))))
+                                       f"channel: {channel}, data: {data}")
 
             except Exception:
                 logger.exception(traceback.format_exc())

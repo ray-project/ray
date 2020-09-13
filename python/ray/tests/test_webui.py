@@ -13,7 +13,7 @@ import ray
 def test_get_webui(shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     webui_url = addresses["webui_url"]
-    assert ray.get_webui_url() == webui_url
+    assert ray.get_dashboard_url() == webui_url
 
     assert re.match(r"^(localhost|\d+\.\d+\.\d+\.\d+):\d+$", webui_url)
 

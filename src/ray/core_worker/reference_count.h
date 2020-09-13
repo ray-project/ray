@@ -327,12 +327,12 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// Check whether the object is pinned at a remote plasma store node.
   ///
   /// \param[in] object_id The object to check.
-  /// \param[out] pinned Whether the object was pinned at a remote plasma store
-  /// node.
+  /// \param[out] pinned_at The node ID of the raylet at which this object is
+  /// pinned. Set to nil if the object is not pinned.
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinned(const ObjectID &object_id, bool *pinned) const
+  bool IsPlasmaObjectPinned(const ObjectID &object_id, ClientID *pinned_at) const
       LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This

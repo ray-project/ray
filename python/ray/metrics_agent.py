@@ -5,73 +5,23 @@ import threading
 import time
 import traceback
 
-from collections import defaultdict
 from typing import List
 
-from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
-from opencensus.stats.measurement_map import MeasurementMap
 from opencensus.stats import stats as stats_module
-from opencensus.tags import tag_key as tag_key_module
-from opencensus.tags import tag_map as tag_map_module
-from opencensus.tags import tag_value as tag_value_module
-from opencensus.stats import view
+from opencensus.stats.view import View
+from opencensus.stats.view_data import ViewData
+from opencensus.stats.aggregation_data import (CountAggregationData,
+                                               DistributionAggregationData,
+                                               LastValueAggregationData)
+from opencensus.metrics.export.value import ValueDouble
 
 import ray
 
 from ray import prometheus_exporter
-from ray.core.generated.common_pb2 import MetricPoint
+from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
-
-
-# We don't need counter, histogram, or sum because reporter just needs to
-# collect momental values (gauge) that are already counted or sampled
-# (histogram for example), or summed inside cpp processes.
-class Gauge(view.View):
-    def __init__(self, name, description, unit,
-                 tags: List[tag_key_module.TagKey]):
-        self._measure = measure_module.MeasureInt(name, description, unit)
-        self._view = view.View(name, description, tags, self.measure,
-                               aggregation.LastValueAggregation())
-
-    @property
-    def measure(self):
-        return self._measure
-
-    @property
-    def view(self):
-        return self._view
-
-    @property
-    def name(self):
-        return self.measure.name
-
-    @property
-    def description(self):
-        return self.measure.description
-
-    @property
-    def units(self):
-        return self.measure.unit
-
-    @property
-    def tags(self):
-        return self.view.columns
-
-    def __dict__(self):
-        return {
-            "name": self.measure.name,
-            "description": self.measure.description,
-            "units": self.measure.unit,
-            "tags": self.view.columns,
-        }
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        return str(self.__dict__())
 
 
 class MetricsAgent:
@@ -79,17 +29,11 @@ class MetricsAgent:
         assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
-        self.stats_recorder = stats_module.stats.stats_recorder
         # Port where we will expose metrics.
         self.metrics_export_port = metrics_export_port
-        # metric name(str) -> view (view.View)
-        self._registry = defaultdict(lambda: None)
         # Lock required because gRPC server uses
         # multiple threads to process requests.
         self._lock = threading.Lock()
-        # Whether or not there are metrics that are missing description and
-        # units information. This is used to dynamically update registry.
-        self._missing_information = False
 
         # Configure exporter. (We currently only support prometheus).
         self.view_manager.register_exporter(
@@ -97,96 +41,73 @@ class MetricsAgent:
                 prometheus_exporter.Options(
                     namespace="ray", port=metrics_export_port)))
 
-    @property
-    def registry(self):
-        """Return metric definition registry.
-
-        Metrics definition registry is dynamically updated
-        by metrics reported by Ray processes.
-        """
-        return self._registry
-
-    def record_metrics_points(self, metrics_points: List[MetricPoint]):
+    def record_metric_points_from_protobuf(self, metrics: List[Metric]):
+        """Record metrics from Opencensus Protobuf"""
         with self._lock:
-            measurement_map = self.stats_recorder.new_measurement_map()
-            for metric_point in metrics_points:
-                self._register_if_needed(metric_point)
-                self._record(metric_point, measurement_map)
-            return self._missing_information
+            self._record_metrics(metrics)
 
-    def _record(self, metric_point: MetricPoint,
-                measurement_map: MeasurementMap):
-        """Record a single metric point to export.
+    def _record_metrics(self, metrics):
+        # The list of view data is what we are going to use for the
+        # final export to exporter.
+        view_data_changed: List[ViewData] = []
 
-        NOTE: When this method is called, the caller should acquire a lock.
+        # Walk the protobufs and convert them to ViewData
+        for metric in metrics:
+            descriptor = metric.metric_descriptor
+            timeseries = metric.timeseries
 
-        Args:
-            metric_point(MetricPoint) metric point defined in common.proto
-            measurement_map(MeasurementMap): Measurement map to record metrics.
-        """
-        metric_name = metric_point.metric_name
-        tags = metric_point.tags
+            if len(timeseries) == 0:
+                continue
 
-        metric = self._registry.get(metric_name)
-        # Metrics should be always registered dynamically.
-        assert metric
+            columns = [label_key.key for label_key in descriptor.label_keys]
+            start_time = timeseries[0].start_timestamp.seconds
 
-        tag_map = tag_map_module.TagMap()
-        for key, value in tags.items():
-            tag_key = tag_key_module.TagKey(key)
-            tag_value = tag_value_module.TagValue(value)
-            tag_map.insert(tag_key, tag_value)
+            # Create the view and view_data
+            measure = measure_module.BaseMeasure(
+                descriptor.name, descriptor.description, descriptor.unit)
+            view = self.view_manager.measure_to_view_map.get_view(
+                descriptor.name, None)
+            if not view:
+                view = View(
+                    descriptor.name,
+                    descriptor.description,
+                    columns,
+                    measure,
+                    aggregation=None)
+                self.view_manager.measure_to_view_map.register_view(
+                    view, start_time)
+            view_data = (self.view_manager.measure_to_view_map.
+                         _measure_to_view_data_list_map[measure.name][-1])
+            view_data_changed.append(view_data)
 
-        metric_value = metric_point.value
-        measurement_map.measure_float_put(metric.measure, metric_value)
-        # NOTE: When we record this metric, timestamp will be renewed.
-        measurement_map.record(tag_map)
+            # Create the aggregation and fill it in the our stats
+            for series in timeseries:
+                tag_vals = tuple(val.value for val in series.label_values)
+                for point in series.points:
+                    if point.HasField("int64_value"):
+                        data = CountAggregationData(point.int64_value)
+                    elif point.HasField("double_value"):
+                        data = LastValueAggregationData(
+                            ValueDouble, point.double_value)
+                    elif point.HasField("distribution_value"):
+                        dist_value = point.distribution_value
+                        counts_per_bucket = [
+                            bucket.count for bucket in dist_value.buckets
+                        ]
+                        bucket_bounds = (
+                            dist_value.bucket_options.explicit.bounds)
+                        data = DistributionAggregationData(
+                            dist_value.sum / dist_value.count,
+                            dist_value.count,
+                            dist_value.sum_of_squared_deviation,
+                            counts_per_bucket, bucket_bounds)
+                    else:
+                        raise ValueError("Summary is not supported")
 
-    def _register_if_needed(self, metric_point: MetricPoint):
-        """Register metrics if they are not registered.
+                    view_data.tag_value_aggregation_data_map[tag_vals] = data
 
-        NOTE: When this method is called, the caller should acquire a lock.
-
-        Unseen metrics:
-            Register it with Gauge type metrics. Note that all metrics in
-            the agent will be gauge because sampling is already done
-            within cpp processes.
-        Metrics that are missing description & units:
-            In this case, we will notify cpp proceses that we need this
-            information. Cpp processes will then report description and units
-            of all metrics they have.
-
-        Args:
-            metric_point metric point defined in common.proto
-        Return:
-            True if given metrics are missing description and units.
-            False otherwise.
-        """
-        metric_name = metric_point.metric_name
-        metric_description = metric_point.description
-        metric_units = metric_point.units
-        if self._registry[metric_name] is None:
-            tags = metric_point.tags
-            metric_tags = []
-            for tag_key in tags:
-                metric_tags.append(tag_key_module.TagKey(tag_key))
-
-            metric = Gauge(metric_name, metric_description, metric_units,
-                           metric_tags)
-            self._registry[metric_name] = metric
-            self.view_manager.register_view(metric.view)
-
-            # If there are missing description & unit information,
-            # we should notify cpp processes that we need them.
-            if not metric_description or not metric_units:
-                self._missing_information = True
-
-        if metric_description and metric_units:
-            self._registry[metric_name].view._description = metric_description
-            self._registry[
-                metric_name].view.measure._description = metric_description
-            self._registry[metric_name].view.measure._unit = metric_units
-            self._missing_information = False
+        # Finally, export all the values
+        self.view_manager.measure_to_view_map.export(view_data_changed)
 
 
 class PrometheusServiceDiscoveryWriter(threading.Thread):
@@ -255,5 +176,5 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                                "failed."
                                .format(self.writer.get_target_file_name()))
                 logger.warning(traceback.format_exc())
-                logger.warning("Error message: {}".format(e))
+                logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)

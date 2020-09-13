@@ -1,35 +1,37 @@
-import { createStyles, makeStyles, TableRow, Theme } from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import RemoveIcon from "@material-ui/icons/Remove";
-import React, { useState } from "react";
-import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
 import {
-  ExpandableStyledTableCell,
-  StyledTableCell,
-} from "../../../common/TableCell";
-import ExpanderRow from "./ExpanderRow";
+  Box,
+  createStyles,
+  makeStyles,
+  Paper,
+  styled,
+  Theme,
+} from "@material-ui/core";
+import React, { ReactChild, useState } from "react";
+import { MemoryTableEntry, MemoryTableSummary } from "../../../api";
+import { Expander, Minimizer } from "../../../common/ExpandControls";
 import MemorySummary from "./MemorySummary";
-import { MemoryTableRow } from "./MemoryTableRow";
+import MemoryTable from "./MemoryTable";
+
+const CenteredBox = styled(Box)({
+  textAlign: "center",
+});
 
 const useMemoryRowGroupStyles = makeStyles((theme: Theme) =>
   createStyles({
-    expandCollapseCell: {
-      cursor: "pointer",
-    },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-    extraInfo: {
-      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre",
+    container: {
+      marginTop: theme.spacing(2),
+      marginBottom: theme.spacing(2),
+      paddingTop: theme.spacing(2),
+      paddingBottom: theme.spacing(1),
+      paddingLeft: theme.spacing(2),
+      paddingRight: theme.spacing(2),
     },
   }),
 );
 
 type MemoryRowGroupProps = {
   groupKey: string;
+  groupTitle: ReactChild;
   summary: MemoryTableSummary;
   entries: MemoryTableEntry[];
   initialExpanded: boolean;
@@ -38,6 +40,7 @@ type MemoryRowGroupProps = {
 
 const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
   groupKey,
+  groupTitle,
   entries,
   summary,
   initialExpanded,
@@ -45,53 +48,32 @@ const MemoryRowGroup: React.FC<MemoryRowGroupProps> = ({
 }) => {
   const classes = useMemoryRowGroupStyles();
   const [expanded, setExpanded] = useState(initialExpanded);
-  const [visibleEntries, setVisibleEntries] = useState(initialVisibleEntries);
+  const [numVisibleEntries, setNumVisibleEntries] = useState(
+    initialVisibleEntries,
+  );
   const toggleExpanded = () => setExpanded(!expanded);
-
-  const features = [
-    "node_ip_address",
-    "pid",
-    "type",
-    "object_ref",
-    "object_size",
-    "reference_type",
-    "call_site",
-  ];
-
+  const showMoreEntries = () => setNumVisibleEntries(numVisibleEntries + 10);
+  const visibleEntries = entries.slice(0, numVisibleEntries);
   return (
-    <React.Fragment>
-      <TableRow hover>
-        <ExpandableStyledTableCell onClick={toggleExpanded}>
-          {!expanded ? (
-            <AddIcon className={classes.expandCollapseIcon} />
-          ) : (
-            <RemoveIcon className={classes.expandCollapseIcon} />
-          )}
-        </ExpandableStyledTableCell>
-        {features.map((feature, index) => (
-          <StyledTableCell key={index}>
-            {// TODO(sang): For now, it is always grouped by node_ip_address.
-            feature === "node_ip_address" ? groupKey : ""}
-          </StyledTableCell>
-        ))}
-      </TableRow>
-      {expanded && (
+    <Paper key={groupKey} className={classes.container}>
+      {groupTitle}
+      <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
+      {expanded ? (
         <React.Fragment>
-          <MemorySummary initialExpanded={false} memoryTableSummary={summary} />
-          {entries.slice(0, visibleEntries).map((memoryTableEntry, index) => {
-            return (
-              <MemoryTableRow
-                memoryTableEntry={memoryTableEntry}
-                key={`${index}`}
-              />
-            );
-          })}
-          <ExpanderRow
-            onExpand={() => setVisibleEntries(visibleEntries + 10)}
-          />
+          <MemoryTable tableEntries={visibleEntries} />
+          <CenteredBox>
+            {entries.length > numVisibleEntries && (
+              <Expander onClick={showMoreEntries} />
+            )}
+            <Minimizer onClick={toggleExpanded} />
+          </CenteredBox>
         </React.Fragment>
+      ) : (
+        <CenteredBox>
+          <Expander onClick={toggleExpanded} />
+        </CenteredBox>
       )}
-    </React.Fragment>
+    </Paper>
   );
 };
 
