@@ -848,14 +848,13 @@ def exec_cluster(config_file: str,
             is_head_node=True,
             docker_config=docker_config)
 
-        is_docker = docker_config and docker_config["container_name"] != ""
+        shutdown_after_run = False
         if cmd and stop:
             cmd += "; ".join([
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
             ])
-            if not (is_docker and run_env == "docker"):
-                cmd += "; sudo shutdown -h now"
+            shutdown_after_run = True
 
         result = _exec(
             updater,
@@ -864,7 +863,8 @@ def exec_cluster(config_file: str,
             tmux,
             port_forward=port_forward,
             with_output=with_output,
-            run_env=run_env)
+            run_env=run_env,
+            shutdown_after_run=shutdown_after_run)
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
             if override_cluster_name is not None:
@@ -893,7 +893,8 @@ def _exec(updater,
           tmux,
           port_forward=None,
           with_output=False,
-          run_env="auto"):
+          run_env="auto",
+          shutdown_after_run=False):
     if cmd:
         if screen:
             cmd = [
@@ -913,7 +914,8 @@ def _exec(updater,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output,
-        run_env=run_env)
+        run_env=run_env,
+        shutdown_after_run=shutdown_after_run)
 
 
 def rsync(config_file: str,
