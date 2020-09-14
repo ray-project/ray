@@ -1,4 +1,3 @@
-import colorful as cf
 import copy
 import hashlib
 import json
@@ -40,7 +39,7 @@ from ray.util.debug import log_once
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

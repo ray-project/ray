@@ -16,8 +16,7 @@ from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
 from ray.autoscaler.aws.utils import LazyDefaultDict, handle_boto_error
 from ray.autoscaler.node_provider import PROVIDER_PRETTY_NAMES
 
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

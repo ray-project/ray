@@ -21,8 +21,7 @@ from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

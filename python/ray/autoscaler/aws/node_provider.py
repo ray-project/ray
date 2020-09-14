@@ -16,8 +16,7 @@ from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
 from ray.autoscaler.aws.utils import boto_exception_handler
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 

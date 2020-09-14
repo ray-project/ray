@@ -1,7 +1,6 @@
 from collections import defaultdict
 
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler.cli_logger import cli_logger, cf
 
 
 class LazyDefaultDict(defaultdict):
