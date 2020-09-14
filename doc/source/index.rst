@@ -195,7 +195,7 @@ Papers
 
    ray-overview/index.rst
    installation.rst
-   Open source projects that run on Ray <oss-users.rst>
+   Community libraries that run on Ray <oss-users.rst>
 
 .. toctree::
    :hidden:
