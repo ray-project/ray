@@ -832,7 +832,6 @@ def exec_cluster(config_file: str,
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        docker_config = config.get("docker")
         updater = NodeUpdaterThread(
             node_id=head_node,
             provider_config=config["provider"],
@@ -846,8 +845,7 @@ def exec_cluster(config_file: str,
             runtime_hash="",
             file_mounts_contents_hash="",
             is_head_node=True,
-            docker_config=docker_config)
-
+            docker_config=config.get("docker"))
         shutdown_after_run = False
         if cmd and stop:
             cmd += "; ".join([

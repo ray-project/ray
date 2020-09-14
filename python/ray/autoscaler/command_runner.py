@@ -236,6 +236,9 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 cmd = _with_environment_variables(cmd, environment_variables)
             cmd = _with_interactive(cmd)
             final_cmd += cmd
+            # `kubectl exec` + subprocess w/ list of args has unexpected
+            # side-effects.
+            final_cmd = " ".join(final_cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
@@ -608,7 +611,6 @@ class DockerCommandRunner(CommandRunnerInterface):
             ssh_options_override_ssh_key="",
             shutdown_after_run=False,
     ):
-
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
 
@@ -722,6 +724,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         return string
 
     def run_init(self, *, as_head, file_mounts):
+        BOOTSTRAP_MOUNTS = [
+            "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
+        ]
+
         image = self.docker_config.get("image")
         image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", image)
@@ -733,8 +739,14 @@ class DockerCommandRunner(CommandRunnerInterface):
 
             self.run("docker pull {}".format(image), run_env="host")
 
+        # Bootstrap files cannot be bind mounted because docker opens the
+        # underlying inode. When the file is switched, docker becomes outdated.
+        cleaned_bind_mounts = file_mounts.copy()
+        for mnt in BOOTSTRAP_MOUNTS:
+            cleaned_bind_mounts.pop(mnt, None)
+
         start_command = docker_start_cmds(
-            self.ssh_command_runner.ssh_user, image, file_mounts,
+            self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
                 f"{'head' if as_head else 'worker'}_run_options", []))
@@ -759,7 +771,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 active_remote_mounts = [
                     mnt["Destination"] for mnt in active_mounts
                 ]
-                for remote, local in file_mounts.items():
+                # Ignore ray bootstrap files.
+                for remote, local in cleaned_bind_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
                         cli_logger.error(
@@ -769,4 +782,13 @@ class DockerCommandRunner(CommandRunnerInterface):
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
+
+        # Explicitly copy in ray bootstrap files.
+        for mount in BOOTSTRAP_MOUNTS:
+            if mount in file_mounts:
+                self.ssh_command_runner.run(
+                    "docker cp {src} {container}:{dst}".format(
+                        src=os.path.join(DOCKER_MOUNT_PREFIX, mount),
+                        container=self.container_name,
+                        dst=self._docker_expand_user(mount)))
         self.initialized = True
