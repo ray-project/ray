@@ -94,7 +94,7 @@ def _debug_check_line_by_line(result, expected_lines):
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            context = [f"CONTEXT: {line}" for line in output_lines[i-3:i]]
+            context = [f"CONTEXT: {line}" for line in output_lines[i - 3:i]]
             print("\n".join(context))
             extra = [f"-- {line}" for line in output_lines[i:]]
             print("\n".join(extra))
