@@ -1,9 +1,9 @@
 .. _ray-oss-list:
 
-Open source projects that run on Ray
+Community libraries that integrate with Ray
 ====================================
 
-The Ray ecosystem is rapidly growing! This page lists projects that are known to use Ray. This does not constitute an endorsement.
+This page lists libraries that integrate with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
 *Using Ray?* `Fill out this form <https://forms.gle/ps4S1C955kjotxd57>`__ *and we'll be in contact to get added to the list.*
 
