@@ -154,8 +154,7 @@ class DashboardAgent(object):
 
         # Write the dashboard agent port to redis.
         await self.aioredis_client.set(
-            "{}{}".format(
-                dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, self.node_id),
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
             json.dumps([http_port, self.grpc_port]))
 
         # Register agent to agent manager.

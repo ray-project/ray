@@ -70,6 +70,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
+        self._key = f"{reporter_consts.REPORTER_PREFIX}" \
+                    f"{self._dashboard_agent.node_id}"
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -240,10 +242,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         while True:
             try:
                 stats = self._get_all_stats()
-                await aioredis_client.publish(
-                    "{}{}".format(reporter_consts.REPORTER_PREFIX,
-                                  self._dashboard_agent.node_id),
-                    jsonify_asdict(stats))
+                await aioredis_client.publish(self._key, jsonify_asdict(stats))
             except Exception:
                 logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(

@@ -140,7 +140,7 @@ def test_basic(ray_start_with_dashboard):
     dashboard_rpc_address = client.get(
         dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
     assert dashboard_rpc_address is not None
-    key = "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_id)
+    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
     agent_ports = client.get(key)
     assert agent_ports is not None
 

@@ -90,8 +90,8 @@ class DashboardHead:
 
                 agents = dict(DataSource.agents)
                 for node_id in alive_node_ids:
-                    key = "{}{}".format(
-                        dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX, node_id)
+                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
+                          f"{node_id}"
                     agent_port = await self.aioredis_client.get(key)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
