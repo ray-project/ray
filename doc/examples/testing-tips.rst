@@ -20,7 +20,7 @@ This may easily result in tests exhibiting unexpected, flaky, or faulty behavior
 To overcome this, you should override the detected resources by setting them in ``ray.init`` like: ``ray.init(num_cpus=2)``
 
 
-.. _local-mode-docs:
+.. _local-mode-tips:
 
 Tip 2: Use ``ray.init(local_mode=True)`` if possible
 ----------------------------------------------------
