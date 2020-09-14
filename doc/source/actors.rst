@@ -475,7 +475,7 @@ Actor Pool
 
 
 Actors, Workers and Resources
------------------------------------------
+-----------------------------
 What's the difference between a worker and an actor?
 
 Each "Ray worker" is a python process. 
