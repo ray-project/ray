@@ -1,20 +1,35 @@
+"""
+Progress Bar for Ray Actors (tqdm)
+==================================
+
+Tracking progress of distributed tasks can be tricky.
+
+This script will demonstrate how to implement a simple
+progress bar for a Ray actor to track progress across various
+different distributed components.
+
+Setup: Dependencies
+-------------------
+
+First, import some dependencies.
+"""
+
 # Inspiration: https://github.com/honnibal/spacy-ray/pull/1/files#diff-7ede881ddc3e8456b320afb958362b2aR12-R45
 from asyncio import Event
 from typing import Tuple
 
 import ray
+# For typing purposes
 from ray.actor import ActorHandle
 from tqdm import tqdm
 
+############################################################
+# This is the Ray "actor" that can be called from anywhere to update our progress.
+# You'll be using the `update` method. Don't instantiate this class yourself. Instead,
+# it's something that you'll get from a `ProgressBar`.
 
 @ray.remote
 class ProgressBarActor:
-    """
-    This is the Ray "actor" that can be called from anywhere to update our progress.
-    You'll be using the `update` method. Don't instantiate this class yourself. Instead,
-    it's something that you'll get from a `ProgressBar`.
-    """
-
     counter: int
     delta: int
     event: Event
@@ -52,16 +67,16 @@ class ProgressBarActor:
         return self.counter
 
 
-class ProgressBar:
-    """
-    This is where the progress bar starts. You create one of these on the head node,
-    passing in the expected total number of items, and an optional string description.
-    Pass along the `actor` reference to any remote task, and if they complete ten
-    tasks, they'll call `actor.update.remote(10)`.
-    Back on the local node, once you launch your remote Ray tasks, call `print_until_done`,
-    which will feed everything back into a `tqdm` counter.
-    """
+#########################################################################
+# This is where the progress bar starts. You create one of these on the head node,
+# passing in the expected total number of items, and an optional string description.
+# Pass along the `actor` reference to any remote task, and if they complete ten
+# tasks, they'll call `actor.update.remote(10)`.
 
+# Back on the local node, once you launch your remote Ray tasks, call `print_until_done`,
+# which will feed everything back into a `tqdm` counter.
+
+class ProgressBar:
     progress_actor: ActorHandle
     total: int
     description: str
@@ -95,3 +110,32 @@ class ProgressBar:
             if counter >= self.total:
                 pbar.close()
                 return
+
+#################################################################
+# This is an example of a task that increments the progress bar.
+# Note that this is a Ray Task, but it could very well
+# be any generic Ray Actor.
+#
+@ray.remote
+def sleep_then_increment(i: int, pba: ActorHandle) -> int:
+    sleep(i / 2.0)
+    pba.update.remote(1)
+    return i
+
+#################################################################
+# Now you can run it and see what happens!
+#
+
+def run():
+    num_ticks = 6
+    pb = ProgressBar(num_ticks)
+    actor = pb.actor
+    tasks_pre_launch = [
+        sleep_then_increment.remote(i, actor) for i in range(0, num_ticks)
+    ]
+
+    pb.print_until_done()
+    tasks = ray.get(tasks_pre_launch)
+
+    tasks == list(range(num_ticks))
+    num_ticks == ray.get(actor.get_counter.remote())

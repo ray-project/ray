@@ -7,6 +7,8 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
    :hidden:
 
    tips-for-first-time.rst
+   testing-tips.rst
+   progress_bar.rst
    plot_parameter_server.rst
    plot_example-a3c.rst
    plot_hyperparameter.rst
@@ -15,12 +17,19 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
    plot_newsreader.rst
    plot_streaming.rst
    plot_example-lm.rst
-   testing-tips.rst
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
    :figure: /images/pipeline.png
    :description: :doc:`/auto_examples/tips-for-first-time`
+
+.. customgalleryitem::
+   :tooltip: Tips for testing Ray applications
+   :description: :doc:`/auto_examples/testing-tips`
+
+.. customgalleryitem::
+   :tooltip: Progress Bar for Ray Tasks
+   :description: :doc:`/auto_examples/progress_bar`
 
 .. customgalleryitem::
    :tooltip: Build a simple parameter server using Ray.
@@ -58,6 +67,3 @@ Get started with Ray, Tune, and RLlib with these notebooks that you can run onli
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
    :description: :doc:`/auto_examples/plot_example-lm`
 
-.. customgalleryitem::
-   :tooltip: Tips for testing Ray applications
-   :description: :doc:`/auto_examples/testing-tips`
