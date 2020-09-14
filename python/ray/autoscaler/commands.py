@@ -242,10 +242,10 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(
-            "Checking {} environment settings",
-            PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
-        resolved_config = provider_cls.bootstrap_config(config)
+    cli_logger.print(
+        "Checking {} environment settings",
+        PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
@@ -585,7 +585,7 @@ def get_or_create_head_node(config,
 
                 start = time.time()
                 head_node = None
-                with cli_logger.timed("Fetching the new head node"):
+                with cli_logger.group("Fetching the new head node"):
                     while True:
                         if time.time() - start > 50:
                             cli_logger.abort(

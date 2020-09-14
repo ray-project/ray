@@ -373,17 +373,6 @@ class _CliLogger():
 
         return IndentedContextManager()
 
-    def timed(self, msg: str, *args: Any, **kwargs: Any):
-        """
-        TODO: Unimplemented special type of output grouping that displays
-              a timer for its execution. The method was not removed so we
-              can mark places where this might be useful in case we ever
-              implement this.
-
-        For arguments, see `_format_msg`.
-        """
-        return self.group(msg, *args, **kwargs)
-
     def group(self, msg: str, *args: Any, **kwargs: Any):
         """Print a group title in a special color and start an indented block.
 

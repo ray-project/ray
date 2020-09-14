@@ -377,7 +377,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             return ip
 
         interval = 10
-        with cli_logger.timed("Waiting for IP"):
+        with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 cli_logger.old_info(logger, "{}Waiting for IP...",

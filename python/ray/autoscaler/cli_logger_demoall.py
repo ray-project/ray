@@ -40,7 +40,5 @@ with cli_logger.indented():
     cli_logger.print("Indented")
 with cli_logger.group("Group"):
     cli_logger.print("Group contents")
-with cli_logger.timed("Timed (unimplemented)"):
-    cli_logger.print("Timed contents")
 with cli_logger.verbatim_error_ctx("Verbtaim error"):
     cli_logger.print("Error contents")
