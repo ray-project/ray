@@ -1,5 +1,5 @@
-Pandas on Ray
-=============
+Modin (Pandas on Ray)
+=====================
 
 **Pandas on Ray has moved to Modin!**
 

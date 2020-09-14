@@ -25,3 +25,5 @@ Ray also has a number of other community contributed libraries:
 - :doc:`../pandas_on_ray`
 - :doc:`../joblib`
 - :doc:`../multiprocessing`
+
+Check out the :ref:`rapidly growing list of open source projects <ray-oss-list>` that are known to use Ray!

@@ -1,9 +1,11 @@
+.. _ray-oss-list:
+
 Open source projects using Ray
 ==============================
 
 The Ray ecosystem is rapidly growing! This page lists projects that are known to use Ray. This does not constitute an endorsement.
 
-*Using Ray? Fill out this form and we'll be in contact to get added to the list.*
+*Using Ray?* `Fill out this form <https://forms.gle/ps4S1C955kjotxd57>`__ *and we'll be in contact to get added to the list.*
 
 Horovod
 -------
