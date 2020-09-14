@@ -15,7 +15,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
-There are also many :ref:`community integrations <ray-oss-list>` with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the :ref:`full list of Ray distributed libraries here <ray-oss-list>`.
+There are also many `community integrations <https://docs.ray.io/en/master/oss-users.html>` with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries <https://docs.ray.io/en/master/oss-users.html>`.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
@@ -26,6 +26,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Dask`: dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
+
 
 
 Quick Start
