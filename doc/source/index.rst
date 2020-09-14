@@ -280,9 +280,6 @@ Papers
    multiprocessing.rst
    joblib.rst
    iter.rst
-   pandas_on_ray.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
    oss-users.rst
 
 .. toctree::
