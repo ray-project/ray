@@ -8,6 +8,7 @@ set -x
 GPU=""
 BASE_IMAGE="ubuntu:focal"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux1_x86_64.whl"
+PYTHON_VERSION=""
 
 while [[ $# -gt 0 ]]
 do
@@ -37,8 +38,13 @@ case $key in
     echo "not implemented, just hardcode me :'("
     exit 1
     ;;
+    --python-version)
+    # Python version to install. e.g. 3.7.7
+    shift
+    PYTHON_VERSION=$1
+    ;;
     *)
-    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ]"
+    echo "Usage: build-docker.sh [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
     exit 1
 esac
 shift
@@ -55,7 +61,7 @@ do
         IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -q -t rayproject/$IMAGE:latest docker/$IMAGE)
         echo "rayproject/$IMAGE:latest SHA:$IMAGE_SHA"
     else
-        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" -t rayproject/$IMAGE:latest docker/$IMAGE
+        docker build $NO_CACHE  --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t rayproject/$IMAGE:latest docker/$IMAGE
     fi
     rm "docker/$IMAGE/$(basename "$WHEEL")"
 done 
