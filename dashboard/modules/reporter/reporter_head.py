@@ -62,6 +62,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         async for sender, msg in receiver.iter():
             try:
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
                 key, data = msg
                 data = json.loads(ray.utils.decode(data))
                 key = key.decode("utf-8")
