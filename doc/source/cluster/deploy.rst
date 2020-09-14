@@ -1,6 +1,6 @@
 .. _ref-cluster-setup:
 
-Ray with Cluster Managers
+Kubernetes / YARN / SLURM
 =========================
 
 .. note::
