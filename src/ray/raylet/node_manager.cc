@@ -1260,7 +1260,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
       worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](int assigned_port) {
+  auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
     std::vector<std::string> system_config_keys;
     std::vector<std::string> system_config_values;
@@ -1269,7 +1269,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
-        fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
+        fbb, status.ok(), fbb.CreateString(status.ToString()),
+        to_flatbuf(fbb, self_node_id_), assigned_port,
         string_vec_to_flatbuf(fbb, system_config_keys),
         string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
@@ -1285,7 +1286,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::IO_WORKER) {
     // Register the new worker.
-    RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, send_reply_callback));
+    auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
+    if (!status.ok()) {
+      // If the worker failed to register to Raylet, trigger task dispatching here to
+      // allow new worker processes to be started (if capped by
+      // maximum_startup_concurrency).
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
+    }
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);

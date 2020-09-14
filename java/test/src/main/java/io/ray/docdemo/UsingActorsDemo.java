@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/latest/actors.html).
+ * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/master/actors.html).
  *
  * Please keep them in sync.
  */
