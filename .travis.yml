@@ -172,10 +172,11 @@ matrix:
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
-        - brew tap adoptopenjdk/openjdk
-        - brew cask install adoptopenjdk8
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
+        - brew tap adoptopenjdk/openjdk
+        - brew cask install adoptopenjdk8
+        - java -version
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
