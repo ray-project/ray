@@ -119,11 +119,6 @@ class NodeUpdater:
                           "Applied config {}".format(self.runtime_hash)):
                 self.do_update()
         except Exception as e:
-            error_str = str(e)
-            if hasattr(e, "cmd"):
-                error_str = "(Exit Status {}) {}".format(
-                    e.returncode, " ".join(e.cmd))
-
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))

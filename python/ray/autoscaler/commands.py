@@ -637,12 +637,6 @@ def get_or_create_head_node(config,
             # Refresh the node cache so we see the external ip if available
             provider.non_terminated_nodes(head_node_tags)
 
-            if config.get("provider", {}).get("use_internal_ips",
-                                              False) is True:
-                head_node_ip = provider.internal_ip(head_node)
-            else:
-                head_node_ip = provider.external_ip(head_node)
-
             if updater.exitcode != 0:
                 # todo: this does not follow the mockup and is not good enough
                 cli_logger.abort("Failed to setup head node.")
@@ -815,9 +809,6 @@ def exec_cluster(config_file: str,
             attach_command = " ".join(attach_command_parts)
             cli_logger.print("Run `{}` to check command status.",
                              cf.bold(attach_command))
-
-            attach_info = "Use `{}` to check on command status.".format(
-                attach_command)
         return result
     finally:
         provider.cleanup()

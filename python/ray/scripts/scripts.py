@@ -767,8 +767,6 @@ def stop(force, verbose, log_style, log_color):
             total_found += 1
 
             proc_string = str(subprocess.list2cmdline(proc_args))
-            if verbose:
-                operation = "Terminating" if force else "Killing"
             try:
                 if force:
                     proc.kill()

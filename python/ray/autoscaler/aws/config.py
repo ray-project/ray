@@ -395,7 +395,6 @@ def _configure_subnet(config):
                 format(config["provider"]["availability_zone"]))
 
     subnet_ids = [s.subnet_id for s in subnets]
-    subnet_descr = [(s.subnet_id, s.availability_zone) for s in subnets]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
