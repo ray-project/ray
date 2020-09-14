@@ -96,6 +96,15 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeGetOwnerAddress
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jclass,
+                                                                   jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePromoteAndGetOwnershipInfo
  * Signature: ([B)[B
  */

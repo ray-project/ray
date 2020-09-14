@@ -175,6 +175,15 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
 }
 
 JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, jclass,
+                                                                   jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  const auto &rpc_address =
+      ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(object_id);
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
+}
+
+JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
     JNIEnv *env, jclass, jbyteArray objectId) {
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
