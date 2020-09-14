@@ -526,6 +526,8 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
 
 Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
+Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
+
 Stopping after the first failure
 --------------------------------
 
