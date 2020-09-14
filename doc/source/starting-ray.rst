@@ -10,7 +10,7 @@ Installation
 
 Install Ray with ``pip install -U ray``. For the latest wheels (a snapshot of the ``master`` branch), you can use the instructions at :ref:`install-nightlies`.
 
-.. note:: This step is not required if you are writing a Ray application in Java and you don't have the need of running your Java application in a multi-node Ray cluster at the development stage. See `Local mode`_ for more details.
+.. note:: This step is not required if you are writing a Ray application in Java and you don't have the need of running your Java application in a Ray cluster at the development stage. See `Local mode`_ for more details.
 
 Build your Java code
 --------------------
@@ -34,7 +34,7 @@ If your application is written in Java, you need to add Ray dependencies to your
 
 .. note::
 
-  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local or single machine mode.
+  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
