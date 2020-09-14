@@ -1,3 +1,5 @@
+.. _mars-on-ray:
+
 Mars on Ray
 ============
 

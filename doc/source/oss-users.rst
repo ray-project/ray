@@ -1,7 +1,7 @@
 .. _ray-oss-list:
 
 Community libraries that integrate with Ray
-====================================
+===========================================
 
 This page lists libraries that integrate with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
@@ -12,34 +12,35 @@ Horovod
 
 Horovod is a distributed deep learning training framework for TensorFlow, Keras, PyTorch, and Apache MXNet. The goal of Horovod is to make distributed deep learning fast and easy to use.
 
-Github: `https://github.com/horovod/horovod/ <https://github.com/horovod/horovod/>`_
+[`Link to integration <https://horovod.readthedocs.io/en/stable/ray_include.html>`__]
 
 MARS
 ----
 
 Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
 
-Github: `https://github.com/mars-project/mars/ <https://github.com/mars-project/mars/>`_
+[:ref:`Link to integration <mars-on-ray>`]
 
 Spacy
 -----
 spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
 
-Github: `https://github.com/explosion/spaCy/ <https://github.com/explosion/spaCy/>`_
+[`Link to integration <https://pypi.org/project/spacy-ray/>`__]
+
 
 Hugging Face Transformers
 -------------------------
 
 State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0.
 
-Github: `https://github.com/huggingface/transformers/ <https://github.com/huggingface/transformers/>`_
+[`Link to integration <https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search>`__]
 
 Seldon Alibi
 ------------
 
 Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
 
-Github: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`_
+Github: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 
 Intel Analytics Zoo
@@ -47,15 +48,14 @@ Intel Analytics Zoo
 
 Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
 
-Github: `https://github.com/intel-analytics/analytics-zoo/ <https://github.com/intel-analytics/analytics-zoo/>`_
-
+[`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
 
 Modin
 -----
 
 Scale your pandas workflows by changing one line of code.
 
-Github: `https://github.com/modin-project/modin/ <https://github.com/modin-project/modin/>`_
+Github: `https://github.com/modin-project/modin/ <https://github.com/modin-project/modin/>`__
 
 
 ClassyVision
@@ -63,7 +63,7 @@ ClassyVision
 
 An end-to-end framework for image and video classification.
 
-Github: `https://github.com/facebookresearch/ClassyVision/ <https://github.com/facebookresearch/ClassyVision/>`_
+[`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
 
 PyCaret
 -------

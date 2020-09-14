@@ -18,12 +18,10 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 - :ref:`sgd-index`
 - :ref:`rayserve`
 
-Ray also has a number of other community contributed libraries:
+There are also many :ref:`community libraries <ray-oss-list>` that integrate with Ray, including `Modin`_, `Hugging Face Transformers`_, :doc:`../dask-on-ray`, `MARS`_, `Horovod`_ and others.
+Check out Ray's :ref:`rapidly growing list of open source projects <ray-oss-list>`!
 
-- :doc:`../dask-on-ray`
-- `Mars on Ray <https://github.com/mars-project/mars/pull/1508>`__
-- :doc:`../pandas_on_ray`
-- :doc:`../joblib`
-- :doc:`../multiprocessing`
-
-Check out the :ref:`rapidly growing list of open source projects <ray-oss-list>` that are known to use Ray!
+.. _`Modin`: https://github.com/modin-project/modin
+.. _`Hugging Face Transformers`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
+.. _`MARS`: https://github.com/mars-project/mars/pull/1508
+.. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html

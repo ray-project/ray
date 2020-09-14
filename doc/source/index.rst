@@ -195,7 +195,7 @@ Papers
 
    ray-overview/index.rst
    installation.rst
-   oss-users.rst
+   Open source projects that run on Ray <oss-users.rst>
 
 .. toctree::
    :hidden:
