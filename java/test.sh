@@ -6,6 +6,7 @@ set -e
 set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+java -version
 
 run_testng() {
     local exit_code

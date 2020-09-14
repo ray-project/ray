@@ -17,6 +17,15 @@ cd "$WORKSPACE_DIR/java"
 version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
 cd -
 
+check_java_version() {
+  local VERSION
+  VERSION=$(java  -version 2>&1 | awk -F '"' '/version/ {print $2}')
+  if [[ ! $VERSION =~ 1.8 ]]; then
+    echo "Java version is $VERSION. Please install jkd8."
+    exit 1
+  fi
+}
+
 build_jars() {
   local platform="$1"
   local bazel_build="${2:-true}"
@@ -179,6 +188,8 @@ deploy_jars() {
     echo "Native bianries/libraries are not ready, skip deploying jars."
   fi
 }
+
+check_java_version
 
 case "$1" in
 linux) # build jars that only contains Linux binaries.
