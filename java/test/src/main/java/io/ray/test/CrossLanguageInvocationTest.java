@@ -1,7 +1,6 @@
 package io.ray.test;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
@@ -19,7 +18,6 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -52,8 +50,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
     }
 
     System.setProperty("ray.head.args.0",
-      "--code-search-path=" + System.getProperty("java.class.path") + File.pathSeparator + tempDir
-        .getAbsolutePath());
+        "--code-search-path=" + System.getProperty("java.class.path")
+        + File.pathSeparator + tempDir.getAbsolutePath());
   }
 
   @AfterClass

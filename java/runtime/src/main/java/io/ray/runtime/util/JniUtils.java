@@ -2,7 +2,6 @@ package io.ray.runtime.util;
 
 import com.google.common.collect.Sets;
 import com.sun.jna.NativeLibrary;
-import io.ray.runtime.config.RayConfig;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,7 +33,7 @@ public class JniUtils {
    * @param exportSymbols export symbols of library so that it can be used by other libs.
    */
   public static synchronized void loadLibrary(String destDir, String libraryName,
-    boolean exportSymbols) {
+      boolean exportSymbols) {
     if (!loadedLibs.contains(libraryName)) {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.

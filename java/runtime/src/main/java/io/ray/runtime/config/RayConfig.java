@@ -64,7 +64,7 @@ public class RayConfig {
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
-        "Redis address must be set in worker mode.");
+          "Redis address must be set in worker mode.");
     }
   }
 
@@ -145,7 +145,7 @@ public class RayConfig {
       nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     } else {
       Preconditions.checkState(workerMode != WorkerType.WORKER,
-        "Worker started by raylet should accept the node manager port from raylet.");
+          "Worker started by raylet should accept the node manager port from raylet.");
       nodeManagerPort = NetworkUtil.getUnusedPort();
     }
 

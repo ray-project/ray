@@ -60,8 +60,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
 
     rayConfig.rayletConfigParameters.clear();
-    for (Map.Entry<String, String> entry :
-      gcsClient.getInternalConfig().entrySet()) {
+    for (Map.Entry<String, String> entry : gcsClient.getInternalConfig().entrySet()) {
       rayConfig.rayletConfigParameters.put(entry.getKey(), entry.getValue());
     }
   }

@@ -12,8 +12,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +30,11 @@ public class RunManager {
    */
   public static void startRayHead(RayConfig rayConfig) {
     List<String> command = Arrays.asList(
-      "ray",
-      "start",
-      "--head",
-      "--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters),
-      "--code-search-path=" + System.getProperty("java.class.path")
+        "ray",
+        "start",
+        "--head",
+        "--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters),
+        "--code-search-path=" + System.getProperty("java.class.path")
     );
     String output;
     try {
@@ -69,13 +67,10 @@ public class RunManager {
   }
 
   public static void fillConfigForDriver(RayConfig rayConfig) {
-    List<String> command = Arrays.asList(
-      "python",
-      "-c",
-      String.format(
-        "import ray; print(ray.services.get_address_info_from_redis('%s', '%s', redis_password='%s'))",
-        rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword)
-    );
+    String script = String.format("import ray;"
+        + " print(ray.services.get_address_info_from_redis('%s', '%s', redis_password='%s'))",
+        rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
+    List<String> command = Arrays.asList("python", "-c", script);
 
     String output;
     try {
@@ -110,12 +105,12 @@ public class RunManager {
     String stderr = IOUtils.toString(p.getErrorStream(), Charset.defaultCharset());
     if (p.exitValue() != 0) {
       String sb = "The exit value of the process is " + p.exitValue()
-        + ". Command: " + Joiner.on(" ").join(command)
-        + "\n"
-        + "stdout:\n"
-        + stdout
-        + "stderr:\n"
-        + stderr;
+          + ". Command: " + Joiner.on(" ").join(command)
+          + "\n"
+          + "stdout:\n"
+          + stdout
+          + "stderr:\n"
+          + stderr;
       throw new RuntimeException(sb);
     }
     return stdout;
