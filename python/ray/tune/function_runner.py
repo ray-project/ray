@@ -18,8 +18,6 @@ from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
                             detect_reporter)
 
-from ray.util.sgd.torch.utils import setup_address
-
 logger = logging.getLogger(__name__)
 
 # Time between FunctionRunner checks when fetching
@@ -509,8 +507,8 @@ def wrap_function(train_func, warn=True):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-        def setup_address(self):
-            return setup_address()
+        def execute(self, fn):
+            return fn()
 
     return ImplicitFunc
 

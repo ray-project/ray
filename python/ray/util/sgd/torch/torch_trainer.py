@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune.trainable import Trainable
+from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
