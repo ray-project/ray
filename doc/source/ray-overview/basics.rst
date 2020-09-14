@@ -19,7 +19,7 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 - :ref:`rayserve`
 
 There are also many :ref:`community libraries <ray-oss-list>` that integrate with Ray, including `Modin`_, `Hugging Face Transformers`_, :doc:`../dask-on-ray`, `MARS`_, `Horovod`_, and others.
-Check out Ray's :ref:`rapidly growing list of open source projects <ray-oss-list>`!
+Check out the :ref:`full list of Ray distributed libraries <ray-oss-list>`!
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face Transformers`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
