@@ -1,3 +1,5 @@
+.. _ray-multiprocessing:
+
 Distributed multiprocessing.Pool
 ================================
 
