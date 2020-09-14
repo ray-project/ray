@@ -171,9 +171,9 @@ matrix:
         - MAC_WHEELS=1 MAC_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
-      language: java
-      jdk: openjdk8
       install:
+        - brew tap adoptopenjdk/openjdk
+        - brew cask install adoptopenjdk8
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
