@@ -527,14 +527,7 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
 
 Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
-Note that ``local_mode`` has some known issues, so please read carefully before using. You should not use ``local_mode`` if:
-1. If your application depends on setting environment variables per process
-2. If your application has recursive actor calls
-3. If your remote actor/task sets any sort of process-level global variables
-4. If you use are using async actors
-
-Also note, if you are using GPUs, you must set the ``CUDA_VISIBLE_DEVICES`` environment
-variable to a comma separated list of your GPU Device IDs.
+Note that ``local_mode`` has some known issues, so please read :ref:`these docs <local-mode-docs>` for more info.
 
 Stopping after the first failure
 --------------------------------
