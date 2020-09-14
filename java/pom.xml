@@ -57,7 +57,6 @@
     <module>api</module>
     <module>runtime</module>
     <module>test</module>
-    <module>tutorial</module>
   </modules>
 
   <properties>
@@ -125,7 +124,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <version>3.1.0</version>
           <executions>
             <execution>
               <id>attach-javadocs</id>

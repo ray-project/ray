@@ -150,6 +150,10 @@ table RegisterClientRequest {
 }
 
 table RegisterClientReply {
+  // Whether the registration succeeded.
+  success: bool;
+  // The reason of registration failure.
+  failure_reason: string;
   // GCS ClientID of the local node manager.
   raylet_id: string;
   // Port that this worker should listen on.

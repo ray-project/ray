@@ -82,7 +82,7 @@ raylet::RayletClient::RayletClient(
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, ClientID *raylet_id, int *port,
+    const std::string &ip_address, Status *status, ClientID *raylet_id, int *port,
     std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
@@ -103,10 +103,23 @@ raylet::RayletClient::RayletClient(
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
-  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
-                                          MessageType::RegisterClientReply, &reply, &fbb);
-  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+  auto request_status = conn_->AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  if (!request_status.ok()) {
+    *status =
+        Status(request_status.code(),
+               std::string("[RayletClient] Unable to register worker with raylet. ") +
+                   request_status.message());
+    return;
+  }
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
+  bool success = reply_message->success();
+  if (success) {
+    *status = Status::OK();
+  } else {
+    *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+    return;
+  }
   *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
