@@ -217,7 +217,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
         -Dray.local-mode=true \
         <classname> <args>
 
-Note that some behavior such as setting global process variables may not work as expected.
+Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
 
 .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
