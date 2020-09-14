@@ -95,24 +95,16 @@ public class RunManager {
       LOGGER.debug("Starting process with command: {}", Joiner.on(" ").join(command));
     }
 
-    ProcessBuilder builder = new ProcessBuilder(command);
-
+    ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
     Process p = builder.start();
-
+    String output = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
     p.waitFor();
-
-    String stdout = IOUtils.toString(p.getInputStream(), Charset.defaultCharset());
-    String stderr = IOUtils.toString(p.getErrorStream(), Charset.defaultCharset());
     if (p.exitValue() != 0) {
       String sb = "The exit value of the process is " + p.exitValue()
-          + ". Command: " + Joiner.on(" ").join(command)
-          + "\n"
-          + "stdout:\n"
-          + stdout
-          + "stderr:\n"
-          + stderr;
+          + ". Command: " + Joiner.on(" ").join(command) + "\n"
+          + "output:\n" + output;
       throw new RuntimeException(sb);
     }
-    return stdout;
+    return output;
   }
 }
