@@ -523,9 +523,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     else:
         # Start Ray on a non-head node.
         if not (port is None):
-            cli_logger.abort("`{}/{}` should not be specified without `{}`.",
-                             cf.bold("--port"), cf.bold("--redis-port"),
-                             cf.bold("--head"))
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--port"), cf.bold("--head"))
 
             raise Exception(
                 "If --head is not passed in, --port and --redis-port are not "
