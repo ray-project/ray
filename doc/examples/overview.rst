@@ -52,9 +52,7 @@ Machine Learning Examples
    :hidden:
 
    plot_parameter_server.rst
-   plot_example-a3c.rst
    plot_hyperparameter.rst
-   plot_pong_example.rst
    plot_lbfgs.rst
    plot_example-lm.rst
    plot_newsreader.rst
@@ -66,19 +64,9 @@ Machine Learning Examples
    :description: :doc:`/auto_examples/plot_parameter_server`
 
 .. customgalleryitem::
-   :tooltip: Asynchronous Advantage Actor Critic agent using Ray.
-   :figure: /images/a3c.png
-   :description: :doc:`/auto_examples/plot_example-a3c`
-
-.. customgalleryitem::
    :tooltip: Simple parallel asynchronous hyperparameter evaluation.
    :figure: /images/hyperparameter.png
    :description: :doc:`/auto_examples/plot_hyperparameter`
-
-.. customgalleryitem::
-   :tooltip: Parallelizing a policy gradient calculation on OpenAI Gym Pong.
-   :figure: /images/pong.png
-   :description: :doc:`/auto_examples/plot_pong_example`
 
 .. customgalleryitem::
    :tooltip: Walkthrough of parallelizing the L-BFGS algorithm.
