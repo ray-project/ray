@@ -519,11 +519,12 @@ def _get_docker_cpus():
 
 def get_num_cpus():
     cpu_count = multiprocessing.cpu_count()
-    if "RAY_USE_MULTIPROCESSING_CPU_COUNT" in os.environ:
+    if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
-            "Using multiprocessing.cpu_count() to detect the number of CPUs. "
-            "This method of CPU detection is buggy when used inside docker. "
-            "To correctly detect CPUs remove the enivronment variable: "
+            "Detected RAY_USE_MULTIPROCESSING_CPU_COUNT=1: Using "
+            "multiprocessing.cpu_count() to detect the number of CPUs. "
+            "This may be inconsistent when used inside docker. "
+            "To correctly detect CPUs, unset the env var: "
             "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
         return cpu_count
     try:
@@ -534,12 +535,14 @@ def get_num_cpus():
             cpu_count = docker_count
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
                 logger.warning(
-                    "Detecting limited number of CPUs due to docker. In "
+                    "Detecting docker specified CPUs. In "
                     "previous versions of Ray, CPU detection in containers "
-                    "was buggy. Please ensure that Ray has enough CPUs "
-                    "allocated. This message will be removed in future "
-                    "version of Ray. You can set the environment variable: "
-                    "`RAY_DISABLE_DOCKER_CPU_WARNING` to remove it now.")
+                    "was incorrect. Please ensure that Ray has enough CPUs "
+                    "allocated. As a temporary workaround to revert to the "
+                    "prior behavior, set "
+                    "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+                    "before starting Ray. Set the env var: "
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
 
     except Exception:
         # `nproc` and cgroup are linux-only. If docker only works on linux
