@@ -732,9 +732,13 @@ def get_or_create_head_node(config,
                 cf.bold("  ray exec {}{} {}"), config_file, modifiers,
                 quote(monitor_str))
 
-            cli_logger.print("Connect to a terminal on the cluster head")
+            cli_logger.print("Connect to a terminal on the cluster head:")
             cli_logger.print(
                 cf.bold("  ray attach {}{}"), config_file, modifiers)
+
+            remote_shell_str = updater.cmd_runner.remote_shell_command_str()
+            cli_logger.print("Get a remote shell to the cluster manually:")
+            cli_logger.print("  {}", remote_shell_str.strip())
     finally:
         provider.cleanup()
 
