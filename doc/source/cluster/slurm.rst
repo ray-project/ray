@@ -3,7 +3,29 @@
 Deploying on Slurm
 ==================
 
-Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using ``srun`` within the submitted script. For example:
+Clusters managed by Slurm may require that Ray is initialized as a part of the submitted job. This can be done by using ``srun`` within the submitted script.
+
+Examples and templates
+----------------------
+
+Here are some community-contributed templates for using SLURM with Ray:
+
+- `Ray sbatch submission scripts`_ used at `NERSC <https://www.nersc.gov/>`_, a US national lab.
+- `YASPI`_ (yet another slurm python interface) by @albanie. The goal of yaspi is to provide an interface to submitting slurm jobs, thereby obviating the joys of sbatch files. It does so through recipes - these are collections of templates and rules for generating sbatch scripts. Supports job submissions for Ray.
+
+- `Template script`_ by @pengzhenghao
+
+.. _`Ray sbatch submission scripts`: https://github.com/NERSC/slurm-ray-cluster
+
+.. _`YASPI`: https://github.com/albanie/yaspi
+
+.. _`Template script`: https://gist.github.com/pengzhenghao/b348db1075101a9b986c4cdfea13dcd6
+
+
+
+
+Starter SLURM script
+--------------------
 
 .. code-block:: bash
 
