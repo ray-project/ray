@@ -234,11 +234,6 @@ class AWSNodeProvider(NodeProvider):
                     "To disable reuse, set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration.",
                     cli_logger.render_list(reuse_node_ids))
-                cli_logger.old_info(
-                    logger, "AWSNodeProvider: reusing instances {}. "
-                    "To disable reuse, set "
-                    "'cache_stopped_nodes: False' in the provider "
-                    "config.", reuse_node_ids)
 
                 # todo: timed?
                 with cli_logger.group("Stopping instances to reuse"):
@@ -249,10 +244,6 @@ class AWSNodeProvider(NodeProvider):
                         if node.state["Name"] == "stopping":
                             cli_logger.print("Waiting for instance {} to stop",
                                              node.id)
-                            cli_logger.old_info(
-                                logger,
-                                "AWSNodeProvider: waiting for instance "
-                                "{} to fully stop...", node.id)
                             node.wait_until_stopped()
 
                 self.ec2.meta.client.start_instances(
@@ -314,10 +305,6 @@ class AWSNodeProvider(NodeProvider):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
 
-                cli_logger.old_info(
-                    logger, "NodeProvider: calling create_instances "
-                    "with {} (count={}).", subnet_id, count)
-
                 self.subnet_idx += 1
                 conf.update({
                     "MinCount": 1,
@@ -352,26 +339,17 @@ class AWSNodeProvider(NodeProvider):
                             _tags=dict(
                                 state=instance.state["Name"],
                                 info=state_reason["Message"]))
-                        cli_logger.old_info(
-                            logger, "NodeProvider: Created instance "
-                            "[id={}, name={}, info={}]", instance.instance_id,
-                            instance.state["Name"], state_reason["Message"])
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
                     # todo: err msg
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.")
-                    cli_logger.old_error(
-                        logger,
-                        "create_instances: Max attempts ({}) exceeded.",
-                        BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
                     cli_logger.print(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
-                    cli_logger.old_error(logger, exc)
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
@@ -381,11 +359,6 @@ class AWSNodeProvider(NodeProvider):
                     "Terminating instance {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     node_id)  # todo: show node name?
-
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: terminating node {} (spot nodes cannot "
-                    "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
                 cli_logger.print("Stopping instance {} " + cf.dimmed(
@@ -393,12 +366,6 @@ class AWSNodeProvider(NodeProvider):
                     "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration)"),
                                  node_id)  # todo: show node name?
-
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: stopping node {}. To terminate nodes "
-                    "on stop, set 'cache_stopped_nodes: False' in the "
-                    "provider config.".format(node_id))
                 node.stop()
         else:
             node.terminate()
@@ -427,11 +394,6 @@ class AWSNodeProvider(NodeProvider):
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: stopping nodes {}. To terminate nodes "
-                    "on stop, set 'cache_stopped_nodes: False' in the "
-                    "provider config.", on_demand_ids)
 
                 self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
             if spot_ids:
@@ -439,10 +401,6 @@ class AWSNodeProvider(NodeProvider):
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
-                cli_logger.old_info(
-                    logger,
-                    "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
-                    "be stopped, only terminated)", spot_ids)
 
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:

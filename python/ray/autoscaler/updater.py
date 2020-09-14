@@ -104,9 +104,6 @@ class NodeUpdater:
         self.is_head_node = is_head_node
 
     def run(self):
-        cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
-                            self.runtime_hash)
-
         if cmd_output_util.does_allow_interactive(
         ) and cmd_output_util.is_output_redirected():
             # this is most probably a bug since the user has no control
@@ -130,9 +127,6 @@ class NodeUpdater:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
-
-            cli_logger.old_error(logger, "{}Error executing: {}\n",
-                                 self.log_prefix, error_str)
 
             cli_logger.error("!!!")
             if hasattr(e, "cmd"):
@@ -232,21 +226,14 @@ class NodeUpdater:
         with cli_logger.group(
                 "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
             with LogTimer(self.log_prefix + "Got remote shell"):
-                cli_logger.old_info(logger, "{}Waiting for remote shell...",
-                                    self.log_prefix)
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
                 first_conn_refused_time = None
                 while time.time() < deadline and \
                         not self.provider.is_terminated(self.node_id):
                     try:
-                        cli_logger.old_debug(logger,
-                                             "{}Waiting for remote shell...",
-                                             self.log_prefix)
-
                         # Run outside of the container
                         self.cmd_runner.run("uptime", run_env="host")
-                        cli_logger.old_debug(logger, "Uptime succeeded.")
                         cli_logger.success("Success.")
                         return True
                     except ProcessRunnerError as e:
@@ -272,9 +259,6 @@ class NodeUpdater:
                             "SSH still not available {}, "
                             "retrying in {} seconds.", cf.dimmed(retry_str),
                             cf.bold(str(READY_CHECK_INTERVAL)))
-                        cli_logger.old_debug(logger,
-                                             "{}Node not up, retrying: {}",
-                                             self.log_prefix, retry_str)
 
                         time.sleep(READY_CHECK_INTERVAL)
 
@@ -303,9 +287,6 @@ class NodeUpdater:
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.",
                 _numbered=("[]", "2-5", 6))
-            cli_logger.old_info(logger,
-                                "{}{} already up-to-date, skip to ray start",
-                                self.log_prefix, self.node_id)
 
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
@@ -433,9 +414,6 @@ class NodeUpdater:
                         raise click.ClickException("Start command failed.")
 
     def rsync_up(self, source, target, file_mount=False):
-        cli_logger.old_info(logger, "{}Syncing {} to {}...", self.log_prefix,
-                            source, target)
-
         options = {}
         options["file_mount"] = file_mount
         self.cmd_runner.run_rsync_up(source, target, options=options)
@@ -443,9 +421,6 @@ class NodeUpdater:
                            cf.bold(source), cf.bold(target))
 
     def rsync_down(self, source, target, file_mount=False):
-        cli_logger.old_info(logger, "{}Syncing {} from {}...", self.log_prefix,
-                            source, target)
-
         options = {}
         options["file_mount"] = file_mount
         self.cmd_runner.run_rsync_down(source, target, options=options)

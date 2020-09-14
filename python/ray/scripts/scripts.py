@@ -412,9 +412,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
     if redis_port is not None:
         cli_logger.warning("{} is being deprecated. Use {} instead.",
                            cf.bold("--redis-port"), cf.bold("--port"))
-        cli_logger.old_warning(
-            logger, "The --redis-port argument will be deprecated soon. "
-            "Please use --port instead.")
         if port is not None and port != redis_port:
             cli_logger.abort(
                 "Incompatible values for {} and {}. Use only {} instead.",
@@ -426,9 +423,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         cli_logger.warning("{} is being deprecated. Use {} instead.",
                            cf.bold("--include-webui"),
                            cf.bold("--include-dashboard"))
-        cli_logger.old_warning(
-            logger, "The --include-webui argument will be deprecated soon"
-            "Please use --include-dashboard instead.")
         if include_dashboard is not None:
             include_dashboard = include_webui
 
@@ -437,9 +431,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         cli_logger.warning("{} is being deprecated. Use {} instead.",
                            cf.bold("--webui-host"),
                            cf.bold("--dashboard-host"))
-        cli_logger.old_warning(
-            logger, "The --webui-host argument will be deprecated"
-            " soon. Please use --dashboard-host instead.")
         if webui_host != dashboard_host and dashboard_host != "localhost":
             cli_logger.abort(
                 "Incompatible values for {} and {}. Use only {} instead.",
@@ -546,8 +537,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         ray_params.update_if_absent(
             node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port or redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -596,24 +585,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
-
-        cli_logger.old_info(
-            logger,
-            "\nStarted Ray on this node. You can add additional nodes to "
-            "the cluster by calling\n\n"
-            "    ray start --address='{}'{}\n\n"
-            "from the node you wish to add. You can connect a driver to the "
-            "cluster from Python by running\n\n"
-            "    import ray\n"
-            "    ray.init(address='auto'{})\n\n"
-            "If you have trouble connecting from a different machine, check "
-            "that your firewall is configured properly. If you wish to "
-            "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(
-                redis_address, " --redis-password='" + redis_password + "'"
-                if redis_password else "",
-                ", _redis_password='" + redis_password + "'"
-                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if not (redis_port is None and port is None):
@@ -680,8 +651,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             node_ip_address=services.get_node_ip_address(redis_address))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
 
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
@@ -701,11 +670,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
 
-        cli_logger.old_info(
-            logger, "\nStarted Ray on this node. If you wish to terminate the "
-            "processes that have been started, run\n\n"
-            "    ray stop")
-
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
@@ -721,8 +685,6 @@ def start(node_ip_address, redis_address, address, redis_port, port,
             if len(deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprcesses exited unexpectedly:")
-                cli_logger.old_error(logger,
-                                     "Ray processes died unexpectedly:")
 
                 with cli_logger.indented():
                     for process_type, process in deceased:
@@ -730,15 +692,10 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)})
-                        cli_logger.old_error(
-                            logger, "\t{} died with exit code {}".format(
-                                process_type, process.returncode))
 
                 # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                cli_logger.old_error(
-                    logger, "Killing remaining processes and exiting...")
                 sys.exit(1)
 
 
@@ -812,8 +769,6 @@ def stop(force, verbose, log_style, log_color):
             proc_string = str(subprocess.list2cmdline(proc_args))
             if verbose:
                 operation = "Terminating" if force else "Killing"
-                cli_logger.old_info(logger, "%s process %s: %s", operation,
-                                    proc.pid, proc_string)
             try:
                 if force:
                     proc.kill()
@@ -840,7 +795,6 @@ def stop(force, verbose, log_style, log_color):
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
-                cli_logger.old_error(logger, "Error: %s", ex)
 
     if total_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
@@ -938,7 +892,6 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning("{}", str(e))
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
-            cli_logger.old_info(logger, "Error downloading file: ", e)
     create_or_update_cluster(
         config_file=cluster_config_file,
         override_min_workers=min_workers,
@@ -1213,11 +1166,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
                            cf.bold("-- <args ...>"),
                            cf.bold("ray submit script.py -- --arg=123 --flag"))
         cli_logger.newline()
-        cli_logger.old_warning(
-            logger,
-            "ray submit [yaml] [script.py] --args=... is deprecated and "
-            "will be removed in a future version of Ray. Use "
-            "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
 
     if start:
         create_or_update_cluster(

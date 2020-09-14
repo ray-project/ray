@@ -380,9 +380,6 @@ class SSHCommandRunner(CommandRunnerInterface):
         with cli_logger.timed("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
-                cli_logger.old_info(logger, "{}Waiting for IP...",
-                                    self.log_prefix)
-
                 ip = self._get_node_ip()
                 if ip is not None:
                     cli_logger.labeled_value("Received", ip)
@@ -416,7 +413,6 @@ class SSHCommandRunner(CommandRunnerInterface):
             os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
         except OSError as e:
             cli_logger.warning("{}", str(e))  # todo: msg
-            cli_logger.old_warning(logger, "{}", str(e))
 
     def _run_helper(self,
                     final_cmd,
@@ -445,7 +441,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             # For now, if the output is needed we just skip the new logic.
             # In the future we could update the new logic to support
             # capturing output, but it is probably not needed.
-            if not cli_logger.old_style and not with_output:
+            if not with_output:
                 return run_cmd_redirected(
                     final_cmd,
                     process_runner=self.process_runner,
@@ -457,7 +453,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                 return self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError as e:
             quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-            if not cli_logger.old_style and not is_using_login_shells():
+            if not is_using_login_shells():
                 raise ProcessRunnerError(
                     "Command failed",
                     "ssh_command_failed",
@@ -509,9 +505,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                     cli_logger.verbose(
                         "Forwarding port {} to port {} on localhost.",
                         cf.bold(local), cf.bold(remote))  # todo: msg
-                    cli_logger.old_info(logger,
-                                        "{}Forwarding {} -> localhost:{}",
-                                        self.log_prefix, local, remote)
                     ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
@@ -524,8 +517,6 @@ class SSHCommandRunner(CommandRunnerInterface):
                 final_cmd += _with_interactive(cmd)
             else:
                 final_cmd += [cmd]
-            cli_logger.old_info(logger, "{}Running {}", self.log_prefix,
-                                " ".join(final_cmd))
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
             # still create an interactive shell in some ssh versions.

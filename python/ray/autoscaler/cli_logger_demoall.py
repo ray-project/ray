@@ -7,9 +7,7 @@
 from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
-cli_logger.old_style = False
-cli_logger.verbosity = 999
-cli_logger.detect_colors()
+cli_logger.configure(verbosity=999)
 
 cli_logger.print(
     cf.bold("Bold ") + cf.italic("Italic ") + cf.underlined("Underlined"))
