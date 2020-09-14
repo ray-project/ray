@@ -23,5 +23,5 @@ Check out the :ref:`full list of Ray distributed libraries here <ray-oss-list>`.
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face Transformers`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://github.com/mars-project/mars/pull/1508
+.. _`MARS`: mars-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
