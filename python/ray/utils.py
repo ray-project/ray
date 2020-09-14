@@ -538,7 +538,8 @@ def get_num_cpus():
                     "Detecting docker specified CPUs. In "
                     "previous versions of Ray, CPU detection in containers "
                     "was incorrect. Please ensure that Ray has enough CPUs "
-                    "allocated. To revert to the prior behavior, set "
+                    "allocated. As a temporary workaround to revert to the "
+                    "prior behavior, set "
                     "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
                     "before starting Ray. Set the env var: "
                     "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
