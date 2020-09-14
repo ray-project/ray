@@ -1,6 +1,5 @@
-.+\.py.*Cluster configuration valid
 .+\.py.*Cluster: test-cli
-.+\.py.*Bootstrapping AWS config
+.+\.py.*Checking AWS environment settings
 .+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
 .+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
 .+\.py.*Creating new key pair __test-cli_key-1 for use as the default\.
@@ -71,5 +70,7 @@
 .+\.py.*Useful commands
 .+\.py.*Monitor autoscaling with
 .+\.py.*  ray exec .+ 'tail -n 100 -f .+
-.+\.py.*Connect to a terminal on the cluster head
+.+\.py.*Connect to a terminal on the cluster head:
 .+\.py.*  ray attach .+
+.+\.py.*Get a remote shell to the cluster manually:
+.+\.py.*  ssh.+\.pem.+
