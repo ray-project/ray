@@ -377,7 +377,7 @@ This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
 Note that the actor will still be garbage-collected if no handles to it
-exist. See `Actor Lifetimes`_ for more details.
+exist. See :ref:`actor-lifetimes` for more details.
 
 
 .. tabs::
@@ -418,6 +418,7 @@ exist. See `Actor Lifetimes`_ for more details.
       Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
       Assert.assertTrue(counter.isPresent());
 
+.. _actor-lifetimes:
 
 Actor Lifetimes
 ---------------
