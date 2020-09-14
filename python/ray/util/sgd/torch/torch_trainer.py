@@ -407,7 +407,7 @@ class TorchTrainer:
                 self._num_failures += 1
             self._resize_worker_group()
             logger.info("Retrying training step with %d workers." %
-                        (self.worker_group.get_num_workers()))
+                        self.worker_group.num_workers)
             success, worker_stats = self.worker_group.train(
                 num_steps=num_steps,
                 profile=profile,

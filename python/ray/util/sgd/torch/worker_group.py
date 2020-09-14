@@ -255,10 +255,24 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             ray.get(remote_calls)
 
     def state_dict(self, to_cpu=False):
-        ready, _ = ray.wait(
-            [r.state_dict.remote(to_cpu) for r in self.remote_workers],
-            num_returns=1)
-        return ray.get(ready[0])
+        sd = None
+        futures = {r.state_dict.remote(to_cpu=to_cpu) for r in
+                   self.remote_workers}
+        while len(futures) > 0:
+            import pdb
+            pdb.set_trace()
+            ready, _ = ray.wait(list(futures), num_returns=1)
+            object_ref = ready[0]
+            try:
+                sd = ray.get(object_ref)
+            except RayActorError:
+                futures.remove(object_ref)
+            else:
+                break
+        if sd is None:
+            raise RuntimeError("Obtaining state_dict from remote workers is "
+                               "unsuccessful since all workers have died.")
+        return sd
 
     def _train(self, num_steps, profile, info, dataset=None):
         """Runs 1 epoch of training on all workers.
