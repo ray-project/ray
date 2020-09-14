@@ -195,6 +195,7 @@ Papers
 
    ray-overview/index.rst
    installation.rst
+   oss-users.rst
 
 .. toctree::
    :hidden:
