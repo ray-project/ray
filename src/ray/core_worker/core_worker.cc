@@ -301,20 +301,30 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
+  Status raylet_client_status;
   ClientID local_raylet_id;
   int assigned_port;
   std::unordered_map<std::string, std::string> system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
-      options_.node_ip_address, &local_raylet_id, &assigned_port, &system_config,
-      options_.serialized_job_config));
+      options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
+      &system_config, options_.serialized_job_config));
+
+  if (!raylet_client_status.ok()) {
+    // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
+    RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
+                   << raylet_client_status;
+    if (options_.enable_logging) {
+      RayLog::ShutDownRayLog();
+    }
+    // Quit the process immediately.
+    _Exit(1);
+  }
+
   connected_ = true;
 
-  RAY_CHECK(assigned_port != -1)
-      << "Failed to allocate a port for the worker. Please specify a wider port range "
-         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
-         "start'.";
+  RAY_CHECK(assigned_port >= 0);
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(system_config);
