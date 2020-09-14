@@ -155,6 +155,7 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
 
         trainer1.shutdown(force=True)
 
+
 if __name__ == "__main__":
     import pytest
     import sys

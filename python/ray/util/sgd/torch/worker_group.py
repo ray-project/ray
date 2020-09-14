@@ -257,8 +257,10 @@ class RemoteWorkerGroup(WorkerGroupInterface):
     def state_dict(self, to_cpu=False):
         # This is needed to handle calling ray.get on a dead actor.
         sd = None
-        futures = {r.state_dict.remote(to_cpu=to_cpu) for r in
-                   self.remote_workers}
+        futures = {
+            r.state_dict.remote(to_cpu=to_cpu)
+            for r in self.remote_workers
+        }
         while len(futures) > 0:
             ready, _ = ray.wait(list(futures), num_returns=1)
             object_ref = ready[0]
