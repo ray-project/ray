@@ -23,4 +23,9 @@ if [ "X$pod" = "X-l" ]; then
     shift
 fi
 
-exec kubectl "$namespace" exec -i "$pod" -- "$@"
+server=''
+if [ ! -z "$KUBE_API_SERVER" ]; then
+  server="--server $KUBE_API_SERVER"
+fi
+
+exec kubectl $server "$namespace" exec -i "$pod" -- "$@"

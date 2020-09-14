@@ -33,6 +33,9 @@ provider:
 
     # Cloud and Region to create an SKE when not exists.
     # If SKE already exists, this value will be ignored.
+    # Supported cloud region
+    #  - "gcp us-west1"
+    #  - "aws us-west2"
     ske_region: "aws us-west2"
 
     # Exposing external IP addresses for ray pods isn't currently supported.
@@ -80,7 +83,7 @@ head_node:
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
-          args: ["trap : TERM INT; sleep infinity & wait;"]
+          args: ["mkdir -p /tmp/ray && touch /tmp/ray/.bashrc; trap : TERM INT; sleep infinity & wait;"]
           ports:
               - containerPort: 6379 # Redis port.
               - containerPort: 6380 # Redis port.
@@ -115,6 +118,8 @@ head_node:
                 valueFrom:
                     resourceFieldRef:
                         resource: requests.cpu
+              - name: HOME
+                value: /tmp/ray
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

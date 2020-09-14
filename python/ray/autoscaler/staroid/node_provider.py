@@ -5,7 +5,9 @@ import socket
 from contextlib import closing
 
 from uuid import uuid4
-from ray.autoscaler.command_runner import KubernetesCommandRunner
+from kubernetes.client.rest import ApiException
+
+from .command_runner import StaroidCommandRunner
 from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -37,7 +39,7 @@ class StaroidNodeProvider(NodeProvider):
             account=provider_config["account"])
 
         self.__ske = self._get_config_or_env(provider_config, "ske", "STAROID_SKE")
-        self.__ske_region = self._get_config_or_env(provider_config, "ske_regiono", "STAROID_SKE_REGION")
+        self.__ske_region = self._get_config_or_env(provider_config, "ske_region", "STAROID_SKE_REGION")
 
     def _get_config_or_env(self, config, config_key, env_name):
         value = None
@@ -257,14 +259,9 @@ class StaroidNodeProvider(NodeProvider):
                            process_runner,
                            use_internal_ip,
                            docker_config=None):
-        command_runner = KubernetesCommandRunner(log_prefix, self.namespace, node_id,
-                                       auth_config, process_runner)
-
-        # set api server address
-        command_runner.kubectl.extend([
-            "--server",
-            self.__cached[cluster_name]["api_server"]
-        ])
+        command_runner = StaroidCommandRunner(log_prefix, self.namespace, node_id,
+                                       auth_config, process_runner,
+                                       self.__cached[cluster_name]["api_server"])
 
         return command_runner
 
