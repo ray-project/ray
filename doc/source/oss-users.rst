@@ -5,6 +5,13 @@ Community Integrations
 
 This page lists libraries that have integrations with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
+Ray also comes packaged with several built-in machine learning libraries:
+
+- :doc:`../tune/index`
+- :ref:`rllib-index`
+- :ref:`sgd-index`
+- :ref:`rayserve`
+
 ClassyVision |classyvision|
 ---------------------------
 
