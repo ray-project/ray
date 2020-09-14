@@ -1,7 +1,7 @@
 .. _ray-oss-list:
 
-Open source projects using Ray
-==============================
+Open source projects that run on Ray
+====================================
 
 The Ray ecosystem is rapidly growing! This page lists projects that are known to use Ray. This does not constitute an endorsement.
 
