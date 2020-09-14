@@ -176,6 +176,7 @@ matrix:
       before_script:
         - brew tap adoptopenjdk/openjdk
         - brew cask install adoptopenjdk8
+        - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
         - . ./ci/travis/ci.sh build
       script:
