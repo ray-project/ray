@@ -5,7 +5,6 @@ Community libraries that integrate with Ray
 
 This page lists libraries that integrate with Ray for distributed execution. If you'd like to add your project to this list, feel free to file a pull request or open an issue on GitHub.
 
-*Using Ray?* `Fill out this form <https://forms.gle/ps4S1C955kjotxd57>`__ *and we'll be in contact to get added to the list.*
 
 Horovod
 -------
