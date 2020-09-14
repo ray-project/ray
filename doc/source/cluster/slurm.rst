@@ -21,9 +21,6 @@ Here are some community-contributed templates for using SLURM with Ray:
 
 .. _`Template script`: https://gist.github.com/pengzhenghao/b348db1075101a9b986c4cdfea13dcd6
 
-
-
-
 Starter SLURM script
 --------------------
 

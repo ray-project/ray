@@ -139,9 +139,11 @@ def sleep_then_increment(i: int, pba: ActorHandle) -> int:
 
 
 def run():
+    ray.init()
     num_ticks = 6
     pb = ProgressBar(num_ticks)
     actor = pb.actor
+    # You can replace this with any arbitrary Ray task/actor.
     tasks_pre_launch = [
         sleep_then_increment.remote(i, actor) for i in range(0, num_ticks)
     ]
@@ -151,3 +153,5 @@ def run():
 
     tasks == list(range(num_ticks))
     num_ticks == ray.get(actor.get_counter.remote())
+
+run()
