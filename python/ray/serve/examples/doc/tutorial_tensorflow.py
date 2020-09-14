@@ -1,4 +1,5 @@
 # yapf: disable
+import ray
 # __doc_import_begin__
 from ray import serve
 
@@ -67,6 +68,7 @@ class TFMnistModel:
 
 # __doc_define_servable_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
 client.create_backend("tf:v1", TFMnistModel, "/tmp/mnist_model.h5")
