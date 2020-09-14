@@ -40,7 +40,7 @@ Modin |modin|
 
 Scale your pandas workflows by changing one line of code. Modin transparently distributes the data and computation so that all you need to do is continue using the pandas API as you were before installing Modin. 
 
-[`Link to integration <pandas-on-ray>`__]
+GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
 
 Horovod |horovod|
 -----------------
