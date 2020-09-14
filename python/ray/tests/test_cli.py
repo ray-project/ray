@@ -91,21 +91,23 @@ def _debug_check_line_by_line(result, expected_lines):
     i = 0
 
     for out in output_lines:
-        print(out)
-
         if i >= len(expected_lines):
             i += 1
             print("!!!!!! Expected fewer lines")
-            print("\n".join(output_lines[i:]))
+            context = [f"CONTEXT: {line}" for line in output_lines[i - 3:i]]
+            print("\n".join(context))
+            extra = [f"-- {line}" for line in output_lines[i:]]
+            print("\n".join(extra))
             break
 
         exp = expected_lines[i]
         matched = re.fullmatch(exp + r" *", out) is not None
         if not matched:
-            print(f"!!!!!!! Expected (regex): {repr(exp)}")
+            print(f"!!! ERROR: Expected (regex): {repr(exp)}")
+            print(f"Got: {out}")
         i += 1
     if i < len(expected_lines):
-        print("!!!!!!! Expected (regex):")
+        print("!!! ERROR: Expected extra lines (regex):")
         for line in expected_lines[i:]:
 
             print(repr(line))

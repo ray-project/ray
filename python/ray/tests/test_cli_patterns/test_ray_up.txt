@@ -41,5 +41,7 @@ Acquiring an up-to-date head node
 Useful commands
   Monitor autoscaling with
     ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'
-  Connect to a terminal on the cluster head
+  Connect to a terminal on the cluster head:
     ray attach .+
+  Get a remote shell to the cluster manually:
+    ssh .+
