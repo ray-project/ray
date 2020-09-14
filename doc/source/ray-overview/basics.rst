@@ -18,7 +18,7 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 - :ref:`sgd-index`
 - :ref:`rayserve`
 
-There are also many :ref:`community libraries <ray-oss-list>` that integrate with Ray, including `Modin`_, `Hugging Face Transformers`_, :doc:`../dask-on-ray`, `MARS`_, `Horovod`_, and others.
+There are also many :ref:`community libraries <ray-oss-list>` that integrate with Ray, including `Modin`_, `HuggingFace`_, :doc:`../dask-on-ray`, `MARS`_, `Horovod`_, and others.
 Check out the :ref:`full list of Ray distributed libraries here <ray-oss-list>`.
 
 .. _`Modin`: https://github.com/modin-project/modin

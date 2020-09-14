@@ -13,12 +13,26 @@ Horovod is a distributed deep learning training framework for TensorFlow, Keras,
 
 [`Link to integration <https://horovod.readthedocs.io/en/stable/ray_include.html>`__]
 
+Dask
+----
+
+Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love.
+
+[:ref:`Link to integration <dask-on-ray>`]
+
 MARS
 ----
 
 Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
 
 [:ref:`Link to integration <mars-on-ray>`]
+
+Modin
+-----
+
+Scale your pandas workflows by changing one line of code.
+
+Github: `https://github.com/modin-project/modin/ <https://github.com/modin-project/modin/>`__
 
 Spacy
 -----
@@ -48,14 +62,6 @@ Intel Analytics Zoo
 Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
 
 [`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
-
-Modin
------
-
-Scale your pandas workflows by changing one line of code.
-
-Github: `https://github.com/modin-project/modin/ <https://github.com/modin-project/modin/>`__
-
 
 ClassyVision
 ------------

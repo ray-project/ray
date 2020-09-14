@@ -195,7 +195,6 @@ Papers
 
    ray-overview/index.rst
    installation.rst
-   oss-users.rst
 
 .. toctree::
    :hidden:
@@ -276,7 +275,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Community Libraries
+   :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
@@ -284,6 +283,7 @@ Papers
    pandas_on_ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   oss-users.rst
 
 .. toctree::
    :hidden:
