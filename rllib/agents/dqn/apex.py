@@ -1,22 +1,38 @@
+"""
+Distributed Prioritized Experience Replay (Ape-X)
+=================================================
+
+This file defines a DQN trainer using the Ape-X architecture.
+
+Ape-X uses a single GPU learner and many CPU workers for experience collection.
+Experience collection can scale to hundreds of CPU workers due to the
+distributed prioritization of experience prior to storage in replay buffers.
+
+Detailed documentation:
+https://docs.ray.io/en/latest/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
+"""  # noqa: E501
+
 import collections
 import copy
+from typing import Tuple
 
 import ray
-from ray.rllib.agents.dqn.dqn import DQNTrainer, \
-    DEFAULT_CONFIG as DQN_CONFIG, calculate_rr_weights
+from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
+from ray.rllib.agents.dqn.dqn import DQNTrainer, calculate_rr_weights
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
-from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
-    _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.train_ops import UpdateTargetNetwork
+from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        _get_global_vars, _get_shared_metrics)
+from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import ReplayActor
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import UpdateTargetNetwork
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.actors import create_colocated
 from ray.rllib.utils.typing import SampleBatchType
+from ray.util.iter import LocalIterator
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -53,14 +69,15 @@ APEX_DEFAULT_CONFIG = merge_dicts(
 
 # Update worker weights as they finish generating experiences.
 class UpdateWorkerWeights:
-    def __init__(self, learner_thread, workers, max_weight_sync_delay):
+    def __init__(self, learner_thread: LearnerThread, workers: WorkerSet,
+                 max_weight_sync_delay: int):
         self.learner_thread = learner_thread
         self.workers = workers
         self.steps_since_update = collections.defaultdict(int)
         self.max_weight_sync_delay = max_weight_sync_delay
         self.weights = None
 
-    def __call__(self, item: ("ActorHandle", SampleBatchType)):
+    def __call__(self, item: Tuple["ActorHandle", SampleBatchType]):
         actor, batch = item
         self.steps_since_update[actor] += batch.count
         if self.steps_since_update[actor] >= self.max_weight_sync_delay:
@@ -77,7 +94,8 @@ class UpdateWorkerWeights:
             metrics.counters["num_weight_syncs"] += 1
 
 
-def apex_execution_plan(workers: WorkerSet, config: dict):
+def apex_execution_plan(workers: WorkerSet,
+                        config: dict) -> LocalIterator[dict]:
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
@@ -97,7 +115,7 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
     learner_thread.start()
 
     # Update experience priorities post learning.
-    def update_prio_and_stats(item: ("ActorHandle", dict, int)):
+    def update_prio_and_stats(item: Tuple["ActorHandle", dict, int]) -> None:
         actor, prio_dict, count = item
         actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
@@ -155,7 +173,7 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
             [store_op, replay_op, update_op], mode="async", output_indexes=[2])
 
     # Add in extra replay and learner metrics to the training result.
-    def add_apex_metrics(result):
+    def add_apex_metrics(result: dict) -> dict:
         replay_stats = ray.get(replay_actors[0].stats.remote(
             config["optimizer"].get("debug")))
         exploration_infos = workers.foreach_trainable_policy(
