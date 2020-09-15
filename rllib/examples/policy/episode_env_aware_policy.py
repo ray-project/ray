@@ -16,7 +16,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         super().__init__(*args, **kwargs)
         self.episode_id = None
         self.env_id = None
-        self.state_space = Box(-1.0, 1.0, (5,))
+        self.state_space = Box(-1.0, 1.0, (5, ))
 
         class _fake_model:
             pass

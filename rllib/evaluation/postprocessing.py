@@ -61,8 +61,8 @@ def compute_advantages(rollout: SampleBatch,
                 rollout[SampleBatch.VF_PREDS]).astype(np.float32)
         else:
             rollout[Postprocessing.VALUE_TARGETS] = (
-                    rollout[Postprocessing.ADVANTAGES] +
-                    rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
+                rollout[Postprocessing.ADVANTAGES] +
+                rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],

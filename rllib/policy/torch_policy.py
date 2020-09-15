@@ -344,8 +344,7 @@ class TorchPolicy(Policy):
                 postprocessed_batch,
                 max_seq_len=self.max_seq_len,
                 shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req
-            )
+                batch_divisibility_req=self.batch_divisibility_req)
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 

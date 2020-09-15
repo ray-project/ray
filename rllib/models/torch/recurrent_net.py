@@ -143,7 +143,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                         SampleBatch.PREV_REWARDS: ViewRequirement(
                             SampleBatch.REWARDS, shift=-1),
                         SampleBatch.PREV_ACTIONS: ViewRequirement(
-                            SampleBatch.ACTIONS, space=self.action_space,
+                            SampleBatch.ACTIONS,
+                            space=self.action_space,
                             shift=-1),
                     }))
         # Add state inputs/outputs to Model's view-requirements (LSTM has two

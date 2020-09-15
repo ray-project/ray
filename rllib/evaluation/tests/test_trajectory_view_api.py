@@ -197,9 +197,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             MultiAgentStatelessCartPole
 
         from ray.tune import register_env
-        register_env("ma_env", lambda c: MultiAgentStatelessCartPole({
-            "num_agents": 4,
-        }))
+        register_env(
+            "ma_env", lambda c: MultiAgentStatelessCartPole({
+                "num_agents": 4, }))
 
         config["num_workers"] = 3
         config["num_envs_per_worker"] = 3
@@ -241,9 +241,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     learnt = True
                     break
             duration_w = time.time() - start
-            print("Learnt in {}sec".format(duration_w))
             trainer.stop()
             self.assertTrue(learnt)
+            print("Learnt in {}sec".format(duration_w))
 
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(2, ))
@@ -276,9 +276,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
-        for i in range(100):
-            pc = rollout_worker.sampler.sample_collector. \
-                policy_sample_collectors["pol0"]
+        for iteration in range(20):
+            sc = rollout_worker.sampler.sample_collector
+            pc = sc.policy_sample_collectors["pol0"]
             buffers = pc.buffers
             result = rollout_worker.sample()
             pol_batch = result.policy_batches["pol0"]
@@ -308,36 +308,39 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Check the sanity of all the buffers in the underlying
             # PerPolicy collector.
-            for sample_batch_slot, agent_slot in enumerate(
-                    range(sample_batch_offset_before, pc.sample_batch_offset)):
-                t_buf = buffers["t"][:, agent_slot]
-                obs_buf = buffers["obs"][:, agent_slot]
-                # Skip empty seqs at end (these won't be part of the batch
-                # and have been copied to new agent-slots (even if seq-len=0)).
-                if sample_batch_slot < len(pol_batch.seq_lens):
-                    seq_len = pol_batch.seq_lens[sample_batch_slot]
-                    # Make sure timesteps are always increasing within the seq.
-                    assert all(t_buf[1] + j == n + 1
-                               for j, n in enumerate(t_buf)
-                               if j < seq_len and j != 0)
-                    # Make sure all obs within seq are non-0.0.
-                    assert all(
-                        any(obs_buf[j] != 0.0) for j in range(1, seq_len + 1))
+            if iteration < 8:
+                episodes = {}
+                for a in range(buffers["t"].shape[1]):
+                    ts = buffers["t"][:, a]
+                    eps_ids = buffers["eps_id"][:, a]
+                    agent_ids = buffers["agent_id"][:, a]
+                    for t in range(1, len(ts)):
+                        eps_id = eps_ids[t]
+                        if eps_id == 0:
+                            continue
+                        agent_id = agent_ids[t]
+                        key = str(eps_id) + ":" + str(agent_id)
+                        if key not in episodes:
+                            episodes[key] = -1
+                        episodes[key] += 1
+                        assert episodes[key] == ts[t]
 
             # Check seq-lens.
             for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
-                if seq_len < max_seq_len - 1:
+                if seq_len < rollout_fragment_length - 1:
                     # At least in the beginning, the next slots should always
                     # be empty (once all agent slots have been used once, these
                     # may be filled with "old" values (from longer sequences)).
-                    if i < 10:
+                    if iteration < 8:
                         self.assertTrue(
                             (pol_batch["obs"][seq_len +
                                               1][agent_slot] == 0.0).all())
-                        self.assertTrue((pol_batch["rewards"][seq_len][
-                                             agent_slot] == 0.0).all())
-                        self.assertTrue((pol_batch["actions"][seq_len][
-                                             agent_slot] == 0.0).all())
+                        self.assertTrue(
+                            (pol_batch["rewards"][seq_len][agent_slot] == 0.0
+                             ).all())
+                        self.assertTrue(
+                            (pol_batch["actions"][seq_len][agent_slot] == 0.0
+                             ).all())
                     self.assertFalse(
                         (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
 

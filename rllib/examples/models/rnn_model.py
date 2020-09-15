@@ -98,7 +98,8 @@ class TorchRNNModel(TorchRNN, nn.Module):
         # Build the Module from fc + LSTM + 2xfc (action + value outs).
         self.fc1 = nn.Linear(self.obs_size, self.fc_size)
         self.lstm = nn.LSTM(
-            self.fc_size, self.lstm_state_size,
+            self.fc_size,
+            self.lstm_state_size,
             batch_first=not self.time_major)
         self.action_branch = nn.Linear(self.lstm_state_size, num_outputs)
         self.value_branch = nn.Linear(self.lstm_state_size, 1)
@@ -116,7 +117,6 @@ class TorchRNNModel(TorchRNN, nn.Module):
             self.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(
                     space=Box(-1.0, 1.0, shape=(self.lstm_state_size,)))
-
 
     @override(ModelV2)
     def get_initial_state(self):

@@ -137,12 +137,10 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def postprocess_episode(
-            self,
-            episode: MultiAgentEpisode,
-            check_dones: bool = False,
-            cut_at_env_step: Optional[int] = None
-    ) -> None:
+    def postprocess_episode(self,
+                            episode: MultiAgentEpisode,
+                            check_dones: bool = False,
+                            cut_at_env_step: Optional[int] = None) -> None:
         """Apply postprocessing to unprocessed data (in one or all episodes).
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and

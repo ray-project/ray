@@ -573,7 +573,6 @@ def _env_runner(
                     horizon=horizon,
                     preprocessors=preprocessors,
                     obs_filters=obs_filters,
-                    #rollout_fragment_length=rollout_fragment_length,
                     multiple_episodes_in_batch=multiple_episodes_in_batch,
                     callbacks=callbacks,
                     soft_horizon=soft_horizon,
@@ -953,7 +952,6 @@ def _process_observations_w_trajectory_view_api(
         horizon: int,
         preprocessors: Dict[PolicyID, Preprocessor],
         obs_filters: Dict[PolicyID, Filter],
-        #rollout_fragment_length: int,
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
         soft_horizon: bool,
@@ -971,11 +969,6 @@ def _process_observations_w_trajectory_view_api(
     active_envs: Set[EnvID] = set()
     to_eval: Set[PolicyID] = set()
     outputs: List[Union[RolloutMetrics, SampleBatchType]] = []
-
-    #large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
-    #    rollout_fragment_length != float("inf") else 5000
-
-    #_sample_collector.count += 1
 
     # For each (vectorized) sub-environment.
     # type: EnvID, Dict[AgentID, EnvObsType]
@@ -1046,8 +1039,8 @@ def _process_observations_w_trajectory_view_api(
 
             # Record transition info if applicable.
             if last_observation is None:
-                _sample_collector.add_init_obs(episode, agent_id,
-                                               env_id, policy_id, filtered_obs)
+                _sample_collector.add_init_obs(episode, agent_id, env_id,
+                                               policy_id, filtered_obs)
             else:
                 rc = _sample_collector.policy_sample_collectors[policy_id]
                 eval_idx = rc.agent_key_to_inference_index[(
@@ -1086,17 +1079,13 @@ def _process_observations_w_trajectory_view_api(
             episode=episode,
             env_index=env_id)
 
-        #if _sample_collector.has_non_postprocessed_data():
-            # Sanity check, whether all agents have done=True, if done[__all__]
-            # is True.
-
         # Episode is done for all agents
         # (dones[__all__] == True or hit horizon).
         # Make sure postprocessor stays within one episode.
         if all_agents_done:
             check_dones = dones[env_id]["__all__"] and not no_done_at_end
-            #_sample_collector.check_missing_dones(episode_id=episode.episode_id)
-            _sample_collector.postprocess_episode(episode, check_dones=check_dones)
+            _sample_collector.postprocess_episode(
+                episode, check_dones=check_dones)
             # We are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
@@ -1157,9 +1146,8 @@ def _process_observations_w_trajectory_view_api(
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(new_episode, agent_id,
-                                                   env_id, policy_id,
-                                                   filtered_obs)
+                    _sample_collector.add_init_obs(
+                        new_episode, agent_id, env_id, policy_id, filtered_obs)
                     to_eval.add(policy_id)
 
     # Try to build something.

@@ -132,10 +132,10 @@ def prepare_sample_batch_for_rnn(
     if batch.time_major is not None:
         # Figure out how much to chop off the time axis (because there is
         # no actual data in there whatsoever).
-        T = batch["dones"].shape[0 if batch.time_major else 1]
         t_max = max(batch.seq_lens)
-        chunks_per_seq_len = (t_max // lstm_max_seq_len) + (1 if t_max % lstm_max_seq_len else 0)
-        chop_off = chunks_per_seq_len * lstm_max_seq_len #(t_max // lstm_max_seq_len) * lstm_max_seq_len + (lstm_max_seq_len if t_max % lstm_max_seq_len else 0)
+        chunks_per_seq_len = (t_max // lstm_max_seq_len) + (
+            1 if t_max % lstm_max_seq_len else 0)
+        chop_off = chunks_per_seq_len * lstm_max_seq_len
         for col in batch.data.keys():
             data = batch[col]
             # Chop and reshape into actual `lstm_max_seq_len` chunks.
@@ -143,7 +143,7 @@ def prepare_sample_batch_for_rnn(
                 data = data[:chop_off]
                 data = data.reshape((lstm_max_seq_len, -1) + data.shape[2:])
             else:
-                data = data[:,:chop_off]
+                data = data[:, :chop_off]
                 data = data.reshape((-1, lstm_max_seq_len) + data.shape[2:])
 
             # Cut time-dim from states.
@@ -163,7 +163,8 @@ def prepare_sample_batch_for_rnn(
         seq_lens = []
         for l in batch.seq_lens:
             for _ in range(chunks_per_seq_len):
-                seq_lens.append(lstm_max_seq_len if l >= lstm_max_seq_len else max(0, l))
+                seq_lens.append(lstm_max_seq_len
+                                if l >= lstm_max_seq_len else max(0, l))
                 l -= lstm_max_seq_len
         batch.max_seq_len = max(seq_lens)
         batch.seq_lens = seq_lens

@@ -35,7 +35,8 @@ if __name__ == "__main__":
     }
 
     config = dict(
-        configs[args.run], **{
+        configs[args.run],
+        **{
             "env": StatelessCartPole,
             "model": {
                 # Switch on auto-LSTM wrapping.

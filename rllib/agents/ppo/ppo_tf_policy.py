@@ -204,7 +204,6 @@ def postprocess_ppo_gae(
         policy.config["gamma"],
         policy.config["lambda"],
         use_gae=policy.config["use_gae"],
-        _use_trajectory_view_api=policy.config["_use_trajectory_view_api"],
     )
     return batch
 

@@ -155,7 +155,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
         assert policy_id in self.policy_sample_collectors
         episode_rec = self.episode_registry.get(episode_id)
         if episode_rec is None or episode_rec.status != "ongoing":
-            raise ValueError("Episode record {} does not exist!".format(episode_id))
+            raise ValueError(
+                "Episode record {} does not exist!".format(episode_id))
 
         # Make sure our mappings are up to date.
         if agent_id not in self.agent_to_policy:
@@ -179,7 +180,9 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
     @override(_SampleCollector)
     def total_env_steps(self) -> int:
-        return sum(episode_rec.env_steps if episode_rec.status == "ongoing" else 0 for episode_rec in self.episode_registry.values())
+        return sum(
+            episode_rec.env_steps if episode_rec.status == "ongoing" else 0
+            for episode_rec in self.episode_registry.values())
 
     @override(_SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
@@ -190,12 +193,10 @@ class _MultiAgentSampleCollector(_SampleCollector):
             policy_id].get_inference_input_dict(view_reqs)
 
     @override(_SampleCollector)
-    def postprocess_episode(
-            self,
-            episode: MultiAgentEpisode,
-            check_dones: bool = False,
-            cut_at_env_step: Optional[int] = None
-    ) -> None:
+    def postprocess_episode(self,
+                            episode: MultiAgentEpisode,
+                            check_dones: bool = False,
+                            cut_at_env_step: Optional[int] = None) -> None:
         # TODO: (sven) Once we implement multi-agent communication channels,
         #  we have to resolve the restriction of only sending other agent
         #  batches from the same policy to the postprocess methods.
@@ -206,7 +207,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
         for pid, rc in self.policy_sample_collectors.items():
             policy = self.policy_map[pid]
             view_reqs = policy.training_view_requirements
-            agent_batches = rc.get_per_agent_sample_batches_for_episode(episode.episode_id, view_reqs, cut_at_env_step=cut_at_env_step)
+            agent_batches = rc.get_per_agent_sample_batches_for_episode(
+                episode.episode_id, view_reqs, cut_at_env_step=cut_at_env_step)
 
             for agent_key, batch in agent_batches.items():
                 # Error if no DONE at end.
@@ -224,8 +226,6 @@ class _MultiAgentSampleCollector(_SampleCollector):
                 if len(agent_batches) > 1:
                     other_batches = agent_batches.copy()
                     del other_batches[agent_key]
-
-                #print("postprocessing agent {} batch of size {}".format(agent_key[0], batch.count))
 
                 # Call the Policy's Exploration's postprocess method.
                 if getattr(policy, "exploration", None) is not None:
@@ -249,10 +249,10 @@ class _MultiAgentSampleCollector(_SampleCollector):
                                     timesteps, rc.agent_key_to_slot[
                                         agent_key]] = data
 
-                #TODO: (sven) What if user reassigns an existing column
-                # (e.g. rewards) to some new np-array (e.g. as is the case for
-                # Curiosity)? In this case, the postprocessing would not be
-                # captured here.
+                # TODO: (sven) What if user reassigns an existing column
+                #  (e.g. rewards) to some new np-array (e.g. as is the case for
+                #  Curiosity)? In this case, the postprocessing would not be
+                #  captured here.
 
             all_agent_batches.update(agent_batches)
 
@@ -282,8 +282,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
         # Make sure episode is already postprocessed.
         if not episode_rec.status != "postprocessed":
             raise ValueError(
-                "Cannot call build_episode_batch on a non-postprocessed episode "
-                "({})!".format(episode_id))
+                "Cannot call build_episode_batch on a non-postprocessed "
+                "episode ({})!".format(episode_id))
         policy_batches = {}
         for policy_id, agent_ids in episode_rec.policy_agents.items():
             policy = self.policy_map[policy_id]
@@ -297,7 +297,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
         del self.episode_registry[episode_id]
 
         # Build the MultiAgentBatch and return.
-        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, episode_rec.env_steps)
+        ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches,
+                                                  episode_rec.env_steps)
         return ma_batch
 
     @override(_SampleCollector)
@@ -325,24 +326,28 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
             # Consecutive done-episodes plus this one reach the
             # rollout_fragment_length -> Split episode_id and build a batch.
-            steps_over = env_steps_done_episodes_consecutive + steps - self.rollout_fragment_length
+            steps_over = env_steps_done_episodes_consecutive + steps - \
+                self.rollout_fragment_length
             if steps_over >= 0:
                 have_to_cut = episode_rec.status == "ongoing" or steps_over > 0
                 # Postprocess this episode if it's still ongoing.
                 # And keep it as status=ongoing.
                 if episode_rec.status == "ongoing":
-                    self.postprocess_episode(episode_rec.episode_obj, check_dones=False, cut_at_env_step=steps - steps_over)
+                    self.postprocess_episode(
+                        episode_rec.episode_obj,
+                        check_dones=False,
+                        cut_at_env_step=steps - steps_over)
                     episode_rec.status = "ongoing"
 
                 agent_keys = self._get_agent_keys_by_policy(
                     consecutive_done_episodes + [episode_id])
                 for pid, keys in agent_keys.items():
                     possible_build_data[pid] = self.policy_sample_collectors[
-                        pid].build_sample_batch_from_agent_keys(keys,
-                                                                self.policy_map[
-                                                                    pid].training_view_requirements,
-                                                                cut_eid=episode_id if have_to_cut else None,
-                                                                cut_at_env_step=steps - steps_over)
+                        pid].build_sample_batch_from_agent_keys(
+                            keys,
+                            self.policy_map[pid].training_view_requirements,
+                            cut_eid=episode_id if have_to_cut else None,
+                            cut_at_env_step=steps - steps_over)
 
                 # Update our episode registry.
                 episode_ids_to_erase.extend(consecutive_done_episodes)
@@ -385,7 +390,8 @@ class _MultiAgentSampleCollector(_SampleCollector):
 
         # Something to build, return MultiAgentBatch/SampleBatch.
         if possible_build_data:
-            ma_batch = MultiAgentBatch.wrap_as_needed(possible_build_data, self.rollout_fragment_length)
+            ma_batch = MultiAgentBatch.wrap_as_needed(
+                possible_build_data, self.rollout_fragment_length)
             return ma_batch
 
         # Return None if nothing to build.
@@ -396,7 +402,7 @@ class _MultiAgentSampleCollector(_SampleCollector):
         agent_keys = {}
         for eid in episode_ids:
             for pid, agent_ids in self.episode_registry[
-                eid].policy_agents.items():
+                    eid].policy_agents.items():
                 if pid not in agent_keys:
                     agent_keys[pid] = []
                 agent_keys[pid].extend([(a, eid) for a in agent_ids])

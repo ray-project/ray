@@ -113,8 +113,8 @@ if __name__ == "__main__":
         # - Should use torch for LSTM-requiring tasks (traj. view API;
         #   VisualHallway).
         # - otherwise use tf by default (but torch would work as well).
-        "framework": "tf" if args.env not in ["Pyramids",
-                                              "VisualHallway"] else "torch",
+        "framework": "tf"
+        if args.env not in ["Pyramids", "VisualHallway"] else "torch",
         "no_done_at_end": True,
     }
     # Switch on Curiosity based exploration for Pyramids env
@@ -127,14 +127,14 @@ if __name__ == "__main__":
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": [256],#TODO
+                "fcnet_hiddens": [],
                 "fcnet_activation": "relu",
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
             },
             "forward_net_activation": "relu",
-            "inverse_net_activation": "swish", #TODO
+            "inverse_net_activation": "relu",
         }
 
     stop = {
