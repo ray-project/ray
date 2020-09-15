@@ -4,6 +4,12 @@ import logging
 import pytorch_lightning as ptl
 import torch
 import torch.nn as nn
+import os
+import tempfile
+
+import torch
+import torch.nn as nn
+from filelock import FileLock
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
@@ -45,8 +51,7 @@ def _is_multiple(component):
 
 
 class TrainingOperator:
-    """Abstract class to define training state as well as custom training or
-    validation loops.
+    """Abstract class to define training and validation state and logic.
 
     You must subclass this class and override the ``setup`` method to define
     your training components such as the model, optimizer, data, loss,
@@ -57,7 +62,7 @@ class TrainingOperator:
 
         class MyTrainingOperator(TrainingOperator):
 
-            def setup(config):
+            def setup(self, config):
                 model = nn.Linear(1, 1)
                 optimizer = torch.optim.SGD(
                     model.parameters(), lr=config.get("lr", 1e-4))
@@ -69,11 +74,14 @@ class TrainingOperator:
                 val_loader = DataLoader(val_data, batch_size=batch_size)
 
                 self.model, self.optimizer = self.register(
-                                                    models=model,
-                                                    optimizers=optimizer,
-                                                    train_loader=train_loader,
-                                                    validation_loader=val_loader,
-                                                    criterion=loss)
+                    models=model,
+                    optimizers=optimizer,
+                    criterion=loss)
+
+                self.register_data(
+                    train_loader=train_loader,
+                    validation_loader=val_loader)
+
         trainer = TorchTrainer(
             training_operator_cls=MyTrainingOperator,
             config={"batch_size": 32},
@@ -83,10 +91,10 @@ class TrainingOperator:
             trainer.train()
 
     This class provides default implementations for training and validation.
-    Make sure you set ``self.model``, ``self.optimizer``, and
+    Set ``self.model``, ``self.optimizer``, and
     ``self.criterion`` to leverage the default training and validation loops.
     If ``self.scheduler`` is set, it will only be called at a batch or epoch
-    frequency, depending on the user parameter. Be sure to set
+    frequency, depending on the user parameter. Set
     ``scheduler_step_freq`` in ``TorchTrainer`` to either "batch" or "epoch"
     to increment the scheduler correctly during training. If using a
     learning rate scheduler that depends on validation loss, you can use
@@ -105,9 +113,10 @@ class TrainingOperator:
     implement custom training and validation.
 
     Raises:
-        ValueError if custom training or validation is not provided,
-        and ``self.model``, ``self.optimizer``, or ``self.criterion``
-        are not set.
+        ValueError
+            You are expected to either set ``self.model``,
+            ``self.optimizer``, and ``self.criterion`` instance attributes in
+            setup or implement custom training & validation.
     """
 
     def __init__(self,
@@ -147,8 +156,10 @@ class TrainingOperator:
         self.timers = timers
 
     def setup(self, config):
-        """Override this method to implement custom operator setup. You must
-        call self.register here to register training components with Ray SGD.
+        """Override this method to implement operator setup.
+
+        You should call self.register and self.register_data here to
+        register training components and data loaders with Ray SGD.
 
         Args:
             config (dict): Custom configuration value to be passed to
@@ -156,40 +167,37 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self,
-                 *,
-                 models,
-                 optimizers,
-                 train_loader,
-                 validation_loader,
-                 criterion=None,
-                 schedulers=None):
-        """Registers parameters with Ray SGD. Also sets up necessary
-        training components (Cuda, DDP, Distributed Sampler, Fp16).
-        You do not need to handle GPU/devices in this function; ``Ray SGD``
-        will do that for you.
+    def register(self, *, models, optimizers, criterion=None, schedulers=None):
+        """Registers parameters with Ray SGD and sets up training components.
+
+        By calling this method to register your models, optimizers,
+        criterion, and schedulers, Ray SGD will automatically handle
+        necessary setup such as GPU/devices, Distributed Data Parallel, and
+        Fp16. The registered components are returned and should be set as
+        instance attributes to access during training/validation.
 
         If more than one model, optimizer, or scheduler is passed in,
         you should implement your own custom training loop.
 
         .. code-block:: python
 
-            @override(TrainingOperator)
-            def setup(self, config):
-                model = ...
-                optimizer = ...
-                train_loader = ...
-                val_loader = ...
-                loss = ...
+            class MyTrainingOperator(TrainingOperator):
+                def setup(self, config):
+                    model = ...
+                    optimizer = ...
+                    train_loader = ...
+                    val_loader = ...
+                    loss = ...
 
-                self.model, self.optimizer, self.train_loader,
-                self.val_loader, self.loss = self.register(models=model,
-                optimizers=optimizer, train_loader=train_loader,
-                validation_loader=validation_loader, criterion=loss)
+                    self.model, self.optimizer, self.criterion = self.register(
+                    models=model, optimizers=optimizer, criterion=loss)
 
-                # At this point DDP, Cuda, Distributed Sampling, and Fp16
-                # are set up for all our components. We then use self.model,
-                # self.optimizer, etc. in our training loop.
+                    # At this point DDP, Cuda, and Fp16
+                    # are set up for all our components. We then use
+                    # self.model, self.optimizer, etc. in our training loop.
+
+                    self.register_data(train_loader=train_loader,
+                    validation_loader=val_loader)
 
 
         Args:
@@ -203,14 +211,6 @@ class TrainingOperator:
             optimizers (torch.optim.Optimizer or Iterable[
                 torch.optim.Optimizer]): Pytorch optimizer or multiple Pytorch
                 optimizers to use for training.
-            train_loader (Iterator): An iterator for training
-                data. If None is explicitly passed in, a Ray SGD Dataset
-                must be passed in through TorchTrainer.train. Ray SGD will
-                automatically use a Distributed Sampler if TorchTrainer(...,
-                add_dist_sampler=True).
-            validation_loader (Iterator): An iterator for validation
-                data. Ray SGD will automatically use a Distributed Sampler
-                if TorchTrainer(..., add_dist_sampler=True).
             criterion (Callable, optional): Function to return loss
                 metric given features and target. If not provided,
                 must implement a custom training loop.
@@ -220,10 +220,7 @@ class TrainingOperator:
 
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
-            if not None. train_loader and validation_loader are not
-            returned. You should use the iterators passed into train_epoch
-            and validate instead.
-
+            if not None.
         """
         return_vals = []
         logger.debug("Registering models.")
@@ -242,43 +239,6 @@ class TrainingOperator:
         self._optimizers = optimizers
         if not isinstance(self._optimizers, Iterable):
             self._optimizers = [self._optimizers]
-
-        logger.debug("Registering data loaders..")
-        self._train_loader = train_loader
-        self._validation_loader = validation_loader
-
-        if self._wrap_distributed_sampler:
-            logging.debug("Wrapping data loaders with DistributedSampler.")
-
-            def with_sampler(loader):
-                # Automatically set the DistributedSampler
-                data_loader_args = {
-                    "dataset": loader.dataset,
-                    "batch_size": loader.batch_size,
-                    "shuffle": False,
-                    "num_workers": loader.num_workers,
-                    "collate_fn": loader.collate_fn,
-                    "pin_memory": loader.pin_memory,
-                    "drop_last": loader.drop_last,
-                    "timeout": loader.timeout,
-                    "worker_init_fn": loader.worker_init_fn,
-                    "sampler": DistributedSampler(loader.dataset)
-                }
-                return DataLoader(**data_loader_args)
-
-            def should_wrap_dataloader(loader):
-                return (isinstance(loader, DataLoader)
-                        and not isinstance(loader.dataset, IterableDataset))
-
-            if should_wrap_dataloader(self._train_loader):
-                if self._add_dist_sampler:
-                    self._train_loader = with_sampler(self._train_loader)
-
-            if self._validation_loader is not None and should_wrap_dataloader(
-                    self._validation_loader):
-                if self._add_dist_sampler:
-                    self._validation_loader = with_sampler(
-                        self._validation_loader)
 
         if schedulers:
             logger.debug("Registering scheduler.")
@@ -338,6 +298,90 @@ class TrainingOperator:
                 return_vals.append(self._schedulers)
 
         return tuple(return_vals)
+
+    def register_data(self, *, train_loader=None, validation_loader=None):
+        """Registers data loaders with Ray SGD.
+
+        Calling this method will automatically setup Distributed Sampler for
+        these data loaders if add_dist_sampler=True is passed into the
+        TorchTrainer. This method does not return the wrapped data loaders.
+        You should use the iterators passed into train_epoch and validate
+        instead.
+
+        .. code-block:: python
+
+            class MyTrainingOperator(TrainingOperator):
+                def setup(self, config):
+                    model = ...
+                    optimizer = ...
+                    train_loader = ...
+                    val_loader = ...
+                    loss = ...
+
+                    self.model, self.optimizer, self.criterion = self.register(
+                    models=model, optimizers=optimizer, criterion=loss)
+
+                    self.register_data(train_loader=train_loader,
+                    validation_loader=val_loader)
+
+                    # At this point the data loaders are registered with
+                    # Ray SGD and are wrapped with Distributed Samplers if
+                    # applicable.
+
+
+                def train_epoch(self, iterator, info):
+                    # If providing custom training or validation methods,
+                    # the registered data loaders are passed in through the
+                    # iterator parameter.
+                    ...
+
+        Args:
+            train_loader (Iterator): An iterator for training
+                data. If None is explicitly passed in, a Ray SGD Dataset
+                must be passed in through TorchTrainer.train. Ray SGD will
+                automatically use a Distributed Sampler if TorchTrainer(...,
+                add_dist_sampler=True).
+            validation_loader (Iterator): An iterator for validation
+                data. Ray SGD will automatically use a Distributed Sampler
+                if TorchTrainer(..., add_dist_sampler=True).
+        """
+
+        logger.debug("Registering data loaders..")
+        self._train_loader = train_loader
+        self._validation_loader = validation_loader
+
+        if self._wrap_distributed_sampler:
+            logging.debug("Wrapping data loaders with DistributedSampler.")
+
+            def with_sampler(loader):
+                # Automatically set the DistributedSampler
+                data_loader_args = {
+                    "dataset": loader.dataset,
+                    "batch_size": loader.batch_size,
+                    "shuffle": False,
+                    "num_workers": loader.num_workers,
+                    "collate_fn": loader.collate_fn,
+                    "pin_memory": loader.pin_memory,
+                    "drop_last": loader.drop_last,
+                    "timeout": loader.timeout,
+                    "worker_init_fn": loader.worker_init_fn,
+                    "sampler": DistributedSampler(loader.dataset)
+                }
+                return DataLoader(**data_loader_args)
+
+            def should_wrap_dataloader(loader):
+                return (isinstance(loader, DataLoader)
+                        and not isinstance(loader.dataset, IterableDataset))
+
+            if should_wrap_dataloader(self._train_loader):
+                if self._add_dist_sampler:
+                    self._train_loader = with_sampler(self._train_loader)
+
+            if self._validation_loader is not None and should_wrap_dataloader(
+                    self._validation_loader):
+                if self._add_dist_sampler:
+                    self._validation_loader = with_sampler(
+                        self._validation_loader)
 
     def train_epoch(self, iterator, info):
         """Runs one standard training pass over the training dataloader.
@@ -605,7 +649,8 @@ class TrainingOperator:
 
     def state_dict(self):
         """Override this to return a representation of the operator state.
-        Any argument passed into self.register will automatically be saved.
+        Any argument passed into self.register and self.register_data will
+        automatically be saved.
         Use this method to save any additional state.
 
         Returns:
@@ -614,9 +659,8 @@ class TrainingOperator:
 
     def load_state_dict(self, state_dict):
         """Override this to load the representation of the operator state.
-        Anything passed into self.register will automatically be loaded. Use
-        this method to load any additional state.
-
+        Anything passed into self.register and self.register_data will
+        automatically be loaded. Use this method to load any additional state.
         Args:
             state_dict (dict): State dict as returned by the operator. """
         pass
@@ -667,10 +711,9 @@ class TrainingOperator:
 
         return PTLOperator
 
-        
-
-    @staticmethod
-    def from_creators(model_creator,
+    @classmethod
+    def from_creators(cls,
+                      model_creator,
                       optimizer_creator,
                       data_creator=None,
                       loss_creator=None,
@@ -727,11 +770,15 @@ class TrainingOperator:
             raise ValueError(
                 "Must provide a callable model_creator and optimizer_creator.")
 
-        CreatorOperator.set_creators(
-            model_creator, optimizer_creator, data_creator, loss_creator,
-            scheduler_creator, serialize_data_creation)
+        class CustomCreatorOperator(CreatorOperator):
+            _model_creator = model_creator
+            _optimizer_creator = optimizer_creator
+            _data_creator = data_creator
+            _loss_creator = loss_creator
+            _scheduler_creator = scheduler_creator
+            _serialize_data_creation = serialize_data_creation
 
-        return CreatorOperator
+        return CustomCreatorOperator
 
     @property
     def device(self):
@@ -780,7 +827,6 @@ class TrainingOperator:
         """
         return self._scheduler_step_freq
 
-
 class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
     state using creator functions.
@@ -827,40 +873,70 @@ class CreatorOperator(TrainingOperator):
 
         return train_loader, val_loader
 
+class CreatorOperator(TrainingOperator):
+    """A subclass of TrainingOperator specifically for defining training
+    state using creator functions.
+    """
+
+    def _validate_loaders(self, loaders):
+        assert loaders, "Loaders need to be returned in data_creator."
+        if isinstance(loaders, (tuple, list)):
+            if len(loaders) == 1:
+                return loaders, None
+            elif len(loaders) == 2:
+                return loaders
+            else:
+                raise ValueError(
+                    f"Number of loaders must be <= 2. Got {loaders}")
+        # No great way of checking type otherwise
+        return loaders, None
+
+    def _initialize_dataloaders(self, config):
+        logger.debug("Instantiating dataloaders.")
+        loaders = None
+        if self._serialize_data_creation:
+            logger.debug("Serializing the dataloading process.")
+            with FileLock(
+                    os.path.join(tempfile.gettempdir(), ".raydata.lock")):
+                loaders = self.__class__._data_creator(config)
+        else:
+            loaders = self.__class__._data_creator(config)
+        train_loader, val_loader = self._validate_loaders(loaders)
+
+        return train_loader, val_loader
+
     def setup(self, config):
         kwargs = {}
         logger.debug("Loading data.")
         train_loader = None
         validation_loader = None
-        if CreatorOperator.data_creator and callable(
-                CreatorOperator.data_creator):
+        if self.__class__._data_creator and callable(
+                self.__class__._data_creator):
             train_loader, validation_loader = self._initialize_dataloaders(
                 config)
-        kwargs["train_loader"] = train_loader
-        kwargs["validation_loader"] = validation_loader
 
         logger.debug("Creating model")
-        models = CreatorOperator.model_creator(config)
+        models = self.__class__._model_creator(config)
 
         kwargs["models"] = models
 
         logger.debug("Creating optimizer.")
-        optimizers = CreatorOperator.optimizer_creator(models, config)
+        optimizers = self.__class__._optimizer_creator(models, config)
 
         kwargs["optimizers"] = optimizers
 
-        if CreatorOperator.scheduler_creator:
+        if self.__class__._scheduler_creator:
             logger.debug("Creating scheduler.")
-            schedulers = CreatorOperator.scheduler_creator(optimizers, config)
+            schedulers = self.__class__._scheduler_creator(optimizers, config)
             kwargs["schedulers"] = schedulers
 
-        if CreatorOperator.loss_creator:
+        if self.__class__._loss_creator:
             logger.debug("Creating loss.")
-            if inspect.isclass(CreatorOperator.loss_creator) and issubclass(
-                    CreatorOperator.loss_creator, torch.nn.modules.loss._Loss):
-                criterion = CreatorOperator.loss_creator()
+            if inspect.isclass(self.__class__._loss_creator) and issubclass(
+                    self.__class__._loss_creator, torch.nn.modules.loss._Loss):
+                criterion = self.__class__._loss_creator()
             else:
-                criterion = CreatorOperator.loss_creator(config)
+                criterion = self.__class__._loss_creator(config)
             kwargs["criterion"] = criterion
 
         state = self.register(**kwargs)
@@ -883,6 +959,9 @@ class CreatorOperator(TrainingOperator):
                 self.scheduler = self.schedulers[0]
             else:
                 self.scheduler = self.schedulers
+
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 def get_test_operator(operator_cls):

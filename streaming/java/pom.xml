@@ -26,6 +26,12 @@
     <developerConnection>scm:git:ssh://github.com:ray-project/ray.git</developerConnection>
   </scm>
 
+  <developers>
+    <developer>
+      <organizationUrl>https://ray.io</organizationUrl>
+    </developer>
+  </developers>
+
   <distributionManagement>
     <snapshotRepository>
       <id>ossrh</id>
@@ -65,7 +71,6 @@
     <guava.version>27.0.1-jre</guava.version>
     <fst.version>2.57</fst.version>
   </properties>
-
   <profiles>
     <profile>
       <id>release</id>
@@ -148,7 +153,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <version>3.1.0</version>
           <executions>
             <execution>
               <id>attach-javadocs</id>

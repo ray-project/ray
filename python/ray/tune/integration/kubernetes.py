@@ -7,15 +7,11 @@ from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 
 
-def NamespacedKubernetesSyncer(namespace, use_rsync=False):
+def NamespacedKubernetesSyncer(namespace):
     """Wrapper to return a ``KubernetesSyncer`` for a Kubernetes namespace.
 
     Args:
         namespace (str): Kubernetes namespace.
-        use_rsync (bool):  Use ``rsync`` if True or ``kubectl cp``
-            if False. If True, ``rsync`` will need to be
-            installed in the Kubernetes pods for this to work.
-            If False, ``tar`` will need to be installed instead.
 
     Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
@@ -31,7 +27,6 @@ def NamespacedKubernetesSyncer(namespace, use_rsync=False):
 
     class _NamespacedKubernetesSyncer(KubernetesSyncer):
         _namespace = namespace
-        _use_rsync = use_rsync
 
     return _NamespacedKubernetesSyncer
 
@@ -49,7 +44,6 @@ class KubernetesSyncer(NodeSyncer):
     """
 
     _namespace = "ray"
-    _use_rsync = False
 
     def __init__(self, local_dir, remote_dir, sync_client=None):
         self.local_ip = services.get_node_ip_address()
@@ -58,8 +52,7 @@ class KubernetesSyncer(NodeSyncer):
         self.worker_node = None
 
         sync_client = sync_client or KubernetesSyncClient(
-            namespace=self.__class__._namespace,
-            use_rsync=self.__class__._use_rsync)
+            namespace=self.__class__._namespace)
 
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
@@ -97,18 +90,13 @@ class KubernetesSyncClient(SyncClient):
 
     Args:
         namespace (str): Namespace in which the pods live.
-        use_rsync (bool): Use ``rsync`` if True or ``kubectl cp``
-            if False. If True, ``rsync`` will need to be
-            installed in the Kubernetes pods for this to work.
-            If False, ``tar`` will need to be installed instead.
         process_runner: How commands should be called.
             Defaults to ``subprocess``.
 
     """
 
-    def __init__(self, namespace, use_rsync=False, process_runner=subprocess):
+    def __init__(self, namespace, process_runner=subprocess):
         self.namespace = namespace
-        self.use_rsync = use_rsync
         self._process_runner = process_runner
         self._command_runners = {}
 
@@ -141,10 +129,7 @@ class KubernetesSyncClient(SyncClient):
         target_dir += "/" if not target_dir.endswith("/") else ""
 
         command_runner = self._get_command_runner(target_node)
-        if self.use_rsync:
-            command_runner.run_rsync_up(source, target_dir)
-        else:
-            command_runner.run_cp_up(source, target_dir)
+        command_runner.run_rsync_up(source, target_dir)
         return True
 
     def sync_down(self, source, target):
@@ -156,10 +141,7 @@ class KubernetesSyncClient(SyncClient):
         target += "/" if not target.endswith("/") else ""
 
         command_runner = self._get_command_runner(source_node)
-        if self.use_rsync:
-            command_runner.run_rsync_down(source_dir, target)
-        else:
-            command_runner.run_cp_down(source_dir, target)
+        command_runner.run_rsync_down(source_dir, target)
         return True
 
     def delete(self, target):

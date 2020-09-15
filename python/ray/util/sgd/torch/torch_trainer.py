@@ -13,6 +13,7 @@ from ray.exceptions import RayActorError
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.util import merge_dicts
+from ray.util import log_once
 from ray.util.sgd.torch.distributed_torch_runner import (
     DistributedTorchRunner, LocalDistributedRunner, DeactivatedRunner)
 from ray.util.sgd.utils import check_for_failure, NUM_SAMPLES, BATCH_SIZE
@@ -51,7 +52,7 @@ class TorchTrainer:
 
         class MyTrainingOperator(TrainingOperator):
 
-            def setup(config):
+            def setup(self, config):
                 model = nn.Linear(1, 1)
                 optimizer = torch.optim.SGD(
                     model.parameters(), lr=config.get("lr", 1e-4))
@@ -63,11 +64,15 @@ class TorchTrainer:
                 val_loader = DataLoader(val_data, batch_size=batch_size)
 
                 self.model, self.optimizer = self.register(
-                                                    models=model,
-                                                    optimizers=optimizer,
-                                                    train_loader=train_loader,
-                                                    validation_loader=val_loader,
-                                                    criterion=loss)
+                    models=model,
+                    optimizers=optimizer,
+                    criterion=loss)
+
+                self.register_data(
+                    train_loader=train_loader,
+                    validation_loader=val_loader)
+
+
         trainer = TorchTrainer(
             training_operator_cls=MyTrainingOperator,
             config={"batch_size": 32},
@@ -82,7 +87,7 @@ class TorchTrainer:
             will be copied onto all remote workers and used to specify
             training components and custom training and validation operations.
         config (dict): Custom configuration value to be passed to
-            all creator and operator constructors.
+            all operator constructors.
         num_workers (int): the number of workers used in distributed
             training. If 1, the worker will not be wrapped with
             DistributedDataParallel.
@@ -94,10 +99,6 @@ class TorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
-        serialize_data_creation (bool): A filelock will be used
-            to ensure no race conditions in data downloading among
-            different workers on the same node (using the local file system).
-            Defaults to True.
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         timeout_s (float): Seconds before the torch process group
@@ -132,11 +133,6 @@ class TorchTrainer:
             self,
             *,
             training_operator_cls,
-            model_creator=None,
-            data_creator=None,
-            optimizer_creator=None,
-            scheduler_creator=None,
-            loss_creator=None,
             initialization_hook=None,
             config=None,
             num_workers=1,
@@ -145,14 +141,20 @@ class TorchTrainer:
             backend="auto",
             wrap_ddp=True,
             timeout_s=NCCL_TIMEOUT_S,
-            serialize_data_creation=True,
             use_fp16=False,
             use_tqdm=False,
             apex_args=None,
             add_dist_sampler=True,
             scheduler_step_freq=None,
+            # Deprecated Args.
             num_replicas=None,
             batch_size=None,
+            model_creator=None,
+            data_creator=None,
+            optimizer_creator=None,
+            scheduler_creator=None,
+            loss_creator=None,
+            serialize_data_creation=None,
             data_loader_args=None,
     ):
         if (model_creator or data_creator or optimizer_creator
@@ -185,11 +187,12 @@ class TorchTrainer:
                 "batch size to be used across all workers.")
 
         if serialize_data_creation is True:
-            logging.warning(
-                "serialize_data_creation is deprecated and will be ignored. "
-                "If you require serialized data loading you should use "
-                "implement this in TrainingOperator.setup. You may find "
-                "sgd.utils.RayFileLock useful here.")
+            if log_once("serialize_data_creation"):
+                logging.warning(
+                    "serialize_data_creation is deprecated and will be "
+                    "ignored. If you require serialized data loading you "
+                    "should implement this in TrainingOperator.setup. "
+                    "You may find FileLock useful here.")
 
         if data_loader_args:
             raise DeprecationWarning(
@@ -372,10 +375,10 @@ class TorchTrainer:
 
         Returns:
             (dict | list) A dictionary of metrics for training.
-                You can provide custom metrics by passing in a custom
-                ``training_operator_cls``. If ``reduce_results=False``,
-                this will return a list of metric dictionaries whose
-                length will be equal to ``num_workers``.
+                You can provide custom metrics by implementing a custom
+                training loop. If ``reduce_results=False``, this will return a
+                list of metric dictionaries whose length will be equal to
+                ``num_workers``.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
         assert isinstance(dataset, Dataset) is not None \

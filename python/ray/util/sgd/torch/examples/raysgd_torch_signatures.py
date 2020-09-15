@@ -9,7 +9,6 @@ in the documentation.
 
 # __torch_operator_start__
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.utils import RayFileLock
 
 class MyTrainingOperator(TrainingOperator):
     def setup(self, config):
@@ -39,11 +38,14 @@ class MyTrainingOperator(TrainingOperator):
         # Register all of these components with Ray SGD.
         # This allows Ray SGD to do framework level setup like Cuda, DDP,
         # Distributed Sampling, FP16.
+        # We also assign the return values of self.register to instance
+        # attributes so we can access it in our custom training/validation
+        # methods.
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
-                          train_loader=train_loader,
-                          validation_loader=val_loader, criterion=criterion,
+                          criterion=criterion,
                           scheduler=scheduler)
+        self.register_data(train_loader=train_loader, validation_loader=val_loader)
 # __torch_operator_end__
 
 # __torch_model_start__

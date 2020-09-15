@@ -1,6 +1,6 @@
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.models.tf.misc import normc_initializer
+from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.framework import get_activation_fn, try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -12,7 +12,7 @@ class VisionNetwork(TFModelV2):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         if not model_config.get("conv_filters"):
-            model_config["conv_filters"] = _get_filter_config(obs_space.shape)
+            model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
         super(VisionNetwork, self).__init__(obs_space, action_space,
                                             num_outputs, model_config, name)

@@ -115,10 +115,17 @@ if __name__ == "__main__":
         help="Enables GPU training")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.")
 
     args, _ = parser.parse_known_args()
 
     import ray
-
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
     train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)

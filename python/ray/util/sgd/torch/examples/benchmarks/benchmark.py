@@ -81,8 +81,8 @@ class Training(TrainingOperator):
         self.model, self.optimizer = self.register(
             models=model,
             optimizers=optimizer,
-            train_loader=train_data,
-            validation_loader=None)
+        )
+        self.register_data(train_loader=train_data, validation_loader=None)
         data = torch.randn(args.batch_size, 3, 224, 224)
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:
@@ -109,7 +109,10 @@ class Training(TrainingOperator):
 
 
 if __name__ == "__main__":
-    ray.init(address=None if args.local else "auto")
+    if args.local:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address="auto")
     num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
     from ray.util.sgd.torch.examples.train_example import LinearDataset
 

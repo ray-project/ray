@@ -4,7 +4,7 @@ import time
 
 import torch
 import torch.utils.data
-from ray.util.sgd.utils import RayFileLock
+from filelock import FileLock
 from torch import nn
 import torchvision
 
@@ -110,25 +110,26 @@ class SegOperator(TrainingOperator):
     def setup(self, config):
         args = config["args"]
         # Create Data Loaders.
-        with RayFileLock():
+        with FileLock(".ray.lock"):
             # Within a machine, this code runs synchronously.
             dataset, num_classes = get_dataset(
                 args.dataset, "train", get_transform(train=True))
             config["num_classes"] = num_classes
             dataset_test, _ = get_dataset(
                 args.dataset, "val", get_transform(train=False))
-            data_loader = torch.utils.data.DataLoader(
-                dataset,
-                batch_size=args.batch_size,
-                num_workers=args.data_workers,
-                collate_fn=utils.collate_fn,
-                drop_last=True)
 
-            data_loader_test = torch.utils.data.DataLoader(
-                dataset_test,
-                batch_size=1,
-                num_workers=args.data_workers,
-                collate_fn=utils.collate_fn)
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            num_workers=args.data_workers,
+            collate_fn=utils.collate_fn,
+            drop_last=True)
+
+        data_loader_test = torch.utils.data.DataLoader(
+            dataset_test,
+            batch_size=1,
+            num_workers=args.data_workers,
+            collate_fn=utils.collate_fn)
 
         # Create model.
         model = torchvision.models.segmentation.__dict__[args.model](

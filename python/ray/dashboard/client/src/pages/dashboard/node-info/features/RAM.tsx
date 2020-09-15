@@ -21,7 +21,7 @@ export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
   return (
     <UsageBar
       percent={(100 * used) / total}
-      text={formatUsage(used, total, "gibibyte")}
+      text={formatUsage(used, total, "gibibyte", true)}
     />
   );
 };
@@ -29,7 +29,7 @@ export const ClusterRAM: ClusterFeatureRenderFn = ({ nodes }) => {
 export const NodeRAM: NodeFeatureRenderFn = ({ node }) => (
   <UsageBar
     percent={(100 * (node.mem[0] - node.mem[1])) / node.mem[0]}
-    text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte")}
+    text={formatUsage(node.mem[0] - node.mem[1], node.mem[0], "gibibyte", true)}
   />
 );
 

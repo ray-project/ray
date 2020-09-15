@@ -93,7 +93,7 @@ class JsonReader(InputReader):
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
-            # trajectories in the episode are not available any more.
+            #  trajectories in the episode are not available any more.
             raise NotImplementedError(
                 "Postprocessing of multi-agent data not implemented yet.")
 

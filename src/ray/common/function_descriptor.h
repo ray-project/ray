@@ -51,7 +51,14 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
   virtual std::string ToString() const = 0;
 
   // A one-word summary of the function call site (e.g., __main__.foo).
-  virtual std::string CallSiteString() const { return ToString(); }
+  virtual std::string CallSiteString() const { return CallString(); }
+
+  // The function or method call, e.g. "foo()" or "Bar.foo()". This does not include the
+  // module/library.
+  virtual std::string CallString() const = 0;
+
+  // The default name for a task that executes this function.
+  virtual std::string DefaultTaskName() const { return CallString() + "()"; }
 
   template <typename Subtype>
   Subtype *As() {
@@ -79,6 +86,8 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
   inline bool operator!=(const EmptyFunctionDescriptor &other) const { return false; }
 
   virtual std::string ToString() const { return "{type=EmptyFunctionDescriptor}"; }
+
+  virtual std::string CallString() const { return ""; }
 };
 
 class JavaFunctionDescriptor : public FunctionDescriptorInterface {
@@ -118,6 +127,12 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
     return "{type=JavaFunctionDescriptor, class_name=" + typed_message_->class_name() +
            ", function_name=" + typed_message_->function_name() +
            ", signature=" + typed_message_->signature() + "}";
+  }
+
+  virtual std::string CallString() const {
+    const std::string &class_name = typed_message_->class_name();
+    const std::string &function_name = typed_message_->function_name();
+    return class_name.empty() ? function_name : class_name + "." + function_name;
   }
 
   const std::string &ClassName() const { return typed_message_->class_name(); }
@@ -174,8 +189,13 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   }
 
   virtual std::string CallSiteString() const {
-    return typed_message_->module_name() + "." + typed_message_->class_name() + "." +
-           typed_message_->function_name();
+    return typed_message_->module_name() + "." + CallString();
+  }
+
+  virtual std::string CallString() const {
+    const std::string &class_name = typed_message_->class_name();
+    const std::string &function_name = typed_message_->function_name();
+    return class_name.empty() ? function_name : class_name + "." + function_name;
   }
 
   const std::string &ModuleName() const { return typed_message_->module_name(); }
@@ -228,6 +248,12 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
            ", function_offset=" + typed_message_->function_offset() +
            ", exec_function_offset=" + typed_message_->exec_function_offset() + "}";
   }
+
+  virtual std::string CallString() const {
+    return typed_message_->lib_name() + "+" + typed_message_->function_offset();
+  }
+
+  virtual std::string DefaultTaskName() const { return CallString(); }
 
   const std::string &LibName() const { return typed_message_->lib_name(); }
 

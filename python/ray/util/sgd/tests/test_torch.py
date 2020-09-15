@@ -130,11 +130,10 @@ def test_multi_model(ray_start_2_cpus, num_workers):
             loss = nn.MSELoss()
             train_dataloader, val_dataloader = data_creator(config)
             self.models, self.optimizers, self.criterion = self.register(
-                models=models,
-                optimizers=opts,
+                models=models, optimizers=opts, criterion=loss)
+            self.register_data(
                 train_loader=train_dataloader,
-                validation_loader=val_dataloader,
-                criterion=loss)
+                validation_loader=val_dataloader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -219,8 +218,9 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers):  # noqa: F811
             self.models, self.optimizers, self.criterion, self.schedulers = \
                 self.register(models=models, optimizers=optimizers,
                               schedulers=schedulers,
-                              train_loader=train_loader,
-                              validation_loader=val_loader, criterion=loss)
+                              criterion=loss)
+            self.register_data(
+                train_loader=train_loader, validation_loader=val_loader)
 
     TestOperator = get_test_operator(MultiModelOperator)
 
@@ -262,8 +262,9 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
             self.model, self.optimizer, self.criterion, self.scheduler = \
                 self.register(
                     models=model, optimizers=optimizer,
-                    criterion=loss, train_loader=train_loader,
-                    validation_loader=val_loader, schedulers=scheduler)
+                    criterion=loss, schedulers=scheduler)
+            self.register_data(
+                train_loader=train_loader, validation_loader=val_loader)
 
     if scheduler_freq is None:
         with pytest.raises(ValueError):
@@ -304,18 +305,10 @@ def test_dataset(ray_start_4_cpus):
     optimizer_creator = mlp_identity.optimizer_creator
     dataset_creator = mlp_identity.dataset_creator
 
-    class DatasetOperator(TrainingOperator):
-        def setup(self, config):
-            model = model_creator(config)
-            optimizer = optimizer_creator(model, config)
-            loss = nn.MSELoss()
-
-            self.model, self.optimizer, self.criterion = self.register(
-                models=model,
-                optimizers=optimizer,
-                criterion=loss,
-                train_loader=None,
-                validation_loader=None)
+    DatasetOperator = TrainingOperator.from_creators(
+        model_creator=model_creator,
+        optimizer_creator=optimizer_creator,
+        loss_creator=nn.MSELoss)
 
     trainer = TorchTrainer(
         training_operator_cls=DatasetOperator,

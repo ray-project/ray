@@ -65,7 +65,7 @@ class TestTorchRunner(unittest.TestCase):
                 self.validate = MagicMock(returns=dict(mean_accuracy=10))
 
         runner = TorchRunner(training_operator_cls=MockOperator)
-        runner.setup()
+        runner.setup_operator()
         runner.train_epoch()
         runner.train_epoch()
         result = runner.train_epoch()
@@ -85,7 +85,7 @@ class TestTorchRunner(unittest.TestCase):
                 return {"count": self.count}
 
         runner = TorchRunner(training_operator_cls=MockOperator)
-        runner.setup()
+        runner.setup_operator()
         runner.train_epoch(num_steps=1)
         runner.train_epoch(num_steps=1)
         result = runner.train_epoch()
@@ -111,19 +111,19 @@ class TestTorchRunner(unittest.TestCase):
                 loss = loss_creator(config)
                 self.models, self.optimizers, self.criterion = \
                     self.register(models=models, optimizers=optimizers,
-                                  train_loader=loader,
-                                  validation_loader=None, criterion=loss)
+                                  criterion=loss)
+                self.register_data(train_loader=loader, validation_loader=None)
                 self.train_epoch = MagicMock(returns=dict(mean_accuracy=10))
                 self.validate = MagicMock(returns=dict(mean_accuracy=10))
 
         runner = TorchRunner(training_operator_cls=MockOperator)
-        runner.setup()
+        runner.setup_operator()
 
         self.assertEqual(len(runner.given_models), 3)
         self.assertEqual(len(runner.given_optimizers), 3)
 
         runner2 = TorchRunner(training_operator_cls=self.Operator)
-        runner2.setup()
+        runner2.setup_operator()
 
         self.assertNotEqual(runner2.given_models, runner2.models)
         self.assertNotEqual(runner2.given_optimizers, runner2.optimizers)
@@ -141,11 +141,11 @@ class TestTorchRunner(unittest.TestCase):
 
         runner = TorchRunner(training_operator_cls=ThreeOperator)
         with self.assertRaises(ValueError):
-            runner.setup()
+            runner.setup_operator()
 
         runner2 = TorchRunner(training_operator_cls=ThreeOperator)
         with self.assertRaises(ValueError):
-            runner2.setup()
+            runner2.setup_operator()
 
     def testSingleLoader(self):
         SingleOperator = TrainingOperator.from_creators(
@@ -154,7 +154,7 @@ class TestTorchRunner(unittest.TestCase):
             single_loader,
             loss_creator=loss_creator)
         runner = TorchRunner(training_operator_cls=SingleOperator)
-        runner.setup()
+        runner.setup_operator()
         runner.train_epoch()
         with self.assertRaises(ValueError):
             runner.validate()
@@ -166,7 +166,7 @@ class TestTorchRunner(unittest.TestCase):
             single_loader,
             loss_creator=nn.MSELoss)
         runner = TorchRunner(training_operator_cls=NativeOperator)
-        runner.setup()
+        runner.setup_operator()
         runner.train_epoch()
 
 

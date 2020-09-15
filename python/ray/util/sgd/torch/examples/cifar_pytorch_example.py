@@ -2,6 +2,8 @@ import os
 import torch
 import torch.nn as nn
 import argparse
+
+from filelock import FileLock
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
 import torchvision.transforms as transforms
@@ -11,7 +13,7 @@ from tqdm import trange
 import ray
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE, override, RayFileLock
+from ray.util.sgd.utils import BATCH_SIZE, override
 
 
 def initialization_hook():
@@ -50,7 +52,7 @@ class CifarTrainingOperator(TrainingOperator):
             transforms.Normalize((0.4914, 0.4822, 0.4465),
                                  (0.2023, 0.1994, 0.2010)),
         ])
-        with RayFileLock():
+        with FileLock(".ray.lock"):
             train_dataset = CIFAR10(
                 root="~/data",
                 train=True,
@@ -81,9 +83,9 @@ class CifarTrainingOperator(TrainingOperator):
         # Register all components.
         self.model, self.optimizer, self.criterion, self.scheduler = \
             self.register(models=model, optimizers=optimizer,
-                          train_loader=train_loader,
-                          validation_loader=validation_loader,
                           criterion=criterion, schedulers=scheduler)
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":

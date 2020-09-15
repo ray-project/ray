@@ -88,22 +88,28 @@ def handle_boto_error(exc, msg, *args, **kwargs):
         cli_logger.verbose_error(*generic_message_args)
         cli_logger.verbose(vars(exc))
 
-        cli_logger.abort(
-            "Your AWS session has expired.\n\n"
-            "You can request a new one using\n{}\n"
-            "then expose it to Ray by setting\n{}\n{}\n{}\n\n"
-            "You can find a script that automates this at:\n{}",
-            cf.bold(token_command), cf.bold(secret_key_var),
-            cf.bold(session_token_var), cf.bold(access_key_id_var),
-            cf.underlined(aws_session_script_url))
+        cli_logger.panic("Your AWS session has expired.")
+        cli_logger.newline()
+        cli_logger.panic("You can request a new one using")
+        cli_logger.panic(cf.bold(token_command))
+        cli_logger.panic("then expose it to Ray by setting")
+        cli_logger.panic(cf.bold(secret_key_var))
+        cli_logger.panic(cf.bold(session_token_var))
+        cli_logger.panic(cf.bold(access_key_id_var))
+        cli_logger.newline()
+        cli_logger.panic("You can find a script that automates this at:")
+        cli_logger.panic(cf.underlined(aws_session_script_url))
+        # Do not re-raise the exception here because it looks awful
+        # and we already print all the info in verbose
+        cli_logger.abort()
 
     # todo: any other errors that we should catch separately?
 
-    cli_logger.error(*generic_message_args)
+    cli_logger.panic(*generic_message_args)
     cli_logger.newline()
     with cli_logger.verbatim_error_ctx("Boto3 error:"):
         cli_logger.verbose("{}", str(vars(exc)))
-        cli_logger.error("{}", str(exc))
+        cli_logger.panic("{}", str(exc))
     cli_logger.abort()
 
 

@@ -32,7 +32,6 @@ import random
 
 import numpy as np
 import torch
-from ray.util.sgd.utils import RayFileLock
 from torch.utils.data import DataLoader, RandomSampler
 from tqdm import trange
 import torch.distributed as dist
@@ -105,15 +104,14 @@ class TransformerOperator(TrainingOperator):
         logger.info(f"tokenizer instantiation time: {time.time() - start}")
 
         # Load data.
-        with RayFileLock():
-            train_dataset = load_and_cache_examples(
-                args, args.task_name, self.tokenizer, evaluate=False)
-            train_sampler = RandomSampler(
-                train_dataset) if not dist.is_initialized() else None
-            train_loader = DataLoader(
-                train_dataset,
-                sampler=train_sampler,
-                batch_size=args.per_device_train_batch_size)
+        train_dataset = load_and_cache_examples(
+            args, args.task_name, self.tokenizer, evaluate=False)
+        train_sampler = RandomSampler(
+            train_dataset) if not dist.is_initialized() else None
+        train_loader = DataLoader(
+            train_dataset,
+            sampler=train_sampler,
+            batch_size=args.per_device_train_batch_size)
 
         # Create model.
         with FileLock(os.path.expanduser("~/.download.lock")):

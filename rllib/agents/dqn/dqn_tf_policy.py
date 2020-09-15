@@ -1,22 +1,28 @@
-from gym.spaces import Discrete
-import numpy as np
+"""Tensorflow policy class used for DQN"""
 
+from typing import Dict
+
+import gym
+import numpy as np
 import ray
 from ray.rllib.agents.dqn.distributional_q_tf_model import \
     DistributionalQTFModel
 from ray.rllib.agents.dqn.simple_q_tf_policy import TargetNetworkMixin
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, reduce_mean_ignore_inf, \
-    minimize_and_clip
-from ray.rllib.utils.tf_ops import make_tf_callable
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.tf_ops import (huber_loss, make_tf_callable,
+                                    minimize_and_clip, reduce_mean_ignore_inf)
+from ray.rllib.utils.typing import (ModelGradients, TensorType,
+                                    TrainerConfigDict)
 
 tf1, tf, tfv = try_import_tf()
 
@@ -29,18 +35,18 @@ PRIO_WEIGHTS = "weights"
 
 class QLoss:
     def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_dist_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
-                 gamma=0.99,
-                 n_step=1,
-                 num_atoms=1,
-                 v_min=-10.0,
-                 v_max=10.0):
+                 q_t_selected: TensorType,
+                 q_logits_t_selected: TensorType,
+                 q_tp1_best: TensorType,
+                 q_dist_tp1_best: TensorType,
+                 importance_weights: TensorType,
+                 rewards: TensorType,
+                 done_mask: TensorType,
+                 gamma: float = 0.99,
+                 n_step: int = 1,
+                 num_atoms: int = 1,
+                 v_min: float = -10.0,
+                 v_max: float = 10.0):
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
@@ -106,6 +112,11 @@ class QLoss:
 
 
 class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to the DQNTFPolicy
+
+    This allows us to prioritize on the worker side.
+    """
+
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
@@ -126,9 +137,23 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def build_q_model(policy, obs_space, action_space, config):
+def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
+                  action_space: gym.spaces.Space,
+                  config: TrainerConfigDict) -> ModelV2:
+    """Build q_model and target_q_model for DQN
 
-    if not isinstance(action_space, Discrete):
+    Args:
+        policy (Policy): The Policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        ModelV2: The Model for the Policy to use.
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_q_model`.
+    """
+    if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
 
@@ -184,9 +209,9 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
+def get_distribution_inputs_and_class(policy: Policy,
+                                      model: ModelV2,
+                                      obs_batch: TensorType,
                                       *,
                                       explore=True,
                                       **kwargs):
@@ -198,7 +223,18 @@ def get_distribution_inputs_and_class(policy,
     return policy.q_values, Categorical, []  # state-out
 
 
-def build_q_losses(policy, model, _, train_batch):
+def build_q_losses(policy: Policy, model, _,
+                   train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for DQNTFPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     config = policy.config
     # q network evaluation
     q_t, q_logits_t, q_dist_t = compute_q_values(
@@ -253,7 +289,8 @@ def build_q_losses(policy, model, _, train_batch):
     return policy.q_loss.loss
 
 
-def adam_optimizer(policy, config):
+def adam_optimizer(policy: Policy, config: TrainerConfigDict
+                   ) -> "tf.keras.optimizers.Optimizer":
     if policy.config["framework"] in ["tf2", "tfe"]:
         return tf.keras.optimizers.Adam(
             learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
@@ -262,7 +299,8 @@ def adam_optimizer(policy, config):
             learning_rate=policy.cur_lr, epsilon=config["adam_epsilon"])
 
 
-def clip_gradients(policy, optimizer, loss):
+def clip_gradients(policy: Policy, optimizer: "tf.keras.optimizers.Optimizer",
+                   loss: TensorType) -> ModelGradients:
     if policy.config["grad_clip"] is not None:
         grads_and_vars = minimize_and_clip(
             optimizer,
@@ -276,25 +314,28 @@ def clip_gradients(policy, optimizer, loss):
     return grads_and_vars
 
 
-def build_q_stats(policy, batch):
+def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     return dict({
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
     }, **policy.q_loss.stats)
 
 
-def setup_early_mixins(policy, obs_space, action_space, config):
+def setup_early_mixins(policy: Policy, obs_space, action_space,
+                       config: TrainerConfigDict) -> None:
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def setup_mid_mixins(policy, obs_space, action_space, config):
+def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
     ComputeTDErrorMixin.__init__(policy)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-def compute_q_values(policy, model, obs, explore):
+def compute_q_values(policy: Policy, model: ModelV2, obs: TensorType, explore):
     config = policy.config
 
     model_out, state = model({
@@ -361,8 +402,11 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
-    # N-step Q adjustments
+def postprocess_nstep_and_prio(policy: Policy,
+                               batch: SampleBatch,
+                               other_agent=None,
+                               episode=None) -> SampleBatch:
+    # N-step Q adjustments.
     if policy.config["n_step"] > 1:
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
                       batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
@@ -372,7 +416,7 @@ def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
     if PRIO_WEIGHTS not in batch:
         batch[PRIO_WEIGHTS] = np.ones_like(batch[SampleBatch.REWARDS])
 
-    # Prioritize on the worker side
+    # Prioritize on the worker side.
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
         td_errors = policy.compute_td_error(
             batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
