@@ -199,8 +199,8 @@ def DistributedTrainableCreator(
 
 
 @contextmanager
-def distributed_checkpoint_dir(step: int,
-                               disable: bool = False) -> Generator[str]:
+def distributed_checkpoint_dir(
+        step: int, disable: bool = False) -> Generator[str, None, None]:
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding

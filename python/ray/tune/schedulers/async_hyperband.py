@@ -3,9 +3,9 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 
+from ray.tune import trial_runner
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -120,8 +121,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         idx = np.random.choice(len(self._brackets), p=normalized)
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         action = TrialScheduler.CONTINUE
         if self._time_attr not in result or self._metric not in result:
             return action
@@ -135,8 +136,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._num_stopped += 1
         return action
 
-    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
-                          result: Dict):
+    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                          trial: Trial, result: Dict):
         if self._time_attr not in result or self._metric not in result:
             return
         bracket = self._trial_info[trial.trial_id]
@@ -144,7 +145,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                           self._metric_op * result[self._metric])
         del self._trial_info[trial.trial_id]
 
-    def on_trial_remove(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial):
         del self._trial_info[trial.trial_id]
 
     def debug_string(self) -> str:

@@ -7,6 +7,8 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from ray.tune import trial_runner
+from ray.tune import trial_executor
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
@@ -14,9 +16,6 @@ from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.trial_executor import TrialExecutor
-from ray.tune.trial_runner import TrialRunner
-
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -313,7 +312,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -336,8 +336,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Make sure this attribute is added to CLI output.
                 trial.evaluated_params[attr] = trial.config[attr]
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         if self._time_attr not in result:
             time_missing_msg = "Cannot find time_attr {} " \
                                "in trial result {}. Make sure that this " \
@@ -433,9 +433,9 @@ class PopulationBasedTraining(FIFOScheduler):
             # the paused trials.
             return TrialScheduler.PAUSE
 
-    def _perturb_trial(self, trial: Trial, trial_runner: TrialRunner,
-                       upper_quantile: List[Trial],
-                       lower_quantile: List[Trial]):
+    def _perturb_trial(
+            self, trial: Trial, trial_runner: "trial_runner.TrialRunner",
+            upper_quantile: List[Trial], lower_quantile: List[Trial]):
         """Checkpoint if in upper quantile, exploits if in lower."""
         state = self._trial_state[trial]
         if trial in upper_quantile:
@@ -492,8 +492,8 @@ class PopulationBasedTraining(FIFOScheduler):
         with open(trial_path, "a+") as f:
             f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
 
-    def _exploit(self, trial_executor: TrialExecutor, trial: Trial,
-                 trial_to_clone: Trial):
+    def _exploit(self, trial_executor: "trial_executor.TrialExecutor",
+                 trial: Trial, trial_to_clone: Trial):
         """Transfers perturbed state from trial_to_clone -> trial.
 
         If specified, also logs the updated hyperparam state.
@@ -589,8 +589,8 @@ class PopulationBasedTraining(FIFOScheduler):
             return (trials[:num_trials_in_quantile],
                     trials[-num_trials_in_quantile:])
 
-    def choose_trial_to_run(self,
-                            trial_runner: TrialRunner) -> Optional[Trial]:
+    def choose_trial_to_run(
+            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
@@ -721,7 +721,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         return last_old_conf, list(reversed(policy))
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         if self._trial:
             raise ValueError(
                 "More than one trial added to PBT replay run. This "
@@ -742,8 +743,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "or consider not using PBT replay for this run.")
         self._trial.config = self.config
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         if TRAINING_ITERATION not in result:
             # No time reported
             return TrialScheduler.CONTINUE

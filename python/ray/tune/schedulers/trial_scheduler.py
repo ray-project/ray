@@ -1,7 +1,7 @@
 from typing import Dict, Optional
 
+from ray.tune import trial_runner
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import TrialRunner
 
 
 class TrialScheduler:
@@ -24,20 +24,22 @@ class TrialScheduler:
         """
         return True
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         """Called when a new trial is added to the trial runner."""
 
         raise NotImplementedError
 
-    def on_trial_error(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
+                       trial: Trial):
         """Notification for the error of trial.
 
         This will only be called when the trial is in the RUNNING state."""
 
         raise NotImplementedError
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         """Called on each intermediate result returned by a trial.
 
         At this point, the trial scheduler can make a decision by returning
@@ -46,8 +48,8 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
-                          result: Dict):
+    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                          trial: Trial, result: Dict):
         """Notification for the completion of trial.
 
         This will only be called when the trial is in the RUNNING state and
@@ -55,7 +57,8 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_remove(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial):
         """Called to remove trial.
 
         This is called when the trial is in PAUSED or PENDING state. Otherwise,
@@ -63,8 +66,8 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def choose_trial_to_run(self,
-                            trial_runner: TrialRunner) -> Optional[Trial]:
+    def choose_trial_to_run(
+            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         """Called to choose a new trial to run.
 
         This should return one of the trials in trial_runner that is in
@@ -83,25 +86,28 @@ class TrialScheduler:
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         pass
 
-    def on_trial_error(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
+                       trial: Trial):
         pass
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         return TrialScheduler.CONTINUE
 
-    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
-                          result: Dict):
+    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                          trial: Trial, result: Dict):
         pass
 
-    def on_trial_remove(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial):
         pass
 
-    def choose_trial_to_run(self,
-                            trial_runner: TrialRunner) -> Optional[Trial]:
+    def choose_trial_to_run(
+            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING
                     and trial_runner.has_resources(trial.resources)):

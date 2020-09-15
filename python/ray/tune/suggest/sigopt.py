@@ -6,8 +6,10 @@ from typing import Dict, List, Optional, Union
 
 try:
     import sigopt as sgo
+    Connection = sgo.Connection
 except ImportError:
     sgo = None
+    Connection = None
 
 from ray.tune.suggest import Searcher
 
@@ -128,7 +130,7 @@ class SigOptSearch(Searcher):
                  name: str = "Default Tune Experiment",
                  max_concurrent: int = 1,
                  reward_attr: Optional[str] = None,
-                 connection: Optional[sgo.Connection] = None,
+                 connection: Optional[Connection] = None,
                  experiment_id: Optional[str] = None,
                  observation_budget: Optional[int] = None,
                  project: Optional[str] = None,

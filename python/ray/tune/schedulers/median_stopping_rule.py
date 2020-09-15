@@ -4,9 +4,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from ray.tune import trial_runner
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,8 @@ class MedianStoppingRule(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         if not self._metric or not self._worst or not self._compare_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -106,8 +107,8 @@ class MedianStoppingRule(FIFOScheduler):
 
         super(MedianStoppingRule, self).on_trial_add(trial_runner, trial)
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict) -> str:
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict) -> str:
         """Callback for early stopping.
 
         This stopping rule stops a running trial if the trial's best objective
@@ -159,16 +160,17 @@ class MedianStoppingRule(FIFOScheduler):
         else:
             return TrialScheduler.CONTINUE
 
-    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
-                          result: Dict):
+    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                          trial: Trial, result: Dict):
         self._results[trial].append(result)
 
     def debug_string(self) -> str:
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials))
 
-    def _on_insufficient_samples(self, trial_runner: TrialRunner, trial: Trial,
-                                 time: float) -> str:
+    def _on_insufficient_samples(self,
+                                 trial_runner: "trial_runner.TrialRunner",
+                                 trial: Trial, time: float) -> str:
         pause = time - self._last_pause[trial] > self._min_time_slice
         pause = pause and [
             t for t in trial_runner.get_trials()

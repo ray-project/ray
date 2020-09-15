@@ -4,10 +4,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import logging
 
+from ray.tune import trial_runner
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 from ray.tune.error import TuneError
-from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,8 @@ class HyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
+                     trial: Trial):
         """Adds new trial.
 
         On a new trial add, if current bracket is not filled,
@@ -191,8 +192,8 @@ class HyperBandScheduler(FIFOScheduler):
         cur_band = self._hyperbands[self._state["band_idx"]]
         return len(cur_band) == self._s_max_1
 
-    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
-                        result: Dict):
+    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial, result: Dict):
         """If bracket is finished, all trials will be stopped.
 
         If a given trial finishes and bracket iteration is not done,
@@ -216,7 +217,7 @@ class HyperBandScheduler(FIFOScheduler):
             metric_val=result.get(self._time_attr)))
         return action
 
-    def _process_bracket(self, trial_runner: TrialRunner,
+    def _process_bracket(self, trial_runner: "trial_runner.TrialRunner",
                          bracket: "Bracket") -> str:
         """This is called whenever a trial makes progress.
 
@@ -256,7 +257,8 @@ class HyperBandScheduler(FIFOScheduler):
                         action = TrialScheduler.CONTINUE
         return action
 
-    def on_trial_remove(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
+                        trial: Trial):
         """Notification when trial terminates.
 
         Trial info is removed from bracket. Triggers halving if bracket is
@@ -266,17 +268,18 @@ class HyperBandScheduler(FIFOScheduler):
         if not bracket.finished():
             self._process_bracket(trial_runner, bracket)
 
-    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
-                          result: Dict):
+    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
+                          trial: Trial, result: Dict):
         """Cleans up trial info from bracket if trial completed early."""
         self.on_trial_remove(trial_runner, trial)
 
-    def on_trial_error(self, trial_runner: TrialRunner, trial: Trial):
+    def on_trial_error(self, trial_runner: "trial_runner.TrialRunner",
+                       trial: Trial):
         """Cleans up trial info from bracket if trial errored early."""
         self.on_trial_remove(trial_runner, trial)
 
-    def choose_trial_to_run(self,
-                            trial_runner: TrialRunner) -> Optional[Trial]:
+    def choose_trial_to_run(
+            self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         """Fair scheduling within iteration by completion percentage.
 
         List of trials not used since all trials are tracked as state
@@ -329,7 +332,8 @@ class HyperBandScheduler(FIFOScheduler):
             "num_stopped": self._num_stopped
         }
 
-    def _unpause_trial(self, trial_runner: TrialRunner, trial: Trial):
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner",
+                       trial: Trial):
         trial_runner.trial_executor.unpause_trial(trial)
 
 
@@ -442,7 +446,7 @@ class Bracket:
         assert trial in self._live_trials
         del self._live_trials[trial]
 
-    def cleanup_full(self, trial_runner: TrialRunner):
+    def cleanup_full(self, trial_runner: "trial_runner.TrialRunner"):
         """Cleans up bracket after bracket is completely finished.
 
         Lets the last trial continue to run until termination condition
