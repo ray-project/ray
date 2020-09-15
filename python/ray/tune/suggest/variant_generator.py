@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_variants(
-        unresolved_spec: Dict) -> Generator[Tuple[List[str], Dict]]:
+        unresolved_spec: Dict) -> Generator[Tuple[Dict, Dict], None, None]:
     """Generates variants from a spec (dict) with unresolved values.
 
     There are two types of unresolved values:
@@ -203,7 +203,7 @@ def _resolve_domain_vars(spec: Dict,
 
 
 def _grid_search_generator(unresolved_spec: Dict,
-                           grid_vars: List) -> Generator[Dict]:
+                           grid_vars: List) -> Generator[Dict, None, None]:
     value_indices = [0] * len(grid_vars)
 
     def increment(i):
