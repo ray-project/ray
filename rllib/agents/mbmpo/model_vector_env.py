@@ -81,7 +81,7 @@ class _VectorizedModelGymEnv(VectorEnv):
         next_obs_batch = self.model.predict_model_batches(
             obs_batch, action_batch, device=self.device)
 
-        next_obs_batch = np.clip(next_obs_batch, -50, 50)
+        next_obs_batch = np.clip(next_obs_batch, -1000, 1000)
 
         rew_batch = self.envs[0].reward(obs_batch, action_batch,
                                         next_obs_batch)
@@ -95,7 +95,8 @@ class _VectorizedModelGymEnv(VectorEnv):
 
         self.cur_obs = next_obs_batch
 
-        return list(obs_batch), list(rew_batch), list(dones_batch), info_batch
+        return list(next_obs_batch), list(rew_batch), list(
+            dones_batch), info_batch
 
     @override(VectorEnv)
     def get_unwrapped(self):

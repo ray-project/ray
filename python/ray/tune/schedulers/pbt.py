@@ -9,7 +9,7 @@ import shutil
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.logger import _SafeFallbackEncoder
-from ray.tune.sample import sample_from
+from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
@@ -68,8 +68,8 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
                     distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
-                new_config[key] = distribution.func(None) if isinstance(
-                    distribution, sample_from) else distribution()
+                new_config[key] = distribution.sample(None) if isinstance(
+                    distribution, Domain) else distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -96,8 +96,8 @@ def fill_config(config, attr, search_space):
     """Add attr to config by sampling from search_space."""
     if callable(search_space):
         config[attr] = search_space()
-    elif isinstance(search_space, sample_from):
-        config[attr] = search_space.func(None)
+    elif isinstance(search_space, Domain):
+        config[attr] = search_space.sample(None)
     elif isinstance(search_space, list):
         config[attr] = random.choice(search_space)
     elif isinstance(search_space, dict):
@@ -216,8 +216,8 @@ class PopulationBasedTraining(FIFOScheduler):
     def __init__(self,
                  time_attr="time_total_s",
                  reward_attr=None,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  perturbation_interval=60.0,
                  hyperparam_mutations={},
                  quantile_fraction=0.25,
@@ -228,11 +228,11 @@ class PopulationBasedTraining(FIFOScheduler):
                  synch=False):
         for value in hyperparam_mutations.values():
             if not (isinstance(value,
-                               (list, dict, sample_from)) or callable(value)):
+                               (list, dict, Domain)) or callable(value)):
                 raise TypeError("`hyperparam_mutation` values must be either "
                                 "a List, Dict, a tune search space object, or "
-                                "callable.")
-            if type(value) is sample_from:
+                                "a callable.")
+            if isinstance(value, Function):
                 raise ValueError("arbitrary tune.sample_from objects are not "
                                  "supported for `hyperparam_mutation` values."
                                  "You must use other built in primitives like"
@@ -253,7 +253,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 "perturbation_interval must be a positive number greater "
                 "than 0. Current value: '{}'".format(perturbation_interval))
 
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         if reward_attr is not None:
             mode = "max"
@@ -265,9 +266,11 @@ class PopulationBasedTraining(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._metric = metric
-        if mode == "max":
+        self._mode = mode
+        self._metric_op = None
+        if self._mode == "max":
             self._metric_op = 1.
-        elif mode == "min":
+        elif self._mode == "min":
             self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
@@ -285,7 +288,33 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
+    def set_search_properties(self, metric, mode):
+        if self._metric and metric:
+            return False
+        if self._mode and mode:
+            return False
+
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        if self._mode == "max":
+            self._metric_op = 1.
+        elif self._mode == "min":
+            self._metric_op = -1.
+
+        return True
+
     def on_trial_add(self, trial_runner, trial):
+        if not self._metric or not self._metric_op:
+            raise ValueError(
+                "{} has been instantiated without a valid `metric` ({}) or "
+                "`mode` ({}) parameter. Either pass these parameters when "
+                "instantiating the scheduler, or pass them as parameters "
+                "to `tune.run()`".format(self.__class__.__name__, self._metric,
+                                         self._mode))
+
         self._trial_state[trial] = PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():

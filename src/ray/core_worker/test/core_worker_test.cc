@@ -140,36 +140,22 @@ class CoreWorkerTest : public ::testing::Test {
 
   void SetUp() {
     if (num_nodes_ > 0) {
-      CoreWorkerOptions options = {
-          WorkerType::DRIVER,             // worker_type
-          Language::PYTHON,               // langauge
-          raylet_store_socket_names_[0],  // store_socket
-          raylet_socket_names_[0],        // raylet_socket
-          NextJobId(),                    // job_id
-          gcs_options_,                   // gcs_options
-          true,                           // enable_logging
-          "",                             // log_dir
-          true,                           // install_failure_signal_handler
-          "127.0.0.1",                    // node_ip_address
-          node_manager_port,              // node_manager_port
-          "127.0.0.1",                    // raylet_ip_address
-          "core_worker_test",             // driver_name
-          "",                             // stdout_file
-          "",                             // stderr_file
-          nullptr,                        // task_execution_callback
-          nullptr,                        // check_signals
-          nullptr,                        // gc_collect
-          nullptr,                        // spill_objects
-          nullptr,                        // restore_spilled_objects
-          nullptr,                        // get_lang_stack
-          nullptr,                        // kill_main
-          true,                           // ref_counting_enabled
-          false,                          // is_local_mode
-          1,                              // num_workers
-          nullptr,                        // terminate_asyncio_thread
-          "",                             // serialized_job_config
-          -1,                             // metrics_agent_port
-      };
+      CoreWorkerOptions options;
+      options.worker_type = WorkerType::DRIVER;
+      options.language = Language::PYTHON;
+      options.store_socket = raylet_store_socket_names_[0];
+      options.raylet_socket = raylet_socket_names_[0];
+      options.job_id = NextJobId();
+      options.gcs_options = gcs_options_;
+      options.enable_logging = true;
+      options.install_failure_signal_handler = true;
+      options.node_ip_address = "127.0.0.1";
+      options.node_manager_port = node_manager_port;
+      options.raylet_ip_address = "127.0.0.1";
+      options.driver_name = "core_worker_test";
+      options.ref_counting_enabled = true;
+      options.num_workers = 1;
+      options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
     }
   }
@@ -226,7 +212,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool w
 int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources) {
   std::vector<std::unique_ptr<TaskArg>> args;
-  TaskOptions options{1, resources};
+  TaskOptions options{"", 1, resources};
   std::vector<ObjectID> return_ids;
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
@@ -308,7 +294,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -350,7 +336,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
 
-    TaskOptions options{1, resources};
+    TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
@@ -412,7 +398,7 @@ void CoreWorkerTest::TestActorRestart(
       args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -455,7 +441,7 @@ void CoreWorkerTest::TestActorFailure(
       args.emplace_back(new TaskArgByValue(
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -539,12 +525,12 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
   rpc::Address address;
   for (int i = 0; i < num_tasks; i++) {
-    TaskOptions options{1, resources};
+    TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
+    builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
                               PlacementGroupID::Nil());
@@ -587,7 +573,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     args.emplace_back(new TaskArgByValue(
         std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-    TaskOptions options{1, resources};
+    TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));

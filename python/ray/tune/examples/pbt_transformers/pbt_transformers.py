@@ -155,8 +155,8 @@ def tune_transformer(num_samples=8,
         mode="max",
         perturbation_interval=1,
         hyperparam_mutations={
-            "weight_decay": lambda: tune.uniform(0.0, 0.3).func(None),
-            "learning_rate": lambda: tune.uniform(1e-5, 5e-5).func(None),
+            "weight_decay": tune.uniform(0.0, 0.3),
+            "learning_rate": tune.uniform(1e-5, 5e-5),
             "per_gpu_train_batch_size": [16, 32, 64],
         })
 

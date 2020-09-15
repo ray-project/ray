@@ -3,7 +3,7 @@ import numpy as np
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
-from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
+from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -16,7 +16,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         if not model_config.get("conv_filters"):
-            model_config["conv_filters"] = _get_filter_config(obs_space.shape)
+            model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)

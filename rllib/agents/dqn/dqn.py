@@ -1,18 +1,20 @@
 import logging
+from typing import Type
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
-from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
-from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -119,96 +121,16 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
-    # by user's config). If we don't set them here, we will get an error
-    # from the config-key checker.
-    "schedule_max_timesteps": DEPRECATED_VALUE,
-    "exploration_final_eps": DEPRECATED_VALUE,
-    "exploration_fraction": DEPRECATED_VALUE,
-    "beta_annealing_fraction": DEPRECATED_VALUE,
-    "per_worker_exploration": DEPRECATED_VALUE,
-    "softmax_temp": DEPRECATED_VALUE,
-    "soft_q": DEPRECATED_VALUE,
-    "parameter_noise": DEPRECATED_VALUE,
-    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
     """
-    # TODO(sven): Remove at some point.
-    #  Backward compatibility of epsilon-exploration config AND beta-annealing
-    # fraction settings (both based on schedule_max_timesteps, which is
-    # deprecated).
-    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("grad_norm_clipping", "grad_clip")
-        config["grad_clip"] = config.pop("grad_norm_clipping")
-
-    schedule_max_timesteps = None
-    if config.get("schedule_max_timesteps", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning(
-            "schedule_max_timesteps",
-            "exploration_config.epsilon_timesteps AND "
-            "prioritized_replay_beta_annealing_timesteps")
-        schedule_max_timesteps = config["schedule_max_timesteps"]
-    if config.get("exploration_final_eps", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("exploration_final_eps",
-                            "exploration_config.final_epsilon")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["final_epsilon"] = \
-                config.pop("exploration_final_eps")
-    if config.get("exploration_fraction", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        assert schedule_max_timesteps is not None
-        deprecation_warning("exploration_fraction",
-                            "exploration_config.epsilon_timesteps")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["epsilon_timesteps"] = config.pop(
-                "exploration_fraction") * schedule_max_timesteps
-    if config.get("beta_annealing_fraction", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        assert schedule_max_timesteps is not None
-        deprecation_warning(
-            "beta_annealing_fraction (decimal)",
-            "prioritized_replay_beta_annealing_timesteps (int)")
-        config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
-            "beta_annealing_fraction") * schedule_max_timesteps
-    if config.get("per_worker_exploration", DEPRECATED_VALUE) != \
-            DEPRECATED_VALUE:
-        deprecation_warning("per_worker_exploration",
-                            "exploration_config.type=PerWorkerEpsilonGreedy")
-        if isinstance(config["exploration_config"], dict):
-            config["exploration_config"]["type"] = PerWorkerEpsilonGreedy
-    if config.get("softmax_temp", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning(
-            "soft_q", "exploration_config={"
-            "type=StochasticSampling, temperature=[float]"
-            "}")
-        if config.get("softmax_temp", 1.0) < 0.00001:
-            logger.warning("softmax temp very low: Clipped it to 0.00001.")
-            config["softmax_temperature"] = 0.00001
-    if config.get("soft_q", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning(
-            "soft_q", "exploration_config={"
-            "type=SoftQ, temperature=[float]"
-            "}")
-        config["exploration_config"] = {
-            "type": "SoftQ",
-            "temperature": config.get("softmax_temp", 1.0)
-        }
-    if config.get("parameter_noise", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("parameter_noise", "exploration_config={"
-                            "type=ParameterNoise"
-                            "}")
-
     if config["exploration_config"]["type"] == "ParameterNoise":
         if config["batch_mode"] != "complete_episodes":
             logger.warning(
@@ -234,7 +156,8 @@ def validate_config(config):
                              "replay_sequence_length > 1.")
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
     if config.get("prioritized_replay"):
         prio_args = {
             "prioritized_replay_alpha": config["prioritized_replay_alpha"],
@@ -299,7 +222,7 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config):
+def calculate_rr_weights(config: TrainerConfigDict):
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
@@ -311,7 +234,7 @@ def calculate_rr_weights(config):
     return weights
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
         return DQNTorchPolicy
@@ -319,7 +242,7 @@ def get_policy_class(config):
         return DQNTFPolicy
 
 
-def get_simple_policy_class(config):
+def get_simple_policy_class(config: TrainerConfigDict) -> Type[Policy]:
     if config["framework"] == "torch":
         from ray.rllib.agents.dqn.simple_q_torch_policy import \
             SimpleQTorchPolicy

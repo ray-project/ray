@@ -137,8 +137,15 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self,
                  queue_trials=False,
                  reuse_actors=False,
-                 ray_auto_init=False,
+                 ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
+        if ray_auto_init is None:
+            if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+                logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+                ray_auto_init = False
+            else:
+                ray_auto_init = True
+
         super(RayTrialExecutor, self).__init__(queue_trials)
         # Check for if we are launching a trial without resources in kick off
         # autoscaler.

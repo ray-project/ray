@@ -25,7 +25,11 @@ namespace ray {
 
 class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
-  ServiceBasedGcsClientTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+  ServiceBasedGcsClientTest() {
+    RayConfig::instance().initialize(
+        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)}});
+    TestSetupUtil::StartUpRedisServers(std::vector<int>());
+  }
 
   virtual ~ServiceBasedGcsClientTest() { TestSetupUtil::ShutDownRedisServers(); }
 

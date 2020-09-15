@@ -8,6 +8,18 @@ class TrialScheduler:
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
 
+    def set_search_properties(self, metric, mode):
+        """Pass search properties to scheduler.
+
+        This method acts as an alternative to instantiating schedulers
+        that react to metrics with their own `metric` and `mode` parameters.
+
+        Args:
+            metric (str): Metric to optimize
+            mode (str): One of ["min", "max"]. Direction to optimize.
+        """
+        return True
+
     def on_trial_add(self, trial_runner, trial):
         """Called when a new trial is added to the trial runner."""
 

@@ -62,8 +62,14 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
           auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
-          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
-              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
+          auto java_owner_address =
+              env->GetObjectField(arg, java_function_arg_owner_address);
+          RAY_CHECK(java_owner_address);
+          auto owner_address =
+              JavaProtobufObjectToNativeProtobufObject<ray::rpc::Address>(
+                  env, java_owner_address);
+          return std::unique_ptr<ray::TaskArg>(
+              new ray::TaskArgByReference(id, owner_address));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
@@ -90,13 +96,18 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
+  std::string name = "";
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
+    auto java_name = (jstring)env->GetObjectField(callOptions, java_call_options_name);
+    if (java_name) {
+      name = JavaStringToNativeString(env, java_name);
+    }
   }
 
-  ray::TaskOptions task_options{numReturns, resources};
+  ray::TaskOptions task_options{name, numReturns, resources};
   return task_options;
 }
 

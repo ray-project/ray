@@ -7,6 +7,7 @@ import io.ray.runtime.functionmanager.FunctionManager.JobFunctionTable;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.Map;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
@@ -151,9 +152,8 @@ public class FunctionManagerTest {
   @Test
   public void testGetFunctionFromLocalResource() throws Exception {
     JobId jobId = JobId.fromInt(1);
-    final String resourcePath = FileUtils.getTempDirectoryPath() + "/ray_test_resources";
-    final String jobResourcePath = resourcePath + "/" + jobId.toString();
-    File jobResourceDir = new File(jobResourcePath);
+    final String codeSearchPath = FileUtils.getTempDirectoryPath() + "/ray_test_resources/";
+    File jobResourceDir = new File(codeSearchPath);
     FileUtils.deleteQuietly(jobResourceDir);
     jobResourceDir.mkdirs();
     jobResourceDir.deleteOnExit();
@@ -165,13 +165,13 @@ public class FunctionManagerTest {
     demoJavaFile += "  }\n";
     demoJavaFile += "}";
 
-    // Write the demo java file to the job resource path.
-    String javaFilePath = jobResourcePath + "/DemoApp.java";
+    // Write the demo java file to the job code search path.
+    String javaFilePath = codeSearchPath + "/DemoApp.java";
     Files.write(Paths.get(javaFilePath), demoJavaFile.getBytes());
 
     // Compile the java file.
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    int result = compiler.run(null, null, null, "-d", jobResourcePath, javaFilePath);
+    int result = compiler.run(null, null, null, "-d", codeSearchPath, javaFilePath);
     if (result != 0) {
       throw new RuntimeException("Couldn't compile Demo.java.");
     }
@@ -179,7 +179,8 @@ public class FunctionManagerTest {
     // Test loading the function.
     JavaFunctionDescriptor descriptor = new JavaFunctionDescriptor(
         "DemoApp", "hello", "()Ljava/lang/String;");
-    final FunctionManager functionManager = new FunctionManager(resourcePath);
+    final FunctionManager functionManager = new FunctionManager(
+        Collections.singletonList(codeSearchPath));
     RayFunction func = functionManager.getFunction(jobId, descriptor);
     Assert.assertEquals(func.getFunctionDescriptor(), descriptor);
   }

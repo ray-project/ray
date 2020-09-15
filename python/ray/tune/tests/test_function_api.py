@@ -10,7 +10,8 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune.logger import NoopLogger
 from ray.tune.trainable import TrainableUtil
-from ray.tune.function_runner import wrap_function, FuncCheckpointUtil
+from ray.tune.function_runner import with_parameters, wrap_function, \
+    FuncCheckpointUtil
 from ray.tune.result import TRAINING_ITERATION
 
 
@@ -419,3 +420,38 @@ class FunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, max_failures=3)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
+
+    def testWithParameters(self):
+        class Data:
+            def __init__(self):
+                self.data = [0] * 500_000
+
+        data = Data()
+        data.data[100] = 1
+
+        def train(config, data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), hundred=data.data[100])
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEquals(data.data[101], 0)
+        self.assertEquals(trial_1.last_result["metric"], 500_000)
+        self.assertEquals(trial_1.last_result["hundred"], 1)
+        self.assertEquals(trial_2.last_result["metric"], 500_000)
+        self.assertEquals(trial_2.last_result["hundred"], 1)
+
+        # With checkpoint dir parameter
+        def train(config, checkpoint_dir="DIR", data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), cp=checkpoint_dir)
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEquals(data.data[101], 0)
+        self.assertEquals(trial_1.last_result["metric"], 500_000)
+        self.assertEquals(trial_1.last_result["cp"], "DIR")
+        self.assertEquals(trial_2.last_result["metric"], 500_000)
+        self.assertEquals(trial_2.last_result["cp"], "DIR")

@@ -3,6 +3,7 @@ import errno
 import hashlib
 import inspect
 import logging
+import multiprocessing
 import numpy as np
 import os
 import signal
@@ -313,9 +314,10 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
-        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        default_object_store_memory, default_resources,
+        default_accelerator_type, runtime_num_cpus, runtime_num_gpus,
+        runtime_memory, runtime_object_store_memory, runtime_resources,
+        runtime_accelerator_type):
     """Determine a task's resource requirements.
 
     Args:
@@ -365,15 +367,23 @@ def resources_from_resource_arguments(
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
 
-    memory = default_memory or runtime_memory
-    object_store_memory = (default_object_store_memory
-                           or runtime_object_store_memory)
+    # Order of arguments matter for short circuiting.
+    memory = runtime_memory or default_memory
+    object_store_memory = (runtime_object_store_memory
+                           or default_object_store_memory)
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(
             memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
+
+    if runtime_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{runtime_accelerator_type}"] = 0.001
+    elif default_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{default_accelerator_type}"] = 0.001
 
     return resources
 
@@ -487,6 +497,59 @@ def get_system_memory():
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
+
+
+def _get_docker_cpus():
+    # 1. Try using CFS Quota (https://bugs.openjdk.java.net/browse/JDK-8146115)
+    # 2. Try Nproc (CPU sets)
+    cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+    num_cpus = 0
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(
+            cpu_quota_file_name):
+        with open(cpu_quota_file_name, "r") as f:
+            num_cpus = int(f.read())
+        if num_cpus != -1:
+            with open(cpu_share_file_name, "r") as f:
+                num_cpus /= int(f.read())
+            return num_cpus
+
+    return int(subprocess.check_output("nproc"))
+
+
+def get_num_cpus():
+    cpu_count = multiprocessing.cpu_count()
+    if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
+        logger.info(
+            "Detected RAY_USE_MULTIPROCESSING_CPU_COUNT=1: Using "
+            "multiprocessing.cpu_count() to detect the number of CPUs. "
+            "This may be inconsistent when used inside docker. "
+            "To correctly detect CPUs, unset the env var: "
+            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
+        return cpu_count
+    try:
+        # Not easy to get cpu count in docker, see:
+        # https://bugs.python.org/issue36054
+        docker_count = _get_docker_cpus()
+        if docker_count != cpu_count:
+            cpu_count = docker_count
+            if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
+                logger.warning(
+                    "Detecting docker specified CPUs. In "
+                    "previous versions of Ray, CPU detection in containers "
+                    "was incorrect. Please ensure that Ray has enough CPUs "
+                    "allocated. As a temporary workaround to revert to the "
+                    "prior behavior, set "
+                    "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+                    "before starting Ray. Set the env var: "
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
+
+    except Exception:
+        # `nproc` and cgroup are linux-only. If docker only works on linux
+        # (will run in a linux VM on other platforms), so this is fine.
+        pass
+
+    return cpu_count
 
 
 def get_used_memory():
