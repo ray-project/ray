@@ -189,37 +189,40 @@ Java Applications
 
 .. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
+.. _code_search_path:
+
 Code Search Path
 ~~~~~~~~~~~~~~~~
 
-If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers.
+If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to all nodes of the Ray cluster before running your code, and this parameter must be set on both the head node and non-head nodes.
 
 .. code-block:: bash
 
   $ ray start ... --code-search-path=/path/to/jars
 
-
-You can also provide multiple directories for this option.
+The ``/path/to/jars`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
   $ ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
 
+Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+
 You don't need to configure code search path if you run a Java application in single machine mode.
 
-.. important:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+.. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
 
 Driver Options
 ~~~~~~~~~~~~~~
 
-We currently provide a limited set of options for Java drivers. They are not for configuring the Ray cluster, but only for configuring the dirver.
+There is a limited set of options for Java drivers. They are not for configuring the Ray cluster, but only for configuring the driver.
 
-We use `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
+Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
 
 - System properties. You can configure system properties either by adding options in the format of ``-Dkey=value`` in the driver command line, or by invoking ``System.setProperty("key", "value");`` before ``Ray.init()``.
-- A `HOCON format <https://github.com/lightbend/config/blob/master/HOCON.md>`__ configuration file. By default, Ray will try to read the file named ``ray.conf`` in the root of classpath. You can customize the location of the file by setting system property ``ray.config-file`` to the path of the file.
+- A `HOCON format <https://github.com/lightbend/config/blob/master/HOCON.md>`__ configuration file. By default, Ray will try to read the file named ``ray.conf`` in the root of the classpath. You can customize the location of the file by setting system property ``ray.config-file`` to the path of the file.
 
-.. note:: Options configured by system properties has higher priority than options configured in the configuration file.
+.. note:: Options configured by system properties have higher priority than options configured in the configuration file.
 
 The list of available driver options:
 
@@ -231,7 +234,7 @@ The list of available driver options:
 
 - ``ray.local-mode``
 
-  - If it's set to ``true``, the driver will run in local mode.
+  - If it's set to ``true``, the driver will run in :ref:`local_mode`.
   - Type: ``Boolean``
   - Default: ``false``
 
