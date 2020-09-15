@@ -8,7 +8,7 @@ This script will demonstrate how to implement a simple
 progress bar for a Ray actor to track progress across various
 different distributed components.
 
-Original source: `https://github.com/votingworks/arlo-e2e <https://github.com/votingworks/arlo-e2e>`_
+Original source: `Link <https://github.com/votingworks/arlo-e2e>`_
 
 Setup: Dependencies
 -------------------
