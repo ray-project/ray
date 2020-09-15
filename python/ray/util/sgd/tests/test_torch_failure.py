@@ -56,6 +56,7 @@ def remote_worker_train_with_fail(self, num_steps, profile, info,
 
 start_workers = TorchTrainer._start_workers
 
+
 def gen_start_with_fail(num_fails):
     def start_with_fail(self, *args, **kwargs):
         start_workers(self, *args, **kwargs)
@@ -102,6 +103,7 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         assert trainer1.worker_group.num_workers == 1
 
         trainer1.shutdown(force=True)
+
 
 @pytest.mark.parametrize("use_local", [False, True])
 @patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
