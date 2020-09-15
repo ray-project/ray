@@ -57,7 +57,7 @@ reports to use ``max_depth=6`` for the maximum decision tree depth. Here, anythi
 between 2 and 10 might make sense (though that naturally depends on your problem).
 
 For **learning rates**, we suggest using a **loguniform distribution** between
-**1e-1** and **1e-5**: ``tune.loguniform(1e-1, 1e05)``.
+**1e-1** and **1e-5**: ``tune.loguniform(1e-1, 1e-5)``.
 
 For **batch sizes**, we suggest trying **powers of 2**, for instance, 2, 4, 8,
 16, 32, 64, 128, 256, etc. The magnitude depends on your problem. For easy
@@ -219,6 +219,37 @@ of 4 machines with 1 GPU each, the trial will never be scheduled.
 
 In other words, you will have to make sure that your Ray cluster
 has machines that can actually fulfill your resource requests.
+
+How can I pass further parameter values to my trainable function?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Tune expects your trainable functions to accept only up to two parameters,
+``config`` and ``checkpoint_dir``. But sometimes there are cases where
+you want to pass constant arguments, like the number of epochs to run,
+or a dataset to train on. Ray Tune offers a wrapper function to achieve
+just that, called ``tune.with_parameters()``:
+
+.. code-block:: python
+
+    from ray import tune
+
+    import numpy as np
+
+    def train(config, checkpoint_dir=None, num_epochs=10, data=None):
+        for i in range(num_epochs):
+            for sample in data:
+                # ... train on sample
+
+    # Some huge dataset
+    data = np.random.random(size=100000000)
+
+    tune.run(
+        tune.with_parameters(train, num_epochs=10, data=data))
+
+
+This function works similarly to ``functools.partial``, but it stores
+the parameters directly in the Ray object store. This means that you
+can pass even huge objects like datasets, and Ray makes sure that these
+are efficiently stored and retrieved on your cluster machines.
 
 
 Further Questions or Issues?

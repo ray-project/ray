@@ -19,8 +19,8 @@ public class SourceProcessor<T> extends StreamProcessor<Record, SourceOperator<T
     throw new UnsupportedOperationException("SourceProcessor should not process record");
   }
 
-  public void run() {
-    operator.run();
+  public void fetch() {
+    operator.fetch();
   }
 
   @Override

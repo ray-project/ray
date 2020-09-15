@@ -56,8 +56,8 @@ class Searcher:
     CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
-                 metric="episode_reward_mean",
-                 mode="max",
+                 metric=None,
+                 mode=None,
                  max_concurrent=None,
                  use_early_stopped_trials=None):
         if use_early_stopped_trials is False:
@@ -69,6 +69,13 @@ class Searcher:
                 "DeprecationWarning: `max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
+
+        self._metric = metric
+        self._mode = mode
+
+        if not mode or not metric:
+            # Early return to avoid assertions
+            return
 
         assert isinstance(
             metric, type(mode)), "metric and mode must be of the same type"
@@ -83,8 +90,21 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-        self._metric = metric
-        self._mode = mode
+    def set_search_properties(self, metric, mode, config):
+        """Pass search properties to searcher.
+
+        This method acts as an alternative to instantiating search algorithms
+        with their own specific search spaces. Instead they can accept a
+        Tune config through this method. A searcher should return ``True``
+        if setting the config was successful, or ``False`` if it was
+        unsuccessful, e.g. when the search space has already been set.
+
+        Args:
+            metric (str): Metric to optimize
+            mode (str): One of ["min", "max"]. Direction to optimize.
+            config (dict): Tune config dict.
+        """
+        return False
 
     def on_trial_result(self, trial_id, result):
         """Optional notification for result during training.
@@ -346,3 +366,6 @@ class ConcurrencyLimiter(Searcher):
 
     def on_unpause(self, trial_id):
         self.searcher.on_unpause(trial_id)
+
+    def set_search_properties(self, metric, mode, config):
+        return self.searcher.set_search_properties(metric, mode, config)

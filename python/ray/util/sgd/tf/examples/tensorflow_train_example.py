@@ -95,8 +95,8 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
 
 def tune_example(num_replicas=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(simple_model),
-        "data_creator": tune.function(simple_dataset),
+        "model_creator": simple_model,
+        "data_creator": simple_dataset,
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
         "trainer_config": create_config(batch_size=128)
@@ -114,6 +114,8 @@ def tune_example(num_replicas=1, use_gpu=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
         "--address",
         required=False,
@@ -135,7 +137,10 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

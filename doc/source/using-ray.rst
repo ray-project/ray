@@ -19,5 +19,6 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    troubleshooting.rst
    advanced.rst
    placement-group.rst
+   cross-language.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst

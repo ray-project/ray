@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core walkthrough doc (https://docs.ray.io/en/latest/walkthrough.html).
+ * This class contains demo code of the Ray core walkthrough doc (https://docs.ray.io/en/master/walkthrough.html).
  *
  * Please keep them in sync.
  */
@@ -136,7 +136,7 @@ public class WalkthroughDemo {
 
   public static void main(String[] args) {
     // Start Ray runtime. If you're connecting to an existing cluster, you can set
-    // the `-Dray.redis.address=<cluster-address>` java system property.
+    // the `-Dray.address=<cluster-address>` java system property.
     Ray.init();
 
     demoTasks();

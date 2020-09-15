@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 
 import ray
 from ray import tune
-from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.utils import BATCH_SIZE
 from ray.util.sgd.torch.examples.train_example import LinearDataset
 
@@ -37,12 +37,9 @@ def data_creator(config):
 
 
 # __torch_tune_example__
-def tune_example(num_workers=1, use_gpu=False):
+def tune_example(operator_cls, num_workers=1, use_gpu=False):
     TorchTrainable = TorchTrainer.as_trainable(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.MSELoss,  # Note that we specify a Loss class.
+        training_operator_cls=operator_cls,
         num_workers=num_workers,
         use_gpu=use_gpu,
         config={BATCH_SIZE: 128}
@@ -63,6 +60,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
         "--address",
         type=str,
         help="the address to use for Ray")
@@ -80,5 +79,12 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
-    tune_example(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
+    CustomTrainingOperator = TrainingOperator.from_creators(
+        model_creator=model_creator, optimizer_creator=optimizer_creator,
+        data_creator=data_creator, loss_creator=nn.MSELoss)
+    tune_example(CustomTrainingOperator, num_workers=args.num_workers,
+                 use_gpu=args.use_gpu)
