@@ -121,24 +121,11 @@ class TorchRunner:
             self.timers.disable()
         self.training_operator._set_timers(self.timers)
 
-    def state_dict(self, to_cpu=False):
+    def state_dict(self):
         """Returns the state of the runner."""
-        model_states = []
-        for model in self.models:
-            sd = model.state_dict()
-            if to_cpu:
-                for k, v in sd.items():
-                    sd[k] = v.cpu()
-            model_states.append(sd)
-        optimizer_states = []
-        for opt in self.optimizers:
-            sd = opt.state_dict()
-            if to_cpu:
-                for state in sd["state"].values():
-                    for k, v in state.items():
-                        if torch.is_tensor(v):
-                            state[k] = v.cpu()
-            optimizer_states.append(sd)
+        model_states = [model.state_dict() for model in self.models]
+        optimizer_states = [optimizer.state_dict() for optimizer in
+                            self.optimizers]
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
@@ -166,11 +153,6 @@ class TorchRunner:
         optimizers = self.optimizers
         for optimizer, state_dict in zip(optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
-            if torch.cuda.is_available():
-                for state in optimizer.state.values():
-                    for k, v in state.items():
-                        if torch.is_tensor(v):
-                            state[k] = v.cuda()
         schedulers = self.schedulers
         if schedulers:
             for scheduler, state_dict in zip(schedulers, state["schedulers"]):
@@ -189,9 +171,20 @@ class TorchRunner:
         return _buffer.getvalue()
 
     def load_state_stream(self, byte_obj):
-        """Loads a bytes object the training state dict."""
+        """Loads a bytes object the training state dict.
+
+        This is needed because we don't want to deserialize the tensor
+        onto the same device (which is from the driver process). We want to
+        map it onto the actor's specific device.
+
+        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
+        """
         _buffer = io.BytesIO(byte_obj)
-        state_dict = torch.load(_buffer)
+        to_gpu = self.use_gpu and torch.cuda.is_available()
+        state_dict = torch.load(
+            _buffer,
+            map_location=("cpu" if not to_gpu else
+                          lambda storage, loc: storage.cuda()))
         return self.load_state_dict(state_dict)
 
     def apply(self, fn):

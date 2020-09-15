@@ -330,7 +330,7 @@ class TorchTrainer:
             max_retries (int): How many times to attempt to resize workers
                 before failing.
         """
-        state_dict = self.state_dict(to_cpu=not torch.cuda.is_available())
+        state_dict = self.state_dict()
         self.worker_group.reset()
 
         time.sleep(1)
@@ -339,7 +339,7 @@ class TorchTrainer:
             if new_workers:
                 self._last_resize = time.time()
                 self._start_workers(int(new_workers))
-                self.load_state_dict(state_dict)
+                self.load_state_dict(state_dict, blocking=True)
                 return
             else:
                 delay = 2**i
@@ -521,22 +521,19 @@ class TorchTrainer:
         """
         return self.worker_group.get_local_operator()
 
-    def state_dict(self, to_cpu=False):
-        return self.worker_group.state_dict(to_cpu)
+    def state_dict(self):
+        return self.worker_group.state_dict()
 
     def load_state_dict(self, state_dict, blocking=False):
         self.worker_group.load_state_dict(state_dict, blocking=blocking)
 
-    def save(self, checkpoint, to_cpu=False):
+    def save(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
-            to_cpu (bool): Converts model state dict to CPU before saving.
-                This is useful if workers are trained on GPU, but the
-                TorchTrainer lives on a CPU-only machine.
         """
-        torch.save(self.state_dict(to_cpu), checkpoint)
+        torch.save(self.state_dict(), checkpoint)
         return checkpoint
 
     def load(self, checkpoint):
@@ -670,8 +667,7 @@ class BaseTorchTrainable(Trainable):
     def save_checkpoint(self, checkpoint_dir):
         """Returns a path containing the trainer state."""
         checkpoint_path = os.path.join(checkpoint_dir, "trainer.checkpoint")
-        to_cpu = not torch.cuda.is_available()
-        self.trainer.save(checkpoint_path, to_cpu)
+        self.trainer.save(checkpoint_path)
         return checkpoint_path
 
     def load_checkpoint(self, checkpoint_path):

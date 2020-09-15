@@ -9,6 +9,7 @@ from ray.exceptions import RayActorError
 from ray.util.sgd.torch.distributed_torch_runner import \
     LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
+from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
 
 RESIZE_COOLDOWN_S = 10
@@ -76,7 +77,7 @@ class WorkerGroupInterface:
         """See TorchTrainer.shutdown."""
         raise NotImplementedError
 
-    def state_dict(self, to_cpu=False):
+    def state_dict(self):
         """See TorchTrainer.state_dict."""
         raise NotImplementedError
 
@@ -148,7 +149,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             }) for _ in range(num_workers)
         ]
 
-    def _setup_process_group(self, address, world_size):
+    def _setup_process_group(self, address, world_size, starting_rank=0):
         """Sets up process group for all workers.
 
         Args:
@@ -158,6 +159,11 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             world_size (int): Total number of training workers in the
                 process group. This may differ from self.num_workers if
                 there are additional workers outside this worker group class.
+            starting_rank (int): The rank to use for the first worker.
+                Worker ranks will be in [starting_rank,
+                len(self.remote_workers)+starting_rank). This is useful if
+                you want to use worker outside of this group as the rank 0
+                worker.
 
         Returns:
             List of process group set up promises.
@@ -166,7 +172,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         remote_pgroup_setups = [
             worker.setup_process_group.remote(
                 url=address,
-                world_rank=i,
+                world_rank=i+starting_rank,
                 world_size=world_size,
                 timeout=timedelta(self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
@@ -254,26 +260,32 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         if blocking:
             ray.get(remote_calls)
 
-    def state_dict(self, to_cpu=False):
+    def state_dict(self):
         # This is needed to handle calling ray.get on a dead actor.
-        sd = None
+        buffer_object = None
         futures = {
-            r.state_dict.remote(to_cpu=to_cpu)
+            r.state_stream.remote()
             for r in self.remote_workers
         }
         while len(futures) > 0:
             ready, _ = ray.wait(list(futures), num_returns=1)
             object_ref = ready[0]
             try:
-                sd = ray.get(object_ref)
+                buffer_object = ray.get(object_ref)
             except RayActorError:
                 futures.remove(object_ref)
             else:
                 break
-        if sd is None:
+        if buffer_object is None:
             raise RuntimeError("Obtaining state_dict from remote workers is "
                                "unsuccessful since all workers have died.")
-        return sd
+        to_gpu = self._use_gpu and torch.cuda.is_available()
+        _buffer = io.BytesIO(buffer_object)
+        state_dict = torch.load(
+            _buffer,
+            map_location=("cpu" if not to_gpu else
+                          lambda storage, loc: storage.cuda()))
+        return state_dict
 
     def _train(self, num_steps, profile, info, dataset=None):
         """Runs 1 epoch of training on all workers.
@@ -433,14 +445,14 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 self.apply_all_workers(self._initialization_hook)
 
             # Compute URL for initializing distributed PyTorch.
-            head_worker = self.remote_worker_group.remote_workers[0]
-            address = ray.get(head_worker.setup_address.remote())
+            address = setup_address()
 
             remote_pgs = self.remote_worker_group._setup_process_group(
-                address=address, world_size=num_workers)
+                address=address, world_size=num_workers, starting_rank=1)
+            # Use the local worker as rank 0. This will help with debugging.
             self.local_worker.setup_process_group(
                 url=address,
-                world_rank=num_workers - 1,
+                world_rank=0,
                 world_size=num_workers,
                 timeout=timedelta(self._timeout_s))
             ray.get(remote_pgs)
@@ -475,8 +487,8 @@ class LocalWorkerGroup(WorkerGroupInterface):
         if blocking:
             ray.get(remote_calls)
 
-    def state_dict(self, to_cpu=False):
-        return self.local_worker.state_dict(to_cpu)
+    def state_dict(self):
+        return self.local_worker.state_dict()
 
     def should_scale_up(self):
         return self.remote_worker_group.should_scale_up()
@@ -515,6 +527,9 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 logger.warning(err)
                 return False, None
             if "NCCL" in err.args[0]:  # there is no specific error message
+                logger.warning(err)
+                return False, None
+            if "Connection closed by peer" in err.args[0]:
                 logger.warning(err)
                 return False, None
 

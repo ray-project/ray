@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 import ray
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
+from ray.util.sgd.torch.worker_group import RemoteWorkerGroup, LocalWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
 
 from ray.util.sgd.torch.examples.train_example import (
@@ -39,27 +39,37 @@ def ray_start_4_cpus():
         dist.destroy_process_group()
 
 
-def gen_step_with_fail(num_fails):
-    def train_with_fail(self, num_steps, profile, info, dataset=None):
-        if not hasattr(self, "_num_failures"):
-            self._num_failures = 0
-        remote_worker_stats = []
-        for i, w in enumerate(self.remote_workers):
-            params = dict(num_steps=num_steps, profile=profile, info=info)
-            if dataset:
-                params["iterator"] = dataset.get_shard(i)
-            stats = w.train_epoch.remote(**params)
-            remote_worker_stats.append(stats)
-        if self._num_failures < num_fails:
+def remote_worker_train_with_fail(self, num_steps, profile, info,
+                                  dataset=None):
+    remote_worker_stats = []
+    for i, w in enumerate(self.remote_workers):
+        params = dict(num_steps=num_steps, profile=profile, info=info)
+        if dataset:
+            params["iterator"] = dataset.get_shard(i)
+        stats = w.train_epoch.remote(**params)
+        remote_worker_stats.append(stats)
+        if i==0 and hasattr(self, "should_fail") and self.should_fail:
             time.sleep(1)
-            ray.kill(self.remote_workers[0])
-            self._num_failures += 1
-        return remote_worker_stats
+            ray.kill(self.remote_workers[i])
+    return remote_worker_stats
 
-    return train_with_fail
+start_workers = TorchTrainer._start_workers
+
+def gen_start_with_fail(num_fails):
+    def start_with_fail(self, *args, **kwargs):
+        start_workers(self, *args, **kwargs)
+        fail = self._num_failures < num_fails
+        if self.use_local:
+            self.worker_group.remote_worker_group.should_fail = fail
+        else:
+            self.worker_group.should_fail = fail
+    return start_with_fail
+
+
 
 
 @pytest.mark.parametrize("use_local", [False, True])
+@patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
         return
@@ -68,21 +78,20 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    step_with_fail = gen_step_with_fail(1)
+    start_with_fail = gen_start_with_fail(1)
 
     TestOperator = TrainingOperator.from_creators(
         model_creator,
         optimizer_creator,
         single_loader,
         loss_creator=lambda config: nn.MSELoss())
-    with patch.object(RemoteWorkerGroup, "_train", step_with_fail):
+    with patch.object(TorchTrainer, "_start_workers",
+                      start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
             use_local=use_local,
             num_workers=2)
-
-        original_state_dict = trainer1.state_dict()
 
         @ray.remote
         def try_test():
@@ -91,13 +100,13 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
 
         try_test.remote()
         trainer1.train(max_retries=1)
-        assert len(trainer1.worker_group.remote_workers) == 1
-        assert trainer1.state_dict() == original_state_dict
+        assert trainer1.worker_group.num_workers == 1
 
         trainer1.shutdown()
 
 
 @pytest.mark.parametrize("use_local", [False, True])
+@patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
         return
@@ -106,15 +115,15 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    step_with_fail = gen_step_with_fail(2)
-
     TestOperator = TrainingOperator.from_creators(
         model_creator,
         optimizer_creator,
         single_loader,
         loss_creator=lambda config: nn.MSELoss())
 
-    with patch.object(RemoteWorkerGroup, "_train", step_with_fail):
+    start_with_fail = gen_start_with_fail(2)
+
+    with patch.object(TorchTrainer, "_start_workers", start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
@@ -127,6 +136,7 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
 
 
 @pytest.mark.parametrize("use_local", [False, True])
+@patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
     print(locals())
     if not dist.is_available():
@@ -136,13 +146,16 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
         dataset = LinearDataset(2, 5, size=1000000)
         return DataLoader(dataset, batch_size=config.get("batch_size", 32))
 
-    step_with_fail = gen_step_with_fail(3)
     TestOperator = TrainingOperator.from_creators(
         model_creator,
         optimizer_creator,
         single_loader,
         loss_creator=lambda config: nn.MSELoss())
-    with patch.object(RemoteWorkerGroup, "_train", step_with_fail):
+
+    start_with_fail = gen_start_with_fail(3)
+
+    with patch.object(TorchTrainer, "_start_workers",
+                      start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},

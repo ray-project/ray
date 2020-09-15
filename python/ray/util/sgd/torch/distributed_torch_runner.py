@@ -89,23 +89,6 @@ class DistributedTorchRunner(TorchRunner):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
         return [0]
 
-    def load_state_stream(self, byte_obj):
-        """Loads a bytes object the training state dict.
-
-        This is needed because we don't want to deserialize the tensor
-        onto the same device (which is from the driver process). We want to
-        map it onto the actor's specific device.
-
-        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
-        """
-        _buffer = io.BytesIO(byte_obj)
-        to_gpu = self.use_gpu and torch.cuda.is_available()
-        state_dict = torch.load(
-            _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
-        return self.load_state_dict(state_dict)
-
     def _wrap_dataloaders(self):
         def with_sampler(loader):
             # Automatically set the DistributedSampler
