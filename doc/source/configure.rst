@@ -228,7 +228,7 @@ The list of available driver options:
 
 - ``ray.address``
 
-  - The cluster address if the driver connects to an existing Ray cluster. If it's ``null``, a new Ray cluster will be created.
+  - The cluster address if the driver connects to an existing Ray cluster. If it is empty, a new Ray cluster will be created.
   - Type: ``String``
   - Default: ``null``
 
