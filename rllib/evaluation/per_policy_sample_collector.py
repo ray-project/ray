@@ -476,6 +476,7 @@ class _PerPolicySampleCollector:
         """
         time_range = self.agent_key_to_timestep[agent_key] - (timestep - self.shift_before)
         new_agent_slot = self.agent_slot_cursor
+        print("copying data from slot {} to {}".format(agent_slot, new_agent_slot))
         # Copy relevant timesteps at end of old chunk into new one.
         if self.time_major:
             for k in self.buffers.keys():
