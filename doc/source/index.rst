@@ -194,7 +194,7 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
-   oss-users.rst
+   ray-libraries.rst
    installation.rst
 
 .. toctree::
