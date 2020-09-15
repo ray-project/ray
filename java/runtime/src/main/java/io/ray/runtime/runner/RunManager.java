@@ -188,19 +188,19 @@ public class RunManager {
    * @param isHead Whether this node is the head node. If true, redis server will be started.
    */
   public void startRayProcesses(boolean isHead) {
-    LOGGER.debug("Starting ray processes @ {}.", rayConfig.nodeIp);
+    LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
     try {
       if (isHead) {
         startGcs();
       }
       startObjectStore();
       startRaylet(isHead);
-      LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
+      LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
       // Clean up started processes.
       cleanup();
-      LOGGER.error("Failed to start ray processes.", e);
-      throw new RuntimeException("Failed to start ray processes.", e);
+      LOGGER.error("Failed to start ray runtime.", e);
+      throw new RuntimeException("Failed to start ray runtime.", e);
     }
   }
 
