@@ -500,20 +500,7 @@ def get_system_memory():
 
 
 def _get_docker_cpus():
-    # 1. Try using CFS Quota (https://bugs.openjdk.java.net/browse/JDK-8146115)
-    # 2. Try Nproc (CPU sets)
-    cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-    cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
-    num_cpus = 0
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(
-            cpu_quota_file_name):
-        with open(cpu_quota_file_name, "r") as f:
-            num_cpus = int(f.read())
-        if num_cpus != -1:
-            with open(cpu_share_file_name, "r") as f:
-                num_cpus /= int(f.read())
-            return num_cpus
-
+    # TODO (Alex): Do something smarter and cheaper (probably with /sys/fs/cgroup/cpu/)
     return int(subprocess.check_output("nproc"))
 
 
