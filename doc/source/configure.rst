@@ -230,7 +230,7 @@ The list of available driver options:
 
   - The cluster address if the driver connects to an existing Ray cluster. If it is empty, a new Ray cluster will be created.
   - Type: ``String``
-  - Default: ``null``
+  - Default: empty string.
 
 - ``ray.local-mode``
 
