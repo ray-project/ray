@@ -8,6 +8,7 @@ import traceback
 import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
+from datetime import datetime, timedelta
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -87,6 +88,34 @@ def test_node_info(ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_memory_table(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+
+    @ray.remote
+    class ActorWithObjs:
+        def __init__(self):
+            self.obj_ref = ray.put([1,2,3])
+
+        def get_obj(self):
+            return ray.get(self.obj_ref)
+
+    actors = [ActorWithObjs.remote() for _ in range(3)]
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    requests.get(webui_url + "/memory/set_fetch_memory_info?shouldFetch=true")
+    memory_fetch_threshhold = datetime.now() + timedelta(seconds=5)
+    while datetime.now() < memory_fetch_threshhold:
+        memory_table = requests.get(f"{webui_url}/get_memory_table")
+        if not memory_table:
+            time.sleep(.5)
+            continue
+        num_actor_handles = len(actors)
+        num_object_refs = len(actors)
+        summary = memory_table["summary"]
+        assert summary["totalActorHandles"] == num_actor_handles
+        assert summary["totalLocalRefCount"] == num_object_refs
+        break
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import async_loop_forever
+from ray.new_dashboard.memory import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
@@ -46,6 +47,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
+        self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -83,6 +85,34 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         node_info = await DataOrganizer.get_node_info(hostname)
         return await dashboard_utils.rest_response(
             success=True, message="Node detail fetched.", detail=node_info)
+
+    @routes.get("/memory/memory_table")
+    async def get_memory_table(self, req) -> aiohttp.web.Response:
+        group_by = req.query.get("group_by")
+        sort_by = req.query.get("sort_by")
+        kwargs = {}
+        try:
+            if group_by:
+                kwargs["group_by"] = GroupByType(group_by)
+            if sort_by:
+                kwargs["sort_by"] = SortingType(sort_by)
+        except ValueError as e:
+            return await dashboard_utils.rest_response(success=False, message=str(e))
+
+        memory_table = DataOrganizer.get_memory_table_info(
+            **kwargs)
+        return await dashboard_utils.rest_response(success=True, memory_table=memory_table.__dict__)
+
+    @routes.post("/memory/set_fetch")
+    async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
+        should_fetch = req.query.get("shouldFetch")
+        if should_fetch == "true":
+            self._collect_memory_info = True
+        elif should_fetch == "false":
+            self._collect_memory_info = False
+        else:
+            return await dashboard_utils.rest_response(success=False, message=f"Unknown argument to set_fetch {should_fetch}")
+        return await dashboard_utils.rest_response(success=True)
 
     async def _update_actors(self):
         # Subscribe actor channel.
@@ -139,7 +169,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 continue
             try:
                 reply = await stub.GetNodeStats(
-                    node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                    include_memory_info=self.include_memory_info, timeout=2)
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[ip] = reply_dict
             except Exception:

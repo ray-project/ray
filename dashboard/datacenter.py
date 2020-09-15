@@ -1,6 +1,7 @@
 import logging
 
 import ray.new_dashboard.consts as dashboard_consts
+import ray.new_dashboard.memory as memory
 from ray.new_dashboard.utils import Dict, Signal
 
 logger = logging.getLogger(__name__)
@@ -107,3 +108,11 @@ class DataOrganizer:
             node_info["raylet"].pop("viewData", None)
             all_nodes_summary.append(node_info)
         return all_nodes_summary
+
+    @classmethod
+    async def get_memory_information(cls, sort_by=memory.SortingType.OBJECT_SIZE, group_by=memory.GroupByType.STACK_TRACE):
+        all_worker_stats = []
+        for node_stats in DataSource.node_stats.values():
+            all_worker_stats.extend(node_stats.get("workersStats", []))
+        memory_information = memory.construct_memory_table(all_worker_stats, group_by=group_by, sort_by=sort_by)
+        return memory_information
