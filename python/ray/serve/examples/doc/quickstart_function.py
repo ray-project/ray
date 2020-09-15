@@ -1,6 +1,8 @@
+import ray
 from ray import serve
 import requests
 
+ray.init(num_cpus=8)
 client = serve.start()
 
 

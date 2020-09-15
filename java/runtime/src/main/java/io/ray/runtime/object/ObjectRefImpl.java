@@ -65,6 +65,10 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    byte[] ownerAddress = runtime.getObjectStore().promoteAndGetOwnershipInfo(this.getId());
+    out.writeInt(ownerAddress.length);
+    out.write(ownerAddress);
     ObjectSerializer.addContainedObjectId(this.getId());
   }
 
@@ -72,7 +76,13 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (ObjectId) in.readObject();
     this.type = (Class<T>) in.readObject();
+    int len = in.readInt();
+    byte[] ownerAddress = new byte[len];
+    in.readFully(ownerAddress);
     addLocalReference();
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    runtime.getObjectStore().registerOwnershipInfoAndResolveFuture(
+        this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
   }
 
   private void addLocalReference() {

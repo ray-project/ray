@@ -60,6 +60,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
         "--address",
         type=str,
         help="the address to use for Ray")
@@ -77,7 +79,10 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
     CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator, optimizer_creator=optimizer_creator,
         data_creator=data_creator, loss_creator=nn.MSELoss)
