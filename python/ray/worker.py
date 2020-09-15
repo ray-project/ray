@@ -487,6 +487,7 @@ def init(
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
+        _plasma_directory=None,
         _node_ip_address=ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory=None,
         _memory=None,
@@ -573,6 +574,7 @@ def init(
             reconstructed. If False, then ray.ObjectLostError will be
             thrown.
         _redis_max_memory: Redis max memory.
+        _plasma_directory: Override the plasma mmap file directory.
         _node_ip_address (str): The IP address of the node that we are on.
         _driver_object_store_memory (int): Limit the amount of memory the
             driver can use in the object store for creating objects.
@@ -668,7 +670,7 @@ def init(
             num_redis_shards=None,
             redis_max_clients=None,
             redis_password=_redis_password,
-            plasma_directory=None,
+            plasma_directory=_plasma_directory,
             huge_pages=None,
             include_dashboard=include_dashboard,
             dashboard_host=dashboard_host,

@@ -194,6 +194,7 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   ray-libraries.rst
    installation.rst
 
 .. toctree::
@@ -282,7 +283,6 @@ Papers
    iter.rst
    dask-on-ray.rst
    mars-on-ray.rst
-   ray-libraries.rst
 
 .. toctree::
    :hidden:
