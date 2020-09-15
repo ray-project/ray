@@ -7,6 +7,9 @@ from typing import List
 import ray
 
 from ray._raylet import (TaskID, ActorID, JobID)
+import logging
+
+logger = logging.getLogger(__name__)
 
 # These values are used to calculate if objectRefs are actor handles.
 TASKID_BYTES_SIZE = TaskID.size()
@@ -253,7 +256,7 @@ class MemoryTable:
             group_memory_table.summarize()
         return self
 
-    def __dict__(self):
+    def as_dict(self):
         return {
             "summary": self.summary,
             "group": {

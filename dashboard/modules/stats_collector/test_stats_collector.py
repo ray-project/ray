@@ -101,21 +101,36 @@ def test_memory_table(ray_start_with_dashboard):
         def get_obj(self):
             return ray.get(self.obj_ref)
 
-    actors = [ActorWithObjs.remote() for _ in range(3)]
+    my_obj = ray.put([1,2,3] * 100)
+    actors = [ActorWithObjs.remote() for _ in range(2)]
+    results = ray.get([actor.get_obj.remote() for actor in actors])
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    requests.get(webui_url + "/memory/set_fetch_memory_info?shouldFetch=true")
+    resp = requests.post(webui_url + "/memory/set_fetch?shouldFetch=true")
+    resp.raise_for_status()
+
     memory_fetch_threshhold = datetime.now() + timedelta(seconds=5)
+    done_in_time = False
+    latest_memory_table = None
     while datetime.now() < memory_fetch_threshhold:
-        memory_table = requests.get(f"{webui_url}/get_memory_table")
-        if not memory_table:
+        resp = requests.get(f"{webui_url}/memory/memory_table")
+        if not resp or "data" not in resp.json():
             time.sleep(.5)
             continue
-        num_actor_handles = len(actors)
-        num_object_refs = len(actors)
-        summary = memory_table["summary"]
-        assert summary["totalActorHandles"] == num_actor_handles
-        assert summary["totalLocalRefCount"] == num_object_refs
+        resp_data = resp.json()["data"]
+        latest_memory_table = resp_data["memoryTable"]
+        summary = latest_memory_table["summary"]
+        try:
+            # 1 ref per handle and per object the actor has a ref to
+            assert summary["totalActorHandles"] == len(actors) * 2 
+            # 1 ref for my_obj
+            assert summary["totalLocalRefCount"] == 1
+        except AssertionError as e:
+            time.sleep(.5)
+            continue
+        done_in_time = True
         break
+    print(f"memory_table={latest_memory_table}")
+    assert done_in_time
 
 
 if __name__ == "__main__":

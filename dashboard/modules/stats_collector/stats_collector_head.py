@@ -84,7 +84,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         hostname = req.match_info.get("hostname")
         node_info = await DataOrganizer.get_node_info(hostname)
         return await dashboard_utils.rest_response(
-            success=True, message="Node detail fetched.", detail=node_info)
+            success=True, message="Node details fetched.", detail=node_info)
 
     @routes.get("/memory/memory_table")
     async def get_memory_table(self, req) -> aiohttp.web.Response:
@@ -99,9 +99,9 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         except ValueError as e:
             return await dashboard_utils.rest_response(success=False, message=str(e))
 
-        memory_table = DataOrganizer.get_memory_table_info(
+        memory_table = await DataOrganizer.get_memory_table(
             **kwargs)
-        return await dashboard_utils.rest_response(success=True, memory_table=memory_table.__dict__)
+        return await dashboard_utils.rest_response(success=True, message="Fetched memory table",memory_table=memory_table.as_dict())
 
     @routes.post("/memory/set_fetch")
     async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
@@ -169,7 +169,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 continue
             try:
                 reply = await stub.GetNodeStats(
-                    include_memory_info=self.include_memory_info, timeout=2)
+                    node_manager_pb2.GetNodeStatsRequest(
+                            include_memory_info=self._collect_memory_info),
+                    timeout=2)
+                logger.warning(f"reply={reply}")
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[ip] = reply_dict
             except Exception:
