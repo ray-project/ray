@@ -382,7 +382,7 @@ class _PerPolicySampleCollector:
 
             if erase_agent_slot:
                 # Reset everything for new data.
-                print("deleting agent_key={} (slot={})".format(agent_key, agent_slot))
+                #print("deleting agent_key={} (slot={})".format(agent_key, agent_slot))
                 self.slot_to_agent_key[agent_slot] = None
                 del self.agent_key_to_slot[agent_key]
                 del self.agent_key_to_timestep[agent_key]
@@ -476,7 +476,7 @@ class _PerPolicySampleCollector:
         """
         time_range = self.agent_key_to_timestep[agent_key] - (timestep - self.shift_before)
         new_agent_slot = self.agent_slot_cursor
-        print("copying data from slot {} to {}".format(agent_slot, new_agent_slot))
+        #print("copying data from slot {} to {}".format(agent_slot, new_agent_slot))
         # Copy relevant timesteps at end of old chunk into new one.
         if self.time_major:
             for k in self.buffers.keys():

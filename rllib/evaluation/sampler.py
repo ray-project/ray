@@ -90,10 +90,7 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
 
     @override(InputReader)
     def next(self) -> SampleBatchType:
-        #TODO
-        t0 = time.time()
         batches = [self.get_data()]
-        print("getting batch of size={} took {} sec".format(batches[0].count, time.time() - t0))
         batches.extend(self.get_extra_batches())
         if len(batches) > 1:
             return batches[0].concat_samples(batches)
@@ -1170,7 +1167,6 @@ def _process_observations_w_trajectory_view_api(
         sample_batch = \
             _sample_collector.try_build_truncated_episode_multi_agent_batch()
         if sample_batch is not None:
-            #print("built sample batch of size {}".format(sample_batch.count))
             outputs.append(sample_batch)
 
     return active_envs, to_eval, outputs

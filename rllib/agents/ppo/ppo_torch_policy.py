@@ -45,11 +45,6 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    #TODO
-    import time
-    print("len={} num_seqs={}".format(torch.sum(train_batch["seq_lens"]), len(train_batch["seq_lens"])))
-    t = time.time()
-
     logits, state = model.from_batch(train_batch, is_training=True)
     curr_action_dist = dist_class(logits, model)
 
@@ -119,7 +114,6 @@ def ppo_surrogate_loss(
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
-    print("loss time={}sec".format(time.time() - t))
     return total_loss
 
 

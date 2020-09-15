@@ -16,8 +16,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        #TODO
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -96,7 +95,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         """
         config = copy.deepcopy(ppo.DEFAULT_CONFIG)
         action_space = Discrete(2)
-        obs_space = Box(-1.0, 1.0, shape=(700, ))
+        obs_space = Box(-1.0, 1.0, shape=(1400, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
@@ -184,7 +183,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             # Assert `_use_trajectory_view_api` is much faster.
             self.assertLess(duration_w, duration_wo)
-            self.assertLess(learn_time_w, learn_time_wo * 0.6)
+            self.assertLess(learn_time_w, learn_time_wo)
 
     def test_traj_view_lstm_learning(self):
         """Test whether PPOTrainer runs faster and learns w/ traj. view API.
@@ -202,11 +201,15 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "num_agents": 4,
         }))
 
-        config["num_workers"] = 0 #TODO 3
+        config["num_workers"] = 3
         config["num_envs_per_worker"] = 3
-        config["num_sgd_iter"] = 6
+        config["num_sgd_iter"] = 5
+        config["vf_share_layers"] = True
+        config["vf_loss_coeff"] = 0.0001
+
         config["rollout_fragment_length"] = 200
         config["train_batch_size"] = 4000
+
         config["model"]["use_lstm"] = True
         config["model"]["lstm_use_prev_action_reward"] = True
         config["model"]["max_seq_len"] = 20
@@ -276,7 +279,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for i in range(100):
             pc = rollout_worker.sampler.sample_collector. \
                 policy_sample_collectors["pol0"]
-            #sample_batch_offset_before = pc.sample_batch_offset
             buffers = pc.buffers
             result = rollout_worker.sample()
             pol_batch = result.policy_batches["pol0"]
