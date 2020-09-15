@@ -1,7 +1,11 @@
 import logging
+from typing import Dict, Optional, Union
+
 import numpy as np
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +40,14 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr="training_iteration",
-                 reward_attr=None,
-                 metric=None,
-                 mode=None,
-                 max_t=100,
-                 grace_period=1,
-                 reduction_factor=4,
-                 brackets=1):
+                 time_attr: str = "training_iteration",
+                 reward_attr: Optional[str] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 max_t: int = 100,
+                 grace_period: int = 1,
+                 reduction_factor: float = 4,
+                 brackets: int = 1):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
@@ -82,7 +86,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._metric_op = -1.
         self._time_attr = time_attr
 
-    def set_search_properties(self, metric, mode):
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -100,7 +105,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner, trial):
+    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -115,7 +120,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         idx = np.random.choice(len(self._brackets), p=normalized)
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
+                        result: Dict) -> str:
         action = TrialScheduler.CONTINUE
         if self._time_attr not in result or self._metric not in result:
             return action
@@ -129,7 +135,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._num_stopped += 1
         return action
 
-    def on_trial_complete(self, trial_runner, trial, result):
+    def on_trial_complete(self, trial_runner: TrialRunner, trial: Trial,
+                          result: Dict):
         if self._time_attr not in result or self._metric not in result:
             return
         bracket = self._trial_info[trial.trial_id]
@@ -137,10 +144,10 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                           self._metric_op * result[self._metric])
         del self._trial_info[trial.trial_id]
 
-    def on_trial_remove(self, trial_runner, trial):
+    def on_trial_remove(self, trial_runner: TrialRunner, trial: Trial):
         del self._trial_info[trial.trial_id]
 
-    def debug_string(self):
+    def debug_string(self) -> str:
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
@@ -161,19 +168,21 @@ class _Bracket():
         >>> b.cutoff(b._rungs[3][1]) == 2.0
     """
 
-    def __init__(self, min_t, max_t, reduction_factor, s):
+    def __init__(self, min_t: int, max_t: int, reduction_factor: float,
+                 s: int):
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
         self._rungs = [(min_t * self.rf**(k + s), {})
                        for k in reversed(range(MAX_RUNGS))]
 
-    def cutoff(self, recorded):
+    def cutoff(self, recorded) -> Union[None, int, float, complex, np.ndarray]:
         if not recorded:
             return None
         return np.nanpercentile(
             list(recorded.values()), (1 - 1 / self.rf) * 100)
 
-    def on_result(self, trial, cur_iter, cur_rew):
+    def on_result(self, trial: Trial, cur_iter: int,
+                  cur_rew: Optional[float]) -> str:
         action = TrialScheduler.CONTINUE
         for milestone, recorded in self._rungs:
             if cur_iter < milestone or trial.trial_id in recorded:
@@ -190,7 +199,7 @@ class _Bracket():
                 break
         return action
 
-    def debug_str(self):
+    def debug_str(self) -> str:
         # TODO: fix up the output for this
         iters = " | ".join([
             "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))

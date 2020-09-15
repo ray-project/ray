@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.tune.trial import Trial
 
 
@@ -8,7 +10,8 @@ class TrialScheduler:
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
 
-    def set_search_properties(self, metric, mode):
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]) -> bool:
         """Pass search properties to scheduler.
 
         This method acts as an alternative to instantiating schedulers

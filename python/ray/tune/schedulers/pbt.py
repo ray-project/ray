@@ -5,6 +5,7 @@ import math
 import os
 import random
 import shutil
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
@@ -13,6 +14,8 @@ from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial_executor import TrialExecutor
+from ray.tune.trial_runner import TrialRunner
 
 from ray.util.debug import log_once
 
@@ -22,7 +25,7 @@ logger = logging.getLogger(__name__)
 class PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
-    def __init__(self, trial):
+    def __init__(self, trial: Trial):
         self.orig_tag = trial.experiment_tag
         self.last_score = None
         self.last_checkpoint = None
@@ -30,12 +33,13 @@ class PBTTrialState:
         self.last_train_time = 0  # Used for synchronous mode.
         self.last_result = None  # Used for synchronous mode.
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str((self.last_score, self.last_checkpoint,
                     self.last_train_time, self.last_perturbation_time))
 
 
-def explore(config, mutations, resample_probability, custom_explore_fn):
+def explore(config: Dict, mutations: Dict, resample_probability: float,
+            custom_explore_fn: Optional[Callable]) -> Dict:
     """Return a config perturbed as specified.
 
     Args:
@@ -83,7 +87,7 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     return new_config
 
 
-def make_experiment_tag(orig_tag, config, mutations):
+def make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
     """Appends perturbed params to the trial name to show in the console."""
 
     resolved_vars = {}
@@ -92,7 +96,8 @@ def make_experiment_tag(orig_tag, config, mutations):
     return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
 
 
-def fill_config(config, attr, search_space):
+def fill_config(config: Dict, attr: str,
+                search_space: Union[Callable, Domain, list, dict]):
     """Add attr to config by sampling from search_space."""
     if callable(search_space):
         config[attr] = search_space()
@@ -214,18 +219,19 @@ class PopulationBasedTraining(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr="time_total_s",
-                 reward_attr=None,
-                 metric=None,
-                 mode=None,
-                 perturbation_interval=60.0,
-                 hyperparam_mutations={},
-                 quantile_fraction=0.25,
-                 resample_probability=0.25,
-                 custom_explore_fn=None,
-                 log_config=True,
-                 require_attrs=True,
-                 synch=False):
+                 time_attr: str = "time_total_s",
+                 reward_attr: Optional[str] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 perturbation_interval: float = 60.0,
+                 hyperparam_mutations: Dict = None,
+                 quantile_fraction: float = 0.25,
+                 resample_probability: float = 0.25,
+                 custom_explore_fn: Optional[Callable] = None,
+                 log_config: bool = True,
+                 require_attrs: bool = True,
+                 synch: bool = False):
+        hyperparam_mutations = hyperparam_mutations or {}
         for value in hyperparam_mutations.values():
             if not (isinstance(value,
                                (list, dict, Domain)) or callable(value)):
@@ -288,7 +294,8 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
-    def set_search_properties(self, metric, mode):
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -306,7 +313,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner, trial):
+    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -329,7 +336,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Make sure this attribute is added to CLI output.
                 trial.evaluated_params[attr] = trial.config[attr]
 
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
+                        result: Dict) -> str:
         if self._time_attr not in result:
             time_missing_msg = "Cannot find time_attr {} " \
                                "in trial result {}. Make sure that this " \
@@ -425,8 +433,9 @@ class PopulationBasedTraining(FIFOScheduler):
             # the paused trials.
             return TrialScheduler.PAUSE
 
-    def _perturb_trial(self, trial, trial_runner, upper_quantile,
-                       lower_quantile):
+    def _perturb_trial(self, trial: Trial, trial_runner: TrialRunner,
+                       upper_quantile: List[Trial],
+                       lower_quantile: List[Trial]):
         """Checkpoint if in upper quantile, exploits if in lower."""
         state = self._trial_state[trial]
         if trial in upper_quantile:
@@ -450,8 +459,9 @@ class PopulationBasedTraining(FIFOScheduler):
             assert trial is not trial_to_clone
             self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
 
-    def _log_config_on_step(self, trial_state, new_state, trial,
-                            trial_to_clone, new_config):
+    def _log_config_on_step(self, trial_state: PBTTrialState,
+                            new_state: PBTTrialState, trial: Trial,
+                            trial_to_clone: Trial, new_config: Dict):
         """Logs transition during exploit/exploit step.
 
         For each step, logs: [target trial tag, clone trial tag, target trial
@@ -482,7 +492,8 @@ class PopulationBasedTraining(FIFOScheduler):
         with open(trial_path, "a+") as f:
             f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
 
-    def _exploit(self, trial_executor, trial, trial_to_clone):
+    def _exploit(self, trial_executor: TrialExecutor, trial: Trial,
+                 trial_to_clone: Trial):
         """Transfers perturbed state from trial_to_clone -> trial.
 
         If specified, also logs the updated hyperparam state.
@@ -554,7 +565,7 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_state.last_perturbation_time = new_state.last_perturbation_time
         trial_state.last_train_time = new_state.last_train_time
 
-    def _quantiles(self):
+    def _quantiles(self) -> Tuple[List[Trial], List[Trial]]:
         """Returns trials in the lower and upper `quantile` of the population.
 
         If there is not enough data to compute this, returns empty lists.
@@ -578,7 +589,8 @@ class PopulationBasedTraining(FIFOScheduler):
             return (trials[:num_trials_in_quantile],
                     trials[-num_trials_in_quantile:])
 
-    def choose_trial_to_run(self, trial_runner):
+    def choose_trial_to_run(self,
+                            trial_runner: TrialRunner) -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
@@ -601,7 +613,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_perturbations = 0
         self._num_checkpoints = 0
 
-    def last_scores(self, trials):
+    def last_scores(self, trials: List[Trial]) -> List[float]:
         scores = []
         for trial in trials:
             state = self._trial_state[trial]
@@ -609,7 +621,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 scores.append(state.last_score)
         return scores
 
-    def debug_string(self):
+    def debug_string(self) -> str:
         return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
             self._num_checkpoints, self._num_perturbations)
 
@@ -657,7 +669,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
     """
 
-    def __init__(self, policy_file):
+    def __init__(self, policy_file: str):
         policy_file = os.path.expanduser(policy_file)
         if not os.path.exists(policy_file):
             raise ValueError("Policy file not found: {}".format(policy_file))
@@ -679,7 +691,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         self._policy_iter = iter(self._policy)
         self._next_policy = next(self._policy_iter, None)
 
-    def _load_policy(self, policy_file):
+    def _load_policy(self,
+                     policy_file: str) -> Tuple[Dict, List[Tuple[int, Dict]]]:
         raw_policy = []
         with open(policy_file, "rt") as fp:
             for row in fp.readlines():
@@ -708,7 +721,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         return last_old_conf, list(reversed(policy))
 
-    def on_trial_add(self, trial_runner, trial):
+    def on_trial_add(self, trial_runner: TrialRunner, trial: Trial):
         if self._trial:
             raise ValueError(
                 "More than one trial added to PBT replay run. This "
@@ -729,7 +742,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "or consider not using PBT replay for this run.")
         self._trial.config = self.config
 
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, trial_runner: TrialRunner, trial: Trial,
+                        result: Dict) -> str:
         if TRAINING_ITERATION not in result:
             # No time reported
             return TrialScheduler.CONTINUE
@@ -775,6 +789,6 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         return TrialScheduler.CONTINUE
 
-    def debug_string(self):
+    def debug_string(self) -> str:
         return "PopulationBasedTraining replay: Step {}, perturb {}".format(
             self._current_step, self._num_perturbations)
