@@ -301,8 +301,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left != 0) {
     auto retries_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(ERROR) << retries_str << " retries left for task " << spec.TaskId()
-                   << ", attempting to resubmit.";
+    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
+                  << ", attempting to resubmit.";
     retry_task_callback_(spec, /*delay=*/true);
     will_retry = true;
   } else {
@@ -315,8 +315,8 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
            (current_time_ms() - last_log_time_ms_) >
                kTaskFailureLoggingFrequencyMillis)) {
         if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
-          RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
-                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+          RAY_LOG(WARNING) << "Too many failure logs, throttling to once every "
+                           << kTaskFailureLoggingFrequencyMillis << " millis.";
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {

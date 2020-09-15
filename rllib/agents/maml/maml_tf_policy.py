@@ -6,7 +6,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    vf_preds_fetches, clip_gradients, setup_config, ValueNetworkMixin
+    vf_preds_fetches, compute_and_clip_gradients, setup_config, \
+    ValueNetworkMixin
 from ray.rllib.utils.framework import get_activation_fn
 
 tf1, tf, tfv = try_import_tf()
@@ -421,7 +422,7 @@ MAMLTFPolicy = build_tf_policy(
     optimizer_fn=maml_optimizer_fn,
     extra_action_fetches_fn=vf_preds_fetches,
     postprocess_fn=postprocess_ppo_gae,
-    gradients_fn=clip_gradients,
+    gradients_fn=compute_and_clip_gradients,
     before_init=setup_config,
     before_loss_init=setup_mixins,
     mixins=[KLCoeffMixin])

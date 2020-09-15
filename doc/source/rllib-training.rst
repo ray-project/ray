@@ -912,7 +912,7 @@ Using PyTorch
 ~~~~~~~~~~~~~
 
 Trainers that have an implemented TorchPolicy, will allow you to run
-`rllib train` using the the command line ``--torch`` flag.
+`rllib train` using the command line ``--torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
 

@@ -36,10 +36,25 @@ The basic autoscaling config settings are as follows:
     # considered idle if there are no tasks or actors running on it.
     idle_timeout_minutes: 5
 
+
+Manually Adding Nodes without Resources (Unmanaged Nodes)
+---------------------------------------------------------
+
+In some cases, adding special nodes without any resources (i.e. `num_cpus=0`) may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs.
+
+In order to manually add a node to an autoscaled cluster, the `ray-cluster-name` tag should be set and `ray-node-type` tag should be set to `unmanaged`.
+
+Unmanaged nodes **must have 0 resources**.
+
+If you are using the `available_node_types` field, you should create a custom node type with `resources: {}`, and `max_workers: 0` when configuring the autoscaler.
+
+The autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes. 
+
+
 Multiple Node Type Autoscaling
 ------------------------------
 
-Ray supports multiple node types in a single cluster. In this mode of operation, the scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and tries to add the minimum set of nodes that can fulfill these resource demands. This enables precise, rapid scale up compared to looking only at resource utilization, as the autoscaler also has visiblity into the aggregate resource load.
+Ray supports multiple node types in a single cluster. In this mode of operation, the scheduler will look at the queue of resource shape demands from the cluster (e.g., there might be 10 tasks queued each requesting ``{"GPU": 4, "CPU": 16}``), and tries to add the minimum set of nodes that can fulfill these resource demands. This enables precise, rapid scale up compared to looking only at resource utilization, as the autoscaler also has visibility into the queue of resource demands.
 
 The concept of a cluster node type encompasses both the physical instance type (e.g., AWS p3.8xl GPU nodes vs m4.16xl CPU nodes), as well as other attributes (e.g., IAM role, the machine image, etc). `Custom resources <configure.html>`__ can be specified for each node type so that Ray is aware of the demand for specific node types at the application level (e.g., a task may request to be placed on a machine with a specific role or machine image via custom resource).
 
@@ -108,9 +123,21 @@ The ``max_workers`` field constrains the number of nodes of this type that can b
 
     max_workers: 4
 
-The ``worker_setup_commands`` field can be used to override the setup and initialization commands for a node type. Note that you can only override the setup for worker nodes. The head node's setup commands are always configured via the top level field in the cluster YAML:
+The ``worker_setup_commands`` field (and also the ``initialization_commands`` field, not shown) can be used to override the setup and initialization commands for a node type. Note that you can only override the setup for worker nodes. The head node's setup commands are always configured via the top level field in the cluster YAML:
 
 .. code::
 
     worker_setup_commands:
         - pip install tensorflow-gpu  # Example command.
+
+Docker Support
+~~~~~~~~~~~~~~
+The ``worker_image`` and ``pull_before_run`` fields override the correpsonding field in the top level ``docker`` section for the node type. The ``worker_run_options`` field is combined with top level ``docker: run_options`` field to produce the docker run command for the given node_type. The following configuration is for a GPU enabled node type.
+
+.. code::
+
+    pull_before_run: True
+    worker_image:
+        - rayproject/ray-ml:latest-gpu
+    worker_run_options:
+        - --runtime=nvidia

@@ -197,7 +197,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 RAY_CONFIG(int, num_workers_per_process_python, 1)
 
 /// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
+RAY_CONFIG(int, num_workers_per_process_java, 1)
 
 /// Number of workers per CPP worker process
 RAY_CONFIG(int, num_workers_per_process_cpp, 1)
@@ -247,7 +247,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)

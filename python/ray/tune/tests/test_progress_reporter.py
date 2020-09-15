@@ -3,9 +3,10 @@ import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock
-
+from ray import tune
 from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
+from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
                                         trial_progress_str)
 
@@ -70,7 +71,7 @@ tune.run_experiments({
             "c": tune.grid_search(list(range(10))),
         },
     },
-}, reuse_actors=True, verbose=1)"""
+}, verbose=1)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
 +---------------+----------+-------+-----+-----+
@@ -233,6 +234,43 @@ class ProgressReporterTest(unittest.TestCase):
         reporter.add_metric_column("foo", "bar")
         self.assertIn("foo", reporter._metric_columns)
 
+    def testInfer(self):
+        reporter = CLIReporter()
+        test_result = dict(foo_result=1, baz_result=4123, bar_result="testme")
+
+        def test(config):
+            for i in range(3):
+                tune.report(**test_result)
+
+        analysis = tune.run(test, num_samples=3)
+        all_trials = analysis.trials
+        inferred_results = reporter._infer_user_metrics(all_trials)
+        for metric in inferred_results:
+            self.assertNotIn(metric, AUTO_RESULT_KEYS)
+            self.assertTrue(metric in test_result)
+
+        class TestReporter(CLIReporter):
+            _output = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output.append(progress_str)
+
+        reporter = TestReporter()
+        analysis = tune.run(test, num_samples=3, progress_reporter=reporter)
+        found = {k: False for k in test_result}
+        for output in reporter._output:
+            for key in test_result:
+                if key in output:
+                    found[key] = True
+        assert found["foo_result"]
+        assert found["baz_result"]
+        assert not found["bar_result"]
+
     def testProgressStr(self):
         trials = []
         for i in range(5):
@@ -285,7 +323,6 @@ class ProgressReporterTest(unittest.TestCase):
             }, {"a": "A"},
             fmt="psql",
             max_rows=3)
-        print(prog3)
         assert prog3 == EXPECTED_RESULT_3
 
     def testEndToEndReporting(self):

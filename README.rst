@@ -6,7 +6,7 @@
 |
 
 
-**Ray is a fast and simple framework for building and running distributed applications.**
+**Ray provides a simple, universal API for building distributed applications.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -15,10 +15,19 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
+There are also many `community integrations <https://docs.ray.io/en/master/oss-users.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/oss-users.html>`_.
+
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
-**NOTE:** As of Ray 0.8.1, Python 2 is no longer supported.
+.. _`Modin`: https://github.com/modin-project/modin
+.. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
+.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
+.. _`Scikit-learn`: joblib.html
+
+
 
 Quick Start
 -----------
@@ -120,7 +129,7 @@ This example runs a parallel grid search to optimize an example objective functi
     print("Best config: ", analysis.get_best_config(metric="mean_loss"))
 
     # Get a dataframe for analyzing trial results.
-    df = analysis.dataframe()
+    df = analysis.results_df
 
 If TensorBoard is installed, automatically visualize all trial results:
 
@@ -254,21 +263,27 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 .. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
 
-
 More Information
 ----------------
 
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
-- `Ray paper`_
-- `Ray HotOS paper`_
+- `Ray 1.0 Architecture whitepaper`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
+*Older documents:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `Blog (old)`_
+
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://ray-project.github.io/
+.. _`Blog (old)`: https://ray-project.github.io/
+.. _`Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

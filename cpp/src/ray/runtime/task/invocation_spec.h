@@ -11,6 +11,7 @@ namespace api {
 class InvocationSpec {
  public:
   TaskID task_id;
+  std::string name;
   ActorID actor_id;
   int actor_counter;
   /// Remote function offset from base address.

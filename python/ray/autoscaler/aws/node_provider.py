@@ -368,8 +368,9 @@ class AWSNodeProvider(NodeProvider):
                         BOTO_CREATE_MAX_RETRIES)
                     raise exc
                 else:
-                    # todo: err msg
-                    cli_logger.abort(exc)
+                    cli_logger.print(
+                        "create_instances: Attempt failed with {}, retrying.",
+                        exc)
                     cli_logger.old_error(logger, exc)
 
     def terminate_node(self, node_id):
@@ -378,7 +379,7 @@ class AWSNodeProvider(NodeProvider):
             if node.spot_instance_request_id:
                 cli_logger.print(
                     "Terminating instance {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     node_id)  # todo: show node name?
 
                 cli_logger.old_info(
@@ -387,7 +388,7 @@ class AWSNodeProvider(NodeProvider):
                     "be stopped, only terminated)", node_id)
                 node.terminate()
             else:
-                cli_logger.print("Stopping instance {} " + cf.gray(
+                cli_logger.print("Stopping instance {} " + cf.dimmed(
                     "(to terminate instead, "
                     "set `cache_stopped_nodes: False` "
                     "under `provider` in the cluster configuration)"),
@@ -421,7 +422,7 @@ class AWSNodeProvider(NodeProvider):
             if on_demand_ids:
                 # todo: show node names?
                 cli_logger.print(
-                    "Stopping instances {} " + cf.gray(
+                    "Stopping instances {} " + cf.dimmed(
                         "(to terminate instead, "
                         "set `cache_stopped_nodes: False` "
                         "under `provider` in the cluster configuration)"),
@@ -436,7 +437,7 @@ class AWSNodeProvider(NodeProvider):
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
-                    cf.gray("(cannot stop spot instances, only terminate)"),
+                    cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
                 cli_logger.old_info(
                     logger,

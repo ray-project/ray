@@ -1,4 +1,3 @@
-import os
 import logging
 try:  # py3
     from shlex import quote
@@ -6,6 +5,8 @@ except ImportError:  # py2
     from pipes import quote
 
 logger = logging.getLogger(__name__)
+
+DOCKER_MOUNT_PREFIX = "/tmp/ray_tmp_mount"
 
 
 def validate_docker_config(config):
@@ -46,20 +47,27 @@ def with_docker_exec(cmds,
     ]
 
 
-def check_docker_running_cmd(cname):
+def _check_helper(cname, template):
     return " ".join([
-        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||", "true"
+        "docker", "inspect", "-f", "'{{" + template + "}}'", cname, "||",
+        "true"
     ])
+
+
+def check_docker_running_cmd(cname):
+    return _check_helper(cname, ".State.Running")
+
+
+def check_bind_mounts_cmd(cname):
+    return _check_helper(cname, "json .Mounts")
 
 
 def check_docker_image(cname):
-    return " ".join([
-        "docker", "inspect", "-f", "'{{.Config.Image}}'", cname, "||", "true"
-    ])
+    return _check_helper(cname, ".Config.Image")
 
 
 def docker_start_cmds(user, image, mount_dict, cname, user_options):
-    mount = {dst: dst for dst in mount_dict}
+    mount = {f"{DOCKER_MOUNT_PREFIX}/{dst}": dst for dst in mount_dict}
 
     # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([
@@ -78,17 +86,3 @@ def docker_start_cmds(user, image, mount_dict, cname, user_options):
         mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
     ]
     return " ".join(docker_run)
-
-
-def docker_autoscaler_setup(cname):
-    cmds = []
-    for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
-        # needed because docker doesn't allow relative paths
-        base_path = os.path.basename(path)
-        cmds.append("docker cp {path} {cname}:{dpath}".format(
-            path=path, dpath=base_path, cname=cname))
-        cmds.extend(
-            with_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
-                container_name=cname))
-    return cmds

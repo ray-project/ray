@@ -1,3 +1,5 @@
+.. _memory:
+
 Memory Management
 =================
 
@@ -52,7 +54,7 @@ The ``ray memory`` command can be used to help track down what ``ObjectRef`` ref
 
 Running ``ray memory`` from the command line while a Ray application is running will give you a dump of all of the ``ObjectRef`` references that are currently held by the driver, actors, and tasks in the cluster.
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site
@@ -83,7 +85,7 @@ There are five types of references that can keep an object pinned:
 
 In this example, we create references to two objects: one that is ``ray.put()`` in the object store and another that's the return value from ``f.remote()``.
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site
@@ -107,7 +109,7 @@ In the output from ``ray memory``, we can see that each of these is marked as a 
 
 In this example, we create a ``numpy`` array and then store it in the object store. Then, we fetch the same numpy array from the object store and delete its ``ObjectRef``. In this case, the object is still pinned in the object store because the deserialized copy (stored in ``b``) points directly to the memory in the object store.
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site
@@ -132,7 +134,7 @@ The output from ``ray memory`` displays this as the object being ``PINNED_IN_MEM
 
 In this example, we first create an object via ``ray.put()`` and then submit a task that depends on the object.
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site
@@ -160,7 +162,7 @@ While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFER
 
 In this example, we again create an object via ``ray.put()``, but then pass it to a task wrapped in another object (in this case, a list).
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site
@@ -184,7 +186,7 @@ Now, both the driver and the worker process running the task hold a ``LOCAL_REFE
 
 In this example, we first create an object via ``ray.put()``, then capture its ``ObjectRef`` inside of another ``ray.put()`` object, and delete the first ``ObjectRef``. In this case, both objects are still pinned.
 
-.. code-block::
+::
 
   -----------------------------------------------------------------------------------------------------
   Object Ref                                Reference Type       Object Size   Reference Creation Site

@@ -1,5 +1,6 @@
 # coding: utf-8
 import copy
+from functools import partial
 import logging
 import os
 import random
@@ -14,7 +15,7 @@ from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRIAL_INFO, LOGDIR_PATH, STDOUT_FILE, STDERR_FILE
+from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
@@ -122,14 +123,29 @@ class _TrialCleanup:
                 del self._cleanup_map[done]
 
 
+def noop_logger_creator(config, logdir):
+    # Set the working dir in the remote process, for user file writes
+    os.makedirs(logdir, exist_ok=True)
+    if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+        os.chdir(logdir)
+    return NoopLogger(config, logdir)
+
+
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
                  queue_trials=False,
                  reuse_actors=False,
-                 ray_auto_init=False,
+                 ray_auto_init=None,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
+        if ray_auto_init is None:
+            if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
+                logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
+                ray_auto_init = False
+            else:
+                ray_auto_init = True
+
         super(RayTrialExecutor, self).__init__(queue_trials)
         # Check for if we are launching a trial without resources in kick off
         # autoscaler.
@@ -163,7 +179,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
-        remote_logdir = trial.logdir
+        logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
         if (self._reuse_actors and reuse_allowed
                 and self._cached_actor is not None):
@@ -172,7 +188,8 @@ class RayTrialExecutor(TrialExecutor):
             existing_runner = self._cached_actor
             self._cached_actor = None
             trial.set_runner(existing_runner)
-            if not self.reset_trial(trial, trial.config, trial.experiment_tag):
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag,
+                                    logger_creator):
                 raise AbortTrialExecution(
                     "Trainable runner reuse requires reset_config() to be "
                     "implemented and return True.")
@@ -192,15 +209,6 @@ class RayTrialExecutor(TrialExecutor):
             memory=trial.resources.memory or None,
             object_store_memory=trial.resources.object_store_memory or None,
             resources=trial.resources.custom_resources)
-
-        def logger_creator(config):
-            # Set the working dir in the remote process, for user file writes
-            logdir = config.pop(LOGDIR_PATH, remote_logdir)
-            os.makedirs(logdir, exist_ok=True)
-            if not ray.worker._mode() == ray.worker.LOCAL_MODE:
-                os.chdir(logdir)
-            return NoopLogger(config, logdir)
-
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(Location())
@@ -268,6 +276,12 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
+            # TODO: Right now, we only support reuse if there has been
+            # previously instantiated state on the worker. However,
+            # we should consider the case where function evaluations
+            # can be very fast - thereby extending the need to support
+            # reuse to cases where there has not been previously
+            # instantiated state before.
             reuse_allowed = checkpoint is not None or trial.has_checkpoint()
             runner = self._setup_remote_runner(trial, reuse_allowed)
         trial.set_runner(runner)
@@ -377,13 +391,19 @@ class RayTrialExecutor(TrialExecutor):
             self._paused[trial_future[0]] = trial
         super(RayTrialExecutor, self).pause_trial(trial)
 
-    def reset_trial(self, trial, new_config, new_experiment_tag):
+    def reset_trial(self,
+                    trial,
+                    new_config,
+                    new_experiment_tag,
+                    logger_creator=None):
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
             trial (Trial): Trial to be reset.
             new_config (dict): New configuration for Trial trainable.
             new_experiment_tag (str): New experiment name for trial.
+            logger_creator (Callable[[Dict], Logger]): A function that
+                instantiates a logger on the actor process.
 
         Returns:
             True if `reset_config` is successful else False.
@@ -395,7 +415,7 @@ class RayTrialExecutor(TrialExecutor):
             with warn_if_slow("reset"):
                 try:
                     reset_val = ray.get(
-                        trainable.reset.remote(new_config, trial.logdir),
+                        trainable.reset.remote(new_config, logger_creator),
                         timeout=DEFAULT_GET_TIMEOUT)
                 except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)

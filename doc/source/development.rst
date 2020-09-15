@@ -23,7 +23,7 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 .. code-block:: shell
 
-    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp38-cp38-manylinux1_x86_64.whl
+    pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp38-cp38-manylinux1_x86_64.whl
 
 2. Fork and clone the project to your machine. Connect your repository to the upstream (main project) ray repository.
 
@@ -142,6 +142,7 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 
     cd doc
     pip install -r requirements-doc.txt
+    pip install -U -r requirements-rtd.txt # important for reproducing the deployment environment
     make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac
