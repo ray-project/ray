@@ -415,8 +415,10 @@ class MultiAgentBatch:
             policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
                 ids to SampleBatches of experiences.
             env_steps (int): The number of timesteps in the environment this
-                batch contains. This will be less than the number of
-                transitions this batch contains across all policies in total.
+                batch contains. NOTE: 1 step across all or some agents in the
+                env counts as only 1! Due to this, there will probably be less
+                `env_steps` than the number of single (agent) transitions
+                this all-policy batch contains.
         """
 
         for v in policy_batches.values():
@@ -515,7 +517,11 @@ class MultiAgentBatch:
         Args:
             policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
                 ids to SampleBatch.
-            env_steps (int): Number of env steps in the batch.
+            env_steps (int): The number of timesteps in the environment this
+                batch contains. NOTE: 1 step across all or some agents in the
+                env counts as only 1! Due to this, there will probably be less
+                `env_steps` than the number of single (agent) transitions
+                that the returned batch contains.
 
         Returns:
             Union[SampleBatch, MultiAgentBatch]: The single default policy's

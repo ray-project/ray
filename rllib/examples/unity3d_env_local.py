@@ -127,14 +127,14 @@ if __name__ == "__main__":
             # No actual feature net: map directly from observations to feature
             # vector (linearly).
             "feature_net_config": {
-                "fcnet_hiddens": [],
+                "fcnet_hiddens": [256],#TODO
                 "fcnet_activation": "relu",
             },
             "sub_exploration": {
                 "type": "StochasticSampling",
             },
             "forward_net_activation": "relu",
-            "inverse_net_activation": "relu",
+            "inverse_net_activation": "swish", #TODO
         }
 
     stop = {

@@ -21,7 +21,8 @@ def compute_advantages(rollout: SampleBatch,
                        gamma: float = 0.9,
                        lambda_: float = 1.0,
                        use_gae: bool = True,
-                       use_critic: bool = True):
+                       use_critic: bool = True,
+                       _use_trajectory_view_api: bool = False) -> SampleBatch:
     """
     Given a rollout, compute its value targets and the advantages.
 
@@ -35,8 +36,7 @@ def compute_advantages(rollout: SampleBatch,
             this to False will use 0 as baseline.
 
     Returns:
-        SampleBatch (SampleBatch): Object with experience from rollout and
-            processed rewards.
+        SampleBatch: Object with experience from rollout and processed rewards.
     """
 
     rollout_size = len(rollout[SampleBatch.ACTIONS])
@@ -55,15 +55,24 @@ def compute_advantages(rollout: SampleBatch,
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         rollout[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
-        rollout[Postprocessing.VALUE_TARGETS] = (
-            rollout[Postprocessing.ADVANTAGES] +
-            rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
+        if _use_trajectory_view_api:
+            rollout[Postprocessing.VALUE_TARGETS] = (
+                rollout[Postprocessing.ADVANTAGES] +
+                rollout[SampleBatch.VF_PREDS]).astype(np.float32)
+        else:
+            rollout[Postprocessing.VALUE_TARGETS] = (
+                    rollout[Postprocessing.ADVANTAGES] +
+                    rollout[SampleBatch.VF_PREDS]).copy().astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
-        discounted_returns = discount(rewards_plus_v,
-                                      gamma)[:-1].copy().astype(np.float32)
+        if _use_trajectory_view_api:
+            discounted_returns = discount(rewards_plus_v,
+                                          gamma)[:-1].astype(np.float32)
+        else:
+            discounted_returns = discount(rewards_plus_v,
+                                          gamma)[:-1].copy().astype(np.float32)
 
         if use_critic:
             rollout[Postprocessing.
@@ -75,8 +84,12 @@ def compute_advantages(rollout: SampleBatch,
             rollout[Postprocessing.VALUE_TARGETS] = np.zeros_like(
                 rollout[Postprocessing.ADVANTAGES])
 
-    rollout[Postprocessing.ADVANTAGES] = rollout[
-        Postprocessing.ADVANTAGES].copy().astype(np.float32)
+    if _use_trajectory_view_api:
+        rollout[Postprocessing.ADVANTAGES] = rollout[
+            Postprocessing.ADVANTAGES].astype(np.float32)
+    else:
+        rollout[Postprocessing.ADVANTAGES] = rollout[
+            Postprocessing.ADVANTAGES].copy().astype(np.float32)
 
     assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
         "Rollout stacked incorrectly!"

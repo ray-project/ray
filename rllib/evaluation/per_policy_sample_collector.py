@@ -50,37 +50,34 @@ class _PerPolicySampleCollector:
         self.shift_before = max(shift_before, 1)
         self.shift_after = shift_after
 
-        # The offset on the agent dim to start the next SampleBatch build from.
-        self.sample_batch_offset = 0
-
         # The actual underlying data-buffers.
         self.buffers = {}
-        self.postprocessed_agents = [False] * self.num_agents
 
         # Next agent-slot to be used by a new agent/env combination.
         self.agent_slot_cursor = 0
-        # Maps agent/episode ID/chunk-num to an agent slot.
+        # Maps agent/episode ID to an agent slot.
         self.agent_key_to_slot = {}
-        # Maps agent/episode ID to the last chunk-num.
-        self.agent_key_to_chunk_num = {}
         # Maps agent slot number to agent keys.
         self.slot_to_agent_key = [None] * self.num_agents
-        # Maps agent/episode ID/chunk-num to a time step cursor.
+        # Maps agent slot number to an env_step offset to be subtracted from
+        # the "t" column to get the env_step within the current partial
+        # trajectory that the agent slot represents.
+        self.env_step_offsets = [0] * self.num_agents
+        # Maps agent/episode ID to a time step cursor.
         self.agent_key_to_timestep = {}
 
-        # Total timesteps taken in the env over all agents since last reset.
-        self.timesteps_since_last_reset = 0
-
         # Indices (T,B) to pick from the buffers for the next forward pass.
-        self.forward_pass_indices = [[], []]
-        self.forward_pass_size = 0
+        self.inference_indices = [[], []]
+        self.inference_single_time_index = None
+        self.inference_agent_index_bounds = None
+        self.inference_size = 0
         # Maps index from the forward pass batch to (agent_id, episode_id,
         # env_id) tuple.
-        self.forward_pass_index_to_agent_info = {}
-        self.agent_key_to_forward_pass_index = {}
+        self.inference_index_to_agent_info = {}
+        self.agent_key_to_inference_index = {}
 
     def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
-                     env_id: EnvID, chunk_num: int,
+                     env_id: EnvID,
                      init_obs: TensorType) -> None:
         """Adds a single initial observation (after env.reset()) to the buffer.
 
@@ -90,16 +87,13 @@ class _PerPolicySampleCollector:
             agent_id (AgentID): Unique ID for the agent we are adding the
                 initial observation for.
             env_id (EnvID): The env ID to which `init_obs` belongs.
-            chunk_num (int): The time-chunk number (0-based). Some episodes
-                may last for longer than self.num_timesteps and therefore
-                have to be chopped into chunks.
             init_obs (TensorType): Initial observation (after env.reset()).
         """
-        agent_key = (agent_id, episode_id, chunk_num)
+        agent_key = (agent_id, episode_id)
         agent_slot = self.agent_slot_cursor
         self.agent_key_to_slot[agent_key] = agent_slot
-        self.agent_key_to_chunk_num[agent_key[:2]] = chunk_num
         self.slot_to_agent_key[agent_slot] = agent_key
+        self.env_step_offsets[agent_slot] = 0
         self._next_agent_slot()
 
         if SampleBatch.OBS not in self.buffers:
@@ -108,14 +102,19 @@ class _PerPolicySampleCollector:
                     SampleBatch.OBS: init_obs,
                     SampleBatch.EPS_ID: episode_id,
                     SampleBatch.AGENT_INDEX: agent_id,
+                    "t": -1,
                     "env_id": env_id,
                 })
+        # Add obs (and timestep at init obs (-1) for consistency).
         if self.time_major:
             self.buffers[SampleBatch.OBS][self.shift_before-1, agent_slot] = \
                 init_obs
+            self.buffers["t"][self.shift_before - 1, agent_slot] = -1
         else:
             self.buffers[SampleBatch.OBS][agent_slot, self.shift_before-1] = \
                 init_obs
+            self.buffers["t"][agent_slot, self.shift_before - 1] = -1
+
         self.agent_key_to_timestep[agent_key] = self.shift_before
 
         self._add_to_next_inference_call(agent_key, env_id, agent_slot,
@@ -147,8 +146,7 @@ class _PerPolicySampleCollector:
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
 
-        chunk_num = self.agent_key_to_chunk_num[(agent_id, episode_id)]
-        agent_key = (agent_id, episode_id, chunk_num)
+        agent_key = (agent_id, episode_id)#, chunk_num)
         agent_slot = self.agent_key_to_slot[agent_key]
         ts = self.agent_key_to_timestep[agent_key]
         for k, v in values.items():
@@ -160,17 +158,43 @@ class _PerPolicySampleCollector:
                 self.buffers[k][agent_slot, ts] = v
         self.agent_key_to_timestep[agent_key] += 1
 
+        # Check whether we have to postprocess anything or build a SampleBatch.
+        # Postprocessing:
+
         # Time-axis is "full" -> Cut-over to new chunk (only if not DONE).
-        if self.agent_key_to_timestep[
-            agent_key] - self.shift_before == self.num_timesteps and \
-                not values[SampleBatch.DONES]:
-            self._new_chunk_from(agent_slot, agent_key,
-                                 self.agent_key_to_timestep[agent_key])
+        if self.agent_key_to_timestep[agent_key] - self.shift_before > self.num_timesteps:
+                #not values[SampleBatch.DONES]:
+            #TODO (sven): Rollout_fragment_length must have been hit -> Build a
+                # SampleBatch and return it. Mark episode as DONE or point
+                # _EpisodeRecord to new chunk.
+            raise NotImplementedError()
+            #self._new_chunk_from(agent_slot, agent_key,
+            #                     self.agent_key_to_timestep[agent_key])
 
-        self.timesteps_since_last_reset += 1
-
-        if not agent_done:
+        if agent_done:
+            del self.agent_key_to_inference_index[agent_key]
+        else:
             self._add_to_next_inference_call(agent_key, env_id, agent_slot, ts)
+
+        #TODO: (sven) put warning on settings here in case buffers get very
+        # large.
+        # if (_sample_collector.total_env_steps() > large_batch_threshold
+        #        and log_once("large_batch_warning")):
+        #    logger.warning(
+        #        "More than {} observations for {} env steps ".format(
+        #            _sample_collector.total_env_steps(),
+        #            _sample_collector.count) +
+        #        "are buffered in the sampler. If this is more than you "
+        #        "expected, check that that you set a horizon on your "
+        #        "environment correctly and that it terminates at some point. "
+        #        "Note: In multi-agent environments, `rollout_fragment_length` "
+        #        "sets the batch size based on (across-agents) environment "
+        #        "steps, not the steps of individual agents, which can result "
+        #        "in unexpectedly large batches." +
+        #        ("Also, you may be in evaluation waiting for your Env to "
+        #         "terminate (batch_mode=`complete_episodes`). Make sure it "
+        #         "does at some point."
+        #         if not multiple_episodes_in_batch else ""))
 
     def get_inference_input_dict(self, view_reqs: Dict[str, ViewRequirement]
                                  ) -> Dict[str, TensorType]:
@@ -187,6 +211,11 @@ class _PerPolicySampleCollector:
             Dict[str, TensorType]: The input_dict to be passed into the ModelV2
                 for inference/training.
 
+        Throws:
+            ValueError: In case no inference data has been registered, since
+                the last call to this method, via calling
+                `self.add_action_reward_next_obs()` with data.
+
         Examples:
             >>> obs, r, done, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
@@ -196,6 +225,12 @@ class _PerPolicySampleCollector:
             >>> action = policy.compute_actions_from_input_dict(input_dict)
             >>> # repeat
         """
+        if self.inference_size == 0:
+            raise ValueError(
+                "Cannot do inference w/o registered data! Call "
+                "`add_action_reward_next_obs` one or more times to register "
+                "some inference data.")
+
         input_dict = {}
         for view_col, view_req in view_reqs.items():
             # Create the batch of data from the different buffers.
@@ -203,35 +238,58 @@ class _PerPolicySampleCollector:
             if data_col not in self.buffers:
                 self._build_buffers({data_col: view_req.space.sample()})
 
-            indices = self.forward_pass_indices
-            if self.time_major:
-                input_dict[view_col] = self.buffers[data_col][indices]
-            else:
-                if isinstance(view_req.shift, (list, tuple)):
-                    time_indices = \
-                        np.array(view_req.shift) + np.array(indices[0])
-                    input_dict[view_col] = self.buffers[data_col][indices[1],
-                                                                  time_indices]
+            # Fast way: We only have one time slot and a consecutive range of
+            # agent slots -> No need to copy.
+            if self.inference_single_time_index is not None:
+                t = self.inference_single_time_index
+                a0, a1 = self.inference_agent_index_bounds
+                if self.time_major:
+                    input_dict[view_col] = self.buffers[data_col][t, a0:a1 + 1]
                 else:
-                    input_dict[view_col] = \
-                        self.buffers[data_col][indices[1], indices[0]]
+                    if isinstance(view_req.shift, (list, tuple)):
+                        # TODO: (sven)
+                        raise NotImplementedError()
+                    else:
+                        input_dict[view_col] = \
+                            self.buffers[data_col][a0:a1 + 1, t]
+            # Collect the (scattered) indices registered for the next inference
+            # call.
+            else:
+                indices = self.inference_indices
+                if self.time_major:
+                    input_dict[view_col] = self.buffers[data_col][indices]
+                else:
+                    if isinstance(view_req.shift, (list, tuple)):
+                        time_indices = \
+                            np.array(view_req.shift) + np.array(indices[0])
+                        input_dict[view_col] = self.buffers[data_col][indices[1],
+                                                                      time_indices]
+                    else:
+                        input_dict[view_col] = \
+                            self.buffers[data_col][indices[1], indices[0]]
 
         self._reset_inference_call()
 
         return input_dict
 
-    def get_postprocessing_sample_batches(
+    def get_per_agent_sample_batches_for_episode(
             self,
-            episode: MultiAgentEpisode,
-            view_reqs: Dict[str, ViewRequirement]) -> \
+            episode_id: EpisodeID,
+            view_reqs: Dict[str, ViewRequirement],
+            cut_at_env_step: Optional[int] = None) -> \
             Dict[AgentID, SampleBatch]:
-        """Returns a SampleBatch object ready for postprocessing.
+        """Returns a dict of AgentID to SampleBatch mappings for some episode.
 
         Args:
-            episode (MultiAgentEpisode): The MultiAgentEpisode object to
+            episode_id (EpisodeID): The MultiAgentEpisode ID to
                 get the to-be-postprocessed SampleBatches for.
             view_reqs (Dict[str, ViewRequirement]): The view requirements dict
                 to use for creating the SampleBatch from our buffers.
+            cut_at_env_step (Optional[int]): An optional env_step cutoff. If
+                provided, we will cut each agents' trajectory after this many
+                across-all-agents env-steps (not actual time steps!) and move
+                the piece beyond `cut_at_env_step` to a new agent_slot and
+                only return the piece up to `cut_at_env_step`.
 
         Returns:
             Dict[AgentID, SampleBatch]: The sample batch objects to be passed
@@ -243,25 +301,20 @@ class _PerPolicySampleCollector:
         # Construct the SampleBatch-dict.
         sample_batch_data = {}
 
-        range_ = self.agent_slot_cursor - self.sample_batch_offset
-        if range_ < 0:
-            range_ = self.num_agents + range_
-        for i in range(range_):
-            agent_slot = self.sample_batch_offset + i
-            if agent_slot >= self.num_agents:
-                agent_slot = agent_slot % self.num_agents
-            # Do not postprocess the same slot twice.
-            if self.postprocessed_agents[agent_slot]:
-                continue
-            agent_key = self.slot_to_agent_key[agent_slot]
-            # Skip other episodes (if episode provided).
-            if episode and agent_key[1] != episode.episode_id:
+        for agent_key, agent_slot in self.agent_key_to_slot.items():
+            if agent_key[1] != episode_id:
                 continue
             end = self.agent_key_to_timestep[agent_key]
+            env_step_offset = self.env_step_offsets[agent_slot]
+            if cut_at_env_step is not None and self.buffers["t"][end - 1, agent_slot] - env_step_offset >= cut_at_env_step:
+                try:
+                    end -= next(i for i, t in enumerate(reversed(self.buffers["t"][:end, agent_slot])) if t - env_step_offset < cut_at_env_step)
+                except Exception as e:
+                    print("") #TODO
+                    raise e
             # Do not build any empty SampleBatches.
             if end == self.shift_before:
                 continue
-            self.postprocessed_agents[agent_slot] = True
 
             assert agent_key not in sample_batch_data
             sample_batch_data[agent_key] = {}
@@ -286,41 +339,56 @@ class _PerPolicySampleCollector:
             batches[agent_key] = SampleBatch(data)
         return batches
 
-    def get_train_sample_batch_and_reset(self, view_reqs) -> SampleBatch:
-        """Returns the accumulated sample batche for this policy.
-
-        This is usually called to collect samples for policy training.
-
-        Returns:
-            SampleBatch: Returns the accumulated sample batch for this
-                policy.
-        """
-        seq_lens_w_0s = [
-            self.agent_key_to_timestep[k] - self.shift_before
-            for k in self.slot_to_agent_key if k is not None
-        ]
-        # We have an agent-axis buffer "rollover" (new SampleBatch will be
-        # built from last n agent records plus first m agent records in
-        # buffer).
-        if self.agent_slot_cursor < self.sample_batch_offset:
-            rollover = -(self.num_agents - self.sample_batch_offset)
-            seq_lens_w_0s = seq_lens_w_0s[rollover:] + seq_lens_w_0s[:rollover]
-        first_zero_len = len(seq_lens_w_0s)
-        if seq_lens_w_0s[-1] == 0:
-            first_zero_len = seq_lens_w_0s.index(0)
-            # Assert that all zeros lie at the end of the seq_lens array.
-            assert all(seq_lens_w_0s[i] == 0
-                       for i in range(first_zero_len, len(seq_lens_w_0s)))
-
+    def build_sample_batch_from_agent_keys(self, agent_keys, view_reqs, cut_eid=None, cut_at_env_step=None) -> SampleBatch:
+        # Gather some stats to be able to collect the SampleBatch efficiently.
         t_start = self.shift_before
         t_end = t_start + self.num_timesteps
+        seq_lens = []
+        agent_slots = []
+        is_consecutive = True
+        for agent_key in agent_keys:
+            agent_slot = self.agent_key_to_slot.get(agent_key)
+            if agent_slot is None:
+                continue
+            if len(agent_slots) > 0 and agent_slot != agent_slots[-1] + 1:
+                is_consecutive = False
+            # Calculate the seq_lens array.
+            end = self.agent_key_to_timestep[agent_key]
+            seq_len = end - self.shift_before
+            erase_agent_slot = False
+            # The episode needs to be cut and the second half copied into a new
+            # agent_slot.
+            if agent_key[1] == cut_eid:
+                env_step_offset = self.env_step_offsets[agent_slot]
+                env_steps = self.buffers["t"][
+                                end - 1, agent_slot] - env_step_offset
+                # This agent has already had more env_steps than the cut ->
+                # Need to copy the remaining trajectory over to a new agent
+                # slot.
+                if env_steps > cut_at_env_step:
+                    # Find the time slot, at which to cut.
+                    try:
+                        seq_len -= next(i for i, t in enumerate(reversed(self.buffers["t"][:end, agent_slot])) if t - env_step_offset < cut_at_env_step)
+                    except Exception as e:
+                        print("") #TODO
+                        raise e
+                # Cut data over to new agent slot.
+                if not self.buffers[SampleBatch.DONES][seq_len + self.shift_before - 1, agent_slot]:
+                    self._copy_data_to_new_agent_slot(agent_slot, agent_key, seq_len + self.shift_before)
+                else:
+                    erase_agent_slot = True
+            else:
+                erase_agent_slot = True
 
-        # The agent_slot cursor that points to the newest agent-slot that
-        # actually already has at least 1 timestep of data (thus it excludes
-        # just-rolled over chunks (which only have the initial obs in them)).
-        valid_agent_cursor = \
-            (self.agent_slot_cursor -
-             (len(seq_lens_w_0s) - first_zero_len)) % self.num_agents
+            if erase_agent_slot:
+                # Reset everything for new data.
+                print("deleting agent_key={} (slot={})".format(agent_key, agent_slot))
+                self.slot_to_agent_key[agent_slot] = None
+                del self.agent_key_to_slot[agent_key]
+                del self.agent_key_to_timestep[agent_key]
+
+            agent_slots.append(agent_slot)
+            seq_lens.append(seq_len)
 
         # Construct the view dict.
         view = {}
@@ -330,53 +398,18 @@ class _PerPolicySampleCollector:
             # For OBS, indices must be shifted by -1.
             shift = view_req.shift
             shift += 0 if data_col != SampleBatch.OBS else -1
-            # If agent_slot has been rolled-over to beginning, we have to copy
-            # here.
-            if valid_agent_cursor < self.sample_batch_offset:
-                time_slice = self.buffers[data_col][t_start + shift:t_end +
-                                                    shift]
-                one_ = time_slice[:, self.sample_batch_offset:]
-                two_ = time_slice[:, :valid_agent_cursor]
-                if torch and isinstance(time_slice, torch.Tensor):
-                    view[view_col] = torch.cat([one_, two_], dim=1)
-                else:
-                    view[view_col] = np.concatenate([one_, two_], axis=1)
+            # We don't have to copy, create a view into the buffer.
+            if is_consecutive:
+                view[view_col] = self.buffers[data_col][
+                                 t_start + shift:t_end + shift,
+                                 agent_slots[0]:agent_slots[-1] + 1]
+            # We have to copy data, do a indexed select from the buffer.
             else:
-                view[view_col] = \
-                    self.buffers[data_col][
-                    t_start + shift:t_end + shift,
-                    self.sample_batch_offset:valid_agent_cursor]
+                view[view_col] = self.buffers[data_col][
+                                 t_start + shift:t_end + shift, agent_slots]
 
-        # Copy all still ongoing trajectories to new agent slots
-        # (including the ones that just started (are seq_len=0)).
-        new_chunk_args = []
-        for i, seq_len in enumerate(seq_lens_w_0s):
-            if seq_len < self.num_timesteps:
-                agent_slot = (self.sample_batch_offset + i) % self.num_agents
-                if not self.buffers[SampleBatch.
-                                    DONES][seq_len - 1 +
-                                           self.shift_before][agent_slot]:
-                    agent_key = self.slot_to_agent_key[agent_slot]
-                    new_chunk_args.append(
-                        (agent_slot, agent_key,
-                         self.agent_key_to_timestep[agent_key]))
-        # Cut out all 0 seq-lens.
-        seq_lens = seq_lens_w_0s[:first_zero_len]
         batch = SampleBatch(
             view, _seq_lens=np.array(seq_lens), _time_major=self.time_major)
-
-        # Reset everything for new data.
-        self.postprocessed_agents = [False] * self.num_agents
-        self.agent_key_to_slot.clear()
-        self.agent_key_to_chunk_num.clear()
-        self.slot_to_agent_key = [None] * self.num_agents
-        self.agent_key_to_timestep.clear()
-        self.timesteps_since_last_reset = 0
-        #self.forward_pass_size = 0
-        self.sample_batch_offset = self.agent_slot_cursor
-
-        for args in new_chunk_args:
-            self._new_chunk_from(*args)
 
         return batch
 
@@ -428,41 +461,45 @@ class _PerPolicySampleCollector:
         # Just make sure, there is space in our buffer.
         assert self.slot_to_agent_key[self.agent_slot_cursor] is None
 
-    def _new_chunk_from(self, agent_slot, agent_key, timestep):
-        """Creates a new time-window (chunk) given an agent.
+    def _copy_data_to_new_agent_slot(self, agent_slot, agent_key, timestep):
+        """Copies data from an agent slot to a new one, starting from timestep.
 
-        The agent may already have an unfinished episode going on (in a
-        previous chunk). The end of that previous chunk will be copied to the
-        beginning of the new one for proper data-shift handling (e.g.
-        PREV_ACTIONS/REWARDS).
+        The agent's data will be copied into the next available agent slot,
+        and only data after timestep will be copied.
 
         Args:
-            agent_slot (int): The agent to start a new chunk for (from an
-                ongoing episode (chunk)).
-            agent_key (Tuple[AgentID, EpisodeID, int]): The internal key to
+            agent_slot (int): The agent to copy data for.
+            agent_key (Tuple[AgentID, EpisodeID]): The internal key to
                 identify an active agent in some episode.
-            timestep (int): The timestep in the old chunk being continued.
+            timestep (int): The timestep in the old data from which to copy
+                over.
         """
+        time_range = self.agent_key_to_timestep[agent_key] - (timestep - self.shift_before)
         new_agent_slot = self.agent_slot_cursor
-        # Increase chunk num by 1.
-        new_agent_key = agent_key[:2] + (agent_key[2] + 1, )
         # Copy relevant timesteps at end of old chunk into new one.
         if self.time_major:
             for k in self.buffers.keys():
-                self.buffers[k][0:self.shift_before, new_agent_slot] = \
+                self.buffers[k][:time_range, new_agent_slot] = \
                     self.buffers[k][
-                    timestep - self.shift_before:timestep, agent_slot]
+                    timestep - self.shift_before:self.agent_key_to_timestep[agent_key], agent_slot]
         else:
             for k in self.buffers.keys():
                 self.buffers[k][new_agent_slot, 0:self.shift_before] = \
                     self.buffers[k][
                     agent_slot, timestep - self.shift_before:timestep]
 
-        self.agent_key_to_slot[new_agent_key] = new_agent_slot
-        self.agent_key_to_chunk_num[new_agent_key[:2]] = new_agent_key[2]
-        self.slot_to_agent_key[new_agent_slot] = new_agent_key
+        self.agent_key_to_slot[agent_key] = new_agent_slot
+        self.slot_to_agent_key[agent_slot] = None
+        self.slot_to_agent_key[new_agent_slot] = agent_key
+        self.env_step_offsets[new_agent_slot] = self.buffers["t"][timestep - self.shift_before, agent_slot] + 1
         self._next_agent_slot()
-        self.agent_key_to_timestep[new_agent_key] = self.shift_before
+        self.agent_key_to_timestep[agent_key] = time_range
+
+        # Fix the inference registry.
+        idx = self.agent_key_to_inference_index.get(agent_key)
+        if idx is not None:
+            self.inference_indices[0][idx] = time_range - 1
+            self.inference_indices[1][idx] = new_agent_slot
 
     def _add_to_next_inference_call(self, agent_key, env_id, agent_slot,
                                     timestep):
@@ -479,16 +516,34 @@ class _PerPolicySampleCollector:
             agent_slot (int): The agent_slot to register (B axis).
             timestep (int): The timestep to register (T axis).
         """
-        idx = self.forward_pass_size
-        self.forward_pass_index_to_agent_info[idx] = (agent_key[0],
+        idx = self.inference_size
+        self.inference_index_to_agent_info[idx] = (agent_key[0],
                                                       agent_key[1], env_id)
-        self.agent_key_to_forward_pass_index[agent_key[:2]] = idx
-        if self.forward_pass_size == 0:
-            self.forward_pass_indices[0].clear()
-            self.forward_pass_indices[1].clear()
-        self.forward_pass_indices[0].append(timestep)
-        self.forward_pass_indices[1].append(agent_slot)
-        self.forward_pass_size += 1
+        self.agent_key_to_inference_index[agent_key] = idx
+        if self.inference_size == 0:
+            self.inference_indices[0].clear()
+            self.inference_indices[1].clear()
+            self.inference_single_time_index = timestep
+            self.inference_agent_index_bounds = [agent_slot, agent_slot]
+        self.inference_indices[0].append(timestep)
+        self.inference_indices[1].append(agent_slot)
+
+        # Check whether we need to invalidate the conditions for copy-less
+        # inference calls (using a direct view into the buffer for the forward
+        # call).
+        if self.inference_size > 0:
+            # We won't have a single timestep -> Set to None.
+            if timestep != self.inference_single_time_index:
+                self.inference_single_time_index = None
+                self.inference_agent_index_bounds = None
+            # We won't have a consecutive range of agent slots -> Set to None.
+            elif agent_slot != self.inference_agent_index_bounds[1] + 1:
+                self.inference_single_time_index = None
+                self.inference_agent_index_bounds = None
+            else:
+                self.inference_agent_index_bounds[1] = agent_slot
+
+        self.inference_size += 1
 
     def _reset_inference_call(self):
         """Resets indices for the next inference call.
@@ -497,4 +552,6 @@ class _PerPolicySampleCollector:
         `add_action_reward_next_obs()` will count for the next input_dict
         returned by `get_inference_input_dict()`.
         """
-        self.forward_pass_size = 0
+        self.inference_size = 0
+        self.inference_single_time_index = None
+        self.inference_agent_index_bounds = None

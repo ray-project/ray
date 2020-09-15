@@ -16,7 +16,8 @@ from ray.rllib.utils.test_utils import framework_iterator
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        #TODO
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -102,7 +103,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
-            "p_done": 0.01,
+            "max_episode_len": 105,
             "action_space": action_space,
             "observation_space": obs_space
         }))
@@ -185,10 +186,68 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             self.assertLess(duration_w, duration_wo)
             self.assertLess(learn_time_w, learn_time_wo * 0.6)
 
+    def test_traj_view_lstm_learning(self):
+        """Test whether PPOTrainer runs faster and learns w/ traj. view API.
+        """
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        # Spaces for StatelessCartPole.
+        action_space = Discrete(2)
+        obs_space = Box(-2.0, 2.0, shape=(2, ))
+
+        from ray.rllib.examples.env.multi_agent import \
+            MultiAgentStatelessCartPole
+
+        from ray.tune import register_env
+        register_env("ma_env", lambda c: MultiAgentStatelessCartPole({
+            "num_agents": 4,
+        }))
+
+        config["num_workers"] = 0 #TODO 3
+        config["num_envs_per_worker"] = 3
+        config["num_sgd_iter"] = 6
+        config["rollout_fragment_length"] = 200
+        config["train_batch_size"] = 4000
+        config["model"]["use_lstm"] = True
+        config["model"]["lstm_use_prev_action_reward"] = True
+        config["model"]["max_seq_len"] = 20
+
+        policies = {
+            "pol0": (None, obs_space, action_space, {}),
+            "pol1": (None, obs_space, action_space, {}),
+        }
+
+        def policy_fn(agent_id):
+            return "pol0" if agent_id in [0, 1] else "pol1"
+
+        config["multiagent"] = {
+            "policies": policies,
+            "policy_mapping_fn": policy_fn,
+        }
+        num_iterations = 25
+        # Only works in torch so far.
+        for _ in framework_iterator(config, frameworks="torch"):
+            print("w/ traj. view API (and time-major)")
+            config["_use_trajectory_view_api"] = True
+            trainer = ppo.PPOTrainer(config=config, env="ma_env")
+            learnt = False
+            start = time.time()
+            for i in range(num_iterations):
+                out = trainer.train()
+                print("reward={}".format(out["episode_reward_mean"]))
+                if out["episode_reward_mean"] >= 150.0:
+                    learnt = True
+                    break
+            duration_w = time.time() - start
+            print("Learnt in {}sec".format(duration_w))
+            trainer.stop()
+            self.assertTrue(learnt)
+
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(2, ))
         obs_space = Box(float("-inf"), float("inf"), (4, ))
         max_seq_len = 50
+        rollout_fragment_length = 200
+        assert rollout_fragment_length % max_seq_len == 0
         policies = {
             "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
         }
@@ -209,6 +268,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "max_seq_len": max_seq_len,
                 },
             },
+            rollout_fragment_length=rollout_fragment_length,
             policy=policies,
             policy_mapping_fn=policy_fn,
             num_envs=1,
@@ -216,13 +276,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for i in range(100):
             pc = rollout_worker.sampler.sample_collector. \
                 policy_sample_collectors["pol0"]
-            sample_batch_offset_before = pc.sample_batch_offset
+            #sample_batch_offset_before = pc.sample_batch_offset
             buffers = pc.buffers
             result = rollout_worker.sample()
             pol_batch = result.policy_batches["pol0"]
 
-            self.assertTrue(result.count == 100)
-            self.assertTrue(pol_batch.count >= 100)
+            self.assertTrue(result.count == rollout_fragment_length)
+            self.assertTrue(pol_batch.count >= rollout_fragment_length)
             self.assertFalse(0 in pol_batch.seq_lens)
             # Check prev_reward/action, next_obs consistency.
             for t in range(max_seq_len):
