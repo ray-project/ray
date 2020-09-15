@@ -170,6 +170,9 @@ print("Stage 3 results:")
 print("\tActor creation time: {}".format(stage_3_creation_time))
 print("\tTotal time: {}".format(stage_3_time))
 
+print("Stage 4 results:")
+print(f"\tScheduling spread: {avg_spread}.")
+
 # TODO(rkn): The test below is commented out because it currently does not
 # pass.
 # # Submit a bunch of actor tasks with all-to-all communication.
