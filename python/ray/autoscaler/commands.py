@@ -33,7 +33,6 @@ from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
@@ -154,8 +153,6 @@ def create_or_update_cluster(config_file: str,
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
 
-    cli_logger.success("Cluster configuration valid")
-
     printed_overrides = False
 
     def handle_cli_override(key, override):
@@ -244,8 +241,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(  # todo: better message
-            "Bootstrapping {} config",
+    with cli_logger.timed(
+            "Checking {} environment settings",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
@@ -730,9 +727,13 @@ def get_or_create_head_node(config,
                 cf.bold("  ray exec {}{} {}"), config_file, modifiers,
                 quote(monitor_str))
 
-            cli_logger.print("Connect to a terminal on the cluster head")
+            cli_logger.print("Connect to a terminal on the cluster head:")
             cli_logger.print(
                 cf.bold("  ray attach {}{}"), config_file, modifiers)
+
+            remote_shell_str = updater.cmd_runner.remote_shell_command_str()
+            cli_logger.print("Get a remote shell to the cluster manually:")
+            cli_logger.print("  {}", remote_shell_str.strip())
     finally:
         provider.cleanup()
 
@@ -845,18 +846,13 @@ def exec_cluster(config_file: str,
             file_mounts_contents_hash="",
             is_head_node=True,
             docker_config=config.get("docker"))
-
-        is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
-
+        shutdown_after_run = False
         if cmd and stop:
             cmd += "; ".join([
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
             ])
-            if is_docker and run_env == "docker":
-                updater.cmd_runner.shutdown_after_next_cmd()
-            else:
-                cmd += "; sudo shutdown -h now"
+            shutdown_after_run = True
 
         result = _exec(
             updater,
@@ -865,7 +861,8 @@ def exec_cluster(config_file: str,
             tmux,
             port_forward=port_forward,
             with_output=with_output,
-            run_env=run_env)
+            run_env=run_env,
+            shutdown_after_run=shutdown_after_run)
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
             if override_cluster_name is not None:
@@ -894,7 +891,8 @@ def _exec(updater,
           tmux,
           port_forward=None,
           with_output=False,
-          run_env="auto"):
+          run_env="auto",
+          shutdown_after_run=False):
     if cmd:
         if screen:
             cmd = [
@@ -914,7 +912,8 @@ def _exec(updater,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output,
-        run_env=run_env)
+        run_env=run_env,
+        shutdown_after_run=shutdown_after_run)
 
 
 def rsync(config_file: str,

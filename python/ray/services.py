@@ -6,6 +6,7 @@ import logging
 import multiprocessing
 import os
 import random
+import shutil
 import signal
 import socket
 import subprocess
@@ -1314,15 +1315,8 @@ def start_raylet(redis_address,
     gcs_ip_address, gcs_port = redis_address.split(":")
 
     has_java_command = False
-    try:
-        java_proc = subprocess.run(
-            ["java", "-version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        if java_proc.returncode == 0:
-            has_java_command = True
-    except OSError:
-        pass
+    if shutil.which("java") is not None:
+        has_java_command = True
 
     ray_java_installed = False
     try:
@@ -1501,7 +1495,7 @@ def build_java_worker_command(java_worker_options, redis_address,
     """
     pairs = []
     if redis_address is not None:
-        pairs.append(("ray.redis.address", redis_address))
+        pairs.append(("ray.address", redis_address))
     pairs.append(("ray.raylet.node-manager-port", node_manager_port))
 
     if plasma_store_name is not None:
