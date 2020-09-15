@@ -331,6 +331,7 @@ class TorchTrainer:
                 before failing.
         """
         state_dict = self.state_dict()
+        old_workers = self.worker_group.num_workers
         self.worker_group.reset()
 
         time.sleep(1)
@@ -340,6 +341,16 @@ class TorchTrainer:
                 self._last_resize = time.time()
                 self._start_workers(int(new_workers))
                 self.load_state_dict(state_dict, blocking=True)
+                if self.use_local and new_workers == 1 and old_workers > 1:
+                    # Major hack. If we go from LocalDistributedRunner to a
+                    # standard TorchRunner we have to manually reset the
+                    # dummy actor handle global vars.
+                    # TODO(amog): Refactor LocalDistributedTorchRunner to
+                    #  not use global variables for resource reservation.
+                    ray.util.sgd.torch.distributed_torch_runner\
+                        ._dummy_cuda_actor = None
+                    ray.util.sgd.torch.distributed_torch_runner\
+                        ._dummy_cpu_actor = None
                 return
             else:
                 delay = 2**i

@@ -101,9 +101,9 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         trainer1.train(max_retries=1)
         assert trainer1.worker_group.num_workers == 1
 
-        trainer1.shutdown()
+        trainer1.shutdown(force=True)
 
-@pytest.mark.parametrize("use_local", [False])
+@pytest.mark.parametrize("use_local", [False, True])
 @patch.object(RemoteWorkerGroup, "_train", remote_worker_train_with_fail)
 def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
     if not dist.is_available():
@@ -130,7 +130,7 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
-        trainer1.shutdown()
+        trainer1.shutdown(force=True)
 
 
 @pytest.mark.parametrize("use_local", [False, True])
