@@ -1,5 +1,5 @@
-Placement Group
-===============
+Placement Groups
+================
 
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors to be packed as close as possible for locality (PACK), or spread apart (SPREAD).
 
