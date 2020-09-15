@@ -6,7 +6,7 @@ Mars on Ray
 .. _`issue on GitHub`: https://github.com/mars-project/mars/issues
 
 
-`Mars`_ Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
+`Mars`_ is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
 Mars on Ray makes it easy to scale your programs with a Ray cluster.
 
 .. note::
