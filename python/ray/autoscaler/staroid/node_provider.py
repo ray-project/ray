@@ -52,9 +52,21 @@ class StaroidNodeProvider(NodeProvider):
 
         return value
 
-    def _connect_kubeapi(self, ns_api, instance_name):
+    def _connect_kubeapi(self, instance_name):
         if instance_name in self.__cached:
             return self.__cached[instance_name]["kube_client"]
+
+        # check if ske exists
+        cluster_api = self.__star.cluster()
+        ske = cluster_api.get(self.__ske)
+        if ske == None: # ske not exists
+            return None
+
+        # check if ray cluster instance exists
+        ns_api = self.__star.namespace(ske)
+        ns = ns_api.get(instance_name)
+        if ns == None: # instance not exists
+            return None
 
         # start a shell service to create secure tunnel
         ns_api.shell_start(instance_name)
@@ -87,7 +99,6 @@ class StaroidNodeProvider(NodeProvider):
             kube_conf = client.Configuration()
             kube_conf.host = local_kube_api_addr
             kube_client = client.ApiClient(kube_conf)
-            ns = ns_api.get(instance_name)
             self.__cached[instance_name] = {
                 "kube_client": kube_client,
                 "ns": ns,
@@ -100,25 +111,11 @@ class StaroidNodeProvider(NodeProvider):
             return None
 
     def non_terminated_nodes(self, tag_filters):
-        print("non_terminated_nodes")
         instance_name = self.cluster_name
 
-        kube_client = None
-        ns_api = None
-        if instance_name not in self.__cached:
-            # check if ske exists
-            cluster_api = self.__star.cluster()
-            ske = cluster_api.get(self.__ske)
-            if ske == None: # ske not exists
-                return []
-
-            # check if ray cluster instance exists
-            ns_api = self.__star.namespace(ske)
-            ns = ns_api.get(instance_name)
-            if ns == None: # instance not exists
-                return []
-
-        kube_client = self._connect_kubeapi(ns_api, instance_name)
+        kube_client = self._connect_kubeapi(instance_name)
+        if kube_client == None:
+            return []
         core_api = client.CoreV1Api(kube_client)
 
         # Match pods that are in the 'Pending' or 'Running' phase.
@@ -180,10 +177,6 @@ class StaroidNodeProvider(NodeProvider):
         core_api.patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
-        print("node_config -- " + str(node_config))
-        print("tags -- " + str(tags))
-        print("count -- " + str(count))
-
         instance_name = self.cluster_name
 
         # get or create ske
@@ -227,7 +220,6 @@ class StaroidNodeProvider(NodeProvider):
                         "(count={}).".format(count))
 
             for new_node in new_nodes:
-
                 metadata = service_spec.get("metadata", {})
                 metadata["name"] = new_node.metadata.name
                 service_spec["metadata"] = metadata
@@ -259,10 +251,14 @@ class StaroidNodeProvider(NodeProvider):
                            process_runner,
                            use_internal_ip,
                            docker_config=None):
+        instance_name = self.cluster_name
+
+        # initialize connection
+        self._connect_kubeapi(instance_name)
+
         command_runner = StaroidCommandRunner(log_prefix, self.namespace, node_id,
                                        auth_config, process_runner,
                                        self.__cached[cluster_name]["api_server"])
-
         return command_runner
 
     @staticmethod

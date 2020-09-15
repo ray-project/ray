@@ -18,7 +18,7 @@ class StaroidCommandRunner(KubernetesCommandRunner):
         # Use /tmp/ray as a home directory until docker image supports non-root user.
 
         if target.startswith("~/"):
-            return "/tmp/ray" + target[1:]
+            return "/home/ray" + target[1:]
         return target
 
     def run_rsync_up(self, source, target, options=None):

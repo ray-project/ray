@@ -2,9 +2,23 @@
 # A namespace will be automatically created for each cluster_name in SKE.
 cluster_name: default
 
+# The minimum number of workers nodes to launch in addition to the head
+# node. This number should be >= 0.
+min_workers: 0
+
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
-max_workers: 1
+# node. This takes precedence over min_workers.
+max_workers: 5
+
+# The initial number of worker nodes to launch in addition to the head
+# node. When the cluster is first brought up (or when it is refreshed with a
+# subsequent `ray up`) this number of nodes will be started.
+initial_workers: 0
+
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+autoscaling_mode: default
 
 # Kubernetes resources that need to be configured for the autoscaler to be
 # able to manage the Ray cluster. If any of the provided resources don't
@@ -79,11 +93,11 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: rayproject/autoscaler
+          image: opendatastudio/ray:latest
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
-          args: ["mkdir -p /tmp/ray && touch /tmp/ray/.bashrc; trap : TERM INT; sleep infinity & wait;"]
+          args: ["touch ~/.bashrc; trap : TERM INT; sleep infinity & wait;"]
           ports:
               - containerPort: 6379 # Redis port.
               - containerPort: 6380 # Redis port.
@@ -118,8 +132,71 @@ head_node:
                 valueFrom:
                     resourceFieldRef:
                         resource: requests.cpu
-              - name: HOME
-                value: /tmp/ray
+
+# Kubernetes pod config for worker node pods.
+worker_nodes:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: ray-worker-
+
+        # Must match the worker node service selector above if a worker node
+        # service is required.
+        labels:
+            component: ray-worker
+    spec:
+        serviceAccountName: default
+
+        # Worker nodes will be managed automatically by the head node, so
+        # do not change the restart policy.
+        restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumes:
+        - name: dshm
+          emptyDir:
+              medium: Memory
+
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          # You are free (and encouraged) to use your own container image,
+          # but it should have the following installed:
+          #   - rsync (used for `ray rsync` commands and file mounts)
+          image: rayproject/autoscaler
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
+          command: ["/bin/bash", "-c", "--"]
+          args: ["touch ~/.bashrc; trap : TERM INT; sleep infinity & wait;"]
+          ports:
+              - containerPort: 12345 # Ray internal communication.
+              - containerPort: 12346 # Ray internal communication.
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+              - mountPath: /dev/shm
+                name: dshm
+          resources:
+              requests:
+                  cpu: 1000m
+                  memory: 512Mi
+              limits:
+                  # This memory limit will be detected by ray and split into
+                  # 30% for plasma, and 70% for workers.
+                  memory: 2Gi
+          env:
+              # This is used in the head_start_ray_commands below so that
+              # Ray can spawn the correct number of processes. Omitting this
+              # may lead to degraded performance.
+              - name: MY_CPU_REQUEST
+                valueFrom:
+                    resourceFieldRef:
+                        resource: requests.cpu
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
