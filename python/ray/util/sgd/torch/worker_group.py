@@ -172,7 +172,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         remote_pgroup_setups = [
             worker.setup_process_group.remote(
                 url=address,
-                world_rank=i+starting_rank,
+                world_rank=i + starting_rank,
                 world_size=world_size,
                 timeout=timedelta(self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
@@ -263,10 +263,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
     def state_dict(self):
         # This is needed to handle calling ray.get on a dead actor.
         buffer_object = None
-        futures = {
-            r.state_stream.remote()
-            for r in self.remote_workers
-        }
+        futures = {r.state_stream.remote() for r in self.remote_workers}
         while len(futures) > 0:
             ready, _ = ray.wait(list(futures), num_returns=1)
             object_ref = ready[0]

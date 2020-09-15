@@ -124,8 +124,9 @@ class TorchRunner:
     def state_dict(self):
         """Returns the state of the runner."""
         model_states = [model.state_dict() for model in self.models]
-        optimizer_states = [optimizer.state_dict() for optimizer in
-                            self.optimizers]
+        optimizer_states = [
+            optimizer.state_dict() for optimizer in self.optimizers
+        ]
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),

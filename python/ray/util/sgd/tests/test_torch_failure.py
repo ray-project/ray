@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 
 import ray
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.worker_group import RemoteWorkerGroup, LocalWorkerGroup
+from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
 
 from ray.util.sgd.torch.examples.train_example import (
@@ -48,12 +48,14 @@ def remote_worker_train_with_fail(self, num_steps, profile, info,
             params["iterator"] = dataset.get_shard(i)
         stats = w.train_epoch.remote(**params)
         remote_worker_stats.append(stats)
-        if i==0 and hasattr(self, "should_fail") and self.should_fail:
+        if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             time.sleep(1)
             ray.kill(self.remote_workers[i])
     return remote_worker_stats
 
+
 start_workers = TorchTrainer._start_workers
+
 
 def gen_start_with_fail(num_fails):
     def start_with_fail(self, *args, **kwargs):
@@ -63,9 +65,8 @@ def gen_start_with_fail(num_fails):
             self.worker_group.remote_worker_group.should_fail = fail
         else:
             self.worker_group.should_fail = fail
+
     return start_with_fail
-
-
 
 
 @pytest.mark.parametrize("use_local", [False, True])
@@ -85,8 +86,7 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         optimizer_creator,
         single_loader,
         loss_creator=lambda config: nn.MSELoss())
-    with patch.object(TorchTrainer, "_start_workers",
-                      start_with_fail):
+    with patch.object(TorchTrainer, "_start_workers", start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
@@ -154,8 +154,7 @@ def test_fail_with_recover(ray_start_2_cpus, use_local):  # noqa: F811
 
     start_with_fail = gen_start_with_fail(3)
 
-    with patch.object(TorchTrainer, "_start_workers",
-                      start_with_fail):
+    with patch.object(TorchTrainer, "_start_workers", start_with_fail):
         trainer1 = TorchTrainer(
             training_operator_cls=TestOperator,
             config={"batch_size": 100000},
