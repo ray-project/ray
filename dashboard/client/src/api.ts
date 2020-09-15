@@ -311,25 +311,25 @@ export const launchKillActor = (
 
 export type TuneTrial = {
   date: string;
-  episodes_total: string;
-  experiment_id: string;
-  experiment_tag: string;
+  episodesTotal: string;
+  experimentId: string;
+  experimentTag: string;
   hostname: string;
-  iterations_since_restore: number;
+  iterationsSinceRestore: number;
   logdir: string;
-  node_ip: string;
+  nodeIp: string;
   pid: number;
-  time_since_restore: number;
-  time_this_iter_s: number;
-  time_total_s: number;
+  timeSinceRestore: number;
+  timeThisIterS: number;
+  timeTotalS: number;
   timestamp: number;
-  timesteps_since_restore: number;
-  timesteps_total: number;
-  training_iteration: number;
-  start_time: string;
+  timestepsSinceRestore: number;
+  timestepsTotal: number;
+  trainingIteration: number;
+  startTime: string;
   status: string;
-  trial_id: string | number;
-  job_id: string;
+  trialId: string | number;
+  jobId: string;
   params: { [key: string]: string | number };
   metrics: { [key: string]: string | number };
   error: string;
@@ -337,16 +337,16 @@ export type TuneTrial = {
 
 export type TuneError = {
   text: string;
-  job_id: string;
-  trial_id: string;
+  jobId: string;
+  trialId: string;
 };
 
 export type TuneJobResponse = {
-  trial_records: { [key: string]: TuneTrial };
+  trialRecords: { [key: string]: TuneTrial };
   errors: { [key: string]: TuneError };
   tensorboard: {
-    tensorboard_current: boolean;
-    tensorboard_enabled: boolean;
+    tensorboardCurrent: boolean;
+    tensorboardEnabled: boolean;
   };
 };
 
@@ -354,7 +354,7 @@ export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
 
 export type TuneAvailabilityResponse = {
   available: boolean;
-  trials_available: boolean;
+  trialsAvailable: boolean;
 };
 
 export const getTuneAvailability = () =>
@@ -373,23 +373,23 @@ export const enableTuneTensorBoard = () =>
   post<{}>("/api/enable_tune_tensorboard", {});
 
 export type MemoryTableSummary = {
-  total_actor_handles: number;
-  total_captured_in_objects: number;
-  total_local_ref_count: number;
+  totalActorHandles: number;
+  totalCapturedInObjects: number;
+  totalLocalRefCount: number;
   // The measurement is B.
-  total_object_size: number;
-  total_pinned_in_memory: number;
-  total_used_by_pending_task: number;
+  totalObjectSize: number;
+  totalPinnedInMemory: number;
+  totalUsedByPendingTask: number;
 };
 
 export type MemoryTableEntry = {
-  node_ip_address: string;
+  nodeIpAddress: string;
   pid: number;
   type: string;
-  object_ref: string;
-  object_size: number;
-  reference_type: string;
-  call_site: string;
+  objectRef: string;
+  objectSize: number;
+  referenceType: string;
+  callSite: string;
 };
 
 export type MemoryTableGroups = {
@@ -413,7 +413,7 @@ export type MemoryGroupByKey = "node" | "stack_trace" | "";
 
 export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
   return get<MemoryTableResponse>("/api/memory_table", {
-    group_by: groupByKey,
+    groupBy: groupByKey,
   });
 };
 
