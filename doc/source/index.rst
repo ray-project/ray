@@ -282,7 +282,7 @@ Papers
    iter.rst
    dask-on-ray.rst
    mars-on-ray.rst
-   oss-users.rst
+   ray-libraries.rst
 
 .. toctree::
    :hidden:
