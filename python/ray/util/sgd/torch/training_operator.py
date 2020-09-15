@@ -1,11 +1,12 @@
 import inspect
 import logging
 
+import pytorch_lightning as ptl
 import torch
 import torch.nn as nn
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES, RayFileLock)
+                                NUM_SAMPLES)
 from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH,
     NUM_STEPS,
@@ -624,10 +625,12 @@ class TrainingOperator:
     def from_ptl(lightning_module_cls, train_dataloader=None,
                  val_dataloader=None):
         """Creates a TrainingOperator from a Pytorch Lightning Module."""
-        # if not isinstance(lightning_module, pytorch_lightning.LightningModule):
-        #     raise ValueError("Argument must be instance of "
-        #                      "pytorch_lightning.LightningModule, got object "
-        #                      "of type {} instead.".format(type(lightning_module)))
+        if not isinstance(lightning_module_cls,
+                          ptl.LightningModule):
+            raise TypeError("Argument must be instance of "
+                             "pytorch_lightning.LightningModule. Got object "
+                             "of type {} instead.".format(type(
+                lightning_module_cls)))
         class PTLOperator(TrainingOperator):
             def setup(self, config):
                 ptl_module = lightning_module_cls()
