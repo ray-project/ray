@@ -24,7 +24,7 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
 }
 
 static void StartRayNode(int redis_port, std::string redis_password) {
-  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
+  std::vector<std::string> cmdargs({"ray", "start", "--head", "--redis-port",
                                     std::to_string(redis_port), "--redis-password",
                                     redis_password});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);

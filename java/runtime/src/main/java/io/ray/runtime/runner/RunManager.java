@@ -402,7 +402,7 @@ public class RunManager {
     cmd.add("--node-ip-address=" + rayConfig.nodeIp);
     cmd.add("--object-store-name=" + rayConfig.objectStoreSocketName);
     cmd.add("--raylet-name=" + rayConfig.rayletSocketName);
-    cmd.add("--address=" + rayConfig.getRedisAddress());
+    cmd.add("--redis-address=" + rayConfig.getRedisAddress());
 
     String command = cmd.stream().collect(Collectors.joining(" "));
     LOGGER.debug("python worker command: {}", command);

@@ -75,7 +75,7 @@ public abstract class BaseMultiLanguageTest {
         "ray",
         "start",
         "--head",
-        "--port=6379",
+        "--redis-port=6379",
         "--min-worker-port=0",
         "--max-worker-port=0",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
