@@ -107,8 +107,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         trials = []
         while not self.is_finished():
-            trial = self.create_trial_if_possible(self._experiment.spec,
-                                                  self._experiment.name)
+            trial = self.next_trial()
             if trial is None:
                 break
             trials.append(trial)

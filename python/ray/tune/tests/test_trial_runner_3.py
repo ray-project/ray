@@ -628,7 +628,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         searcher = TestSuggestion()
         alg = SearchGenerator(searcher)
         alg.add_configurations({"test": {"run": "__fake"}})
-        trial = alg.next_trials()[0]
+        trial = alg.next_trial()
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
 

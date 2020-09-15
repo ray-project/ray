@@ -20,6 +20,14 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
+    def next_trial(self):
+        """Returns single Trial object to be queued into the TrialRunner.
+
+        Returns:
+            trial (Trial): Returns a Trial object.
+        """
+        raise NotImplementedError
+
     def next_trials(self):
         """Provides Trial objects to be queued into the TrialRunner.
 
