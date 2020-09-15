@@ -154,4 +154,5 @@ def run():
     tasks == list(range(num_ticks))
     num_ticks == ray.get(actor.get_counter.remote())
 
+
 run()
