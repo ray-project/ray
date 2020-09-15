@@ -333,8 +333,9 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        #TODO
         import time
-        t = time.time()
+        t0 = time.time()
         # Get batch ready for RNNs, if applicable.
         if self.config["_use_trajectory_view_api"]:
             prepare_sample_batch_for_rnn(
@@ -348,12 +349,17 @@ class TorchPolicy(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req
             )
+        print("padding_time={}sec".format(time.time() - t0))
 
+        t1 = time.time()
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        print("lazy_tensor_time={}sec".format(time.time() - t1))
 
+        t2 = time.time()
         # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
+        print("loss_time={}sec".format(time.time() - t2))
 
         # Call Model's custom-loss with Policy loss outputs and train_batch.
         if self.model:
@@ -373,6 +379,7 @@ class TorchPolicy(Policy):
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
 
+        t3 = time.time()
         for i, opt in enumerate(self._optimizers):
             # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
@@ -403,16 +410,20 @@ class TorchPolicy(Policy):
                             p.grad /= self.distributed_world_size
 
                 grad_info["allreduce_latency"] += time.time() - start
+        print("backward_time={}sec".format(time.time() - t3))
 
         # Step the optimizer
+        t4 = time.time()
         for i, opt in enumerate(self._optimizers):
             opt.step()
+        print("optim_step_time={}sec".format(time.time() - t4))
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
         if self.model:
             grad_info["model"] = self.model.metrics()
-        print("learn_on_batch time={}sec".format(time.time() - t))
+
+        print("learn_on_batch {}sec".format(time.time() - t0))
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
