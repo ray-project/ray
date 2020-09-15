@@ -1495,7 +1495,7 @@ def build_java_worker_command(java_worker_options, redis_address,
     """
     pairs = []
     if redis_address is not None:
-        pairs.append(("ray.redis.address", redis_address))
+        pairs.append(("ray.address", redis_address))
     pairs.append(("ray.raylet.node-manager-port", node_manager_port))
 
     if plasma_store_name is not None:

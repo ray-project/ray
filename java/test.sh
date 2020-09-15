@@ -58,7 +58,7 @@ case "${OSTYPE}" in
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --redis-port=6379 --redis-password=123456 --code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar"
-RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.redis.address="$ip:6379"\
+RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop
 
