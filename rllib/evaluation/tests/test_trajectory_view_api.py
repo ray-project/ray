@@ -103,7 +103,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
-            "max_episode_len": 105,
+            "p_done": 0.01,
             "action_space": action_space,
             "observation_space": obs_space
         }))
