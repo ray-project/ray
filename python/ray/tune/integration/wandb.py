@@ -40,7 +40,24 @@ def _clean_log(obj):
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder
-        return str(obj)
+        fallback = str(obj)
+
+        # Try to convert to int
+        try:
+            fallback = int(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Try to convert to float
+        try:
+            fallback = float(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Else, return string
+        return fallback
 
 
 def wandb_mixin(func):
