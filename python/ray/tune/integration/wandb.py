@@ -25,8 +25,8 @@ _WANDB_QUEUE_END = (None, )
 def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
-        return np.isscalar(obj.item())
-    return isinstance(obj, Number) or np.isscalar(obj)
+        return isinstance(obj.item(), Number)
+    return isinstance(obj, Number)
 
 
 def _clean_log(obj):
