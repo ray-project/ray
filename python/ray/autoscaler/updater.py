@@ -195,7 +195,8 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                is_docker = self.docker_config and self.docker_config["container_name"] != ""
+                is_docker = (self.docker_config
+                             and self.docker_config["container_name"] != "")
                 if not is_docker:
                     # The DockerCommandRunner handles this internally.
                     self.cmd_runner.run(
