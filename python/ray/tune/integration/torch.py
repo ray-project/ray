@@ -75,13 +75,16 @@ class _TorchTrainable(tune.Trainable):
         remote_trainable = remote_trainable.options(
             **self.get_remote_worker_options())
 
-        address = setup_address()
         self.workers = [
             remote_trainable.remote(
                 config=config,
                 logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
             for rank in range(num_workers)
         ]
+
+        # Address has to be IP of rank 0 worker's node.
+        address = ray.get(
+            self.workers[0].execute.remote(lambda _: setup_address()))
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
