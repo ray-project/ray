@@ -507,9 +507,6 @@ def wrap_function(train_func, warn=True):
             reporter(**{RESULT_DUPLICATE: True})
             return output
 
-        def execute(self, fn):
-            return fn()
-
     return ImplicitFunc
 
 

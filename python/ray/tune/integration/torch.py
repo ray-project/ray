@@ -83,7 +83,8 @@ class _TorchTrainable(tune.Trainable):
         ]
 
         # Address has to be IP of rank 0 worker's node.
-        address = ray.get(self.workers[0].execute.remote(setup_address))
+        address = ray.get(
+            self.workers[0].execute.remote(lambda _: setup_address()))
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
