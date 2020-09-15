@@ -166,6 +166,8 @@ trainer = TorchTrainer(
 
 # __backwards_compat_end__
 
+trainer.shutdown()
+
 # __torch_trainer_start__
 from ray.util.sgd import TorchTrainer
 
@@ -175,3 +177,5 @@ trainer = TorchTrainer(
     config={"lr": 0.001, "batch_size": 64})
 
 # __torch_trainer_end__
+
+trainer.shutdown()
