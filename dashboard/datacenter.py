@@ -40,9 +40,11 @@ class DataOrganizer:
         #   * node_id_to_ip
         #   * node_id_to_hostname
         logger.info("Purge data.")
-        alive_nodes = set(node_id
-                          for node_id, node_info in DataSource.nodes.items()
-                          if node_info["state"] == "ALIVE")
+        alive_nodes = {
+            node_id
+            for node_id, node_info in DataSource.nodes.items()
+            if node_info["state"] == "ALIVE"
+        }
         for key in DataSource.node_stats.keys() - alive_nodes:
             DataSource.node_stats.pop(key)
 
