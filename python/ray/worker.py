@@ -987,7 +987,7 @@ def print_logs(redis_client, threads_stopped, job_id):
 def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
-    This checks periodically if any un-raised errors occured in the background.
+    This checks periodically if any un-raised errors occurred in the background.
 
     Args:
         task_error_queue (queue.Queue): A queue used to receive errors from the

@@ -335,7 +335,7 @@ class FunctionRunner(Trainable):
             except queue.Empty:
                 pass
 
-        # check if error occured inside the thread runner
+        # check if error occurred inside the thread runner
         if result is None:
             # only raise an error from the runner if all results are consumed
             self._report_thread_runner_error(block=True)
