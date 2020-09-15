@@ -10,8 +10,14 @@ from ray.tune.utils.util import unflatten_dict
 
 try:
     import nevergrad as ng
+    from nevergrad.optimization import Optimizer
+    from nevergrad.optimization.base import ConfiguredOptimizer
+    Parameter = ng.p.Parameter
 except ImportError:
     ng = None
+    Optimizer = None
+    ConfiguredOptimizer = None
+    Parameter = None
 
 from ray.tune.suggest import Searcher
 
@@ -85,15 +91,13 @@ class NevergradSearch(Searcher):
 
     """
 
-    def __init__(
-            self,
-            optimizer: Union[None, ng.optimization.Optimizer,
-                             ng.optimization.base.ConfiguredOptimizer] = None,
-            space: Optional[ng.p.Parameter] = None,
-            metric: Optional[str] = None,
-            mode: Optional[str] = None,
-            max_concurrent: Optional[int] = None,
-            **kwargs):
+    def __init__(self,
+                 optimizer: Union[None, Optimizer, ConfiguredOptimizer] = None,
+                 space: Optional[Parameter] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 max_concurrent: Optional[int] = None,
+                 **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -105,7 +109,7 @@ class NevergradSearch(Searcher):
         self._opt_factory = None
         self._nevergrad_opt = None
 
-        if isinstance(optimizer, ng.optimization.Optimizer):
+        if isinstance(optimizer, Optimizer):
             if space is not None or isinstance(space, list):
                 raise ValueError(
                     "If you pass a configured optimizer to Nevergrad, either "
@@ -113,7 +117,7 @@ class NevergradSearch(Searcher):
                     "parameter.")
             self._parameters = space
             self._nevergrad_opt = optimizer
-        elif isinstance(optimizer, ng.optimization.base.ConfiguredOptimizer):
+        elif isinstance(optimizer, ConfiguredOptimizer):
             self._opt_factory = optimizer
             self._parameters = None
             self._space = space
@@ -228,7 +232,7 @@ class NevergradSearch(Searcher):
         self._parameters = trials_object[1]
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> ng.p.Parameter:
+    def convert_search_space(spec: Dict) -> Parameter:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -237,7 +241,7 @@ class NevergradSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a Nevergrad search space.")
 
-        def resolve_value(domain: Domain) -> ng.p.Parameter:
+        def resolve_value(domain: Domain) -> Parameter:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning("Nevergrad does not support quantization. "

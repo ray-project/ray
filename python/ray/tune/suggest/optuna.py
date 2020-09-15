@@ -11,8 +11,10 @@ from ray.tune.utils.util import unflatten_dict
 
 try:
     import optuna as ot
+    from optuna.samplers import BaseSampler
 except ImportError:
     ot = None
+    BaseSampler = None
 
 from ray.tune.suggest import Searcher
 
@@ -104,7 +106,7 @@ class OptunaSearch(Searcher):
                  space: Optional[List[Tuple]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 sampler: Optional[ot.samplers.BaseSampler] = None):
+                 sampler: Optional[BaseSampler] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
@@ -117,7 +119,7 @@ class OptunaSearch(Searcher):
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
-        assert isinstance(self._sampler, ot.samplers.BaseSampler), \
+        assert isinstance(self._sampler, BaseSampler), \
             "You can only pass an instance of `optuna.samplers.BaseSampler` " \
             "as a sampler to `OptunaSearcher`."
 
