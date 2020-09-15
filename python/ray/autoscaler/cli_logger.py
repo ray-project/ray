@@ -698,9 +698,9 @@ class _CliLogger():
             raise ValueError("Non-interactive confirm without --yes.")
 
         if default:
-            yn_str = cf.limeGreen("Y") + "/" + cf.red("n")
+            yn_str = "Y/n"
         else:
-            yn_str = cf.limeGreen("y") + "/" + cf.red("N")
+            yn_str = "y/N"
 
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 

@@ -3,6 +3,7 @@ import errno
 import hashlib
 import inspect
 import logging
+import multiprocessing
 import numpy as np
 import os
 import signal
@@ -496,6 +497,59 @@ def get_system_memory():
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
+
+
+def _get_docker_cpus():
+    # 1. Try using CFS Quota (https://bugs.openjdk.java.net/browse/JDK-8146115)
+    # 2. Try Nproc (CPU sets)
+    cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+    cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
+    num_cpus = 0
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(
+            cpu_quota_file_name):
+        with open(cpu_quota_file_name, "r") as f:
+            num_cpus = int(f.read())
+        if num_cpus != -1:
+            with open(cpu_share_file_name, "r") as f:
+                num_cpus /= int(f.read())
+            return num_cpus
+
+    return int(subprocess.check_output("nproc"))
+
+
+def get_num_cpus():
+    cpu_count = multiprocessing.cpu_count()
+    if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
+        logger.info(
+            "Detected RAY_USE_MULTIPROCESSING_CPU_COUNT=1: Using "
+            "multiprocessing.cpu_count() to detect the number of CPUs. "
+            "This may be inconsistent when used inside docker. "
+            "To correctly detect CPUs, unset the env var: "
+            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
+        return cpu_count
+    try:
+        # Not easy to get cpu count in docker, see:
+        # https://bugs.python.org/issue36054
+        docker_count = _get_docker_cpus()
+        if docker_count != cpu_count:
+            cpu_count = docker_count
+            if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
+                logger.warning(
+                    "Detecting docker specified CPUs. In "
+                    "previous versions of Ray, CPU detection in containers "
+                    "was incorrect. Please ensure that Ray has enough CPUs "
+                    "allocated. As a temporary workaround to revert to the "
+                    "prior behavior, set "
+                    "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+                    "before starting Ray. Set the env var: "
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
+
+    except Exception:
+        # `nproc` and cgroup are linux-only. If docker only works on linux
+        # (will run in a linux VM on other platforms), so this is fine.
+        pass
+
+    return cpu_count
 
 
 def get_used_memory():

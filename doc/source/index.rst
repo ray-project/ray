@@ -275,14 +275,14 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Community Libraries
+   :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
-   pandas_on_ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   oss-users.rst
 
 .. toctree::
    :hidden:
