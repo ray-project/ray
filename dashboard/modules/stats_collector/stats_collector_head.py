@@ -105,7 +105,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
     @routes.post("/memory/set_fetch")
     async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
-        should_fetch = req.query.get("shouldFetch")
+        should_fetch = (await req.json()).get("shouldFetch")
         if should_fetch == "true":
             self._collect_memory_info = True
         elif should_fetch == "false":

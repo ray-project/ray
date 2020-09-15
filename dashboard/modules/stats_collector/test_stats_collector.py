@@ -105,7 +105,7 @@ def test_memory_table(ray_start_with_dashboard):
     actors = [ActorWithObjs.remote() for _ in range(2)]
     results = ray.get([actor.get_obj.remote() for actor in actors])
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.post(webui_url + "/memory/set_fetch?shouldFetch=true")
+    resp = requests.post(webui_url + "/memory/set_fetch", json={"shouldFetch": "true"})
     resp.raise_for_status()
 
     memory_fetch_threshhold = datetime.now() + timedelta(seconds=5)
@@ -129,7 +129,6 @@ def test_memory_table(ray_start_with_dashboard):
             continue
         done_in_time = True
         break
-    print(f"memory_table={latest_memory_table}")
     assert done_in_time
 
 

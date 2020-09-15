@@ -19,7 +19,7 @@ import {
   getMemoryTable,
   MemoryGroupByKey,
   MemoryTableResponse,
-  stopMemoryTableCollection,
+  setMemoryTableCollection,
 } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
@@ -161,9 +161,7 @@ const MemoryInfo: React.FC<{}> = () => {
         color="primary"
         className={classes.pauseButton}
         onClick={() => {
-          if (!paused) {
-            stopMemoryTableCollection();
-          }
+          setMemoryTableCollection(!paused);
           setPaused(!paused);
         }}
       >

@@ -412,10 +412,10 @@ export type StopMemoryTableResponse = {};
 export type MemoryGroupByKey = "node" | "stack_trace" | "";
 
 export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
-  return get<MemoryTableResponse>("/api/memory_table", {
+  return get<MemoryTableResponse>("/memory/memory_table", {
     groupBy: groupByKey,
   });
 };
 
-export const stopMemoryTableCollection = () =>
-  get<StopMemoryTableResponse>("/api/stop_memory_table", {});
+export const setMemoryTableCollection = (value: boolean) =>
+  post<{}>("/memory/set_fetch", {"shouldFetch": value});

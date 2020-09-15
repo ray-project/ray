@@ -184,11 +184,11 @@ class TuneTable extends React.Component<
     const { tuneInfo } = this.props;
     const { sortedColumn, ascending, metricParamColumn } = this.state;
 
-    if (tuneInfo === null || Object.keys(tuneInfo.trial_records).length === 0) {
+    if (tuneInfo === null || Object.keys(tuneInfo.trialRecords).length === 0) {
       return null;
     }
 
-    const trialDetails = Object.values(tuneInfo.trial_records);
+    const trialDetails = Object.values(tuneInfo.trialRecords);
 
     if (!sortedColumn) {
       return trialDetails;
@@ -306,13 +306,13 @@ class TuneTable extends React.Component<
 
     if (
       tuneInfo === null ||
-      Object.keys(tuneInfo["trial_records"]).length === 0
+      Object.keys(tuneInfo.trialRecords).length === 0
     ) {
       return null;
     }
 
-    const firstTrial = Object.keys(tuneInfo.trial_records)[0];
-    const paramsDict = tuneInfo.trial_records[firstTrial].params;
+    const firstTrial = Object.keys(tuneInfo.trialRecords)[0];
+    const paramsDict = tuneInfo.trialRecords[firstTrial].params;
     const paramNames = Object.keys(paramsDict).filter((k) => k !== "args");
 
     let viewableParams = paramNames;
@@ -326,7 +326,7 @@ class TuneTable extends React.Component<
       viewableParams = paramColumns;
     }
 
-    const metricNames = Object.keys(tuneInfo.trial_records[firstTrial].metrics);
+    const metricNames = Object.keys(tuneInfo.trialRecords[firstTrial].metrics);
 
     let viewableMetrics = metricNames;
     const metricOptions = metricNames.length > 3;
@@ -358,9 +358,9 @@ class TuneTable extends React.Component<
             <Table stickyHeader>
               <TableHead>
                 <TableRow>
-                  {this.sortedCell("trial_id")}
-                  {this.sortedCell("job_id")}
-                  {this.sortedCell("start_time")}
+                  {this.sortedCell("trialId")}
+                  {this.sortedCell("jobId")}
+                  {this.sortedCell("startTime")}
                   {viewableParams.map((value, index) =>
                     this.sortedCell("params", value, index),
                   )}
@@ -378,30 +378,30 @@ class TuneTable extends React.Component<
                   trialDetails.map((trial, index) => (
                     <TableRow key={index}>
                       <TableCell className={classes.cell}>
-                        {trial["trial_id"]}
+                        {trial.trialId}
                       </TableCell>
                       <TableCell className={classes.cell}>
-                        {trial["job_id"]}
+                        {trial.jobId}
                       </TableCell>
                       <TableCell className={classes.cell}>
-                        {trial["start_time"]}
+                        {trial.startTime}
                       </TableCell>
                       {viewableParams.map((value, index) => (
                         <TableCell className={classes.cell} key={index}>
-                          {typeof trial["params"][value] === "number"
-                            ? formatValue(Number(trial["params"][value]))
-                            : trial["params"][value]}
+                          {typeof trial.params[value] === "number"
+                            ? formatValue(Number(trial.params[value]))
+                            : trial.params[value]}
                         </TableCell>
                       ))}
                       <TableCell className={classes.cell}>
                         {trial["status"]}
                       </TableCell>
-                      {trial["metrics"] &&
+                      {trial.metrics &&
                         viewableMetrics.map((value, index) => (
                           <TableCell className={classes.cell} key={index}>
-                            {typeof trial["metrics"][value] === "number"
-                              ? formatValue(Number(trial["metrics"][value]))
-                              : trial["metrics"][value]}
+                            {typeof trial.metrics[value] === "number"
+                              ? formatValue(Number(trial.metrics[value]))
+                              : trial.metrics[value]}
                           </TableCell>
                         ))}
                       <TableCell className={classes.cell}>
@@ -412,7 +412,7 @@ class TuneTable extends React.Component<
                             component="button"
                             variant="body2"
                             onClick={() => {
-                              this.handleOpen(trial["trial_id"]);
+                              this.handleOpen(trial.trialId);
                             }}
                           >
                             Show Error
@@ -429,7 +429,7 @@ class TuneTable extends React.Component<
           <DialogWithTitle handleClose={this.handleClose} title="Error Log">
             {open && (
               <NumberedLines
-                lines={tuneInfo.trial_records[errorTrial].error
+                lines={tuneInfo.trialRecords[errorTrial].error
                   .trim()
                   .split("\n")}
               />

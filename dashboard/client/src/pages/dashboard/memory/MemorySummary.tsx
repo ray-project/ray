@@ -30,22 +30,22 @@ const MemorySummary: React.FC<MemorySummaryProps> = ({
   const memoryData = [
     [
       "Total Local Reference Count",
-      `${memoryTableSummary.total_local_ref_count}`,
+      `${memoryTableSummary.totalLocalRefCount}`,
     ],
-    ["Pinned in Memory Count", `${memoryTableSummary.total_pinned_in_memory}`],
+    ["Pinned in Memory Count", `${memoryTableSummary.totalPinnedInMemory}`],
     [
       "Total Used by Pending Tasks Count",
-      `${memoryTableSummary.total_used_by_pending_task}`,
+      `${memoryTableSummary.totalUsedByPendingTask}`,
     ],
     [
       "Total Captured in Objects Count",
-      `${memoryTableSummary.total_captured_in_objects}`,
+      `${memoryTableSummary.totalCapturedInObjects}`,
     ],
     [
       "Total Memory Used by Objects",
-      `${formatByteAmount(memoryTableSummary.total_object_size, "mebibyte")}`,
+      `${formatByteAmount(memoryTableSummary.totalObjectSize, "mebibyte")}`,
     ],
-    ["Total Actor Handle Count", `${memoryTableSummary.total_actor_handles}`],
+    ["Total Actor Handle Count", `${memoryTableSummary.totalActorHandles}`],
   ];
 
   return (
