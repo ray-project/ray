@@ -5,9 +5,84 @@ from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 
+class _WrappedProvider:
+    def __init__(self, config_path):
+        from ray.autoscaler.util import validate_config
+        with open(config_path) as f:
+            new_config = yaml.safe_load(f.read())
+        validate_config(new_config)
+        self._config = config
+        from ray.autoscaler.node_provider import get_node_provider
+
+        self.provider = get_node_provider(
+            self.config["provider"], self.config["cluster_name"])
+
+        self._ip_cache = {}
+        self._node_id_cache = {}
+
+    @property
+    def config(self):
+        return self._config
+
+    def all_workers(self):
+        return self.workers() + self.unmanaged_workers()
+
+    def workers(self):
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+    def unmanaged_workers(self):
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
+
+    def get_ip_to_node_id(self):
+        for node_id in self.all_workers:
+            if node_id not in self._ip_cache:
+                internal_ip = self.provider.internal_ip(node_id)
+                self._ip_cache[internal_ip] = node_id
+                self._node_id_cache[node_id] = internal_ip
+        return self._node_id_cache
+
+
+_provider = None
+
+
+class DockerSyncer(NodeSyncer):
+    """DockerSyncer used for synchronization between Docker containers.
+
+    This syncer extends the node syncer, but is usually instantiated
+    without a custom sync client. The sync client defaults to
+    ``DockerSyncClient`` instead.
+    """
+
+    _cluster_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
+
+    def __init__(self, local_dir, remote_dir, sync_client=None):
+        self.local_ip = services.get_node_ip_address()
+        self.worker_ip = None
+        self.worker_node_id = None
+
+        global _provider
+        if _provider is None:
+            _provider = _WrappedProvider(self._cluster_path)
+
+        sync_client = sync_client or DockerSyncClient()
+        sync_client.configure(_provider, _provider.config)
+
+
+        super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
+
+    def set_worker_ip(self, worker_ip):
+        self.worker_ip = worker_ip
+        self.worker_node_id = _provider_helper.get_ip_to_node_id()[node_ip]
+
+    @property
+    def _remote_path(self):
+        return (self.worker_node_id, self._remote_dir)
+
 
 class DockerSyncClient(SyncClient):
-    """DockerSyncClient to be used by KubernetesSyncer.
+    """DockerSyncClient to be used by DockerSyncer.
 
     This client takes care of executing the synchronization
     commands for Docker nodes. In its ``sync_down`` and
@@ -22,23 +97,27 @@ class DockerSyncClient(SyncClient):
 
     """
 
-    def __init__(self, namespace, process_runner=subprocess):
-        self.namespace = namespace
-        self._process_runner = process_runner
-        self.args = {
-            "log_prefix": "prefix",
-            "node_id": 0,
-            "provider": provider,
-            "auth_config": auth_config,
-            "cluster_name": cluster_name,
-            "process_runner": process_runner,
-            "use_internal_ip": False,
-        }
+    def __init__(self):
         self._command_runners = {}
+        self.provider = None
+
+    def configure(self, provider, cluster_config):
+        self.provider = provider
+        self.cluster_config = cluster_config
 
     def _create_command_runner(self, node_id):
-        """Create a command runner for one Kubernetes node"""
-        return DockerCommandRunner(docker_config, **self.args)
+        """Create a command runner for one Docker node"""
+        args = {
+            "log_prefix": "DockerSync: ",
+            "node_id": node_id,
+            "provider": self.provider,
+            "auth_config": self.cluster_config["auth_config"],
+            "cluster_name": self.cluster_config["cluster_name"],
+            "process_runner": subprocess,
+            "use_internal_ip": True,
+            "docker_config": self.cluster_config["docker"],
+        }
+        return DockerCommandRunner(**args)
 
     def _get_command_runner(self, node_id):
         """Create command runner if it doesn't exist"""
@@ -76,6 +155,4 @@ class DockerSyncClient(SyncClient):
         return True
 
     def delete(self, target):
-        """No delete function because it is only used by
-        the KubernetesSyncer, which doesn't call delete."""
-        return True
+        raise NotImplementedError
