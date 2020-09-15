@@ -136,7 +136,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
-                                            {ray::stats::VersionKey, "0.9.0.dev0"}};
+                                            {ray::stats::VersionKey, "1.1.0.dev0"}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
@@ -301,20 +301,30 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
+  Status raylet_client_status;
   ClientID local_raylet_id;
   int assigned_port;
   std::unordered_map<std::string, std::string> system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.language,
-      options_.node_ip_address, &local_raylet_id, &assigned_port, &system_config,
-      options_.serialized_job_config));
+      options_.node_ip_address, &raylet_client_status, &local_raylet_id, &assigned_port,
+      &system_config, options_.serialized_job_config));
+
+  if (!raylet_client_status.ok()) {
+    // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
+    RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
+                   << raylet_client_status;
+    if (options_.enable_logging) {
+      RayLog::ShutDownRayLog();
+    }
+    // Quit the process immediately.
+    _Exit(1);
+  }
+
   connected_ = true;
 
-  RAY_CHECK(assigned_port != -1)
-      << "Failed to allocate a port for the worker. Please specify a wider port range "
-         "using the '--min-worker-port' and '--max-worker-port' arguments to 'ray "
-         "start'.";
+  RAY_CHECK(assigned_port >= 0);
 
   // NOTE(edoakes): any initialization depending on RayConfig must happen after this line.
   RayConfig::instance().initialize(system_config);
@@ -532,12 +542,8 @@ void CoreWorker::Shutdown() {
 }
 
 void CoreWorker::Disconnect() {
-  io_service_.stop();
   if (connected_) {
     connected_ = false;
-    if (gcs_client_) {
-      gcs_client_->Disconnect();
-    }
     if (local_raylet_client_) {
       RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
     }
@@ -629,6 +635,9 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
 void CoreWorker::WaitForShutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
+  }
+  if (gcs_client_) {
+    gcs_client_->Disconnect();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());
@@ -2093,7 +2102,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   // Do force kill after reply callback sent
   if (success && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
-    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    Disconnect();
     if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
     }
@@ -2122,7 +2131,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   if (request.force_kill()) {
     RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
     if (request.no_restart()) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+      Disconnect();
     }
     if (options_.num_workers > 1) {
       // TODO (kfstorm): Should we add some kind of check before sending the killing

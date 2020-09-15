@@ -4,6 +4,7 @@ TensorFlow policy class used for SAC.
 
 import gym
 from gym.spaces import Box, Discrete
+from functools import partial
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
 
@@ -446,7 +447,8 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
 
     # Clip if necessary.
     if policy.config["grad_clip"]:
-        clip_func = tf.clip_by_norm
+        clip_func = partial(
+            tf.clip_by_norm, clip_norm=policy.config["grad_clip"])
     else:
         clip_func = tf.identity
 

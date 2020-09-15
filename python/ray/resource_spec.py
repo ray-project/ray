@@ -1,7 +1,6 @@
 import math
 from collections import namedtuple
 import logging
-import multiprocessing
 import os
 import re
 import subprocess
@@ -9,9 +8,6 @@ import sys
 
 import ray
 import ray.ray_constants as ray_constants
-
-from ray.autoscaler.cli_logger import cli_logger
-import colorful as cf
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +104,9 @@ class ResourceSpec(
         # Check types.
         for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
+                    or isinstance(resource_quantity, float)), (
+                        f"{resource_label} ({type(resource_quantity)}): "
+                        f"{resource_quantity}")
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(
@@ -151,7 +149,7 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = multiprocessing.cpu_count()
+            num_cpus = ray.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
         gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -222,32 +220,6 @@ class ResourceSpec(
                     "object_store_memory=<bytes>).".format(
                         round(memory / 1e9, 2),
                         int(100 * (memory / system_memory))))
-
-        rounded_memory = ray_constants.round_to_memory_units(
-            memory, round_up=False)
-        worker_ram = round(rounded_memory / (1024**3), 2)
-        object_ram = round(object_store_memory / (1024**3), 2)
-
-        # TODO(maximsmol): this behavior is strange since we do not have a
-        # good grasp on when this will get called
-        # (you have to study node.py to make a guess)
-        with cli_logger.group("Available RAM"):
-            cli_logger.labeled_value("Workers", "{} GiB", str(worker_ram))
-            cli_logger.labeled_value("Objects", "{} GiB", str(object_ram))
-            cli_logger.newline()
-            cli_logger.print("To adjust these values, use")
-            with cf.with_style("monokai") as c:
-                cli_logger.print(
-                    "  ray{0}init(memory{1}{2}, "
-                    "object_store_memory{1}{2})", c.magenta("."),
-                    c.magenta("="), c.purple("<bytes>"))
-
-        cli_logger.old_info(
-            logger,
-            "Starting Ray with {} GiB memory available for workers and up to "
-            "{} GiB for objects. You can adjust these settings "
-            "with ray.init(memory=<bytes>, "
-            "object_store_memory=<bytes>).", worker_ram, object_ram)
 
         spec = ResourceSpec(num_cpus, num_gpus, memory, object_store_memory,
                             resources, redis_max_memory)

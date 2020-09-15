@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -104,5 +105,20 @@ public class LocalModeObjectStore extends ObjectStore {
 
   @Override
   public void removeLocalReference(UniqueId workerId, ObjectId objectId) {
+  }
+
+  @Override
+  public Address getOwnerAddress(ObjectId id) {
+    return Address.getDefaultInstance();
+  }
+
+  @Override
+  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+    return new byte[0];
+  }
+
+  @Override
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
   }
 }

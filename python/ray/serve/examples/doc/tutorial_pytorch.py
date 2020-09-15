@@ -1,4 +1,5 @@
 # yapf: disable
+import ray
 # __doc_import_begin__
 from ray import serve
 
@@ -45,6 +46,7 @@ class ImageModel:
 
 # __doc_define_servable_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
 client = serve.start()
 client.create_backend("resnet18:v0", ImageModel)

@@ -13,10 +13,11 @@ import yaml
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import (
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER)
+from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
+                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+                                 TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
+                                 NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.node_launcher import NodeLauncher
 from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
@@ -64,6 +65,9 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
+        # Keep this before self.reset (self.provider needs to be created
+        # exactly once).
+        self.provider = None
         self.reset(errors_fatal=True)
         self.load_metrics = load_metrics
 
@@ -143,10 +147,12 @@ class StandardAutoscaler:
         nodes = self.workers()
         # Check pending nodes immediately after fetching the number of running
         # nodes to minimize chance number of pending nodes changing after
-        # additional nodes are launched.
+        # additional nodes (managed and unmanaged) are launched.
         num_pending = self.pending_launches.value
-        self.load_metrics.prune_active_ips(
-            [self.provider.internal_ip(node_id) for node_id in nodes])
+        self.load_metrics.prune_active_ips([
+            self.provider.internal_ip(node_id)
+            for node_id in self.all_workers()
+        ])
         target_workers = self.target_num_workers()
 
         if len(nodes) >= target_workers:
@@ -162,8 +168,9 @@ class StandardAutoscaler:
         nodes_to_terminate = []
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon and \
-                    len(nodes) - len(nodes_to_terminate) > target_workers:
+            if (node_ip in last_used and last_used[node_ip] < horizon) and \
+                    (len(nodes) - len(nodes_to_terminate)
+                     > target_workers):
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -179,11 +186,12 @@ class StandardAutoscaler:
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
-        while len(nodes) > self.config["max_workers"]:
+        while (len(nodes) -
+               len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
+            to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node".format(nodes[-1]))
-            nodes_to_terminate.append(nodes[-1])
-            nodes = nodes[:-1]
+                        "{}: Terminating unneeded node".format(to_terminate))
+            nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
@@ -250,6 +258,7 @@ class StandardAutoscaler:
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
@@ -295,9 +304,9 @@ class StandardAutoscaler:
             self.config = new_config
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
-
-            self.provider = get_node_provider(self.config["provider"],
-                                              self.config["cluster_name"])
+            if not self.provider:
+                self.provider = get_node_provider(self.config["provider"],
+                                                  self.config["cluster_name"])
             # Check whether we can enable the resource demand scheduler.
             if "available_node_types" in self.config:
                 self.available_node_types = self.config["available_node_types"]
@@ -426,6 +435,8 @@ class StandardAutoscaler:
         return fields
 
     def _get_node_specific_docker_config(self, node_id):
+        if "docker" not in self.config:
+            return {}
         docker_config = copy.deepcopy(self.config.get("docker", {}))
         node_specific_docker = self._get_node_type_specific_fields(
             node_id, "docker")
@@ -462,6 +473,8 @@ class StandardAutoscaler:
 
     def spawn_updater(self, node_id, init_commands, ray_start_commands,
                       node_resources, docker_config):
+        logger.info(f"Creating new (spawn_updater) updater thread for node"
+                    f" {node_id}.")
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -492,6 +505,8 @@ class StandardAutoscaler:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
+        logger.debug(f"{node_id} is not being updated and "
+                     "passes config check (can_update=True).")
         return True
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
@@ -501,9 +516,16 @@ class StandardAutoscaler:
         config = copy.deepcopy(self.config)
         self.launch_queue.put((config, count, node_type))
 
+    def all_workers(self):
+        return self.workers() + self.unmanaged_workers()
+
     def workers(self):
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+    def unmanaged_workers(self):
+        return self.provider.non_terminated_nodes(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def log_info_string(self, nodes, target):
         tmp = "Cluster status: "

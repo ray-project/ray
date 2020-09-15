@@ -50,7 +50,7 @@ Parallelizing Python/Java Functions with Ray Tasks
 
       public class RayDemo {
 
-        public static int f(int x) {
+        public static int square(int x) {
           return x * x;
         }
 
@@ -58,10 +58,10 @@ Parallelizing Python/Java Functions with Ray Tasks
           // Intialize Ray runtime.
           Ray.init();
           List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
-          // Invoke the `f` method 4 times remotely as Ray tasks.
+          // Invoke the `square` method 4 times remotely as Ray tasks.
           // The tasks will run in parallel in the background.
           for (int i = 0; i < 4; i++) {
-            objectRefList.add(Ray.task(RayDemo::f, i).remote());
+            objectRefList.add(Ray.task(RayDemo::square, i).remote());
           }
           // Get the actual results of the tasks.
           System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
@@ -114,14 +114,14 @@ maintain its own internal state.
 
       public static class Counter {
 
-        private int n = 0;
+        private int value = 0;
 
         public void increment() {
-          this.n += 1;
+          this.value += 1;
         }
 
         public int read() {
-          return this.n;
+          return this.value;
         }
       }
 

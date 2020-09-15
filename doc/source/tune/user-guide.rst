@@ -209,26 +209,25 @@ disable cross-node syncing:
 Handling Large Datasets
 -----------------------
 
-You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial. Tune provides a ``pin_in_object_store`` utility function that can be used to broadcast such large objects. Objects pinned in this way will never be evicted from the Ray object store while the driver process is running, and can be efficiently retrieved from any task via ``get_pinned_object``.
+You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
+
+Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
+Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
+and passed to your trainable as a parameter.
 
 .. code-block:: python
 
-    import ray
     from ray import tune
-    from ray.tune.utils import pin_in_object_store, get_pinned_object
 
     import numpy as np
 
-    ray.init()
+    def f(config, data=None):
+        pass
+        # use data
 
-    # X_id can be referenced in closures
-    X_id = pin_in_object_store(np.random.random(size=100000000))
+    data = np.random.random(size=100000000)
 
-    def f(config):
-        X = get_pinned_object(X_id)
-        # use X
-
-    tune.run(f)
+    tune.run(tune.with_parameters(f, data=data))
 
 .. _tune-stopping:
 
@@ -461,18 +460,12 @@ You have to specify your Kubernetes namespace explicitly:
 
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
     sync_config = tune.SyncConfig(
-        sync_to_driver=NamespacedKubernetesSyncer("ray", use_rsync=True)
+        sync_to_driver=NamespacedKubernetesSyncer("ray")
     )
 
     tune.run(train, sync_config=sync_config)
 
 
-
-The ``KubernetesSyncer`` supports two modes for file synchronisation. Per
-default, files are synchronized with ``kubectl cp``, requiring the ``tar``
-binary in your pods. If you would like to use ``rsync`` instead your pods
-will have to have ``rsync`` installed. Use the ``use_rsync`` parameter to
-decide between the two options.
 
 .. _tune-log_to_file:
 
@@ -526,6 +519,8 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
     ray.init(local_mode=True)
 
 Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
+
+Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
 
 Stopping after the first failure
 --------------------------------

@@ -42,7 +42,7 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 ----------------------------- ---------------------------------------------------------------------------------------
 `Fully Independent Learning`_  Depends on bootstrapped algorithm
 ----------------------------- ---------------------------------------------------------------------------------------
-`Centralized Critic Methods`_  Depends on bootstrapped algorithm
+`Shared Critic Methods`_       Depends on bootstrapped algorithm
 ============================= =======================================================================================
 
 
@@ -718,7 +718,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -742,8 +742,9 @@ Fully Independent Learning
 
 Tuned examples: `waterworld <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__, `multiagent-cartpole <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 
-Centralized Critic Methods
+Shared Critic Methods
 --------------------------
 
-`[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__Centralized critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are essentially centralized critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
-Tuned examples:  `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
+`[instructions] <https://docs.ray.io/en/master/rllib-env.html#implementing-a-centralized-critic>`__ Shared critic methods are when all agents use a single parameter shared critic network (in some cases with access to more of the observation space than agents can see). Note that many specialized multi-agent algorithms such as MADDPG are mostly shared critic forms of their single-agent algorithm (DDPG in the case of MADDPG).
+
+Tuned examples: `TwoStepGame <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__
