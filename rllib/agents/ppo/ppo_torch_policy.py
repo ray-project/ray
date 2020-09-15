@@ -49,6 +49,7 @@ def ppo_surrogate_loss(
     import time
     print("len={} num_seqs={}".format(torch.sum(train_batch["seq_lens"]), len(train_batch["seq_lens"])))
     t = time.time()
+
     logits, state = model.from_batch(train_batch, is_training=True)
     curr_action_dist = dist_class(logits, model)
 
@@ -118,8 +119,7 @@ def ppo_surrogate_loss(
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
-    print("loss took {}sec".format(time.time() - t))
-
+    print("loss time={}sec".format(time.time() - t))
     return total_loss
 
 

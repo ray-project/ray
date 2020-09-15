@@ -333,6 +333,8 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        import time
+        t = time.time()
         # Get batch ready for RNNs, if applicable.
         if self.config["_use_trajectory_view_api"]:
             prepare_sample_batch_for_rnn(
@@ -410,6 +412,7 @@ class TorchPolicy(Policy):
         grad_info.update(self.extra_grad_info(train_batch))
         if self.model:
             grad_info["model"] = self.model.metrics()
+        print("learn_on_batch time={}sec".format(time.time() - t))
         return dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
