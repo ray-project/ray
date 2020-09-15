@@ -2,6 +2,7 @@ import os
 import pickle
 from multiprocessing import Process, Queue
 from numbers import Number
+from typing import Callable, Dict, List, Tuple
 
 from ray import logger
 from ray.tune import Trainable
@@ -43,7 +44,7 @@ def _clean_log(obj):
         return str(obj)
 
 
-def wandb_mixin(func):
+def wandb_mixin(func: Callable):
     """wandb_mixin
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
@@ -115,7 +116,7 @@ def wandb_mixin(func):
     return func
 
 
-def _set_api_key(wandb_config):
+def _set_api_key(wandb_config: Dict):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
     api_key_file = os.path.expanduser(wandb_config.pop("api_key_file", ""))
@@ -149,7 +150,8 @@ class _WandbLoggingProcess(Process):
     wandb logging instances locally.
     """
 
-    def __init__(self, queue, exclude, to_config, *args, **kwargs):
+    def __init__(self, queue: Queue, exclude: List[str], to_config: List[str],
+                 *args, **kwargs):
         super(_WandbLoggingProcess, self).__init__()
         self.queue = queue
         self._exclude = set(exclude)
@@ -168,7 +170,7 @@ class _WandbLoggingProcess(Process):
             wandb.log(log)
         wandb.join()
 
-    def _handle_result(self, result):
+    def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
         log = {}
         flat_result = flatten_dict(result, delimiter="/")
@@ -350,7 +352,7 @@ class WandbLogger(Logger):
             **wandb_init_kwargs)
         self._wandb.start()
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
         result = _clean_log(result)
         self._queue.put(result)
 
@@ -362,7 +364,7 @@ class WandbLogger(Logger):
 class WandbTrainableMixin:
     _wandb = wandb
 
-    def __init__(self, config, *args, **kwargs):
+    def __init__(self, config: Dict, *args, **kwargs):
         if not isinstance(self, Trainable):
             raise ValueError(
                 "The `WandbTrainableMixin` can only be used as a mixin "

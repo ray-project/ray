@@ -39,7 +39,7 @@ class TuneCallback(Callback):
                     on, self._allowed))
         self._on = on
 
-    def _handle(self, logs: Dict):
+    def _handle(self, logs: Dict, when: str):
         raise NotImplementedError
 
     def on_batch_begin(self, batch, logs=None):
