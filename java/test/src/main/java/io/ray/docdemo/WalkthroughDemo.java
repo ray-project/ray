@@ -136,7 +136,7 @@ public class WalkthroughDemo {
 
   public static void main(String[] args) {
     // Start Ray runtime. If you're connecting to an existing cluster, you can set
-    // the `-Dray.redis.address=<cluster-address>` java system property.
+    // the `-Dray.address=<cluster-address>` java system property.
     Ray.init();
 
     demoTasks();
