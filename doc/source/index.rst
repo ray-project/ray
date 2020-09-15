@@ -194,6 +194,7 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   oss-users.rst
    installation.rst
 
 .. toctree::
@@ -283,7 +284,6 @@ Papers
    iter.rst
    dask-on-ray.rst
    mars-on-ray.rst
-   oss-users.rst
 
 .. toctree::
    :hidden:
