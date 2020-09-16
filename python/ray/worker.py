@@ -1814,8 +1814,8 @@ def remote(*args, **kwargs):
             the maximum number of times that the remote function
             should be rerun when the worker process executing it
             crashes unexpectedly. The minimum valid value is 0,
-            the default is 4 (default), and a value of -1 indicates i
-            nfinite retries.
+            the default is 4 (default), and a value of -1 indicates
+            infinite retries.
         placement_group (:obj:`PlacementGroup`): The placement group
             this task belongs to, or ``None`` if it doesn't belong
             to any group.
