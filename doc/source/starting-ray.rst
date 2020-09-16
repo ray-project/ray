@@ -135,7 +135,7 @@ There are two steps needed to use Ray in a distributed setting:
 
           ray up cluster.yaml
 
-      To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. It's used to specify classpath for workers in the cluster. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes.
+      To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
       You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh into the head node with ``ray attach cluster.yaml``.
 
@@ -188,11 +188,13 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --address=<address>
 
-If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option.
+If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
 .. code-block:: bash
 
   $ ray start ... --code-search-path=/path/to/jars
+
+.. _local_mode:
 
 Local mode
 ----------
