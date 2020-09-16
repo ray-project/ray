@@ -1776,45 +1776,52 @@ def remote(*args, **kwargs):
 
     Args:
         num_returns (int): This is only for *remote functions*. It specifies
-            the number of object refs returned by the remote function invocation.
-        num_cpus (float): The quantity of CPU cores to reserve for this task or for
-            the lifetime of the actor.
-        num_gpus (int): The quantity of GPUs to reserve for this task or for the
-            lifetime of the actor.
-        resources (dict): The quantity of various custom resources to reserve for
-            this task or for the lifetime of the actor. This is a dictionary mapping
-            strings (resource names) to numbers.
+            the number of object refs returned by
+            the remote function invocation.
+        num_cpus (float): The quantity of CPU cores to reserve
+            for this task or for the lifetime of the actor.
+        num_gpus (int): The quantity of GPUs to reserve
+            for this task or for the lifetime of the actor.
+        resources (Dict[str, float]): The quantity of various custom resources
+            to reserve for this task or for the lifetime of the actor.
+            This is a dictionary mapping strings (resource names) to floats.
         accelerator_type: If specified, requires that the task or actor run
-            on a node with the specified type of accelerator. See `ray.accelerators`
-            for accelerator types.
-        max_calls (int): Only for *remote functions*. This specifies the maximum
-            number of times that a given worker can execute the given remote function
-            before it must exit (this can be used to address memory leaks in
-            third-party libraries or to reclaim resources that cannot easily be
-            released, e.g., GPU memory that was acquired by TensorFlow). By
-            default this is infinite.
+            on a node with the specified type of accelerator.
+            See `ray.accelerators` for accelerator types.
+        max_calls (int): Only for *remote functions*. This specifies the
+            maximum number of times that a given worker can execute
+            the given remote function before it must exit
+            (this can be used to address memory leaks in third-party
+            libraries or to reclaim resources that cannot easily be
+            released, e.g., GPU memory that was acquired by TensorFlow).
+            By default this is infinite.
         max_restarts (int): Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
-            unexpectedly. The minimum valid value is 0 (default), which indicates
-            that the actor doesn't need to be restarted. A value of -1
-            indicates that an actor should be restarted indefinitely.
-        max_task_retries (int): Only for *actors*. How many times to retry an actor
-            task if the task fails due to a system error, e.g., the actor has died.
-            If set to -1, the system will retry the failed task until the task
-            succeeds, or the actor has reached its max_restarts limit. If set to n >
-            0, the system will retry the failed task up to n times, after which the
-            task will throw a `RayActorError` exception upon :obj:`ray.get`. Note that
-            Python exceptions are not considered system errors and will not trigger
-            retries.
-        max_retries (int): Only for *remote functions*. This specifies the maximum
-            number of times that the remote function should be rerun when the worker
-            process executing it crashes unexpectedly. The minimum valid value is 0,
-            the default is 4 (default), and a value of -1 indicates infinite retries.
-        placement_group (:obj:`PlacementGroup`): The placement group this task belongs to,
-            or None if it doesn't belong to any group.
+            unexpectedly. The minimum valid value is 0 (default),
+            which indicates that the actor doesn't need to be restarted.
+            A value of -1 indicates that an actor should be restarted
+            indefinitely.
+        max_task_retries (int): Only for *actors*. How many times to
+            retry an actor task if the task fails due to a system error,
+            e.g., the actor has died. If set to -1, the system will
+            retry the failed task until the task succeeds, or the actor
+            has reached its max_restarts limit. If set to `n > 0`, the
+            system will retry the failed task up to n times, after which the
+            task will throw a `RayActorError` exception upon :obj:`ray.get`.
+            Note that Python exceptions are not considered system errors
+            and will not trigger retries.
+        max_retries (int): Only for *remote functions*. This specifies
+            the maximum number of times that the remote function
+            should be rerun when the worker process executing it
+            crashes unexpectedly. The minimum valid value is 0,
+            the default is 4 (default), and a value of -1 indicates i
+            nfinite retries.
+        placement_group (:obj:`PlacementGroup`): The placement group
+            this task belongs to, or ``None`` if it doesn't belong
+            to any group.
         placement_group_bundle_index (int): The index of the bundle
-            if the task belongs to a placement group, which may be -1 to indicate
-            any available bundle.
+            if the task belongs to a placement group, which may be
+            -1 to indicate any available bundle.
 
     """
     worker = global_worker
