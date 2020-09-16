@@ -172,11 +172,11 @@ def get_distribution_inputs_and_class(
         explore: bool = True,
         **kwargs) \
         -> Tuple[TensorType, Type[TFActionDistribution], List[TensorType]]:
-    """The action distribution function to be used by the algo.
+    """The action distribution function to be used the algorithm.
 
     An action distribution function is used to customize the choice of action
     distribution class and the resulting action distribution inputs (to
-    parameterize it).
+    parameterize the distribution object).
     After parameterizing the distribution, a `sample()` call
     will be made on it to generate actions.
 
@@ -205,6 +205,7 @@ def get_distribution_inputs_and_class(
     distribution_inputs = model.get_policy_output(model_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
     action_dist_class = _get_dist_class(policy.config, policy.action_space)
+
     return distribution_inputs, action_dist_class, state_out
 
 
@@ -380,13 +381,19 @@ def sac_actor_critic_loss(
     policy.target_entropy = model.target_entropy
 
     # In a custom apply op we handle the losses separately, but return them
-    # combined in one loss for now.
+    # combined in one loss here.
     return actor_loss + tf.math.add_n(critic_loss) + alpha_loss
 
 
 def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
                                loss: TensorType) -> ModelGradients:
     """Gradients computing function (from loss tensor, using local optimizer).
+
+    Note: For SAC, optimizer and loss are ignored b/c we have 3
+    losses and 3 local optimizers (all stored in policy).
+    `optimizer` will be used, though, in the tf-eager case b/c it is then a
+    fake optimizer (OptimizerWrapper) object with a `tape` property to
+    generate a GradientTape object for gradient recording.
 
     Args:
         policy (Policy): The Policy object that generated the loss tensor and
@@ -400,7 +407,8 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
         ModelGradients: List of the possibly clipped gradients- and variable
             tuples.
     """
-    # Eager: Use GradientTape.
+    # Eager: Use GradientTape (which is a property of the `optimizer` object
+    # (an OptimizerWrapper): see rllib/policy/eager_tf_policy.py).
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
@@ -474,6 +482,9 @@ def apply_gradients(
     optimizer: LocalOptimizer,
     grads_and_vars: ModelGradients) -> Union["tf.Operation", None]:
     """Gradients applying function (from list of "grad_and_var" tuples).
+
+    Note: For SAC, optimizer and grads_and_vars are ignored b/c we have 3
+    losses and optimizers (stored in policy).
 
     Args:
         policy (Policy): The Policy object whose Model(s) the given gradients
@@ -647,7 +658,7 @@ def validate_spaces(policy: Policy,
         action_space (gym.spaces.Space): The action space to validate.
         config (TrainerConfigDict): The Policy's config dict.
 
-    Throws:
+    Raises:
         UnsupportedSpaceException: If one of the spaces is not supported.
     """
     # Only support single Box or single Discreete spaces.
