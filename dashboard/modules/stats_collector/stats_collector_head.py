@@ -70,6 +70,13 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 success=True,
                 message="Node summary fetched.",
                 summary=all_node_summary)
+        elif view == "details":
+            all_node_details = await DataOrganizer.get_all_node_details()
+            return await dashboard_utils.rest_response(
+                success=True,
+                message="All node details fetched",
+                clients=all_node_details,
+            )
         elif view is not None and view.lower() == "hostNameList".lower():
             return await dashboard_utils.rest_response(
                 success=True,
@@ -172,7 +179,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     node_manager_pb2.GetNodeStatsRequest(
                             include_memory_info=self._collect_memory_info),
                     timeout=2)
-                logger.warning(f"reply={reply}")
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[ip] = reply_dict
             except Exception:

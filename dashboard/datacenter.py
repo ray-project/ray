@@ -2,6 +2,7 @@ import logging
 
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.memory as memory
+import asyncio
 from ray.new_dashboard.utils import Dict, Signal
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,14 @@ class DataOrganizer:
             node_info["raylet"].pop("viewData", None)
             all_nodes_summary.append(node_info)
         return all_nodes_summary
+    
+    @classmethod
+    async def get_all_node_details(cls):
+        node_details = []
+        for hostname in DataSource.hostname_to_ip.keys():
+            node_details.append(await cls.get_node_info(hostname))
+        logger.warning(f"node_details={node_details}")
+        return node_details
 
     @classmethod
     async def get_memory_table(cls, sort_by=memory.SortingType.OBJECT_SIZE, group_by=memory.GroupByType.STACK_TRACE):

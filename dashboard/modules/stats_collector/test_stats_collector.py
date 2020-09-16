@@ -131,6 +131,41 @@ def test_memory_table(ray_start_with_dashboard):
         break
     assert done_in_time
 
+def test_get_all_node_details(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    @ray.remote
+    class ActorWithObjs:
+        def __init__(self):
+            self.obj_ref = ray.put([1,2,3])
+
+        def get_obj(self):
+            return ray.get(self.obj_ref)
+
+    my_obj = ray.put([1,2,3] * 100)
+    actors = [ActorWithObjs.remote() for _ in range(2)]
+
+    threshhold = datetime.now() + timedelta(seconds=5)
+    done_in_time = False
+    while datetime.now() < threshhold:
+        resp = requests.get(f"{webui_url}/nodes?view=details")
+        if not resp or "data" not in resp.json():
+            time.sleep(.5)
+            continue
+        resp_data = resp.json()["data"]
+        print(resp_data)
+        clients = resp_data["clients"]
+        logger.warning(clients)
+        try:
+            assert len(clients) == 1
+            assert len(clients[0].get('actors')) == 2
+        except AssertionError as e:
+            time.sleep(.5)
+            continue
+        done_in_time = True
+        break
+    assert done_in_time
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
