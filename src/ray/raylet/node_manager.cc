@@ -208,8 +208,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   node_manager_server_.RegisterService(agent_manager_service_);
   node_manager_server_.Run();
 
-  AgentManager::Options options;
-  options.agent_commands = ParseCommandLine(config.agent_command);
+  auto options =
+      AgentManager::Options({self_node_id, ParseCommandLine(config.agent_command)});
   agent_manager_.reset(
       new AgentManager(std::move(options),
                        /*delay_executor=*/

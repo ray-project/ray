@@ -753,7 +753,8 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    return _global_node.address_info
+    node_id = global_worker.core_worker.get_current_node_id()
+    return dict(_global_node.address_info, node_id=node_id.hex())
 
 
 # Functions to run as callback after a successful ray init.
