@@ -5,12 +5,7 @@ from ray._raylet import PlacementGroupID, ObjectRef
 
 
 class PlacementGroup:
-    """A handle to a placement group.
-
-    Args:
-        id (PlacementGroupID): Placement group id.
-        bundles (List): List of bundles.
-    """
+    """A handle to a placement group."""
 
     @staticmethod
     def empty():

@@ -414,7 +414,8 @@ class GlobalState:
             elif strategy == PlacementStrategy.SPREAD:
                 return "SPREAD"
             else:
-                raise ValueError(f"Invalid strategy returned: {strategy}")
+                raise ValueError(
+                    f"Invalid strategy returned: {PlacementStrategy}")
 
         assert placement_group_info is not None
         return {

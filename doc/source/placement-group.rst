@@ -41,10 +41,14 @@ Ray placement group can be created via the ``ray.util.placement_group`` API. Pla
       remove_placement_group
   )
 
+  # Initialize Ray.
+  import ray
+  ray.init(num_gpus=2, resources={"extra_resource": 2})
+
   bundle1 = {"GPU": 2}
   bundle2 = {"extra_resource": 2}
 
-  pg = placement_group([bundle1, bundle2, ...], strategy="STRICT_PACK")
+  pg = placement_group([bundle1, bundle2], strategy="STRICT_PACK")
 
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
@@ -61,7 +65,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
   # You can look at placement group states using this API.
   pprint(placement_group_table(pg))
 
-.. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
+Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
 .. _pgroup-strategy:
 
@@ -73,8 +77,6 @@ Ray currently supports the following placement group strategies:
 **STRICT_PACK**
 
 All bundles must be placed into a single node on the cluster.
-Infeasible placement groups will wait for the Ray Autoscaler to add
-the requested resources to the cluster (i.e., a larger node).
 
 **PACK**
 
@@ -84,14 +86,11 @@ If strict packing is not feasible (i.e., some bundles do not fit on the node), b
 **STRICT_SPREAD**
 
 Each bundle must be scheduled in a separate node.
-Infeasible placement groups will wait for the Ray Autoscaler to add
-the requested resources to the cluster.
 
 **SPREAD**
 
 Each bundle will be spread onto separate nodes on a best effort basis.
 If strict spreading is not feasible, bundles can be placed overlapping nodes.
-
 
 Quick Start
 -----------
@@ -119,8 +118,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   gpu_bundle = {"GPU": 2}
   extra_resource_bundle = {"extra_resource": 2}
 
-  # Reserve 2 of GPU bundles with strict pack strategy.
-  # It means Ray will reserve 2 GPU resources on the same node (strict pack) within a Ray cluster.
+  # Reserve bundles with strict pack strategy.
+  # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
   # Using this placement group for scheduling actors or tasks will guarantee that they will
   # collocate in the same node.
   pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
@@ -128,7 +127,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   # Wait until placement group is created.
   ray.get(pg.ready())
 
-Now let's define actors that uses GPUs. We'll also define actors that use ``extra_resources``.
+Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
 .. code-block:: python
 
@@ -138,9 +137,10 @@ Now let's define actors that uses GPUs. We'll also define actors that use ``extr
           pass
 
   @ray.remote(resources={"extra_resource": 1})
-  class ExtraResourceActor:
-      def __init__(self):
-          pass
+  def extra_resource_task():
+      import time
+      # simulate long-running task.
+      time.sleep(10)
 
   # Create GPU actors on a gpu bundle.
   gpu_actors = [GPUActor.options(
@@ -150,21 +150,17 @@ Now let's define actors that uses GPUs. We'll also define actors that use ``extr
       .remote() for _ in range(2)]
 
   # Create extra_resource actors on a extra_resource bundle.
-  extra_resource_actors = [ExtraResourceActor.options(
+  extra_resource_actors = [extra_resource_task.options(
           placement_group=pg,
           # This is the index from the original list.
-          placement_group_bundle_index=1) # Index of gpu_bundle is 1.
+          placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
 
-Now, you can guarantee all gpu and extra_resource actors are located on the same node
-because they are scheduled on a placement group that has STRICT_PACK strategy.
-You can see this by checking all actors have the same node id.
+Now, you can guarantee all gpu actor and extra_resource task are located on the same node
+because they are scheduled on a placement group with the STRICT_PACK strategy.
 
-.. code-block:: python
-
-  pprint(ray.actors())
-
-Note that you must remove the placement group once you are finished with your application:
+Note that you must remove the placement group once you are finished with your application
+Workers of actors and tasks that are scheduled on placement group will be all killed:
 
 .. code-block:: python
 
@@ -177,6 +173,14 @@ Note that you must remove the placement group once you are finished with your ap
   # Check the placement group has died.
   pprint(placement_group_table(pg))
 
+  """
+  {'bundles': {0: {'GPU': 2.0}, 1: {'extra_resource': 2.0}},
+  'name': 'unnamed_group',
+  'placement_group_id': '40816b6ad474a6942b0edb45809b39c3',
+  'state': 'REMOVED',
+  'strategy': 'STRICT_PACK'}
+  """
+
   ray.shutdown()
 
 Lifecycle
@@ -184,9 +188,12 @@ Lifecycle
 
 When placement group is first created, the request is sent to GCS. GCS reserve resources to nodes based on scheduling strategy. Ray guarantees atomic creation of placement group.
 
-Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy.
+Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
-If nodes that contain some bundles of a placement group die, bundles will be rescheduled on different nodes by GCS.
+If nodes that contain some bundles of a placement group die, bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
 
 Unlike actors and tasks, placement group is currently not fault tolerant yet. It is in progress.
 
+API Reference
+-------------
+:ref:`Placement Group API reference <ray-placement-group-ref>`
