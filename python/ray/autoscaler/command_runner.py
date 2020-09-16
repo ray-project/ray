@@ -105,6 +105,18 @@ class CommandRunnerInterface:
 
     Command runner instances are returned by provider.get_command_runner()."""
 
+    def __init__(self):
+        """Enforces the CommandRunnerInterface functions on the subclasses."""
+        available_functions = dir(self)
+        subclass_public_functions = set(
+            [func for func in available_functions if not func.startswith("_")])
+        cmd_runner_interface_public_functions = dir(CommandRunnerInterface)
+        allowed_public_interface_functions = set([
+            func for func in cmd_runner_interface_public_functions
+            if not func.startswith("_")
+        ])
+        assert allowed_public_interface_functions == subclass_public_functions
+
     def run(
             self,
             cmd: str = None,
@@ -181,7 +193,7 @@ class CommandRunnerInterface:
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
-
+        super().__init__()
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = str(node_id)
@@ -353,7 +365,7 @@ class SSHOptions:
 class SSHCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
-
+        super().__init__()
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
         ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
@@ -593,6 +605,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 
 class DockerCommandRunner(CommandRunnerInterface):
     def __init__(self, docker_config, **common_args):
+        super().__init__()
         self.ssh_command_runner = SSHCommandRunner(**common_args)
         self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
