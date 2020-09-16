@@ -3,13 +3,11 @@ import {
   Tab,
   Tabs,
   Theme,
-  Typography,
-  WithStyles,
-  withStyles,
+  Typography, makeStyles
 } from "@material-ui/core";
-import React from "react";
-import { connect } from "react-redux";
-import { getNodeInfo, getRayletInfo, getTuneAvailability } from "../../api";
+import React, { useEffect, useRef, useCallback } from "react";
+import { useDispatch, useSelector } from 'react-redux';
+import { getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -19,7 +17,7 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
-const styles = (theme: Theme) =>
+const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
       backgroundColor: theme.palette.background.paper,
@@ -33,89 +31,84 @@ const styles = (theme: Theme) =>
       borderBottomStyle: "solid",
       borderBottomWidth: 1,
     },
-  });
+  }));
 
-const mapStateToProps = (state: StoreState) => ({
-  tab: state.dashboard.tab,
-  tuneAvailability: state.dashboard.tuneAvailability,
-});
+const tabSelector = (state: StoreState) => state.dashboard.tab;
+const tuneAvailabilitySelector = (state: StoreState) => state.dashboard.tuneAvailability;
 
-const mapDispatchToProps = dashboardActions;
+const allTabs = [
+  { label: "Machine view", component: NodeInfo },
+  { label: "Logical view", component: LogicalView },
+  { label: "Memory", component: MemoryInfo },
+  { label: "Ray config", component: RayConfig },
+  { label: "Tune", component: Tune },
+];
 
-class Dashboard extends React.Component<
-  WithStyles<typeof styles> &
-    ReturnType<typeof mapStateToProps> &
-    typeof mapDispatchToProps
-> {
-  timeoutId = 0;
-  tabs = [
-    { label: "Machine view", component: NodeInfo },
-    { label: "Logical view", component: LogicalView },
-    { label: "Memory", component: MemoryInfo },
-    { label: "Ray config", component: RayConfig },
-    { label: "Tune", component: Tune },
-  ];
+const Dashboard: React.FC = () => {
+  const dispatch = useDispatch();
+  const tuneAvailability = useSelector(tuneAvailabilitySelector);
+  const tab = useSelector(tabSelector);
+  const { setNodeInfo, setTuneAvailability, setError, setTab } = dashboardActions;
+  const classes = useDashboardStyles();
 
-  refreshInfo = async () => {
+  // Polling Function
+  const refreshInfo = useCallback(async () => {
     try {
-      const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
+      const [nodeInfo, tuneAvailability] = await Promise.all([
         getNodeInfo(),
-        getRayletInfo(),
         getTuneAvailability(),
       ]);
-      this.props.setNodeAndRayletInfo({ nodeInfo, rayletInfo });
-      this.props.setTuneAvailability(tuneAvailability);
-      this.props.setError(null);
+      dispatch(setNodeInfo({ nodeInfo }));
+      dispatch(setTuneAvailability(tuneAvailability));
+      dispatch(setError(null));
     } catch (error) {
-      this.props.setError(error.toString());
-    } finally {
-      this.timeoutId = window.setTimeout(this.refreshInfo, 1000);
+      dispatch(setError(error.toString()));
     }
-  };
+  }, [dispatch]);
 
-  async componentDidMount() {
-    await this.refreshInfo();
-  }
-
-  componentWillUnmount() {
-    clearTimeout(this.timeoutId);
-  }
-
-  handleTabChange = async (event: React.ChangeEvent<{}>, value: number) =>
-    this.props.setTab(value);
-
-  render() {
-    const { classes, tab, tuneAvailability } = this.props;
-    const tabs = this.tabs.slice();
-
-    // if Tune information is not available, remove Tune tab from the dashboard
-    if (tuneAvailability === null || !tuneAvailability.available) {
-      tabs.splice(4);
+  // Run the poller
+  const intervalId = useRef<any>(null);
+  useEffect(() => {
+    if (intervalId.current === null) {
+      refreshInfo();
+      intervalId.current = setInterval(refreshInfo, 1000);
+    } 
+    const cleanup = () => {
+      clearInterval(intervalId.current);
     }
+    return cleanup
+  }, [refreshInfo])
 
-    const SelectedComponent = tabs[tab].component;
-    return (
-      <div className={classes.root}>
-        <Typography variant="h5">Ray Dashboard</Typography>
-        <Tabs
-          className={classes.tabs}
-          indicatorColor="primary"
-          onChange={this.handleTabChange}
-          textColor="primary"
-          value={tab}
-        >
-          {tabs.map(({ label }) => (
-            <Tab key={label} label={label} />
-          ))}
-        </Tabs>
-        <SelectedComponent />
-        <LastUpdated />
-      </div>
-    );
+
+  const handleTabChange = (_: any, value: number) =>
+    setTab(value);
+
+  const tabs = allTabs.slice();
+
+  // if Tune information is not available, remove Tune tab from the dashboard
+  if (tuneAvailability === null || !tuneAvailability.available) {
+    tabs.splice(4);
   }
+
+  const SelectedComponent = tabs[tab].component;
+  return (
+    <div className={classes.root}>
+      <Typography variant="h5">Ray Dashboard</Typography>
+      <Tabs
+        className={classes.tabs}
+        indicatorColor="primary"
+        onChange={handleTabChange}
+        textColor="primary"
+        value={tab}
+      >
+        {tabs.map(({ label }) => (
+          <Tab key={label} label={label} />
+        ))}
+      </Tabs>
+      <SelectedComponent />
+      <LastUpdated />
+    </div>
+  );
 }
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps,
-)(withStyles(styles)(Dashboard));
+export default Dashboard;
