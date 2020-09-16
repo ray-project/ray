@@ -1,8 +1,11 @@
 """
-Simple Q (simple_q)
-===================
+Simple Q-Learning
+=================
 
-This file defines the distributed Trainer class for the simple Q learning.
+This module provides a basic implementation of the DQN algorithm without any
+optimizations.
+
+This file defines the distributed Trainer class for the Simple Q algorithm.
 See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 
@@ -99,7 +102,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
-        Optional[Type[Policy]]: The Policy class to use with PGTrainer.
+        Optional[Type[Policy]]: The Policy class to use with SimpleQTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
     if config["framework"] == "torch":
@@ -108,6 +111,16 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=config["learning_starts"],

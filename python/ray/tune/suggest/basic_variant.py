@@ -1,9 +1,10 @@
 import itertools
 import os
 import uuid
+from typing import Dict, List, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
                                                 flatten_resolved_vars)
@@ -55,7 +56,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         else:
             self._uuid_prefix = str(uuid.uuid1().hex)[:5] + "_"
 
-    def add_configurations(self, experiments):
+    def add_configurations(
+            self,
+            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
         """Chains generator given experiment specifications.
 
         Arguments:
