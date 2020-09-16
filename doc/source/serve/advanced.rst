@@ -343,7 +343,7 @@ You can follow the same pattern for other Starlette middlewares.
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    serve.start(
+    client = serve.start(
         http_middlewares=[
             Middleware(
                 CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
