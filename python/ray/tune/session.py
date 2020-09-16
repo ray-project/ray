@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
-def get_session():
+def get_session(warn=True):
     global _session
-    if not _session:
+    if not _session and warn:
         logger.warning(
             "Session not detected. You should not be calling this function "
             "outside `tune.run` or while using the class API. ")
