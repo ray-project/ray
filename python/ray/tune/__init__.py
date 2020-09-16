@@ -11,7 +11,8 @@ from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.suggest import grid_search
 from ray.tune.session import (report, get_trial_dir, get_trial_name,
                               get_trial_id, make_checkpoint_dir,
-                              save_checkpoint, checkpoint_dir)
+                              save_checkpoint, checkpoint_dir,
+                              is_session_enabled)
 from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
                                         JupyterNotebookReporter)
 from ray.tune.sample import (function, sample_from, uniform, quniform, choice,
@@ -28,6 +29,7 @@ __all__ = [
     "qrandint", "randn", "qrandn", "loguniform", "qloguniform",
     "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
     "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id", "make_checkpoint_dir", "save_checkpoint", "checkpoint_dir",
-    "SyncConfig", "create_searcher", "create_scheduler"
+    "get_trial_id", "make_checkpoint_dir", "save_checkpoint",
+    "is_session_enabled", "checkpoint_dir", "SyncConfig",
+    "create_searcher", "create_scheduler"
 ]

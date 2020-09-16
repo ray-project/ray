@@ -400,6 +400,17 @@ class FunctionApiTest(unittest.TestCase):
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
 
+    def testEnabled(self):
+        def train(config, checkpoint_dir=None):
+            is_active = tune.is_session_enabled()
+            if is_active:
+                tune.report(active=is_active)
+            return is_active
+        assert train({}) is False
+        analysis = tune.run(train)
+        t = analysis.trials[0]
+        assert t.last_result["active"]
+
     def testBlankCheckpoint(self):
         def train(config, checkpoint_dir=None):
             restored = bool(checkpoint_dir)
