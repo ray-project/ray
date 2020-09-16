@@ -415,7 +415,6 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["start", "--head", "--num-gpus", "100"])
     check_call_ray(["stop"])
 
-
     if "RAY_USE_NEW_GCS" not in os.environ:
         # Test starting Ray with redis shard ports specified.
         check_call_ray(
