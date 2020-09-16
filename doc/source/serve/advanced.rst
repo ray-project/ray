@@ -390,10 +390,10 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
      - ``handle.remote(a="b")``
      - ``request.args``
    * - ``request.get(..., data="long string")``
-     - ``request.remote("long string")``
+     - ``handle.remote("long string")``
      - ``request.data``
    * - ``N/A``
-     - ``request.remote(python_object)``
+     - ``handle.remote(python_object)``
      - ``request.data``
 
 .. note::
