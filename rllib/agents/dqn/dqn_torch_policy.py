@@ -1,3 +1,5 @@
+"""PyTorch policy class used for DQN"""
+
 from typing import Dict, List, Tuple
 
 import gym
@@ -31,13 +33,13 @@ if nn:
 
 class QLoss:
     def __init__(self,
-                 q_t_selected,
-                 q_logits_t_selected,
-                 q_tp1_best,
-                 q_probs_tp1_best,
-                 importance_weights,
-                 rewards,
-                 done_mask,
+                 q_t_selected: TensorType,
+                 q_logits_t_selected: TensorType,
+                 q_tp1_best: TensorType,
+                 q_probs_tp1_best: TensorType,
+                 importance_weights: TensorType,
+                 rewards: TensorType,
+                 done_mask: TensorType,
                  gamma=0.99,
                  n_step=1,
                  num_atoms=1,
@@ -103,6 +105,11 @@ class QLoss:
 
 
 class ComputeTDErrorMixin:
+    """Assign the `compute_td_error` method to the DQNTorchPolicy
+
+    This allows us to prioritize on the worker side.
+    """
+
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
@@ -122,9 +129,22 @@ class ComputeTDErrorMixin:
 
 
 def build_q_model_and_distribution(
-        policy: Policy, obs_space: gym.Space, action_space: gym.Space,
+        policy: Policy, obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, TorchDistributionWrapper]:
+    """Build q_model and target_q_model for DQN
 
+    Args:
+        policy (Policy): The policy, which will use the model for optimization.
+        obs_space (gym.spaces.Space): The policy's observation space.
+        action_space (gym.spaces.Space): The policy's action space.
+        config (TrainerConfigDict):
+
+    Returns:
+        (q_model, TorchCategorical)
+            Note: The target q model will not be returned, just assigned to
+            `policy.target_q_model`.
+    """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
@@ -204,6 +224,16 @@ def get_distribution_inputs_and_class(
 
 def build_q_losses(policy: Policy, model, _,
                    train_batch: SampleBatch) -> TensorType:
+    """Constructs the loss for DQNTorchPolicy.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        TensorType: A single loss tensor.
+    """
     config = policy.config
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t = compute_q_values(
@@ -286,7 +316,8 @@ def setup_early_mixins(policy: Policy, obs_space, action_space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def after_init(policy: Policy, obs_space: gym.Space, action_space: gym.Space,
+def after_init(policy: Policy, obs_space: gym.spaces.Space,
+               action_space: gym.spaces.Space,
                config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)

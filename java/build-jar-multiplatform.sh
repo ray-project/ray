@@ -17,6 +17,15 @@ cd "$WORKSPACE_DIR/java"
 version=$(python -c "import xml.etree.ElementTree as ET;  r = ET.parse('pom.xml').getroot(); print(r.find(r.tag.replace('project', 'version')).text);" | tail -n 1)
 cd -
 
+check_java_version() {
+  local VERSION
+  VERSION=$(java  -version 2>&1 | awk -F '"' '/version/ {print $2}')
+  if [[ ! $VERSION =~ 1.8 ]]; then
+    echo "Java version is $VERSION. Please install jkd8."
+    exit 1
+  fi
+}
+
 build_jars() {
   local platform="$1"
   local bazel_build="${2:-true}"
@@ -26,6 +35,7 @@ build_jars() {
   mkdir -p "$JAR_DIR"
   for p in "${JAVA_DIRS_PATH[@]}"; do
     cd "$WORKSPACE_DIR/$p"
+    bazel build cp_java_generated
     if [[ $bazel_build == "true" ]]; then
       echo "Starting building java native dependencies for $p"
       bazel build gen_maven_deps
@@ -167,17 +177,19 @@ deploy_jars() {
   if native_files_exist; then
     (
       cd "$WORKSPACE_DIR/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+      mvn -T16 install deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
     )
     (
       cd "$WORKSPACE_DIR/streaming/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease
+      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
     )
     echo "Finished deploying jars"
   else
     echo "Native bianries/libraries are not ready, skip deploying jars."
   fi
 }
+
+check_java_version
 
 case "$1" in
 linux) # build jars that only contains Linux binaries.

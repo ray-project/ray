@@ -135,7 +135,7 @@ There are two steps needed to use Ray in a distributed setting:
 
           ray up cluster.yaml
 
-      To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. It's used to specify classpath for workers in the cluster. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes.
+      To configure the Ray cluster to run Java code, you need to add the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
       You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh into the head node with ``ray attach cluster.yaml``.
 
@@ -152,17 +152,17 @@ There are two steps needed to use Ray in a distributed setting:
 
         .. group-tab:: Java
 
-          You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
+          You need to add the ``ray.address`` parameter to your command line (like ``-Dray.address=...``).
 
           To connect your program to the Ray cluster, run it like this:
 
               .. code-block:: bash
 
                   java -classpath /path/to/jars/ \
-                    -Dray.redis.address=<address> \
+                    -Dray.address=<address> \
                     <classname> <args>
 
-          .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
+          .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
       Your driver code **only** needs to execute on one machine in the cluster (usually the head node).
 
@@ -188,11 +188,13 @@ The command will print out the address of the Redis server that was started (and
 
     $ ray start --address=<address>
 
-If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option.
+If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
 
 .. code-block:: bash
 
   $ ray start ... --code-search-path=/path/to/jars
+
+.. _local_mode:
 
 Local mode
 ----------
@@ -215,7 +217,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
         -Dray.local-mode=true \
         <classname> <args>
 
-Note that some behavior such as setting global process variables may not work as expected.
+Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
 
 .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 

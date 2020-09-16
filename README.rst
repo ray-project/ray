@@ -15,10 +15,19 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
+There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
+
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
-**NOTE:** As of Ray 0.8.1, Python 2 is no longer supported.
+.. _`Modin`: https://github.com/modin-project/modin
+.. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
+.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
+.. _`Scikit-learn`: joblib.html
+
+
 
 Quick Start
 -----------
@@ -253,7 +262,6 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 
 .. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
-
 
 More Information
 ----------------

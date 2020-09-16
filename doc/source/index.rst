@@ -59,20 +59,20 @@ Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Cla
 
         public class RayDemo {
 
-          public static int f(int x) {
+          public static int square(int x) {
             return x * x;
           }
 
           public static class Counter {
 
-            private int n = 0;
+            private int value = 0;
 
             public void increment() {
-              this.n += 1;
+              this.value += 1;
             }
 
             public int read() {
-              return this.n;
+              return this.value;
             }
           }
 
@@ -81,10 +81,10 @@ Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Cla
             Ray.init();
             {
               List<ObjectRef<Integer>> objectRefList = new ArrayList<>();
-              // Invoke the `f` method 4 times remotely as Ray tasks.
+              // Invoke the `square` method 4 times remotely as Ray tasks.
               // The tasks will run in parallel in the background.
               for (int i = 0; i < 4; i++) {
-                objectRefList.add(Ray.task(RayDemo::f, i).remote());
+                objectRefList.add(Ray.task(RayDemo::square, i).remote());
               }
               // Get the actual results of the tasks with `get`.
               System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
@@ -194,6 +194,7 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   ray-libraries.rst
    installation.rst
 
 .. toctree::
@@ -275,12 +276,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Community Libraries
+   :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
-   pandas_on_ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
 
