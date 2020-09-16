@@ -521,7 +521,7 @@ def _get_docker_cpus(
                 cpu_quota = float(quota_file.read()) / float(
                     period_file.read())
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota",
+            logger.exception("Unexpected error calculating docker cpu quota.",
                              e)
     if cpu_quota < 0:
         cpu_quota = None
@@ -541,7 +541,7 @@ def _get_docker_cpus(
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
         except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota",
+            logger.exception("Unexpected error calculating docker cpuset ids.",
                              e)
 
     if cpu_quota and cpuset_num:
