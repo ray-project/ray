@@ -245,19 +245,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("B", B)
 
         def f(cpus, gpus, queue_trials):
-            if not queue_trials:
-                os.environ["TUNE_DISABLE_QUEUE_TRIALS"] = "1"
-            else:
-                os.environ.pop("TUNE_DISABLE_QUEUE_TRIALS", None)
-            return run_experiments({
-                "foo": {
-                    "run": "B",
-                    "config": {
-                        "cpu": cpus,
-                        "gpu": gpus,
-                    },
-                }
-            })[0]
+            return run_experiments(
+                {
+                    "foo": {
+                        "run": "B",
+                        "config": {
+                            "cpu": cpus,
+                            "gpu": gpus,
+                        },
+                    }
+                },
+                queue_trials=queue_trials)[0]
 
         # Should all succeed
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)

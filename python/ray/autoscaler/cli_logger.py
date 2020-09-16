@@ -268,7 +268,7 @@ class _CliLogger():
             self.pretty = _isatty()
         elif self._log_style == "record":
             self.pretty = False
-            self.color_mode = "false"
+            self._set_color_mode("false")
         elif self._log_style == "pretty":
             self.pretty = True
 
@@ -698,9 +698,9 @@ class _CliLogger():
             raise ValueError("Non-interactive confirm without --yes.")
 
         if default:
-            yn_str = cf.limeGreen("Y") + "/" + cf.red("n")
+            yn_str = "Y/n"
         else:
-            yn_str = cf.limeGreen("y") + "/" + cf.red("N")
+            yn_str = "y/N"
 
         confirm_str = cf.underlined("Confirm [" + yn_str + "]:") + " "
 

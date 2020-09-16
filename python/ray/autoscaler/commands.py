@@ -33,7 +33,6 @@ from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler.command_runner import DockerCommandRunner
 from ray.autoscaler.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
@@ -47,6 +46,8 @@ logger = logging.getLogger(__name__)
 redis_client = None
 
 RUN_ENV_TYPES = ["auto", "host", "docker"]
+
+POLL_INTERVAL = 5
 
 
 def _redis():
@@ -116,17 +117,6 @@ def create_or_update_cluster(config_file: str,
     else:
         cmd_output_util.set_output_redirected(redirect_command_output)
 
-    if use_login_shells:
-        cli_logger.warning(
-            "Commands running under a login shell can produce more "
-            "output than special processing can handle.")
-        cli_logger.warning(
-            "Thus, the output from subcommands will be logged as is.")
-        cli_logger.warning(
-            "Consider using {}, {}.", cf.bold("--use-normal-shells"),
-            cf.underlined("if you tested your workflow and it is compatible"))
-        cli_logger.newline()
-
     def handle_yaml_error(e):
         cli_logger.error("Cluster config invalid")
         cli_logger.newline()
@@ -164,8 +154,6 @@ def create_or_update_cluster(config_file: str,
             ]))
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
-
-    cli_logger.success("Cluster configuration valid")
 
     printed_overrides = False
 
@@ -255,8 +243,8 @@ def _bootstrap_config(config: Dict[str, Any],
 
     provider_cls = importer(config["provider"])
 
-    with cli_logger.timed(  # todo: better message
-            "Bootstrapping {} config",
+    with cli_logger.timed(
+            "Checking {} environment settings",
             PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
@@ -393,10 +381,11 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                     cf.bold(len(A)),
                     _tags=dict(interval="1s"))
 
-                time.sleep(1)  # todo: interval should be a variable
+                time.sleep(
+                    POLL_INTERVAL)  # todo: interval should be a variable
                 A = remaining_nodes()
-                cli_logger.print("{} nodes remaining after 1 second.",
-                                 cf.bold(len(A)))
+                cli_logger.print("{} nodes remaining after {} second(s).",
+                                 cf.bold(len(A)), POLL_INTERVAL)
             cli_logger.success("No nodes remaining.")
     finally:
         provider.cleanup()
@@ -441,7 +430,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
             _exec(updater, "ray stop", False, False)
 
-        time.sleep(5)
+        time.sleep(POLL_INTERVAL)
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             node_ip = provider.internal_ip(node)
@@ -506,7 +495,6 @@ def get_or_create_head_node(config,
                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    raw_config_file = config_file  # used for printing to the user
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
@@ -609,7 +597,7 @@ def get_or_create_head_node(config,
                         if len(nodes) == 1:
                             head_node = nodes[0]
                             break
-                        time.sleep(1)
+                        time.sleep(POLL_INTERVAL)
                 cli_logger.newline()
 
         with cli_logger.group(
@@ -739,12 +727,16 @@ def get_or_create_head_node(config,
         with cli_logger.group("Useful commands"):
             cli_logger.print("Monitor autoscaling with")
             cli_logger.print(
-                cf.bold("  ray exec {}{} {}"), raw_config_file, modifiers,
+                cf.bold("  ray exec {}{} {}"), config_file, modifiers,
                 quote(monitor_str))
 
-            cli_logger.print("Connect to a terminal on the cluster head")
+            cli_logger.print("Connect to a terminal on the cluster head:")
             cli_logger.print(
-                cf.bold("  ray attach {}{}"), raw_config_file, modifiers)
+                cf.bold("  ray attach {}{}"), config_file, modifiers)
+
+            remote_shell_str = updater.cmd_runner.remote_shell_command_str()
+            cli_logger.print("Get a remote shell to the cluster manually:")
+            cli_logger.print("  {}", remote_shell_str.strip())
     finally:
         provider.cleanup()
 
@@ -857,18 +849,13 @@ def exec_cluster(config_file: str,
             file_mounts_contents_hash="",
             is_head_node=True,
             docker_config=config.get("docker"))
-
-        is_docker = isinstance(updater.cmd_runner, DockerCommandRunner)
-
+        shutdown_after_run = False
         if cmd and stop:
             cmd += "; ".join([
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
             ])
-            if is_docker and run_env == "docker":
-                updater.cmd_runner.shutdown_after_next_cmd()
-            else:
-                cmd += "; sudo shutdown -h now"
+            shutdown_after_run = True
 
         result = _exec(
             updater,
@@ -877,7 +864,8 @@ def exec_cluster(config_file: str,
             tmux,
             port_forward=port_forward,
             with_output=with_output,
-            run_env=run_env)
+            run_env=run_env,
+            shutdown_after_run=shutdown_after_run)
         if tmux or screen:
             attach_command_parts = ["ray attach", config_file]
             if override_cluster_name is not None:
@@ -906,7 +894,8 @@ def _exec(updater,
           tmux,
           port_forward=None,
           with_output=False,
-          run_env="auto"):
+          run_env="auto",
+          shutdown_after_run=False):
     if cmd:
         if screen:
             cmd = [
@@ -926,7 +915,8 @@ def _exec(updater,
         exit_on_fail=True,
         port_forward=port_forward,
         with_output=with_output,
-        run_env=run_env)
+        run_env=run_env,
+        shutdown_after_run=shutdown_after_run)
 
 
 def rsync(config_file: str,
@@ -959,10 +949,11 @@ def rsync(config_file: str,
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
     is_file_mount = False
-    for remote_mount in config.get("file_mounts", {}).keys():
-        if remote_mount in (source if down else target):
-            is_file_mount = True
-            break
+    if source and target:
+        for remote_mount in config.get("file_mounts", {}).keys():
+            if (source if down else target).startswith(remote_mount):
+                is_file_mount = True
+                break
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
