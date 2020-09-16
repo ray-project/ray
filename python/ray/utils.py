@@ -565,7 +565,6 @@ def get_num_cpus():
         # https://bugs.python.org/issue36054
         docker_count = _get_docker_cpus()
         if docker_count is not None and docker_count != cpu_count:
-            cpu_count = docker_count
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
                 logger.warning(
                     "Detecting docker specified CPUs. In "
@@ -584,6 +583,7 @@ def get_num_cpus():
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}.")
             docker_count = int(docker_count)
+            cpu_count = docker_count
 
     except Exception:
         # `nproc` and cgroup are linux-only. If docker only works on linux
