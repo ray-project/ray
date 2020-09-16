@@ -739,9 +739,10 @@ def test_accelerator_type_api(shutdown_only):
 
 def test_detect_docker_cpus():
     # No limits set
-    with tempfile.NamedTemporaryFile("w") as quota_file, \
-         tempfile.NamedTemporaryFile("w") as period_file, \
-         tempfile.NamedTemporaryFile("w") as cpuset_file:
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
         quota_file.write("-1")
         period_file.write("100000")
         cpuset_file.write("0-63")
@@ -754,9 +755,10 @@ def test_detect_docker_cpus():
             cpuset_file_name=cpuset_file.name) == 64
 
     # No cpuset used
-    with tempfile.NamedTemporaryFile("w") as quota_file, \
-         tempfile.NamedTemporaryFile("w") as period_file, \
-         tempfile.NamedTemporaryFile("w") as cpuset_file:
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
         quota_file.write("-1")
         period_file.write("100000")
         cpuset_file.write("0-10,20,50-63")
@@ -769,9 +771,10 @@ def test_detect_docker_cpus():
             cpuset_file_name=cpuset_file.name) == 26
 
     # Quota set
-    with tempfile.NamedTemporaryFile("w") as quota_file, \
-         tempfile.NamedTemporaryFile("w") as period_file, \
-         tempfile.NamedTemporaryFile("w") as cpuset_file:
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
         quota_file.write("42")
         period_file.write("100")
         cpuset_file.write("0-63")
