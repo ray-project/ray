@@ -160,11 +160,10 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--port",
-    required=False,
-    type=str,
-    help="the port of the head ray process. If not provided, tries to use "
-    "{0}, falling back to a random port if {0} is "
-    "not available".format(ray_constants.DEFAULT_PORT))
+    type=int,
+    default=ray_constants.DEFAULT_PORT,
+    help="the port of the head ray process. If not provided, defaults to "
+    "{0}".format(ray_constants.DEFAULT_PORT))
 @click.option(
     "--redis-password",
     required=False,
@@ -368,7 +367,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
-
     if gcs_server_port and not head:
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
@@ -381,7 +379,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if address is not None:
         (redis_address, redis_address_ip,
          redis_address_port) = services.validate_redis_address(address)
-
     try:
         resources = json.loads(resources)
     except Exception:
@@ -447,9 +444,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             "started, so a Redis address should not be "
                             "provided.")
 
+        node_ip_address = services.get_node_ip_address()
+
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address())
+            node_ip_address=node_ip_address)
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         cli_logger.old_info(logger, "Using IP address {} for this node.",
                             ray_params.node_ip_address)
@@ -461,6 +460,16 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             redis_max_clients=None,
             autoscaling_config=autoscaling_config,
         )
+
+        # Fail early when starting a new cluster when one is already running
+        if address is None:
+            default_address = f"{node_ip_address}:{port}"
+            redis_addresses = services.find_redis_address(default_address)
+            if len(redis_addresses) > 0:
+                raise ConnectionError(
+                    f"There is already a Ray head running "
+                    f"at: {default_address}."
+                    f" Please specify a different address to start.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
