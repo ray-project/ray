@@ -9,9 +9,8 @@ entire Dask ecosystem can be executed on top of Ray.
 
 .. note::
 
-  This API is experimental. In particular, note that Ray does not currently
-  support object spilling, and hence cannot process datasets larger than
-  cluster memory.
+  Note that Ray does not yet support object spilling, and hence cannot
+  process datasets larger than cluster memory. This is a planned feature.
 
 =========
 Scheduler
