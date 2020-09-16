@@ -62,8 +62,14 @@ inline std::vector<std::unique_ptr<ray::TaskArg>> ToTaskArgs(JNIEnv *env, jobjec
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
           RAY_CHECK_JAVA_EXCEPTION(env);
           auto id = JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes);
-          return std::unique_ptr<ray::TaskArg>(new ray::TaskArgByReference(
-              id, ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(id)));
+          auto java_owner_address =
+              env->GetObjectField(arg, java_function_arg_owner_address);
+          RAY_CHECK(java_owner_address);
+          auto owner_address =
+              JavaProtobufObjectToNativeProtobufObject<ray::rpc::Address>(
+                  env, java_owner_address);
+          return std::unique_ptr<ray::TaskArg>(
+              new ray::TaskArgByReference(id, owner_address));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));

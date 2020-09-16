@@ -33,11 +33,10 @@ class _MockLookup:
         return self.ip_to_node[ip]
 
 
-def _create_mock_syncer(namespace, lookup, use_rsync, process_runner, local_ip,
-                        local_dir, remote_dir):
+def _create_mock_syncer(namespace, lookup, process_runner, local_ip, local_dir,
+                        remote_dir):
     class _MockSyncer(KubernetesSyncer):
         _namespace = namespace
-        _use_rsync = use_rsync
         _get_kubernetes_node_by_ip = lookup
 
         def __init__(self, local_dir, remote_dir, sync_client):
@@ -54,9 +53,7 @@ def _create_mock_syncer(namespace, lookup, use_rsync, process_runner, local_ip,
         local_dir,
         remote_dir,
         sync_client=KubernetesSyncClient(
-            namespace=namespace,
-            use_rsync=use_rsync,
-            process_runner=process_runner))
+            namespace=namespace, process_runner=process_runner))
 
 
 class KubernetesIntegrationTest(unittest.TestCase):
@@ -74,42 +71,9 @@ class KubernetesIntegrationTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def testKubernetesCpUpDown(self):
-        syncer = _create_mock_syncer(
-            self.namespace, self.lookup, False, self.process_runner,
-            self.lookup.get_ip("head"), self.local_dir, self.remote_dir)
-
-        syncer.set_worker_ip(self.lookup.get_ip("w1"))
-
-        # Test sync up. Should add / to the dirs and call kubectl cp
-        syncer.sync_up()
-
-        self.assertEqual(self.process_runner.history[-1], [
-            "kubectl", "-n", self.namespace, "cp", self.local_dir + "/",
-            "{}/{}:{}".format(self.namespace, "w1", self.remote_dir + "/")
-        ])
-
-        # Test sync down.
-        syncer.sync_down()
-        self.assertEqual(self.process_runner.history[-1], [
-            "kubectl", "-n", self.namespace, "cp", "{}/{}:{}".format(
-                self.namespace,
-                "w1",
-                self.remote_dir + "/",
-            ), self.local_dir + "/"
-        ])
-
-        # Sync to same node should be ignored
-        syncer.set_worker_ip(self.lookup.get_ip("head"))
-        syncer.sync_up()
-        self.assertTrue(len(self.process_runner.history) == 2)
-
-        syncer.sync_down()
-        self.assertTrue(len(self.process_runner.history) == 2)
-
     def testKubernetesRsyncUpDown(self):
         syncer = _create_mock_syncer(
-            self.namespace, self.lookup, True, self.process_runner,
+            self.namespace, self.lookup, self.process_runner,
             self.lookup.get_ip("head"), self.local_dir, self.remote_dir)
 
         syncer.set_worker_ip(self.lookup.get_ip("w1"))

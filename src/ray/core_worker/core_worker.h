@@ -319,7 +319,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
-  /// Gracefully disconnect the worker from other components of ray. e.g. Raylet.
+  /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional
   /// disconnect.
   ///
@@ -349,6 +349,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+
+  ClientID GetCurrentNodeId() const {
+    return ClientID::FromBinary(rpc_address_.raylet_id());
+  }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
