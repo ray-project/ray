@@ -418,9 +418,10 @@ class ActorClass:
                 lifetime=None,
                 placement_group=None,
                 placement_group_bundle_index=-1):
-        """Convenience method for creating an actor with options.
+        """Configures and overrides the actor instantiation parameters.
 
-        Options are overlapping values provided by `@ray.remote`.
+        The arguments are the same as those that can be passed
+        to :obj:`ray.remote`.
 
         Examples:
 

@@ -136,9 +136,9 @@ class RemoteFunction:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 name=""):
-        """Convenience method for executing a task with options.
+        """Configures and overrides the task invocation parameters.
 
-        Options are overlapping values provided by `@ray.remote`.
+        Options are overlapping values provided by :obj:`ray.remote`.
 
         Examples:
 
