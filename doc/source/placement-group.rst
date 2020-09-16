@@ -123,7 +123,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
   # Reserve bundles with strict pack strategy.
   # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
   # Using this placement group for scheduling actors or tasks will guarantee that they will
-  # collocate in the same node.
+  # be colocated on the same node.
   pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
 
   # Wait until placement group is created.
@@ -158,7 +158,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
           placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
 
-Now, you can guarantee all gpu actor and extra_resource task are located on the same node
+Now, you can guarantee all gpu actors and extra_resource tasks are located on the same node
 because they are scheduled on a placement group with the STRICT_PACK strategy.
 
 Note that you must remove the placement group once you are finished with your application.
