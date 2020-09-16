@@ -499,16 +499,18 @@ def get_system_memory():
     return psutil_memory_in_bytes
 
 
-def _get_docker_cpus():
-    # TODO (Alex): It would be really great to not do this logic ourselves.
+def _get_docker_cpus(
+        cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+        cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+        cpuset_file_name = "/sys/fs/cgroup/cpuset/cpuset.cpus"
+):
+    # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
     # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
     # 1. --cpuset-cpus 2. --cpus or --cpu-quota/--cpu-period (--cpu-shares is a
     # soft limit so we don't worry about it). For Ray's purposes, if we use
     # docker, the number of vCPUs on a machine is whichever is set (ties broken
     # by smaller value).
-    cpu_quota_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
-    cpu_share_file_name = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
@@ -519,8 +521,9 @@ def _get_docker_cpus():
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
         except Exception as e:
             logger.exception("Unexpected error calculating docker cpu quota", e)
+    if cpu_quota < 0:
+        cpu_quota = None
 
-    cpuset_file_name = "/sys/fs/cgroup/cpuset/cpuset.cpus"
     cpuset_num = None
     if os.path.exists(cpuset_file_name):
         try:
@@ -571,6 +574,13 @@ def get_num_cpus():
                     "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
                     "before starting Ray. Set the env var: "
                     "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
+            # TODO (Alex): We should probably add support for fractional cpus.
+            if int(docker_count) != float(docker_count):
+                logger.warning(f"Ray currently does not support initializing Ray"
+                               f"with fractional cpus. Your num_cpus will be "
+                               f"truncated from {docker_count} to "
+                               f"{int(docker_count)}.")
+            docker_count = int(docker_count)
 
     except Exception:
         # `nproc` and cgroup are linux-only. If docker only works on linux
