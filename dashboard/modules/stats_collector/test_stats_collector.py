@@ -11,6 +11,7 @@ from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
+    wait_for_condition,
 )
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
@@ -88,6 +89,42 @@ def test_node_info(ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "include_dashboard": True
+    }], indirect=True)
+def test_multi_nodes_info(enable_test_module, ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    assert (wait_until_server_available(cluster.webui_url) is True)
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+    cluster.add_node()
+    cluster.add_node()
+
+    def _check_nodes():
+        try:
+            response = requests.get(webui_url + "/nodes?view=summary")
+            response.raise_for_status()
+            summary = response.json()
+            assert summary["result"] is True, summary["msg"]
+            summary = summary["data"]["summary"]
+            assert len(summary) == 3
+            for node_info in summary:
+                node_id = node_info["raylet"]["nodeId"]
+                response = requests.get(webui_url + f"/nodes/{node_id}")
+                response.raise_for_status()
+                detail = response.json()
+                assert detail["result"] is True, detail["msg"]
+                detail = detail["data"]["detail"]
+                assert detail["raylet"]["state"] == "ALIVE"
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_check_nodes, timeout=10)
 
 
 if __name__ == "__main__":
