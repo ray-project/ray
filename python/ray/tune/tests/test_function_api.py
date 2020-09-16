@@ -406,6 +406,7 @@ class FunctionApiTest(unittest.TestCase):
             if is_active:
                 tune.report(active=is_active)
             return is_active
+
         assert train({}) is False
         analysis = tune.run(train)
         t = analysis.trials[0]
