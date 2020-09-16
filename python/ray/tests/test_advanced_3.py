@@ -751,8 +751,7 @@ def test_detect_docker_cpus():
         assert ray.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name
-        ) == 64
+            cpuset_file_name=cpuset_file.name) == 64
 
     # No cpuset used
     with tempfile.NamedTemporaryFile("w") as quota_file, \
@@ -767,8 +766,7 @@ def test_detect_docker_cpus():
         assert ray.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name
-        ) == 26
+            cpuset_file_name=cpuset_file.name) == 26
 
     # Quota set
     with tempfile.NamedTemporaryFile("w") as quota_file, \
@@ -783,8 +781,7 @@ def test_detect_docker_cpus():
         assert ray.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
             cpu_share_file_name=period_file.name,
-            cpuset_file_name=cpuset_file.name
-        ) == 0.42
+            cpuset_file_name=cpuset_file.name) == 0.42
 
 
 if __name__ == "__main__":
