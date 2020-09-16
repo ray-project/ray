@@ -52,3 +52,8 @@ img.inline-figure {
   /* Make version warning clickable */
   z-index: 1;
 }
+
+/* Adjustment to Version block */
+.rst-versions {
+  z-index: 1200;
+}
