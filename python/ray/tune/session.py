@@ -15,7 +15,7 @@ def is_session_enabled() -> bool:
 
 def get_session():
     global _session
-    if not _session and warn:
+    if not _session:
         logger.warning(
             "Session not detected. You should not be calling this function "
             "outside `tune.run` or while using the class API. ")
