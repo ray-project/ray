@@ -1,7 +1,5 @@
 import os
 import logging
-from typing import Callable, Dict, Type
-
 from filelock import FileLock
 
 import ray
@@ -17,11 +15,11 @@ from horovod.ray import RayExecutor
 logger = logging.getLogger(__name__)
 
 
-def get_rank() -> str:
+def get_rank():
     return os.environ["HOROVOD_RANK"]
 
 
-def logger_creator(log_config: Dict, logdir: str) -> NoopLogger:
+def logger_creator(log_config, logdir):
     """Simple NOOP logger for worker trainables."""
     index = get_rank()
     worker_dir = os.path.join(logdir, "worker_{}".format(index))
@@ -53,7 +51,7 @@ class _HorovodTrainable(tune.Trainable):
     def num_workers(self):
         return self._num_hosts * self._num_slots
 
-    def setup(self, config: Dict):
+    def setup(self, config):
         trainable = wrap_function(self.__class__._function)
         # We use a filelock here to ensure that the file-writing
         # process is safe across different trainables.
@@ -84,7 +82,7 @@ class _HorovodTrainable(tune.Trainable):
                 "logger_creator": lambda cfg: logger_creator(cfg, logdir_)
             })
 
-    def step(self) -> Dict:
+    def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
         result = self.executor.execute(lambda w: w.step())[0]
@@ -92,14 +90,14 @@ class _HorovodTrainable(tune.Trainable):
             self._finished = True
         return result
 
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
         save_obj = self.executor.execute_single(lambda w: w.save_to_object())
         checkpoint_path = TrainableUtil.create_from_pickle(
             save_obj, checkpoint_dir)
         return checkpoint_path
 
-    def load_checkpoint(self, checkpoint_dir: str):
+    def load_checkpoint(self, checkpoint_dir):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
         x_id = ray.put(checkpoint_obj)
         return self.executor.execute(lambda w: w.restore_from_object(x_id))
@@ -109,14 +107,13 @@ class _HorovodTrainable(tune.Trainable):
         self.executor.shutdown()
 
 
-def DistributedTrainableCreator(
-        func: Callable,
-        use_gpu: bool = False,
-        num_hosts: int = 1,
-        num_slots: int = 1,
-        num_cpus_per_slot: int = 1,
-        timeout_s: int = 30,
-        replicate_pem: bool = False) -> Type[_HorovodTrainable]:
+def DistributedTrainableCreator(func,
+                                use_gpu=False,
+                                num_hosts=1,
+                                num_slots=1,
+                                num_cpus_per_slot=1,
+                                timeout_s=30,
+                                replicate_pem=False):
     """Converts Horovod functions to be executable by Tune.
 
     Requires horovod > 0.19 to work.
@@ -201,7 +198,7 @@ def DistributedTrainableCreator(
         _timeout_s = timeout_s
 
         @classmethod
-        def default_resource_request(cls, config: Dict):
+        def default_resource_request(cls, config):
             extra_gpu = int(num_hosts * num_slots) * int(use_gpu)
             extra_cpu = int(num_hosts * num_slots * num_cpus_per_slot)
 
@@ -219,7 +216,7 @@ def DistributedTrainableCreator(
 # that force us to include mocks as part of the module.
 
 
-def _train_simple(config: Dict):
+def _train_simple(config):
     import horovod.torch as hvd
     hvd.init()
     from ray import tune

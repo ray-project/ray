@@ -115,8 +115,6 @@ def tune_example(num_replicas=1, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
-    parser.add_argument(
         "--address",
         required=False,
         type=str,
@@ -137,10 +135,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    if args.smoke_test:
-        ray.init(num_cpus=2)
-    else:
-        ray.init(address=args.address)
+    ray.init(address=args.address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

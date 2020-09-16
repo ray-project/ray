@@ -85,7 +85,7 @@ class TuneRestoreTest(unittest.TestCase):
 
 class TuneExampleTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=2)
+        ray.init()
 
     def tearDown(self):
         ray.shutdown()

@@ -1,9 +1,3 @@
-from typing import Dict, List, Optional, Union
-
-from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial
-
-
 class SearchAlgorithm:
     """Interface of an event handler API for hyperparameter search.
 
@@ -18,8 +12,7 @@ class SearchAlgorithm:
     """
     _finished = False
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms
@@ -36,9 +29,7 @@ class SearchAlgorithm:
         """
         return True
 
-    def add_configurations(
-            self,
-            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
+    def add_configurations(self, experiments):
         """Tracks given experiment specifications.
 
         Arguments:
@@ -46,7 +37,7 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def next_trials(self) -> List[Trial]:
+    def next_trials(self):
         """Provides Trial objects to be queued into the TrialRunner.
 
         Returns:
@@ -54,21 +45,17 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id, result):
         """Called on each intermediate result returned by a trial.
 
         This will only be called when the trial is in the RUNNING state.
 
         Arguments:
             trial_id: Identifier for the trial.
-            result: Result dictionary.
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Arguments:
@@ -82,7 +69,7 @@ class SearchAlgorithm:
         """
         pass
 
-    def is_finished(self) -> bool:
+    def is_finished(self):
         """Returns True if no trials left to be queued into TrialRunner.
 
         Can return True before all trials have finished executing.
@@ -93,14 +80,14 @@ class SearchAlgorithm:
         """Marks the search algorithm as finished."""
         self._finished = True
 
-    def has_checkpoint(self, dirpath: str) -> bool:
+    def has_checkpoint(self, dirpath):
         """Should return False if not restoring is not implemented."""
         return False
 
-    def save_to_dir(self, dirpath: str, **kwargs):
+    def save_to_dir(self, dirpath, **kwargs):
         """Saves a search algorithm."""
         pass
 
-    def restore_from_dir(self, dirpath: str):
+    def restore_from_dir(self, dirpath):
         """Restores a search algorithm along with its wrapped state."""
         pass

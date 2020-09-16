@@ -2,9 +2,7 @@ from typing import Dict, List, Union
 
 from ray import tune
 
-import mxnet
-from mxnet.model import save_checkpoint, BatchEndParam
-import numpy as np
+from mxnet.model import save_checkpoint
 
 import os
 
@@ -51,7 +49,7 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def __call__(self, param: BatchEndParam):
+    def __call__(self, param):
         if not param.eval_metric:
             return
         if not self._metrics:
@@ -112,8 +110,7 @@ class TuneCheckpointCallback(TuneCallback):
         self._filename = filename
         self._frequency = frequency
 
-    def __call__(self, epoch: int, sym: mxnet.symbol.Symbol,
-                 arg: Dict[str, np.ndarray], aux: Dict[str, np.ndarray]):
+    def __call__(self, epoch, sym, arg, aux):
         if epoch % self._frequency != 0:
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:

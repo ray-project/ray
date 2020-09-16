@@ -3,6 +3,7 @@ import io
 import itertools
 import torch
 
+import ray
 from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
 
@@ -55,6 +56,14 @@ class TorchRunner:
             use_tqdm=self.use_tqdm,
             apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
+
+    def get_node_ip(self):
+        """Returns the IP address of the current node."""
+        return ray.services.get_node_ip_address()
+
+    def find_free_port(self):
+        """Finds a free port on the current node."""
+        return utils.find_free_port()
 
     def train_epoch(self,
                     num_steps=None,
@@ -123,15 +132,11 @@ class TorchRunner:
 
     def state_dict(self):
         """Returns the state of the runner."""
-        model_states = [model.state_dict() for model in self.models]
-        optimizer_states = [
-            optimizer.state_dict() for optimizer in self.optimizers
-        ]
         state = {
             "epoch": self.epochs,
             "operator": self.training_operator.state_dict(),
-            "models": model_states,
-            "optimizers": optimizer_states
+            "models": [model.state_dict() for model in self.models],
+            "optimizers": [opt.state_dict() for opt in self.optimizers]
         }
         schedulers = self.schedulers
         if schedulers:
@@ -143,7 +148,6 @@ class TorchRunner:
         # Check if fp16 is True and if NVIDIA Apex is imported.
         if self.use_fp16 and self.training_operator._amp:
             state.update({"amp": self.training_operator._amp.state_dict()})
-
         return state
 
     def load_state_dict(self, state):
@@ -172,20 +176,9 @@ class TorchRunner:
         return _buffer.getvalue()
 
     def load_state_stream(self, byte_obj):
-        """Loads a bytes object the training state dict.
-
-        This is needed because we don't want to deserialize the tensor
-        onto the same device (which is from the driver process). We want to
-        map it onto the actor's specific device.
-
-        From: github.com/pytorch/pytorch/issues/10622#issuecomment-474733769
-        """
+        """Loads a bytes object the training state dict."""
         _buffer = io.BytesIO(byte_obj)
-        to_gpu = self.use_gpu and torch.cuda.is_available()
-        state_dict = torch.load(
-            _buffer,
-            map_location=("cpu" if not to_gpu else
-                          lambda storage, loc: storage.cuda()))
+        state_dict = torch.load(_buffer)
         return self.load_state_dict(state_dict)
 
     def apply(self, fn):
@@ -199,10 +192,6 @@ class TorchRunner:
         del self.training_operator
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
-    def get_models(self):
-        """Getter method. Needed for remote actor calls."""
-        return self.models
 
     @property
     def models(self):

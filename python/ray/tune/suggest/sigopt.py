@@ -2,14 +2,10 @@ import copy
 import os
 import logging
 import pickle
-from typing import Dict, List, Optional, Union
-
 try:
     import sigopt as sgo
-    Connection = sgo.Connection
 except ImportError:
     sgo = None
-    Connection = None
 
 from ray.tune.suggest import Searcher
 
@@ -126,16 +122,16 @@ class SigOptSearch(Searcher):
     }
 
     def __init__(self,
-                 space: List[Dict] = None,
-                 name: str = "Default Tune Experiment",
-                 max_concurrent: int = 1,
-                 reward_attr: Optional[str] = None,
-                 connection: Optional[Connection] = None,
-                 experiment_id: Optional[str] = None,
-                 observation_budget: Optional[int] = None,
-                 project: Optional[str] = None,
-                 metric: Union[None, str, List[str]] = "episode_reward_mean",
-                 mode: Union[None, str, List[str]] = "max",
+                 space=None,
+                 name="Default Tune Experiment",
+                 max_concurrent=1,
+                 reward_attr=None,
+                 connection=None,
+                 experiment_id=None,
+                 observation_budget=None,
+                 project=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  **kwargs):
         assert (experiment_id is
                 None) ^ (space is None), "space xor experiment_id must be set"
@@ -182,7 +178,7 @@ class SigOptSearch(Searcher):
 
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
-    def suggest(self, trial_id: str):
+    def suggest(self, trial_id):
         if self._max_concurrent:
             if len(self._live_trial_mapping) >= self._max_concurrent:
                 return None
@@ -194,10 +190,7 @@ class SigOptSearch(Searcher):
 
         return copy.deepcopy(suggestion.assignments)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
@@ -221,7 +214,7 @@ class SigOptSearch(Searcher):
         del self._live_trial_mapping[trial_id]
 
     @staticmethod
-    def serialize_metric(metrics: List[str], modes: List[str]):
+    def serialize_metric(metrics, modes):
         """
         Converts metrics to https://app.sigopt.com/docs/objects/metric
         """
@@ -231,7 +224,7 @@ class SigOptSearch(Searcher):
                 dict(name=metric, **SigOptSearch.OBJECTIVE_MAP[mode].copy()))
         return serialized_metric
 
-    def serialize_result(self, result: Dict):
+    def serialize_result(self, result):
         """
         Converts experiments results to
         https://app.sigopt.com/docs/objects/metric_evaluation
@@ -251,12 +244,12 @@ class SigOptSearch(Searcher):
             values.append(value)
         return values
 
-    def save(self, checkpoint_path: str):
+    def save(self, checkpoint_path):
         trials_object = (self.conn, self.experiment)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
-    def restore(self, checkpoint_path: str):
+    def restore(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
         self.conn = trials_object[0]

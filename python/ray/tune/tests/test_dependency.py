@@ -11,8 +11,7 @@ def f(config, reporter):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=2)
-
+    ray.init()
     register_trainable("my_class", f)
     run_experiments({
         "test": {

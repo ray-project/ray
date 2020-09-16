@@ -1,7 +1,5 @@
 import copy
 import logging
-from typing import Any, Dict, Generator, List, Tuple
-
 import numpy
 import random
 
@@ -11,8 +9,7 @@ from ray.tune.sample import Categorical, Domain, Function
 logger = logging.getLogger(__name__)
 
 
-def generate_variants(
-        unresolved_spec: Dict) -> Generator[Tuple[Dict, Dict], None, None]:
+def generate_variants(unresolved_spec):
     """Generates variants from a spec (dict) with unresolved values.
 
     There are two types of unresolved values:
@@ -48,7 +45,7 @@ def generate_variants(
         yield resolved_vars, spec
 
 
-def grid_search(values: List) -> Dict[str, List]:
+def grid_search(values):
     """Convenience method for specifying grid search over a value.
 
     Arguments:
@@ -66,7 +63,7 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
-def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
+def resolve_nested_dict(nested_dict):
     """Flattens a nested dict by joining keys into tuple of paths.
 
     Can then be passed into `format_vars`.
@@ -81,7 +78,7 @@ def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     return res
 
 
-def format_vars(resolved_vars: Dict) -> str:
+def format_vars(resolved_vars):
     """Formats the resolved variable dict into a single string."""
     out = []
     for path, value in sorted(resolved_vars.items()):
@@ -100,7 +97,7 @@ def format_vars(resolved_vars: Dict) -> str:
     return ",".join(out)
 
 
-def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
+def flatten_resolved_vars(resolved_vars):
     """Formats the resolved variable dict into a mapping of (str -> value)."""
     flattened_resolved_vars_dict = {}
     for pieces, value in resolved_vars.items():
@@ -111,15 +108,14 @@ def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
     return flattened_resolved_vars_dict
 
 
-def _clean_value(value: Any) -> str:
+def _clean_value(value):
     if isinstance(value, float):
         return "{:.5}".format(value)
     else:
         return str(value).replace("/", "_")
 
 
-def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
-        Tuple, Any]], List[Tuple[Tuple, Any]]]:
+def parse_spec_vars(spec):
     resolved, unresolved = _split_resolved_unresolved_values(spec)
     resolved_vars = list(resolved.items())
 
@@ -138,7 +134,7 @@ def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
     return resolved_vars, domain_vars, grid_vars
 
 
-def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
+def _generate_variants(spec):
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -163,20 +159,19 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
             yield resolved_vars, spec
 
 
-def assign_value(spec: Dict, path: Tuple, value: Any):
+def assign_value(spec, path, value):
     for k in path[:-1]:
         spec = spec[k]
     spec[path[-1]] = value
 
 
-def _get_value(spec: Dict, path: Tuple) -> Any:
+def _get_value(spec, path):
     for k in path:
         spec = spec[k]
     return spec
 
 
-def _resolve_domain_vars(spec: Dict,
-                         domain_vars: List[Tuple[Tuple, Domain]]) -> Dict:
+def _resolve_domain_vars(spec, domain_vars):
     resolved = {}
     error = True
     num_passes = 0
@@ -202,8 +197,7 @@ def _resolve_domain_vars(spec: Dict,
     return resolved
 
 
-def _grid_search_generator(unresolved_spec: Dict,
-                           grid_vars: List) -> Generator[Dict, None, None]:
+def _grid_search_generator(unresolved_spec, grid_vars):
     value_indices = [0] * len(grid_vars)
 
     def increment(i):
@@ -231,12 +225,12 @@ def _grid_search_generator(unresolved_spec: Dict,
                 break
 
 
-def _is_resolved(v) -> bool:
+def _is_resolved(v):
     resolved, _ = _try_resolve(v)
     return resolved
 
 
-def _try_resolve(v) -> Tuple[bool, Any]:
+def _try_resolve(v):
     if isinstance(v, Domain):
         # Domain to sample from
         return False, v
@@ -255,8 +249,7 @@ def _try_resolve(v) -> Tuple[bool, Any]:
     return True, v
 
 
-def _split_resolved_unresolved_values(
-        spec: Dict) -> Tuple[Dict[Tuple, Any], Dict[Tuple, Any]]:
+def _split_resolved_unresolved_values(spec):
     resolved_vars = {}
     unresolved_vars = {}
     for k, v in spec.items():
@@ -285,11 +278,11 @@ def _split_resolved_unresolved_values(
     return resolved_vars, unresolved_vars
 
 
-def _unresolved_values(spec: Dict) -> Dict[Tuple, Any]:
+def _unresolved_values(spec):
     return _split_resolved_unresolved_values(spec)[1]
 
 
-def has_unresolved_values(spec: Dict) -> bool:
+def has_unresolved_values(spec):
     return True if _unresolved_values(spec) else False
 
 
@@ -310,5 +303,5 @@ class _UnresolvedAccessGuard(dict):
 
 
 class RecursiveDependencyError(Exception):
-    def __init__(self, msg: str):
+    def __init__(self, msg):
         Exception.__init__(self, msg)

@@ -1,10 +1,9 @@
 import copy
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 import ray.cloudpickle as pickle
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
-    Uniform
+from ray.tune.sample import Categorical, Float, Integer, Quantized, Uniform
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 from zoopt import ValueType
@@ -107,11 +106,11 @@ class ZOOptSearch(Searcher):
     optimizer = None
 
     def __init__(self,
-                 algo: str = "asracos",
-                 budget: Optional[int] = None,
-                 dim_dict: Optional[Dict] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
+                 algo="asracos",
+                 budget=None,
+                 dim_dict=None,
+                 metric=None,
+                 mode=None,
                  **kwargs):
         assert zoopt is not None, "Zoopt not found - please install zoopt."
         assert budget is not None, "`budget` should not be None!"
@@ -155,8 +154,7 @@ class ZOOptSearch(Searcher):
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(dimension=dim, parameter=par)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)
@@ -175,7 +173,7 @@ class ZOOptSearch(Searcher):
         self.setup_zoopt()
         return True
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -191,10 +189,7 @@ class ZOOptSearch(Searcher):
             self._live_trial_mapping[trial_id] = new_trial
             return unflatten_dict(new_trial)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial."""
         if result:
             _solution = self.solution_dict[str(trial_id)]
@@ -205,18 +200,18 @@ class ZOOptSearch(Searcher):
 
         del self._live_trial_mapping[trial_id]
 
-    def save(self, checkpoint_path: str):
+    def save(self, checkpoint_path):
         trials_object = self.optimizer
         with open(checkpoint_path, "wb") as output:
             pickle.dump(trials_object, output)
 
-    def restore(self, checkpoint_path: str):
+    def restore(self, checkpoint_path):
         with open(checkpoint_path, "rb") as input:
             trials_object = pickle.load(input)
         self.optimizer = trials_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict[str, Tuple]:
+    def convert_search_space(spec: Dict):
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -228,7 +223,7 @@ class ZOOptSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a ZOOpt search space.")
 
-        def resolve_value(domain: Domain) -> Tuple:
+        def resolve_value(domain):
             quantize = None
 
             sampler = domain.get_sampler()

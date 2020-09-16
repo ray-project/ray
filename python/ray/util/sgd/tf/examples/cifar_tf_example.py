@@ -177,10 +177,7 @@ if __name__ == "__main__":
         help="Finish quickly for testing. Assume False for users.")
 
     args, _ = parser.parse_known_args()
-    if args.smoke_test:
-        ray.init(num_cpus=2)
-    else:
-        ray.init(address=args.address)
+    ray.init(address=args.address)
     data_size = 60000
     test_size = 10000
     batch_size = args.batch_size

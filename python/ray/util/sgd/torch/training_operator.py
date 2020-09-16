@@ -255,8 +255,8 @@ class TrainingOperator:
         else:
             self._criterion = None
 
+        logger.debug("Setting up Apex.")
         if self.use_fp16 and amp:
-            logger.debug("Setting up Apex.")
             self._models, self._optimizers = amp.initialize(
                 self._models, self._optimizers, **self._apex_args)
             self._amp = amp
@@ -649,9 +649,7 @@ class TrainingOperator:
         """Override this to return a representation of the operator state.
         Any argument passed into self.register and self.register_data will
         automatically be saved.
-        Use this method to save any additional state. If your TorchTrainer
-        is on a CPU-only machine, make sure this method converts all state
-        to be CPU-compatible.
+        Use this method to save any additional state.
 
         Returns:
             dict: The state dict of the operator."""

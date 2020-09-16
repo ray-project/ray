@@ -3,11 +3,10 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional
+from typing import Dict
 
 import ConfigSpace
-from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
-    Normal, \
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, Normal, \
     Quantized, \
     Uniform
 from ray.tune.suggest import Searcher
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 class _BOHBJobWrapper():
     """Mock object for HpBandSter to process."""
 
-    def __init__(self, loss: float, budget: float, config: Dict):
+    def __init__(self, loss, budget, config):
         self.result = {"loss": loss}
         self.kwargs = {"budget": budget, "config": config.copy()}
         self.exception = None
@@ -93,11 +92,11 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[ConfigSpace.ConfigurationSpace] = None,
-                 bohb_config: Optional[Dict] = None,
-                 max_concurrent: int = 10,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None):
+                 space=None,
+                 bohb_config=None,
+                 max_concurrent=10,
+                 metric=None,
+                 mode=None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, "HpBandSter must be installed!"
         if mode:
@@ -127,8 +126,7 @@ class TuneBOHB(Searcher):
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         if self._space:
             return False
         space = self.convert_search_space(config)
@@ -142,7 +140,7 @@ class TuneBOHB(Searcher):
         self.setup_bohb()
         return True
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if not self._space:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -158,7 +156,7 @@ class TuneBOHB(Searcher):
             return unflatten_dict(config)
         return None
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id, result):
         if trial_id not in self.paused:
             self.running.add(trial_id)
         if "hyperband_info" not in result:
@@ -168,31 +166,28 @@ class TuneBOHB(Searcher):
             hbs_wrapper = self.to_wrapper(trial_id, result)
             self.bohber.new_result(hbs_wrapper)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         del self.trial_to_params[trial_id]
         if trial_id in self.paused:
             self.paused.remove(trial_id)
         if trial_id in self.running:
             self.running.remove(trial_id)
 
-    def to_wrapper(self, trial_id: str, result: Dict) -> _BOHBJobWrapper:
+    def to_wrapper(self, trial_id, result):
         return _BOHBJobWrapper(self._metric_op * result[self.metric],
                                result["hyperband_info"]["budget"],
                                self.trial_to_params[trial_id])
 
-    def on_pause(self, trial_id: str):
+    def on_pause(self, trial_id):
         self.paused.add(trial_id)
         self.running.remove(trial_id)
 
-    def on_unpause(self, trial_id: str):
+    def on_unpause(self, trial_id):
         self.paused.remove(trial_id)
         self.running.add(trial_id)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
+    def convert_search_space(spec: Dict):
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -201,8 +196,7 @@ class TuneBOHB(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a TuneBOHB search space.")
 
-        def resolve_value(par: str, domain: Domain
-                          ) -> ConfigSpace.hyperparameters.Hyperparameter:
+        def resolve_value(par, domain):
             quantize = None
 
             sampler = domain.get_sampler()

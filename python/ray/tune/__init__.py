@@ -1,6 +1,5 @@
 from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
-from ray.tune.function_runner import with_parameters
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
@@ -22,12 +21,12 @@ from ray.tune.schedulers import create_scheduler
 
 __all__ = [
     "Trainable", "DurableTrainable", "TuneError", "grid_search",
-    "register_env", "register_trainable", "run", "run_experiments",
-    "with_parameters", "Stopper", "EarlyStopping", "Experiment", "function",
-    "sample_from", "track", "uniform", "quniform", "choice", "randint",
-    "qrandint", "randn", "qrandn", "loguniform", "qloguniform",
-    "ExperimentAnalysis", "Analysis", "CLIReporter", "JupyterNotebookReporter",
-    "ProgressReporter", "report", "get_trial_dir", "get_trial_name",
-    "get_trial_id", "make_checkpoint_dir", "save_checkpoint", "checkpoint_dir",
-    "SyncConfig", "create_searcher", "create_scheduler"
+    "register_env", "register_trainable", "run", "run_experiments", "Stopper",
+    "EarlyStopping", "Experiment", "function", "sample_from", "track",
+    "uniform", "quniform", "choice", "randint", "qrandint", "randn", "qrandn",
+    "loguniform", "qloguniform", "ExperimentAnalysis", "Analysis",
+    "CLIReporter", "JupyterNotebookReporter", "ProgressReporter", "report",
+    "get_trial_dir", "get_trial_name", "get_trial_id", "make_checkpoint_dir",
+    "save_checkpoint", "checkpoint_dir", "SyncConfig", "create_searcher",
+    "create_scheduler"
 ]

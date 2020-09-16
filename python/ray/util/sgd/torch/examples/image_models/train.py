@@ -128,10 +128,8 @@ def main():
     setup_default_logging()
 
     args, args_text = parse_args()
-    if args.smoke_test:
-        ray.init(num_cpus=int(args.ray_num_workers))
-    else:
-        ray.init(address=args.ray_address)
+
+    ray.init(address=args.ray_address)
 
     CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator,

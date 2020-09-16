@@ -5,8 +5,6 @@ import os
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type
-
 import torch
 from datetime import timedelta
 
@@ -36,7 +34,7 @@ def enable_distributed_trainable():
     _distributed_enabled = True
 
 
-def logger_creator(log_config: Dict, logdir: str, rank: int) -> NoopLogger:
+def logger_creator(log_config, logdir, rank):
     worker_dir = os.path.join(logdir, "worker_{}".format(rank))
     os.makedirs(worker_dir, exist_ok=True)
     return NoopLogger(log_config, worker_dir)
@@ -56,16 +54,16 @@ class _TorchTrainable(tune.Trainable):
     __slots__ = ["workers", "_finished"]
 
     @classmethod
-    def default_process_group_parameters(self) -> Dict:
+    def default_process_group_parameters(self):
         return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
 
     @classmethod
-    def get_remote_worker_options(self) -> Dict[str, int]:
+    def get_remote_worker_options(self):
         num_gpus = 1 if self._use_gpu else 0
         num_cpus = int(self._num_cpus_per_worker or 1)
         return dict(num_cpus=num_cpus, num_gpus=num_gpus)
 
-    def setup(self, config: Dict):
+    def setup(self, config):
         self._finished = False
         num_workers = self._num_workers
         logdir = self.logdir
@@ -77,16 +75,13 @@ class _TorchTrainable(tune.Trainable):
         remote_trainable = remote_trainable.options(
             **self.get_remote_worker_options())
 
+        address = setup_address()
         self.workers = [
             remote_trainable.remote(
                 config=config,
                 logger_creator=lambda cfg: logger_creator(cfg, logdir, rank))
             for rank in range(num_workers)
         ]
-
-        # Address has to be IP of rank 0 worker's node.
-        address = ray.get(
-            self.workers[0].execute.remote(lambda _: setup_address()))
 
         pgroup_params = self.default_process_group_parameters()
         from functools import partial
@@ -105,7 +100,7 @@ class _TorchTrainable(tune.Trainable):
             for rank, w in enumerate(self.workers)
         ])
 
-    def step(self) -> Dict:
+    def step(self):
         if self._finished:
             raise RuntimeError("Training has already finished.")
         result = ray.get([w.step.remote() for w in self.workers])[0]
@@ -113,14 +108,14 @@ class _TorchTrainable(tune.Trainable):
             self._finished = True
         return result
 
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
+    def save_checkpoint(self, checkpoint_dir):
         # TODO: optimize if colocated
         save_obj = ray.get(self.workers[0].save_to_object.remote())
         checkpoint_path = TrainableUtil.create_from_pickle(
             save_obj, checkpoint_dir)
         return checkpoint_path
 
-    def load_checkpoint(self, checkpoint_dir: str):
+    def load_checkpoint(self, checkpoint_dir):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
         return ray.get(
             w.restore_from_object.remote(checkpoint_obj) for w in self.workers)
@@ -129,13 +124,12 @@ class _TorchTrainable(tune.Trainable):
         ray.get([worker.stop.remote() for worker in self.workers])
 
 
-def DistributedTrainableCreator(
-        func: Callable,
-        use_gpu: bool = False,
-        num_workers: int = 1,
-        num_cpus_per_worker: int = 1,
-        backend: str = "gloo",
-        timeout_s: int = NCCL_TIMEOUT_S) -> Type[_TorchTrainable]:
+def DistributedTrainableCreator(func,
+                                use_gpu=False,
+                                num_workers=1,
+                                num_cpus_per_worker=1,
+                                backend="gloo",
+                                timeout_s=NCCL_TIMEOUT_S):
     """Creates a class that executes distributed training.
 
     Similar to running `torch.distributed.launch`.
@@ -182,11 +176,11 @@ def DistributedTrainableCreator(
         _num_cpus_per_worker = num_cpus_per_worker
 
         @classmethod
-        def default_process_group_parameters(self) -> Dict:
+        def default_process_group_parameters(self):
             return dict(timeout=timedelta(timeout_s), backend=backend)
 
         @classmethod
-        def default_resource_request(cls, config: Dict) -> Resources:
+        def default_resource_request(cls, config):
             num_workers_ = int(config.get("num_workers", num_workers))
             num_cpus = int(
                 config.get("num_cpus_per_worker", num_cpus_per_worker))
@@ -202,8 +196,7 @@ def DistributedTrainableCreator(
 
 
 @contextmanager
-def distributed_checkpoint_dir(
-        step: int, disable: bool = False) -> Generator[str, None, None]:
+def distributed_checkpoint_dir(step, disable=False):
     """ContextManager for creating a distributed checkpoint.
 
     Only checkpoints a file on the "main" training actor, avoiding
@@ -240,7 +233,7 @@ def distributed_checkpoint_dir(
         shutil.rmtree(path)
 
 
-def _train_check_global(config: Dict, checkpoint_dir: Optional[str] = None):
+def _train_check_global(config, checkpoint_dir=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     assert is_distributed_trainable()
@@ -249,7 +242,7 @@ def _train_check_global(config: Dict, checkpoint_dir: Optional[str] = None):
     tune.report(is_distributed=True)
 
 
-def _train_simple(config: Dict, checkpoint_dir: Optional[str] = None):
+def _train_simple(config, checkpoint_dir=None):
     """For testing only. Putting this here because Ray has problems
     serializing within the test file."""
     import torch.nn as nn

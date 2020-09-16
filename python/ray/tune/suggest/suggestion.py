@@ -2,7 +2,6 @@ import copy
 import glob
 import logging
 import os
-from typing import Dict, Optional
 
 from ray.util.debug import log_once
 
@@ -57,10 +56,10 @@ class Searcher:
     CKPT_FILE_TMPL = "searcher-state-{}.pkl"
 
     def __init__(self,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
+                 metric=None,
+                 mode=None,
+                 max_concurrent=None,
+                 use_early_stopped_trials=None):
         if use_early_stopped_trials is False:
             raise DeprecationWarning(
                 "Early stopped trials are now always used. If this is a "
@@ -91,8 +90,7 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -108,7 +106,7 @@ class Searcher:
         """
         return False
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id, result):
         """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
@@ -126,10 +124,7 @@ class Searcher:
         """
         pass
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -148,7 +143,7 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         """Queries the algorithm to retrieve the next set of parameters.
 
         Arguments:
@@ -164,7 +159,7 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def save(self, checkpoint_path: str):
+    def save(self, checkpoint_path):
         """Save state to path for this search algorithm.
 
         Args:
@@ -195,7 +190,7 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def restore(self, checkpoint_path: str):
+    def restore(self, checkpoint_path):
         """Restore state for this search algorithm
 
 
@@ -218,13 +213,13 @@ class Searcher:
         """
         raise NotImplementedError
 
-    def get_state(self) -> Dict:
+    def get_state(self):
         raise NotImplementedError
 
-    def set_state(self, state: Dict):
+    def set_state(self, state):
         raise NotImplementedError
 
-    def save_to_dir(self, checkpoint_dir: str, session_str: str = "default"):
+    def save_to_dir(self, checkpoint_dir, session_str="default"):
         """Automatically saves the given searcher to the checkpoint_dir.
 
         This is automatically used by tune.run during a Tune job.
@@ -251,7 +246,7 @@ class Searcher:
                 os.path.join(checkpoint_dir,
                              self.CKPT_FILE_TMPL.format(session_str)))
 
-    def restore_from_dir(self, checkpoint_dir: str):
+    def restore_from_dir(self, checkpoint_dir):
         """Restores the state of a searcher from a given checkpoint_dir.
 
         Typically, you should use this function to restore from an
@@ -282,12 +277,12 @@ class Searcher:
         self.restore(most_recent_checkpoint)
 
     @property
-    def metric(self) -> str:
+    def metric(self):
         """The training result objective value attribute."""
         return self._metric
 
     @property
-    def mode(self) -> str:
+    def mode(self):
         """Specifies if minimizing or maximizing the metric."""
         return self._mode
 
@@ -313,10 +308,7 @@ class ConcurrencyLimiter(Searcher):
         tune.run(trainable, search_alg=search_alg)
     """
 
-    def __init__(self,
-                 searcher: Searcher,
-                 max_concurrent: int,
-                 batch: bool = False):
+    def __init__(self, searcher, max_concurrent, batch=False):
         assert type(max_concurrent) is int and max_concurrent > 0
         self.searcher = searcher
         self.max_concurrent = max_concurrent
@@ -326,7 +318,7 @@ class ConcurrencyLimiter(Searcher):
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         assert trial_id not in self.live_trials, (
             f"Trial ID {trial_id} must be unique: already found in set.")
         if len(self.live_trials) >= self.max_concurrent:
@@ -341,10 +333,7 @@ class ConcurrencyLimiter(Searcher):
             self.live_trials.add(trial_id)
         return suggestion
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         if trial_id not in self.live_trials:
             return
         elif self.batch:
@@ -364,20 +353,19 @@ class ConcurrencyLimiter(Searcher):
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
 
-    def get_state(self) -> Dict:
+    def get_state(self):
         state = self.__dict__.copy()
         del state["searcher"]
         return copy.deepcopy(state)
 
-    def set_state(self, state: Dict):
+    def set_state(self, state):
         self.__dict__.update(state)
 
-    def on_pause(self, trial_id: str):
+    def on_pause(self, trial_id):
         self.searcher.on_pause(trial_id)
 
-    def on_unpause(self, trial_id: str):
+    def on_unpause(self, trial_id):
         self.searcher.on_unpause(trial_id)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         return self.searcher.set_search_properties(metric, mode, config)

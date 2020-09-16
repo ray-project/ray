@@ -138,7 +138,7 @@ if __name__ == "__main__":
         use_gpu=args.use_gpu,
         scheduler_step_freq="epoch",
         use_fp16=args.fp16,
-        use_tqdm=False)
+        use_tqdm=True)
     pbar = trange(args.num_epochs, unit="epoch")
     for i in pbar:
         info = {"num_steps": 1} if args.smoke_test else {}

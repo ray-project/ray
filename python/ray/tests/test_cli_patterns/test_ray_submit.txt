@@ -1,5 +1,5 @@
-Checking AWS environment settings
+Bootstrapping AWS config
 Fetched IP: .+
-Checking AWS environment settings
+Bootstrapping AWS config
 Fetched IP: .+
 This is a test!

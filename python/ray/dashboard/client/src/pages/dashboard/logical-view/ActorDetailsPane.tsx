@@ -48,12 +48,7 @@ const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
           ({ label, value, tooltip }) =>
             value &&
             value.length > 0 && (
-              <LabeledDatum
-                key={label}
-                label={label}
-                datum={value}
-                tooltip={tooltip}
-              />
+              <LabeledDatum label={label} datum={value} tooltip={tooltip} />
             ),
         )}
       </Grid>

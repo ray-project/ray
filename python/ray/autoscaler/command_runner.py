@@ -9,7 +9,6 @@ import os
 import subprocess
 import sys
 import time
-import warnings
 
 from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
@@ -115,7 +114,6 @@ class CommandRunnerInterface:
             environment_variables: Dict[str, object] = None,
             run_env: str = "auto",
             ssh_options_override_ssh_key: str = "",
-            shutdown_after_run: bool = False,
     ) -> str:
         """Run the given command on the cluster node and optionally get output.
 
@@ -135,8 +133,6 @@ class CommandRunnerInterface:
                 DockerCommandRunner to determine the run environment.
             ssh_options_override_ssh_key (str): if provided, overwrites
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
-            shutdown_after_run (bool): if provided, shutdowns down the machine
-            after executing the command with `sudo shutdown -h now`.
         """
         raise NotImplementedError
 
@@ -168,15 +164,6 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
-    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
-        """Used to run extra initialization commands.
-
-        Args:
-            as_head (bool): Run as head image or worker.
-            file_mounts (dict): Files to copy to the head and worker nodes.
-        """
-        pass
-
 
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
@@ -198,10 +185,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",  # Unused argument.
-            shutdown_after_run=False,
     ):
-        if shutdown_after_run:
-            cmd += "; sudo shutdown -h now"
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -236,9 +220,6 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 cmd = _with_environment_variables(cmd, environment_variables)
             cmd = _with_interactive(cmd)
             final_cmd += cmd
-            # `kubectl exec` + subprocess w/ list of args has unexpected
-            # side-effects.
-            final_cmd = " ".join(final_cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
@@ -269,17 +250,19 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
         except Exception as e:
-            warnings.warn(
-                self.log_prefix +
-                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
-                UserWarning)
-            if target.startswith("~"):
-                target = "/root" + target[1:]
+            logger.warning(self.log_prefix +
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
+            self.run_cp_up(source, target)
 
-            self.process_runner.check_call(self.kubectl + [
-                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
-                                                target)
-            ])
+    def run_cp_up(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                            target)
+        ])
 
     def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
@@ -293,17 +276,19 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 target,
             ])
         except Exception as e:
-            warnings.warn(
-                self.log_prefix +
-                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
-                UserWarning)
-            if target.startswith("~"):
-                target = "/root" + target[1:]
+            logger.warning(self.log_prefix +
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
+            self.run_cp_down(source, target)
 
-            self.process_runner.check_call(self.kubectl + [
-                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
-                target
-            ])
+    def run_cp_down(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        self.process_runner.check_call(self.kubectl + [
+            "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+            target
+        ])
 
     def remote_shell_command_str(self):
         return "{} exec -it {} bash".format(" ".join(self.kubectl),
@@ -495,10 +480,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
-            shutdown_after_run=False,
     ):
-        if shutdown_after_run:
-            cmd += "; sudo shutdown -h now"
         if ssh_options_override_ssh_key:
             ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
@@ -597,6 +579,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
+        self.shutdown = False
         self.initialized = False
 
     def run(
@@ -609,7 +592,6 @@ class DockerCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",
             ssh_options_override_ssh_key="",
-            shutdown_after_run=False,
     ):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
@@ -625,11 +607,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 container_name=self.container_name,
                 with_interactive=True)[0]
 
-        if shutdown_after_run:
-            # sudo shutdown should run after `with_docker_exec` command above
+        if self.shutdown:
             cmd += "; sudo shutdown -h now"
-        # Do not pass shutdown_after_run argument to ssh_command_runner.run()
-        # since it is handled above.
         return self.ssh_command_runner.run(
             cmd,
             timeout=timeout,
@@ -696,6 +675,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "following commands to 'initialization_commands':\n" +
                 "\n".join(install_commands))
 
+    def _shutdown_after_next_cmd(self):
+        self.shutdown = True
+
     def _check_container_status(self):
         if self.initialized:
             return True
@@ -724,10 +706,6 @@ class DockerCommandRunner(CommandRunnerInterface):
         return string
 
     def run_init(self, *, as_head, file_mounts):
-        BOOTSTRAP_MOUNTS = [
-            "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
-        ]
-
         image = self.docker_config.get("image")
         image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", image)
@@ -739,14 +717,8 @@ class DockerCommandRunner(CommandRunnerInterface):
 
             self.run("docker pull {}".format(image), run_env="host")
 
-        # Bootstrap files cannot be bind mounted because docker opens the
-        # underlying inode. When the file is switched, docker becomes outdated.
-        cleaned_bind_mounts = file_mounts.copy()
-        for mnt in BOOTSTRAP_MOUNTS:
-            cleaned_bind_mounts.pop(mnt, None)
-
         start_command = docker_start_cmds(
-            self.ssh_command_runner.ssh_user, image, cleaned_bind_mounts,
+            self.ssh_command_runner.ssh_user, image, file_mounts,
             self.container_name,
             self.docker_config.get("run_options", []) + self.docker_config.get(
                 f"{'head' if as_head else 'worker'}_run_options", []))
@@ -771,8 +743,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 active_remote_mounts = [
                     mnt["Destination"] for mnt in active_mounts
                 ]
-                # Ignore ray bootstrap files.
-                for remote, local in cleaned_bind_mounts.items():
+                for remote, local in file_mounts.items():
                     remote = self._docker_expand_user(remote)
                     if remote not in active_remote_mounts:
                         cli_logger.error(
@@ -782,13 +753,4 @@ class DockerCommandRunner(CommandRunnerInterface):
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
-
-        # Explicitly copy in ray bootstrap files.
-        for mount in BOOTSTRAP_MOUNTS:
-            if mount in file_mounts:
-                self.ssh_command_runner.run(
-                    "docker cp {src} {container}:{dst}".format(
-                        src=os.path.join(DOCKER_MOUNT_PREFIX, mount),
-                        container=self.container_name,
-                        dst=self._docker_expand_user(mount)))
         self.initialized = True

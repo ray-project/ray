@@ -1,4 +1,4 @@
-"""TensorFlow policy class used for Simple Q-Learning"""
+"""Basic example of a DQN policy without any optimizations."""
 
 import logging
 from typing import List, Tuple, Type
@@ -11,7 +11,6 @@ from ray.rllib.models.tf.tf_action_dist import (Categorical,
                                                 TFActionDistribution)
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy import Policy
-from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -29,14 +28,8 @@ Q_TARGET_SCOPE = "target_q_func"
 
 
 class TargetNetworkMixin:
-    """Assign the `update_target` method to the SimpleQTFPolicy
-
-    The function is called every `target_network_update_freq` steps by the
-    master learner.
-    """
-
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, config: TrainerConfigDict):
+    def __init__(self, obs_space: gym.Space, action_space: gym.Space,
+                 config: TrainerConfigDict):
         @make_tf_callable(self.get_session())
         def do_update():
             # update_target_fn will be called periodically to copy Q network to
@@ -57,24 +50,10 @@ class TargetNetworkMixin:
         return self.q_func_vars + self.target_q_func_vars
 
 
-def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
-                   action_space: gym.spaces.Space,
+def build_q_models(policy: Policy, obs_space: gym.Space,
+                   action_space: gym.Space,
                    config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for Simple Q learning
 
-    Note that this function works for both Tensorflow and PyTorch.
-
-    Args:
-        policy (Policy): The Policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
-
-    Returns:
-        ModelV2: The Model for the Policy to use.
-            Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
-    """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
@@ -109,7 +88,6 @@ def get_distribution_inputs_and_class(
         explore=True,
         is_training=True,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
-    """Build the action distribution"""
     q_vals = compute_q_values(policy, q_model, obs_batch, explore, is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
@@ -122,17 +100,6 @@ def get_distribution_inputs_and_class(
 def build_q_losses(policy: Policy, model: ModelV2,
                    dist_class: Type[TFActionDistribution],
                    train_batch: SampleBatch) -> TensorType:
-    """Constructs the loss for SimpleQTFPolicy.
-
-    Args:
-        policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]): The action distribution class.
-        train_batch (SampleBatch): The training data.
-
-    Returns:
-        TensorType: A single loss tensor.
-    """
     # q network evaluation
     q_t = compute_q_values(
         policy,
@@ -189,23 +156,13 @@ def compute_q_values(policy: Policy,
     return model_out
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                      action_space: gym.spaces.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.Space,
+                      action_space: gym.Space,
                       config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors before SimpleQTFPolicy initialization.
-
-    Args:
-        policy (Policy): The Policy object.
-        obs_space (gym.spaces.Space): The Policy's observation space.
-        action_space (gym.spaces.Space): The Policy's action space.
-        config (TrainerConfigDict): The Policy's config.
-    """
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-# Build a child class of `DynamicTFPolicy`, given the custom functions defined
-# above.
-SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
+SimpleQTFPolicy = build_tf_policy(
     name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,

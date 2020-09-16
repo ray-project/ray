@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict
 
 from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
@@ -103,14 +103,14 @@ class AxSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[List[Dict]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 parameter_constraints: Optional[List] = None,
-                 outcome_constraints: Optional[List] = None,
-                 ax_client: Optional[AxClient] = None,
-                 use_early_stopped_trials: Optional[bool] = None,
-                 max_concurrent: Optional[int] = None):
+                 space=None,
+                 metric=None,
+                 mode=None,
+                 parameter_constraints=None,
+                 outcome_constraints=None,
+                 ax_client=None,
+                 use_early_stopped_trials=None,
+                 max_concurrent=None):
         assert ax is not None, "Ax must be installed!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -177,8 +177,7 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict):
+    def set_search_properties(self, metric, mode, config):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -190,7 +189,7 @@ class AxSearch(Searcher):
         self.setup_experiment()
         return True
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if not self._ax:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "

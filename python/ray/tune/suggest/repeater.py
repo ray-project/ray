@@ -1,7 +1,5 @@
 import copy
 import logging
-from typing import Dict, List, Optional
-
 import numpy as np
 
 from ray.tune.suggest.suggestion import Searcher
@@ -12,7 +10,7 @@ TRIAL_INDEX = "__trial_index__"
 """str: A constant value representing the repeat index of the trial."""
 
 
-def _warn_num_samples(searcher: Searcher, num_samples: int):
+def _warn_num_samples(searcher, num_samples):
     if isinstance(searcher, Repeater) and num_samples % searcher.repeat:
         logger.warning(
             "`num_samples` is now expected to be the total number of trials, "
@@ -36,10 +34,7 @@ class _TrialGroup:
 
     """
 
-    def __init__(self,
-                 primary_trial_id: str,
-                 config: Dict,
-                 max_trials: int = 1):
+    def __init__(self, primary_trial_id, config, max_trials=1):
         assert type(config) is dict, (
             "config is not a dict, got {}".format(config))
         self.primary_trial_id = primary_trial_id
@@ -47,27 +42,27 @@ class _TrialGroup:
         self._trials = {primary_trial_id: None}
         self.max_trials = max_trials
 
-    def add(self, trial_id: str):
+    def add(self, trial_id):
         assert len(self._trials) < self.max_trials
         self._trials.setdefault(trial_id, None)
 
-    def full(self) -> bool:
+    def full(self):
         return len(self._trials) == self.max_trials
 
-    def report(self, trial_id: str, score: float):
+    def report(self, trial_id, score):
         assert trial_id in self._trials
         if score is None:
             raise ValueError("Internal Error: Score cannot be None.")
         self._trials[trial_id] = score
 
-    def finished_reporting(self) -> bool:
+    def finished_reporting(self):
         return None not in self._trials.values() and len(
             self._trials) == self.max_trials
 
-    def scores(self) -> List[Optional[float]]:
+    def scores(self):
         return list(self._trials.values())
 
-    def count(self) -> int:
+    def count(self):
         return len(self._trials)
 
 
@@ -108,10 +103,7 @@ class Repeater(Searcher):
 
     """
 
-    def __init__(self,
-                 searcher: Searcher,
-                 repeat: int = 1,
-                 set_index: bool = True):
+    def __init__(self, searcher, repeat=1, set_index=True):
         self.searcher = searcher
         self.repeat = repeat
         self._set_index = set_index
@@ -121,7 +113,7 @@ class Repeater(Searcher):
         super(Repeater, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if self._current_group is None or self._current_group.full():
             config = self.searcher.suggest(trial_id)
             if config is None:
@@ -140,10 +132,7 @@ class Repeater(Searcher):
         self._trial_id_to_group[trial_id] = self._current_group
         return config
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          **kwargs):
+    def on_trial_complete(self, trial_id, result=None, **kwargs):
         """Stores the score for and keeps track of a completed trial.
 
         Stores the metric of a trial as nan if any of the following conditions
@@ -171,14 +160,13 @@ class Repeater(Searcher):
                 result={self.searcher.metric: np.nanmean(scores)},
                 **kwargs)
 
-    def get_state(self) -> Dict:
+    def get_state(self):
         self_state = self.__dict__.copy()
         del self_state["searcher"]
         return self_state
 
-    def set_state(self, state: Dict):
+    def set_state(self, state):
         self.__dict__.update(state)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         return self.searcher.set_search_properties(metric, mode, config)

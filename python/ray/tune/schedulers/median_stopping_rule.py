@@ -1,10 +1,7 @@
 import collections
 import logging
-from typing import Dict, List, Optional
-
 import numpy as np
 
-from ray.tune import trial_runner
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -41,14 +38,14 @@ class MedianStoppingRule(FIFOScheduler):
     """
 
     def __init__(self,
-                 time_attr: str = "time_total_s",
-                 reward_attr: Optional[str] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 grace_period: float = 60.0,
-                 min_samples_required: int = 3,
-                 min_time_slice: int = 0,
-                 hard_stop: bool = True):
+                 time_attr="time_total_s",
+                 reward_attr=None,
+                 metric=None,
+                 mode=None,
+                 grace_period=60.0,
+                 min_samples_required=3,
+                 min_time_slice=0,
+                 hard_stop=True):
         if reward_attr is not None:
             mode = "max"
             metric = reward_attr
@@ -78,8 +75,7 @@ class MedianStoppingRule(FIFOScheduler):
         self._last_pause = collections.defaultdict(lambda: float("-inf"))
         self._results = collections.defaultdict(list)
 
-    def set_search_properties(self, metric: Optional[str],
-                              mode: Optional[str]) -> bool:
+    def set_search_properties(self, metric, mode):
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -95,8 +91,7 @@ class MedianStoppingRule(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
-                     trial: Trial):
+    def on_trial_add(self, trial_runner, trial):
         if not self._metric or not self._worst or not self._compare_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -107,8 +102,7 @@ class MedianStoppingRule(FIFOScheduler):
 
         super(MedianStoppingRule, self).on_trial_add(trial_runner, trial)
 
-    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial, result: Dict) -> str:
+    def on_trial_result(self, trial_runner, trial, result):
         """Callback for early stopping.
 
         This stopping rule stops a running trial if the trial's best objective
@@ -160,17 +154,14 @@ class MedianStoppingRule(FIFOScheduler):
         else:
             return TrialScheduler.CONTINUE
 
-    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
-                          trial: Trial, result: Dict):
+    def on_trial_complete(self, trial_runner, trial, result):
         self._results[trial].append(result)
 
-    def debug_string(self) -> str:
+    def debug_string(self):
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials))
 
-    def _on_insufficient_samples(self,
-                                 trial_runner: "trial_runner.TrialRunner",
-                                 trial: Trial, time: float) -> str:
+    def _on_insufficient_samples(self, trial_runner, trial, time):
         pause = time - self._last_pause[trial] > self._min_time_slice
         pause = pause and [
             t for t in trial_runner.get_trials()
@@ -178,17 +169,17 @@ class MedianStoppingRule(FIFOScheduler):
         ]
         return TrialScheduler.PAUSE if pause else TrialScheduler.CONTINUE
 
-    def _trials_beyond_time(self, time: float) -> List[Trial]:
+    def _trials_beyond_time(self, time):
         trials = [
             trial for trial in self._results
             if self._results[trial][-1][self._time_attr] >= time
         ]
         return trials
 
-    def _median_result(self, trials: List[Trial], time: float):
+    def _median_result(self, trials, time):
         return np.median([self._running_mean(trial, time) for trial in trials])
 
-    def _running_mean(self, trial: Trial, time: float) -> np.ndarray:
+    def _running_mean(self, trial, time):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal

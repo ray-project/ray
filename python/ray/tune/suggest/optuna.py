@@ -1,9 +1,9 @@
 import logging
 import pickle
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
+from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
@@ -11,10 +11,8 @@ from ray.tune.utils.util import unflatten_dict
 
 try:
     import optuna as ot
-    from optuna.samplers import BaseSampler
 except ImportError:
     ot = None
-    BaseSampler = None
 
 from ray.tune.suggest import Searcher
 
@@ -102,11 +100,7 @@ class OptunaSearch(Searcher):
 
     """
 
-    def __init__(self,
-                 space: Optional[List[Tuple]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 sampler: Optional[BaseSampler] = None):
+    def __init__(self, space=None, metric=None, mode=None, sampler=None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
@@ -119,7 +113,7 @@ class OptunaSearch(Searcher):
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
-        assert isinstance(self._sampler, BaseSampler), \
+        assert isinstance(self._sampler, ot.samplers.BaseSampler), \
             "You can only pass an instance of `optuna.samplers.BaseSampler` " \
             "as a sampler to `OptunaSearcher`."
 
@@ -131,7 +125,7 @@ class OptunaSearch(Searcher):
         if self._space:
             self.setup_study(mode)
 
-    def setup_study(self, mode: str):
+    def setup_study(self, mode):
         self._ot_study = ot.study.create_study(
             storage=self._storage,
             sampler=self._sampler,
@@ -140,8 +134,7 @@ class OptunaSearch(Searcher):
             direction="minimize" if mode == "min" else "maximize",
             load_if_exists=True)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(self, metric, mode, config):
         if self._space:
             return False
         space = self.convert_search_space(config)
@@ -153,7 +146,7 @@ class OptunaSearch(Searcher):
         self.setup_study(mode)
         return True
 
-    def suggest(self, trial_id: str) -> Optional[Dict]:
+    def suggest(self, trial_id):
         if not self._space:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "
@@ -176,16 +169,13 @@ class OptunaSearch(Searcher):
         }
         return unflatten_dict(params)
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id, result):
         metric = result[self.metric]
         step = result[TRAINING_ITERATION]
         ot_trial = self._ot_trials[trial_id]
         ot_trial.report(metric, step)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(self, trial_id, result=None, error=False):
         ot_trial = self._ot_trials[trial_id]
         ot_trial_id = ot_trial._trial_id
         self._storage.set_trial_value(ot_trial_id, result.get(
@@ -193,20 +183,20 @@ class OptunaSearch(Searcher):
         self._storage.set_trial_state(ot_trial_id,
                                       ot.trial.TrialState.COMPLETE)
 
-    def save(self, checkpoint_path: str):
+    def save(self, checkpoint_path):
         save_object = (self._storage, self._pruner, self._sampler,
                        self._ot_trials, self._ot_study)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
-    def restore(self, checkpoint_path: str):
+    def restore(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
             self._ot_trials, self._ot_study = save_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> List[Tuple]:
+    def convert_search_space(spec: Dict):
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -218,7 +208,7 @@ class OptunaSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to an Optuna search space.")
 
-        def resolve_value(par: str, domain: Domain) -> Tuple:
+        def resolve_value(par, domain):
             quantize = None
 
             sampler = domain.get_sampler()

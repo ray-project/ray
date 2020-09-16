@@ -307,7 +307,7 @@ class AutoscalingTest(unittest.TestCase):
             head_ip, {
                 "CPU": 4,
                 "GPU": 1
-            }, {"GPU": 0}, {},
+            }, {"GPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }])
@@ -604,32 +604,6 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         autoscaler.update()
         self.waitForNodes(0)
-
-    def testEmptyDocker(self):
-        config = MULTI_WORKER_CLUSTER.copy()
-        del config["docker"]
-        config["min_workers"] = 0
-        config["max_workers"] = 10
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
-        autoscaler.update()
-        self.waitForNodes(1)
-        assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
-        autoscaler.update()
-        self.waitForNodes(2)
-        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
 
 if __name__ == "__main__":

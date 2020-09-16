@@ -1,5 +1,3 @@
-"""Tensorflow policy class used for DQN"""
-
 from typing import Dict
 
 import gym
@@ -35,18 +33,18 @@ PRIO_WEIGHTS = "weights"
 
 class QLoss:
     def __init__(self,
-                 q_t_selected: TensorType,
-                 q_logits_t_selected: TensorType,
-                 q_tp1_best: TensorType,
-                 q_dist_tp1_best: TensorType,
-                 importance_weights: TensorType,
-                 rewards: TensorType,
-                 done_mask: TensorType,
-                 gamma: float = 0.99,
-                 n_step: int = 1,
-                 num_atoms: int = 1,
-                 v_min: float = -10.0,
-                 v_max: float = 10.0):
+                 q_t_selected,
+                 q_logits_t_selected,
+                 q_tp1_best,
+                 q_dist_tp1_best,
+                 importance_weights,
+                 rewards,
+                 done_mask,
+                 gamma=0.99,
+                 n_step=1,
+                 num_atoms=1,
+                 v_min=-10.0,
+                 v_max=10.0):
 
         if num_atoms > 1:
             # Distributional Q-learning which corresponds to an entropy loss
@@ -112,11 +110,6 @@ class QLoss:
 
 
 class ComputeTDErrorMixin:
-    """Assign the `compute_td_error` method to the DQNTFPolicy
-
-    This allows us to prioritize on the worker side.
-    """
-
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
@@ -137,22 +130,10 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
-                  action_space: gym.spaces.Space,
+def build_q_model(policy: Policy, obs_space: gym.Space,
+                  action_space: gym.Space,
                   config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for DQN
 
-    Args:
-        policy (Policy): The Policy, which will use the model for optimization.
-        obs_space (gym.spaces.Space): The policy's observation space.
-        action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
-
-    Returns:
-        ModelV2: The Model for the Policy to use.
-            Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
-    """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
             "Action space {} is not supported for DQN.".format(action_space))
@@ -225,16 +206,6 @@ def get_distribution_inputs_and_class(policy: Policy,
 
 def build_q_losses(policy: Policy, model, _,
                    train_batch: SampleBatch) -> TensorType:
-    """Constructs the loss for DQNTFPolicy.
-
-    Args:
-        policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
-
-    Returns:
-        TensorType: A single loss tensor.
-    """
     config = policy.config
     # q network evaluation
     q_t, q_logits_t, q_dist_t = compute_q_values(
@@ -329,8 +300,8 @@ def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
     ComputeTDErrorMixin.__init__(policy)
 
 
-def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                      action_space: gym.spaces.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.Space,
+                      action_space: gym.Space,
                       config: TrainerConfigDict) -> None:
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 

@@ -291,6 +291,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         policy_config: TrainerConfigDict = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
+                and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
                 and not tf1.executing_eagerly()):

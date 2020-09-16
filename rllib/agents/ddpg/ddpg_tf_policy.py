@@ -1,5 +1,4 @@
 from gym.spaces import Box
-from functools import partial
 import logging
 import numpy as np
 
@@ -291,8 +290,7 @@ def gradients_fn(policy, optimizer, loss):
 
     # Clip if necessary.
     if policy.config["grad_clip"]:
-        clip_func = partial(
-            tf.clip_by_norm, clip_norm=policy.config["grad_clip"])
+        clip_func = tf.clip_by_norm
     else:
         clip_func = tf.identity
 

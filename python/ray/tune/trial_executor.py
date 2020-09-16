@@ -3,7 +3,6 @@ import logging
 
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
-from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -163,22 +162,15 @@ class TrialExecutor:
         for trial in trial_runner.get_trials():
             if trial.status == Trial.PENDING:
                 if not self.has_resources(trial.resources):
-                    resource_string = trial.resources.summary_string()
-                    trial_resource_help_msg = trial.get_trainable_cls(
-                    ).resource_help(trial.config)
-                    autoscaling_msg = ""
-                    if is_ray_cluster():
-                        autoscaling_msg = (
-                            "Pass `queue_trials=True` in ray.tune.run() or "
-                            "on the command line to queue trials until the "
-                            "cluster scales up or resources become available. "
-                        )
                     raise TuneError(
-                        "Insufficient cluster resources to launch trial: "
-                        f"trial requested {resource_string}, but the cluster "
-                        f"has only {self.resource_string()}. "
-                        f"{autoscaling_msg}"
-                        f"{trial_resource_help_msg} ")
+                        ("Insufficient cluster resources to launch trial: "
+                         "trial requested {} but the cluster has only {}. "
+                         "This error should not occur if running on an "
+                         "autoscaling cluster. {}").format(
+                             trial.resources.summary_string(),
+                             self.resource_string(),
+                             trial.get_trainable_cls().resource_help(
+                                 trial.config)))
             elif trial.status == Trial.PAUSED:
                 raise TuneError("There are paused trials, but no more pending "
                                 "trials with sufficient resources.")

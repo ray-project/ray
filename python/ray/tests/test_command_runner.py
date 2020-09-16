@@ -125,7 +125,10 @@ def test_kubernetes_command_runner():
         """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
     ]
 
-    assert process_runner.calls[0] == " ".join(expected)
+    # Much easier to debug this loop than the function call.
+    for x, y in zip(process_runner.calls[0], expected):
+        assert x == y
+    process_runner.assert_has_call("1.2.3.4", exact=expected)
 
 
 def test_docker_command_runner():
@@ -202,7 +205,7 @@ def test_docker_rsync():
     remote_file = "/root/protected-file"
     remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
 
-    process_runner.respond_to_call("docker inspect -f", ["true"])
+    process_runner.respond_to_call("docker inspect -f", "true")
     cmd_runner.run_rsync_up(
         local_mount, remote_mount, options={"file_mount": True})
 
@@ -219,7 +222,7 @@ def test_docker_rsync():
     process_runner.clear_history()
     ##############################
 
-    process_runner.respond_to_call("docker inspect -f", ["true"])
+    process_runner.respond_to_call("docker inspect -f", "true")
     cmd_runner.run_rsync_up(
         local_file, remote_file, options={"file_mount": False})
 
