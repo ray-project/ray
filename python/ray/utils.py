@@ -564,7 +564,7 @@ def get_num_cpus():
         # Not easy to get cpu count in docker, see:
         # https://bugs.python.org/issue36054
         docker_count = _get_docker_cpus()
-        if docker_count != cpu_count:
+        if docker_count is not None and docker_count != cpu_count:
             cpu_count = docker_count
             if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
                 logger.warning(
