@@ -415,9 +415,6 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["start", "--head", "--num-gpus", "100"])
     check_call_ray(["stop"])
 
-    # Test starting Ray with the max redis clients specified.
-    check_call_ray(["start", "--head", "--redis-max-clients", "100"])
-    check_call_ray(["stop"])
 
     if "RAY_USE_NEW_GCS" not in os.environ:
         # Test starting Ray with redis shard ports specified.
@@ -429,7 +426,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
         check_call_ray([
             "start", "--head", "--redis-shard-ports", "6380,6381,6382",
             "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
+            "0", "--resources", "{\"Custom\": 1}"
         ])
         check_call_ray(["stop"])
 
