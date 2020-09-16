@@ -1,5 +1,6 @@
 import atexit
 from functools import wraps
+import os
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -355,7 +356,11 @@ def start(detached: bool = False,
     """
     # Initialize ray if needed.
     if not ray.is_initialized():
-        ray.init()
+        if detached:
+            # Try to connect to long-running Ray cluster.  Error if we can't
+            ray.init(address=os.getenv("RAY_ADDRESS", "auto"))
+        else:
+            ray.init()
 
     # Try to get serve controller if it exists
     if detached:

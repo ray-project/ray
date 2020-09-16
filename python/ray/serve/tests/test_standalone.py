@@ -21,7 +21,7 @@ from ray.services import new_port
 @pytest.mark.skipif(
     not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
-            "This test can only be ran when port sharing is supported."))
+            "This test can only be run when port sharing is supported."))
 def test_multiple_routers():
     cluster = Cluster()
     head_node = cluster.add_node()
@@ -97,6 +97,11 @@ def test_multiple_routers():
     ray.shutdown()
     cluster.shutdown()
 
+
+def test_detached_without_cluster():
+    assert not ray.is_initialized()
+    with pytest.raises(ConnectionError):
+        serve.start(detached=True)
 
 def test_middleware():
     from starlette.middleware import Middleware
