@@ -381,7 +381,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self.provider.external_ip(self.node_id)
 
-    def wait_for_ip(self, deadline):
+    def _wait_for_ip(self, deadline):
         # if we have IP do not print waiting info
         ip = self._get_node_ip()
         if ip is not None:
@@ -413,7 +413,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
-            ip = self.wait_for_ip(deadline)
+            ip = self._wait_for_ip(deadline)
 
             cli_logger.doassert(ip is not None,
                                 "Could not get node IP.")  # todo: msg
