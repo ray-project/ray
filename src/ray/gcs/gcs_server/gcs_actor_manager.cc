@@ -572,10 +572,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // Remove actor from `named_actors_` if its name is not empty.
   if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
-    if (it != named_actors_.end()) {
-      RAY_CHECK(it->second == actor->GetActorID())
-          << "Actor of a name " << it->first << " has an actor id " << it->second
-          << " which is different from this actor's id " << actor->GetActorID();
+    if (it != named_actors_.end() && it->second == actor->GetActorID()) {
       named_actors_.erase(it);
     }
   }
@@ -826,11 +823,11 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // Remove actor from `named_actors_` if its name is not empty.
     if (!actor->GetName().empty()) {
       auto it = named_actors_.find(actor->GetName());
-      if (it != named_actors_.end()) {
-        RAY_CHECK(it->second == actor->GetActorID());
+      if (it != named_actors_.end() && it->second == actor->GetActorID()) {
         named_actors_.erase(it);
       }
     }
+
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
