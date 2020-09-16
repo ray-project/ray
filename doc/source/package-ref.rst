@@ -135,12 +135,26 @@ ray.cross_language
 Placement Group APIs
 --------------------
 
+placement_group
+~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.util.placement_group.placement_group
+
+
+PlacementGroup (class)
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.util.placement_group.PlacementGroup
    :members:
 
+placement_group_table
+~~~~~~~~~~~~~~~~~~~~~
+
 .. autofunction:: ray.util.placement_group.placement_group_table
+
+
+remove_placement_group
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.util.placement_group.remove_placement_group
 
