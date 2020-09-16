@@ -1,5 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: alex-java1
+cluster_name: java
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
 min_workers: 1  
