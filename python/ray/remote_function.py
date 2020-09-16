@@ -122,23 +122,53 @@ class RemoteFunction:
             num_gpus=num_gpus,
             resources=resources)
 
-    def options(self, **options):
+    def options(self,
+                args=None,
+                kwargs=None,
+                num_returns=None,
+                num_cpus=None,
+                num_gpus=None,
+                memory=None,
+                object_store_memory=None,
+                accelerator_type=None,
+                resources=None,
+                max_retries=None,
+                placement_group=None,
+                placement_group_bundle_index=-1,
+                name=""):
         """Convenience method for executing a task with options.
 
-        Same arguments as func._remote(), but returns a wrapped function
-        that a non-underscore .remote() can be called on.
+        Options are overlapping values provided by `@ray.remote`.
 
         Examples:
-            # The following two calls are equivalent.
-            >>> func._remote(num_cpus=4, args=[x, y])
-            >>> func.options(num_cpus=4).remote(x, y)
+
+        .. code-block:: python
+
+            @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+            def f():
+               return 1, 2
+            # Task f will require 2 gpus instead of 1.
+            g = f.options(num_gpus=2, max_calls=None)
         """
 
         func_cls = self
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
+                return func_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    num_returns=num_returns,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    object_store_memory=object_store_memory,
+                    accelerator_type=accelerator_type,
+                    resources=resources,
+                    max_retries=max_retries,
+                    placement_group=placement_group,
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    name=name)
 
         return FuncWrapper()
 
