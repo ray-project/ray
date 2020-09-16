@@ -161,7 +161,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 Now, you can guarantee all gpu actor and extra_resource task are located on the same node
 because they are scheduled on a placement group with the STRICT_PACK strategy.
 
-Note that you must remove the placement group once you are finished with your application
+Note that you must remove the placement group once you are finished with your application.
 Workers of actors and tasks that are scheduled on placement group will be all killed:
 
 .. code-block:: python
@@ -188,7 +188,7 @@ Workers of actors and tasks that are scheduled on placement group will be all ki
 Lifecycle
 ---------
 
-When placement group is first created, the request is sent to GCS. GCS reserve resources to nodes based on scheduling strategy. Ray guarantees atomic creation of placement group.
+When placement group is first created, the request is sent to the GCS. The GCS reserve resources to nodes based on its scheduling strategy. Ray guarantees the atomic creation of placement group.
 
 Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
