@@ -1,9 +1,9 @@
 import json
 import logging
 import os
-from typing import Dict
+from numbers import Number
+from typing import Any, Dict, List, Optional, Tuple
 
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.utils import flatten_dict
 
 try:
@@ -37,7 +37,10 @@ class Analysis:
             in the respective functions.
     """
 
-    def __init__(self, experiment_dir, default_metric=None, default_mode=None):
+    def __init__(self,
+                 experiment_dir: str,
+                 default_metric: Optional[str] = None,
+                 default_mode: Optional[str] = None):
         experiment_dir = os.path.expanduser(experiment_dir)
         if not os.path.isdir(experiment_dir):
             raise ValueError(
@@ -59,14 +62,14 @@ class Analysis:
         else:
             self.fetch_trial_dataframes()
 
-    def _validate_metric(self, metric):
+    def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
             raise ValueError(
                 "No `metric` has been passed and  `default_metric` has "
                 "not been set. Please specify the `metric` parameter.")
         return metric or self.default_metric
 
-    def _validate_mode(self, mode):
+    def _validate_mode(self, mode: str) -> str:
         if not mode and not self.default_mode:
             raise ValueError(
                 "No `mode` has been passed and  `default_mode` has "
@@ -75,7 +78,9 @@ class Analysis:
             raise ValueError("If set, `mode` has to be one of [min, max]")
         return mode or self.default_mode
 
-    def dataframe(self, metric=None, mode=None):
+    def dataframe(self,
+                  metric: Optional[str] = None,
+                  mode: Optional[str] = None) -> DataFrame:
         """Returns a pandas.DataFrame object constructed from the trials.
 
         Args:
@@ -97,7 +102,9 @@ class Analysis:
                 rows[path].update(logdir=path)
         return pd.DataFrame(list(rows.values()))
 
-    def get_best_config(self, metric=None, mode=None):
+    def get_best_config(self,
+                        metric: Optional[str] = None,
+                        mode: Optional[str] = None) -> Optional[Dict]:
         """Retrieve the best config corresponding to the trial.
 
         Args:
@@ -122,7 +129,9 @@ class Analysis:
         best_path = compare_op(rows, key=lambda k: rows[k][metric])
         return all_configs[best_path]
 
-    def get_best_logdir(self, metric=None, mode=None):
+    def get_best_logdir(self,
+                        metric: Optional[str] = None,
+                        mode: Optional[str] = None) -> Optional[str]:
         """Retrieve the logdir corresponding to the best trial.
 
         Args:
@@ -148,7 +157,7 @@ class Analysis:
                                self._experiment_dir))
             return None
 
-    def fetch_trial_dataframes(self):
+    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
         fail_count = 0
         for path in self._get_trial_paths():
             try:
@@ -162,7 +171,7 @@ class Analysis:
                 "Couldn't read results from {} paths".format(fail_count))
         return self.trial_dataframes
 
-    def get_all_configs(self, prefix=False):
+    def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.
 
         Args:
@@ -170,7 +179,8 @@ class Analysis:
                 and prepends `config/`.
 
         Returns:
-            List[dict]: List of all configurations of trials,
+            Dict[str, Dict]: Dict of all configurations of trials, indexed by
+                their trial dir.
         """
         fail_count = 0
         for path in self._get_trial_paths():
@@ -189,7 +199,10 @@ class Analysis:
                 "Couldn't read config from {} paths".format(fail_count))
         return self._configs
 
-    def get_trial_checkpoints_paths(self, trial, metric=None):
+    def get_trial_checkpoints_paths(self,
+                                    trial: Trial,
+                                    metric: Optional[str] = None
+                                    ) -> List[Tuple[str, Number]]:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
         Args:
@@ -215,11 +228,14 @@ class Analysis:
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            return [[c.value, c.result[metric]] for c in checkpoints]
+            return [(c.value, c.result[metric]) for c in checkpoints]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
-    def get_best_checkpoint(self, trial, metric=None, mode=None):
+    def get_best_checkpoint(self,
+                            trial: Trial,
+                            metric: Optional[str] = None,
+                            mode: Optional[str] = None) -> Optional[str]:
         """Gets best persistent checkpoint path of provided trial.
 
         Args:
@@ -244,7 +260,9 @@ class Analysis:
         else:
             return min(checkpoint_paths, key=lambda x: x[1])[0]
 
-    def _retrieve_rows(self, metric=None, mode=None):
+    def _retrieve_rows(self,
+                       metric: Optional[str] = None,
+                       mode: Optional[str] = None) -> Dict[str, Any]:
         assert mode is None or mode in ["max", "min"]
         rows = {}
         for path, df in self.trial_dataframes.items():
@@ -264,7 +282,7 @@ class Analysis:
 
         return rows
 
-    def _get_trial_paths(self):
+    def _get_trial_paths(self) -> List[str]:
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
             if EXPR_PROGRESS_FILE in files:
@@ -276,7 +294,7 @@ class Analysis:
         return _trial_paths
 
     @property
-    def trial_dataframes(self):
+    def trial_dataframes(self) -> Dict[str, DataFrame]:
         """List of all dataframes of the trials."""
         return self._trial_dataframes
 
@@ -306,10 +324,10 @@ class ExperimentAnalysis(Analysis):
     """
 
     def __init__(self,
-                 experiment_checkpoint_path,
-                 trials=None,
-                 default_metric=None,
-                 default_mode=None):
+                 experiment_checkpoint_path: str,
+                 trials: Optional[List[Trial]] = None,
+                 default_metric: Optional[str] = None,
+                 default_mode: Optional[str] = None):
         experiment_checkpoint_path = os.path.expanduser(
             experiment_checkpoint_path)
         if not os.path.isfile(experiment_checkpoint_path):
@@ -365,8 +383,8 @@ class ExperimentAnalysis(Analysis):
         return self.get_best_config(self.default_metric, self.default_mode)
 
     @property
-    def best_checkpoint(self) -> Checkpoint:
-        """Get the checkpoint of the best trial of the experiment
+    def best_checkpoint(self) -> str:
+        """Get the checkpoint path of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
         using the `metric` and `mode` parameters passed to `tune.run()`.
@@ -471,7 +489,10 @@ class ExperimentAnalysis(Analysis):
             ],
             index="trial_id")
 
-    def get_best_trial(self, metric=None, mode=None, scope="last"):
+    def get_best_trial(self,
+                       metric: Optional[str] = None,
+                       mode: Optional[str] = None,
+                       scope: str = "last") -> Optional[Trial]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -535,7 +556,10 @@ class ExperimentAnalysis(Analysis):
                 "parameter?")
         return best_trial
 
-    def get_best_config(self, metric=None, mode=None, scope="last"):
+    def get_best_config(self,
+                        metric: Optional[str] = None,
+                        mode: Optional[str] = None,
+                        scope: str = "last") -> Optional[Dict]:
         """Retrieve the best config corresponding to the trial.
 
         Compares all trials' scores on `metric`.
@@ -562,7 +586,10 @@ class ExperimentAnalysis(Analysis):
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
 
-    def get_best_logdir(self, metric=None, mode=None, scope="last"):
+    def get_best_logdir(self,
+                        metric: Optional[str] = None,
+                        mode: Optional[str] = None,
+                        scope: str = "last") -> Optional[str]:
         """Retrieve the logdir corresponding to the best trial.
 
         Compares all trials' scores on `metric`.
@@ -589,15 +616,15 @@ class ExperimentAnalysis(Analysis):
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.logdir if best_trial else None
 
-    def stats(self):
+    def stats(self) -> Dict:
         """Returns a dictionary of the statistics of the experiment."""
         return self._experiment_state.get("stats")
 
-    def runner_data(self):
+    def runner_data(self) -> Dict:
         """Returns a dictionary of the TrialRunner data."""
         return self._experiment_state.get("runner_data")
 
-    def _get_trial_paths(self):
+    def _get_trial_paths(self) -> List[str]:
         """Overwrites Analysis to only have trials of one experiment."""
         if self.trials:
             _trial_paths = [t.logdir for t in self.trials]
