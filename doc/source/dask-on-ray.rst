@@ -7,6 +7,11 @@ analyses using the familiar Dask collections (dataframes, arrays) and execute
 the underlying computations on a Ray cluster. Using this Dask scheduler, the
 entire Dask ecosystem can be executed on top of Ray.
 
+.. note::
+
+  Note that Ray does not currently support object spilling, and hence cannot
+  process datasets larger than cluster memory. This is a planned feature.
+
 =========
 Scheduler
 =========
