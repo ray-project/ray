@@ -8,8 +8,8 @@ class PlacementGroup:
     """A handle to a placement group.
 
     Args:
-        id: Placement group id.
-        bundles: List of bundles.
+        id (PlacementGroupID): Placement group id.
+        bundles (List): List of bundles.
     """
 
     @staticmethod
@@ -21,7 +21,7 @@ class PlacementGroup:
         self.bundles = bundles
 
     def ready(self) -> ObjectRef:
-        """Returns an object ID to check ready status.
+        """Returns an ObjectRef to check ready status.
 
         This API runs a small dummy task to wait for placement group creation.
         It is compatible to ray.get and ray.wait.
@@ -71,7 +71,7 @@ class PlacementGroup:
 
     @property
     def bundle_specs(self) -> List[Dict]:
-        """Return bundles belonging to this placement group."""
+        """List[Dict]: Return bundles belonging to this placement group."""
         return self.bundles
 
     @property
@@ -95,15 +95,17 @@ def placement_group(bundles: List[Dict[str, float]],
         bundles(List[Dict]): A list of bundles which
             represent the resources requirements.
         strategy(str): The strategy to create the placement group.
-            PACK: Packs Bundles into as few nodes as possible.
-            SPREAD: Places Bundles across distinct nodes as even as possible.
-            STRICT_PACK: Packs Bundles into one node.
-            STRICT_SPREAD: Packs Bundles across distinct nodes.
-            The group is not allowed to span multiple nodes.
+
+         - "PACK": Packs Bundles into as few nodes as possible.
+         - "SPREAD": Places Bundles across distinct nodes as even as possible.
+         - "STRICT_PACK": Packs Bundles into one node.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes. The group is
+           not allowed to span multiple nodes.
+
         name(str): The name of the placement group.
 
     Return:
-        Placement group object.
+        PlacementGroup: Placement group object.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
@@ -130,8 +132,7 @@ def remove_placement_group(placement_group: PlacementGroup):
     """Asynchronously remove placement group.
 
     Args:
-        placement_group(PlacementGroup): placement group to delete
-            reserved resources.
+        placement_group (PlacementGroup): The placement group to delete.
     """
     assert placement_group is not None
     worker = ray.worker.global_worker
@@ -144,7 +145,7 @@ def placement_group_table(placement_group: PlacementGroup) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:
-        placement_group(PlacementGroup): placement group to see
+        placement_group (PlacementGroup): placement group to see
             states.
     """
     assert placement_group is not None
