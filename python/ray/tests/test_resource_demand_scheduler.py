@@ -14,7 +14,7 @@ from ray.autoscaler.node_provider import NODE_PROVIDERS
 from ray.autoscaler.commands import get_or_create_head_node
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
-    get_bin_pack_residual, get_nodes_for
+    get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -163,6 +163,23 @@ def test_get_nodes_respects_max_limit():
     }] * 10) == [("m4.large", 2)]
 
 
+def test_get_nodes_to_launch_limits():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, 3)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch = scheduler.get_nodes_to_launch(nodes, {"p2.8xlarge": 1}, [{
+        "GPU": 8
+    }] * 2, utilizations)
+    assert to_launch == []
+
+
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
@@ -259,6 +276,44 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+    def testScaleUpIgnoreUsed(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        # Commenting out this line causes the test case to fail?!?!
+        config["min_workers"] = 0
+        config["target_utilization_fraction"] = 1.0
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        self.provider.finish_starting_nodes()
+        runner = MockProcessRunner()
+        lm = LoadMetrics(local_ip=head_ip)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        self.waitForNodes(1)
+
+        lm.update(
+            head_ip, {
+                "CPU": 4,
+                "GPU": 1
+            }, {"GPU": 0}, {},
+            waiting_bundles=[{
+                "GPU": 1
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
 
     def testRequestBundlesAccountsForHeadNode(self):
         config = MULTI_WORKER_CLUSTER.copy()
@@ -549,6 +604,32 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         autoscaler.update()
         self.waitForNodes(0)
+
+    def testEmptyDocker(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        del config["docker"]
+        config["min_workers"] = 0
+        config["max_workers"] = 10
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
 
 if __name__ == "__main__":

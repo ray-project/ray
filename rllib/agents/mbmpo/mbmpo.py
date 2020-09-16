@@ -18,7 +18,8 @@ from ray.rllib.utils.torch_ops import convert_to_torch_tensor
 from ray.rllib.evaluation.metrics import collect_episodes
 from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
+    MBMPOExploration
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ DEFAULT_CONFIG = with_common_config({
         # Number of Transition-Dynamics Models for Ensemble
         "ensemble_size": 5,
         # Hidden Layers for Model Ensemble
-        "fcnet_hiddens": [512, 512],
+        "fcnet_hiddens": [512, 512, 512],
         # Model Learning Rate
         "lr": 1e-3,
         # Max number of training epochs per MBMPO iter
@@ -81,10 +82,11 @@ DEFAULT_CONFIG = with_common_config({
         # Normalize Data (obs, action, and deltas)
         "normalize_data": True,
     },
+    "exploration_config": {
+        "type": MBMPOExploration,
+    },
     # Workers sample from dynamics models
     "custom_vector_env": custom_model_vector_env,
-    # How many enviornments there are per worker (vectorized)
-    "num_worker_envs": 20,
     # How many iterations through MAML per MBMPO iteration
     "num_maml_steps": 10,
 })
@@ -152,7 +154,7 @@ class MetaUpdate:
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
-        if self.step_counter == self.num_steps:
+        if self.step_counter == self.num_steps - 1:
             td_metric = self.workers.local_worker().foreach_policy(
                 fit_dynamics)[0]
 

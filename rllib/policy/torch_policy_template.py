@@ -86,7 +86,7 @@ def build_torch_policy(
             values given the policy and training batch. If None,
             will use `TorchPolicy.extra_grad_info()` instead. The stats dict is
             used for logging (e.g. in TensorBoard).
-        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType,
+        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType],
             List[TensorType], ModelV2, TorchDistributionWrapper]], Dict[str,
             TensorType]]]): Optional callable that returns a dict of extra
             values to include in experiences. If None, no extra computations

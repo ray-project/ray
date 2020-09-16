@@ -15,7 +15,7 @@ from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()

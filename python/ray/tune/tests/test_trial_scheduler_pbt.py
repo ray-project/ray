@@ -82,20 +82,29 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def testAsynchFail(self):
         analysis = self.synchSetup(False)
-        self.assertTrue(any(analysis.dataframe()["mean_accuracy"] != 33))
+        self.assertTrue(
+            any(
+                analysis.dataframe(metric="mean_accuracy", mode="max")
+                ["mean_accuracy"] != 33))
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
-        self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
+        self.assertTrue(
+            all(
+                analysis.dataframe(metric="mean_accuracy", mode="max")[
+                    "mean_accuracy"] == 33))
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
-        self.assertTrue(all(analysis.dataframe()["mean_accuracy"] == 33))
+        self.assertTrue(
+            all(
+                analysis.dataframe(metric="mean_accuracy", mode="max")[
+                    "mean_accuracy"] == 33))
 
 
 class PopulationBasedTrainingConfigTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -136,7 +145,7 @@ class PopulationBasedTrainingConfigTest(unittest.TestCase):
 
 class PopulationBasedTrainingResumeTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()

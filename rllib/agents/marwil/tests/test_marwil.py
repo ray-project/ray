@@ -35,7 +35,9 @@ class TestMARWIL(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 1
+        # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
+        # Learn from offline data.
         config["input"] = [data_file]
         num_iterations = 300
 

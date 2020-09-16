@@ -76,7 +76,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init()
+    ray.init(num_cpus=2)
     datasets.MNIST("~/data", train=True, download=True)
 
     # check if PytorchTrainble will save/restore correctly before execution

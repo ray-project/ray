@@ -86,8 +86,7 @@ if __name__ == "__main__":
             "framework": "torch" if args.torch else "tf",
             # Use GPUs iff `RLLIB_FORCE_NUM_GPUS` env var set to > 0.
             "num_gpus": RLLIB_FORCE_NUM_GPUS,
-        },
-        return_trials=True)
+        }).trials
 
     # verify custom metrics for integration tests
     custom_metrics = trials[0].last_result["custom_metrics"]

@@ -1,8 +1,8 @@
 import os
 import logging
-import torch.distributed as dist
 
 import ray
+import torch.distributed as dist
 from ray.util.sgd.utils import find_free_port
 
 logger = logging.getLogger(__name__)

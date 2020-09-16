@@ -6,11 +6,11 @@ import io.ray.api.Ray;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
-import io.ray.streaming.runtime.transfer.ChannelId;
-import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.TransferHandler;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
+import io.ray.streaming.runtime.transfer.message.DataMessage;
 import io.ray.streaming.util.Config;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
@@ -104,7 +104,7 @@ class ReaderWorker extends Worker {
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
-    dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
+    dataReader = new DataReader(inputQueueList, inputActors, new HashMap<>(), workerConfig);
 
     // Should not GetBundle in RayCall thread
     Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -124,7 +124,7 @@ class ReaderWorker extends Worker {
 
     int checkPointId = 1;
     for (int i = 0; i < msgCount * inputQueueList.size(); ++i) {
-      DataMessage dataMessage = dataReader.read(100);
+      DataMessage dataMessage = (DataMessage) dataReader.read(100);
 
       if (dataMessage == null) {
         LOGGER.error("dataMessage is null");
@@ -232,7 +232,7 @@ class WriterWorker extends Worker {
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
-    dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
+    dataWriter = new DataWriter(outputQueueList, outputActors, new HashMap<>(), workerConfig);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
       public void run() {

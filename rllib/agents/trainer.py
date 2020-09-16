@@ -23,7 +23,6 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -69,8 +68,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
-    "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
     # `rollout_fragment_length` length unrolls. Episode truncation guarantees
     # evenly sized batches, but increases variance as the reward-to-go will
@@ -162,9 +159,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
-    # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect if eager is enabled.
-    "no_eager_on_workers": False,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into
@@ -381,10 +375,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
-
-    # Deprecated keys:
-    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
-    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -585,6 +575,20 @@ class Trainer(Trainable):
         self.raw_user_config = config
         self.config = Trainer.merge_trainer_configs(self._default_config,
                                                     config)
+
+        # Check and resolve DL framework settings.
+        # Enable eager/tracing support.
+        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
+            if self.config["framework"] == "tf2" and tfv < 2:
+                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                self.config["eager_tracing"]))
+        if tf1 and not tf1.executing_eagerly() and \
+                self.config["framework"] != "torch":
+            logger.info("Tip: set framework=tfe or the --eager flag to enable "
+                        "TensorFlow eager execution")
 
         if self.config["normalize_actions"]:
             inner = self.env_creator
@@ -1027,17 +1031,6 @@ class Trainer(Trainable):
                               _allow_unknown_configs: Optional[bool] = None
                               ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
-        # Error if trainer default has deprecated value.
-        if config1["sample_batch_size"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length", error=True)
-        # Warning if user override config has deprecated value.
-        if ("sample_batch_size" in config2
-                and config2["sample_batch_size"] != DEPRECATED_VALUE):
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length")
-            config2["rollout_fragment_length"] = config2["sample_batch_size"]
-            del config2["sample_batch_size"]
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]
 
@@ -1178,6 +1171,13 @@ class Trainer(Trainable):
                 r.restore.remote(remote_state)
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
+
+    @staticmethod
+    def with_updates(**overrides) -> Type["Trainer"]:
+        raise NotImplementedError(
+            "`with_updates` may only be called on Trainer sub-classes "
+            "that were generated via the `ray.rllib.agents.trainer_template."
+            "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):

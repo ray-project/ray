@@ -139,7 +139,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers,
+          io_service, config.num_initial_workers, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, gcs_client_, config.worker_commands,
@@ -1260,7 +1260,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
       worker_id, language, worker_type, worker_ip_address, client, client_call_manager_));
 
-  auto send_reply_callback = [this, client](int assigned_port) {
+  auto send_reply_callback = [this, client](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
     std::vector<std::string> system_config_keys;
     std::vector<std::string> system_config_values;
@@ -1269,7 +1269,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       system_config_values.push_back(kv.second);
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
-        fbb, to_flatbuf(fbb, self_node_id_), assigned_port,
+        fbb, status.ok(), fbb.CreateString(status.ToString()),
+        to_flatbuf(fbb, self_node_id_), assigned_port,
         string_vec_to_flatbuf(fbb, system_config_keys),
         string_vec_to_flatbuf(fbb, system_config_values));
     fbb.Finish(reply);
@@ -1285,7 +1286,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::IO_WORKER) {
     // Register the new worker.
-    RAY_UNUSED(worker_pool_.RegisterWorker(worker, pid, send_reply_callback));
+    auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
+    if (!status.ok()) {
+      // If the worker failed to register to Raylet, trigger task dispatching here to
+      // allow new worker processes to be started (if capped by
+      // maximum_startup_concurrency).
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
+    }
   } else {
     // Register the new driver.
     RAY_CHECK(pid >= 0);
@@ -1361,6 +1368,11 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
         local_queues_.GetTotalResourceLoad());
     // Call task dispatch to assign work to the new worker.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
+  }
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    // If the worker remains idle after scheduling, we may kill it to ensure the
+    // registered workers are in a reasonable size.
+    worker_pool_.TryKillingIdleWorker(worker);
   }
 }
 
@@ -1803,8 +1815,8 @@ void NodeManager::HandlePrepareBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
                  << bundle_spec.BundleId().second;
-  auto resource_ids = ScheduleBundle(cluster_resource_map_, bundle_spec);
-  if (resource_ids.AvailableResources().size() == 0) {
+  auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
+  if (!prepared) {
     reply->set_success(false);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
@@ -1819,8 +1831,17 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
+
+  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  RAY_LOG(DEBUG) << "Received bundle commit request " << bundle_spec.BundleId().first
+                 << bundle_spec.BundleId().second;
+  CommitBundle(cluster_resource_map_, bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  // TODO(sang): Implement this in the next PR.
+
+  // Call task dispatch to assign work to the new group.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -1855,6 +1876,20 @@ void NodeManager::HandleCancelResourceReserve(
     worker->MarkDead();
     KillWorker(worker);
   }
+
+  // We should commit resources if it weren't because
+  // ReturnBundleResources requires resources to be committed when it is called.
+  auto it = bundle_state_map_.find(bundle_spec.BundleId());
+  RAY_CHECK(it != bundle_state_map_.end())
+      << "Cancel requests are received to raylet although it hasn't received any prepare "
+         "or commit requests. This must be an anomaly.";
+  const auto &bundle_state = it->second;
+  if (bundle_state->state == CommitState::PREPARED) {
+    CommitBundle(cluster_resource_map_, bundle_spec);
+  }
+  bundle_state_map_.erase(it);
+
+  // Return resources.
   for (auto resource : resource_set.GetResourceMap()) {
     local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
                                                      bundle_spec.Index(), resource.first);
@@ -2009,30 +2044,66 @@ void NodeManager::ProcessSetResourceRequest(
   }
 }
 
-ResourceIdSet NodeManager::ScheduleBundle(
+bool NodeManager::PrepareBundle(
     std::unordered_map<ClientID, SchedulingResources> &resource_map,
     const BundleSpecification &bundle_spec) {
-  // If the resource map contains the local raylet, update load before calling policy.
+  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
+  // once retry is implemented. If the resource map contains the local raylet, update load
+  // before calling policy.
   if (resource_map.count(self_node_id_) > 0) {
     resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
   }
   // Invoke the scheduling policy.
   auto reserve_resource_success =
       scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-  ResourceIdSet acquired_resources;
+
+  auto bundle_state = std::make_shared<BundleState>();
   if (reserve_resource_success) {
-    acquired_resources =
+    // Register states.
+    const auto &bundle_id = bundle_spec.BundleId();
+    auto it = bundle_state_map_.find(bundle_id);
+    // Same bundle cannot be rescheduled.
+    RAY_CHECK(it == bundle_state_map_.end());
+
+    // Prepare resources. This shouldn't create formatted placement group resources
+    // because that'll be done at the commit phase.
+    bundle_state->acquired_resources =
         local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-    for (auto resource : acquired_resources.AvailableResources()) {
-      local_available_resources_.AddBundleResourceIds(bundle_spec.PlacementGroupId(),
-                                                      bundle_spec.Index(), resource.first,
-                                                      resource.second);
-    }
-    resource_map[self_node_id_].TransferToBundleResources(
+    resource_map[self_node_id_].PrepareBundleResources(
         bundle_spec.PlacementGroupId(), bundle_spec.Index(),
         bundle_spec.GetRequiredResources());
+
+    // Register bundle state.
+    bundle_state->state = CommitState::PREPARED;
+    bundle_state_map_.emplace(bundle_id, bundle_state);
   }
-  return acquired_resources;
+  return bundle_state->acquired_resources.AvailableResources().size() > 0;
+}
+
+void NodeManager::CommitBundle(
+    std::unordered_map<ClientID, SchedulingResources> &resource_map,
+    const BundleSpecification &bundle_spec) {
+  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
+  // once retry is implemented.
+  const auto &bundle_id = bundle_spec.BundleId();
+  auto it = bundle_state_map_.find(bundle_id);
+  // When bundle is committed, it should've been prepared already.
+  // We don't need this check if commit becomes idempotent.
+  RAY_CHECK(it != bundle_state_map_.end());
+  const auto &bundle_state = it->second;
+  bundle_state->state = CommitState::COMMITTED;
+  const auto &acquired_resources = bundle_state->acquired_resources;
+  for (auto resource : acquired_resources.AvailableResources()) {
+    local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),
+                                                       bundle_spec.Index(),
+                                                       resource.first, resource.second);
+  }
+
+  resource_map[self_node_id_].CommitBundleResources(bundle_spec.PlacementGroupId(),
+                                                    bundle_spec.Index(),
+                                                    bundle_spec.GetRequiredResources());
+  RAY_CHECK(bundle_state->acquired_resources.AvailableResources().size() > 0)
+      << "Prepare should've been failed if there were no acquireable resources.";
 }
 
 void NodeManager::ScheduleTasks(
@@ -2178,11 +2249,11 @@ void NodeManager::MarkObjectsAsFailed(
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
-      stream << "An plasma error (" << status.ToString() << ") occurred while saving"
+      stream << "A plasma error (" << status.ToString() << ") occurred while saving"
              << " error code to object " << object_id << ". Anyone who's getting this"
              << " object may hang forever.";
       std::string error_message = stream.str();
-      RAY_LOG(WARNING) << error_message;
+      RAY_LOG(ERROR) << error_message;
       auto error_data_ptr =
           gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));

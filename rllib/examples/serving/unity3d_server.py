@@ -92,7 +92,6 @@ if __name__ == "__main__":
         "input_evaluation": [],
 
         # Other settings.
-        "sample_batch_size": 64,
         "train_batch_size": 256,
         "rollout_fragment_length": 20,
         # Multi-agent setup for the particular env.

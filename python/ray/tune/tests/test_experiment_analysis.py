@@ -7,7 +7,7 @@ import pandas as pd
 from numpy import nan
 
 import ray
-from ray.tune import run, sample_from
+from ray import tune
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
@@ -26,7 +26,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         ray.shutdown()
 
     def run_test_exp(self):
-        self.ea = run(
+        self.ea = tune.run(
             MyTrainableClass,
             name=self.test_name,
             local_dir=self.test_dir,
@@ -34,13 +34,14 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
-                "width": sample_from(
+                "width": tune.sample_from(
                     lambda spec: 10 + int(90 * random.random())),
-                "height": sample_from(lambda spec: int(100 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
             })
 
     def nan_test_exp(self):
-        nan_ea = run(
+        nan_ea = tune.run(
             lambda x: nan,
             name="testing_nan",
             local_dir=self.test_dir,
@@ -48,14 +49,15 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
-                "width": sample_from(
+                "width": tune.sample_from(
                     lambda spec: 10 + int(90 * random.random())),
-                "height": sample_from(lambda spec: int(100 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
             })
         return nan_ea
 
     def testDataframe(self):
-        df = self.ea.dataframe()
+        df = self.ea.dataframe(self.metric, mode="max")
 
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
@@ -143,20 +145,48 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             self.assertEqual(df.training_iteration.max(), 1)
 
     def testIgnoreOtherExperiment(self):
-        analysis = run(
+        analysis = tune.run(
             MyTrainableClass,
             name="test_example",
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=1,
             config={
-                "width": sample_from(
+                "width": tune.sample_from(
                     lambda spec: 10 + int(90 * random.random())),
-                "height": sample_from(lambda spec: int(100 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
             })
-        df = analysis.dataframe()
+        df = analysis.dataframe(self.metric, mode="max")
         self.assertEquals(df.shape[0], 1)
+
+
+class ExperimentAnalysisPropertySuite(unittest.TestCase):
+    def testBestProperties(self):
+        def train(config):
+            for i in range(10):
+                with tune.checkpoint_dir(i):
+                    pass
+                tune.report(res=config["base"] + i)
+
+        ea = tune.run(
+            train,
+            config={"base": tune.grid_search([100, 200, 300])},
+            metric="res",
+            mode="max")
+
+        trials = ea.trials
+
+        self.assertEquals(ea.best_trial, trials[2])
+        self.assertEquals(ea.best_config, trials[2].config)
+        self.assertEquals(ea.best_logdir, trials[2].logdir)
+        self.assertEquals(ea.best_checkpoint, trials[2].checkpoint.value)
+        self.assertTrue(
+            all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
+        self.assertEquals(ea.results_df.loc[trials[2].trial_id, "res"], 309)
+        self.assertEquals(ea.best_result["res"], 309)
+        self.assertEquals(ea.best_result_df.loc[trials[2].trial_id, "res"],
+                          309)
 
 
 if __name__ == "__main__":
