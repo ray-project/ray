@@ -117,13 +117,13 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 .. code-block:: python
 
   gpu_bundle = {"GPU": 2}
-  tpu_bundle = {"TPU": 2}
+  extra_resource_bundle = {"extra_resource": 2}
 
   # Reserve 2 of GPU bundles with strict pack strategy.
   # It means Ray will reserve 2 GPU resources on the same node (strict pack) within a Ray cluster.
   # Using this placement group for scheduling actors or tasks will guarantee that they will
   # collocate in the same node.
-  pg = placement_group([gpu_bundle, tpu_bundle], strategy="STRICT_PACK")
+  pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
 
   # Wait until placement group is created.
   ray.get(pg.ready())
