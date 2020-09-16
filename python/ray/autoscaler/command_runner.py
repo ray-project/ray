@@ -106,10 +106,19 @@ class CommandRunnerInterface:
     Command runner instances are returned by provider.get_command_runner()."""
 
     def __init__(self):
-        """Enforces the CommandRunnerInterface functions on the subclasses."""
-        available_functions = dir(self)
-        subclass_public_functions = set(
-            [func for func in available_functions if not func.startswith("_")])
+        """Enforces the CommandRunnerInterface functions on the subclasses.
+
+        This is important to make sure the subclasses do not violate the
+        function abstractions. If you need to add a new function to one of
+        the CommandRunnerInterface subclasses, you have to add it to
+        CommandRunnerInterface and all of its subclasses.
+        """
+
+        subclass_available_functions = dir(self)
+        subclass_public_functions = set([
+            func for func in subclass_available_functions
+            if not func.startswith("_")
+        ])
         cmd_runner_interface_public_functions = dir(CommandRunnerInterface)
         allowed_public_interface_functions = set([
             func for func in cmd_runner_interface_public_functions
