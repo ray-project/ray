@@ -228,19 +228,18 @@ class TrialRunnerTest3(unittest.TestCase):
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
 
-            def next_trials(self):
+            def next_trial(self):
                 spec = self._experiment.spec
-                trials = []
+                trial = None
                 if self._index < spec["num_samples"]:
                     trial = Trial(
                         spec.get("run"), stopping_criterion=spec.get("stop"))
-                    trials.append(trial)
                 self._index += 1
 
                 if self._index > 4:
                     self.set_finished()
 
-                return trials
+                return trial
 
             def suggest(self, trial_id):
                 return {}

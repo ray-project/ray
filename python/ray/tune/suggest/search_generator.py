@@ -102,20 +102,6 @@ class SearchGenerator(SearchAlgorithm):
                                                  self._experiment.name)
         return None
 
-    def next_trials(self):
-        """Provides a batch of Trial objects to be queued into the TrialRunner.
-
-        Returns:
-            List[Trial]: A list of trials for the Runner to consume.
-        """
-        trials = []
-        while not self.is_finished():
-            trial = self.next_trial()
-            if trial is None:
-                break
-            trials.append(trial)
-        return trials
-
     def create_trial_if_possible(self, experiment_spec, output_path):
         logger.debug("creating trial")
         trial_id = Trial.generate_id()

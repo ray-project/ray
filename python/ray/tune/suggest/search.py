@@ -45,14 +45,6 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def next_trials(self):
-        """Provides Trial objects to be queued into the TrialRunner.
-
-        Returns:
-            trials (list): Returns a list of trials.
-        """
-        raise NotImplementedError
-
     def on_trial_result(self, trial_id, result):
         """Called on each intermediate result returned by a trial.
 

@@ -33,7 +33,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
         searcher = BasicVariantGenerator()
         searcher.add_configurations({"experiment": { ... }})
-        list_of_trials = searcher.next_trials()
+        trial = searcher.next_trial()
         searcher.is_finished == True
     """
 
@@ -43,6 +43,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         self._parser = make_parser()
         self._trial_generator = []
+        self._trial_iter = None
         self._counter = 0
         self._finished = False
 
@@ -74,21 +75,15 @@ class BasicVariantGenerator(SearchAlgorithm):
         Returns:
             Trial: Returns a single trial.
         """
+        if not self._trial_iter:
+            self._trial_iter = iter(self._trial_generator)
         try:
-            return next(self._trial_generator)
+            return next(self._trial_iter)
         except StopIteration:
+            self._trial_generator = []
+            self._trial_iter = None
             self.set_finished()
             return None
-
-    def next_trials(self):
-        """Provides Trial objects to be queued into the TrialRunner.
-
-        Returns:
-            List[Trial]: A list of trials for the Runner to consume.
-        """
-        trials = list(self._trial_generator)
-        self.set_finished()
-        return trials
 
     def _generate_trials(self, num_samples, unresolved_spec, output_path=""):
         """Generates Trial objects with the variant generation process.
