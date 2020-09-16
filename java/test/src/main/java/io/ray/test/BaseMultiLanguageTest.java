@@ -92,7 +92,7 @@ public abstract class BaseMultiLanguageTest {
 
     // Connect to the cluster.
     Assert.assertFalse(Ray.isInitialized());
-    System.setProperty("ray.redis.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
@@ -110,7 +110,7 @@ public abstract class BaseMultiLanguageTest {
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();
-    System.clearProperty("ray.redis.address");
+    System.clearProperty("ray.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");

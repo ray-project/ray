@@ -119,7 +119,7 @@ public class MultiDriverTest extends BaseTest {
         "java",
         "-cp",
         System.getProperty("java.class.path"),
-        "-Dray.redis.address=" + rayConfig.getRedisAddress(),
+        "-Dray.address=" + rayConfig.getRedisAddress(),
         "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
         "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
         "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),

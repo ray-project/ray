@@ -51,10 +51,8 @@ JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeS
   ObjectID actor_handle_id;
   ray::Status status = ray::CoreWorkerProcess::GetCoreWorker().SerializeActorHandle(
       actor_id, &output, &actor_handle_id);
-  jbyteArray bytes = env->NewByteArray(output.size());
-  env->SetByteArrayRegion(bytes, 0, output.size(),
-                          reinterpret_cast<const jbyte *>(output.c_str()));
-  return bytes;
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return NativeStringToJavaByteArray(env, output);
 }
 
 JNIEXPORT jbyteArray JNICALL

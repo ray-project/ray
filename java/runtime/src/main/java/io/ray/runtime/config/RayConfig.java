@@ -190,7 +190,7 @@ public class RayConfig {
     }
 
     // Redis configurations.
-    String redisAddress = config.getString("ray.redis.address");
+    String redisAddress = config.getString("ray.address");
     if (StringUtils.isNotBlank(redisAddress)) {
       setRedisAddress(redisAddress);
     } else {
@@ -313,7 +313,7 @@ public class RayConfig {
     dynamic.put("ray.raylet.socket-name", rayletSocketName);
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
-    dynamic.put("ray.redis.address", redisAddress);
+    dynamic.put("ray.address", redisAddress);
     dynamic.put("ray.job.code-search-path", codeSearchPath);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());

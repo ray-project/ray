@@ -152,17 +152,17 @@ There are two steps needed to use Ray in a distributed setting:
 
         .. group-tab:: Java
 
-          You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
+          You need to add the ``ray.address`` parameter to your command line (like ``-Dray.address=...``).
 
           To connect your program to the Ray cluster, run it like this:
 
               .. code-block:: bash
 
                   java -classpath /path/to/jars/ \
-                    -Dray.redis.address=<address> \
+                    -Dray.address=<address> \
                     <classname> <args>
 
-          .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
+          .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
       Your driver code **only** needs to execute on one machine in the cluster (usually the head node).
 
@@ -215,7 +215,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
         -Dray.local-mode=true \
         <classname> <args>
 
-Note that some behavior such as setting global process variables may not work as expected.
+Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
 
 .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 

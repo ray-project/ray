@@ -17,7 +17,7 @@ from ray.tune.syncer import CommandBasedClient
 
 class TestSyncFunctionality(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
