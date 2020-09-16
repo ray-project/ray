@@ -98,10 +98,11 @@ def test_multiple_routers():
     cluster.shutdown()
 
 
-def test_detached_without_cluster():
+def test_detached_no_cluster():
     assert not ray.is_initialized()
     with pytest.raises(ConnectionError):
         serve.start(detached=True)
+
 
 def test_middleware():
     from starlette.middleware import Middleware
