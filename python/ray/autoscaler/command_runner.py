@@ -181,6 +181,7 @@ class CommandRunnerInterface:
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
+
         self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = str(node_id)
@@ -352,6 +353,7 @@ class SSHOptions:
 class SSHCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
+
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
         ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
