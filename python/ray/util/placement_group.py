@@ -84,7 +84,7 @@ class PlacementGroup:
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
                     name: str = "unnamed_group") -> PlacementGroup:
-    """Asynchronously create a placement group.
+    """Asynchronously creates a PlacementGroup.
 
     Args:
         bundles(List[Dict]): A list of bundles which
@@ -93,9 +93,9 @@ def placement_group(bundles: List[Dict[str, float]],
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
-         - "STRICT_PACK": Packs Bundles into one node.
-         - "STRICT_SPREAD": Packs Bundles across distinct nodes. The group is
+         - "STRICT_PACK": Packs Bundles into one node. The group is
            not allowed to span multiple nodes.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
         name(str): The name of the placement group.
 

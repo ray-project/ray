@@ -5,7 +5,7 @@ Placement groups allow users to atomically reserve groups of resources across mu
 
 Here are some use cases:
 
-- **Gang Scheduling**: Your application requires all tasks to be scheduled and start at the same time.
+- **Gang Scheduling**: Your application requires all tasks/actors to be scheduled and start at the same time.
 - **Maximizing data locality**: You'd like to place or schedule your tasks and actors close to your data to avoid object transfer overheads.
 - **Load balancing**: To improve application availability and avoid resource overload, you'd like to place your actors or tasks into different physical machines as much as possible.
 
@@ -14,14 +14,16 @@ Key Concepts
 ------------
 
 A **bundle** is a collection of "resources", i.e. {"GPU": 4}.
-* A bundle must be able to fit on a single node on the Ray cluster.
-* Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
+
+- A bundle must be able to fit on a single node on the Ray cluster.
+- Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
 
 
 A **placement group** is a collection of bundles.
-* Each bundle is given an "index" within the placement group
-* Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
-* After the placement group is created, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
+
+- Each bundle is given an "index" within the placement group
+- Bundles are then placed according to the "placement group strategy" across nodes on the cluster.
+- After the placement group is created, tasks or actors can be then scheduled according to the placement group and even on individual bundles.
 
 
 A **placement group strategy** is an algorithm for selecting nodes for bundle placement. Read more about :ref:`placement strategies <pgroup-strategy>`.
