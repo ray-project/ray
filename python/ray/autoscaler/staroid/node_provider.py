@@ -192,7 +192,7 @@ class StaroidNodeProvider(NodeProvider):
             raise Exception("Failed to create a cluster '{}' in SKE '{}'".format(instance_name, self.__ske))
 
         # kube client
-        kube_client = self._connect_kubeapi(ns_api, instance_name)
+        kube_client = self._connect_kubeapi(instance_name)
         core_api = client.CoreV1Api(kube_client)
 
         # create head nodoe
