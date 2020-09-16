@@ -38,18 +38,20 @@ def test_command_runner_interface_abstraction_violation():
     """
 
     cmd_runner_interface_public_functions = dir(CommandRunnerInterface)
-    allowed_public_interface_functions = set([
-        func for func in cmd_runner_interface_public_functions
+    allowed_public_interface_functions = {
+        func
+        for func in cmd_runner_interface_public_functions
         if not func.startswith("_")
-    ])
+    }
     for subcls in [
             SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner
     ]:
         subclass_available_functions = dir(subcls)
-        subclass_public_functions = set([
-            func for func in subclass_available_functions
+        subclass_public_functions = {
+            func
+            for func in subclass_available_functions
             if not func.startswith("_")
-        ])
+        }
         assert allowed_public_interface_functions == subclass_public_functions
 
 
