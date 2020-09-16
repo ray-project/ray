@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Union
 
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial
 
 
 class SearchAlgorithm:
