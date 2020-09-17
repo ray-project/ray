@@ -10,6 +10,7 @@ import tempfile
 import torch
 import torch.nn as nn
 from filelock import FileLock
+from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
@@ -665,8 +666,8 @@ class TrainingOperator:
             state_dict (dict): State dict as returned by the operator. """
         pass
 
-    @staticmethod
-    def from_ptl(lightning_module_cls, train_dataloader=None,
+    @classmethod
+    def from_ptl(cls, lightning_module_cls, train_dataloader=None,
                  val_dataloader=None):
         """Creates a TrainingOperator from a Pytorch Lightning Module."""
         if not isinstance(lightning_module_cls,
@@ -675,41 +676,13 @@ class TrainingOperator:
                              "pytorch_lightning.LightningModule. Got object "
                              "of type {} instead.".format(type(
                 lightning_module_cls)))
-        class PTLOperator(TrainingOperator):
-            def setup(self, config):
-                ptl_module = lightning_module_cls()
-                self.ptl_module = ptl_module
-                model = ptl_module
-                optimizer = ptl_module.configure_optimizers()
 
-                called = False
-                if train_dataloader is not None:
-                    train_loader = train_dataloader
-                elif hasattr(ptl_module, "train_dataloader"):
-                    if hasattr(ptl_module, "prepare_data"):
-                        ptl_module.prepare_data()
-                        called = True
-                    train_loader = ptl_module.train_dataloader()
+        class CustomPTLOperator(PTLOperator):
+            _lightning_module_cls = lightning_module_cls
+            _train_dataloader = train_dataloader
+            _val_dataloader = val_dataloader
 
-                if val_dataloader is not None:
-                    val_loader = val_dataloader
-                elif hasattr(ptl_module, "val_dataloader"):
-                    if hasattr(ptl_module, "prepare_data") and not called:
-                        ptl_module.prepare_data()
-                    val_loader = ptl_module.val_dataloader()
-
-
-                self.model, self.optimizer = self.register(models=model,
-                                             optimizers=optimizer,
-                              train_loader=train_loader,
-                              validation_loader=val_loader)
-
-            def train_batch(self, batch, batch_info):
-                batch_idx = batch_info["batch_idx"]
-                result = self.ptl_module.training_step(batch, batch_idx)
-                return 
-
-        return PTLOperator
+        return CustomPTLOperator
 
     @classmethod
     def from_creators(cls,
@@ -827,51 +800,47 @@ class TrainingOperator:
         """
         return self._scheduler_step_freq
 
-class CreatorOperator(TrainingOperator):
-    """A subclass of TrainingOperator specifically for defining training
-    state using creator functions.
-    """
 
-    @classmethod
-    def set_creators(cls,
-                     model_creator,
-                     optimizer_creator,
-                     data_creator=None,
-                     loss_creator=None,
-                     scheduler_creator=None,
-                     serialize_data_creation=True):
-        cls.model_creator = model_creator
-        cls.optimizer_creator = optimizer_creator
-        cls.data_creator = data_creator
-        cls.loss_creator = loss_creator
-        cls.scheduler_creator = scheduler_creator
-        cls.serialize_data_creation = serialize_data_creation
+class PTLOperator(TrainingOperator, TrainerModelHooksMixin):
+    def setup(self, config):
+        ptl_module = self.__class___._lightning_module_cls()
+        self.ptl_module = ptl_module
+        model = ptl_module
+        optimizer = ptl_module.configure_optimizers()
 
-    def _validate_loaders(self, loaders):
-        assert loaders, "Loaders need to be returned in data_creator."
-        if isinstance(loaders, (tuple, list)):
-            if len(loaders) == 1:
-                return loaders, None
-            elif len(loaders) == 2:
-                return loaders
-            else:
-                raise ValueError(
-                    f"Number of loaders must be <= 2. Got {loaders}")
-        # No great way of checking type otherwise
-        return loaders, None
+        if self.is_function_implemented("on_fit_start", model):
+            model.on_fit_start()
 
-    def _initialize_dataloaders(self, config):
-        logger.debug("Instantiating dataloaders.")
-        loaders = None
-        if CreatorOperator.serialize_data_creation:
-            logger.debug("Serializing the dataloading process.")
-            with RayFileLock():
-                loaders = CreatorOperator.data_creator(config)
-        else:
-            loaders = CreatorOperator.data_creator(config)
-        train_loader, val_loader = self._validate_loaders(loaders)
+        if self.is_function_implemented("prepare_data", model) and \
+            self.world_rank == 0:
+            model.prepare_data()
 
-        return train_loader, val_loader
+
+        train_loader = self.__class__._train_data_loader
+        val_loader = self.__class__._val_data_loader
+        if train_loader is None:
+            if hasattr(ptl_module, "train_dataloader"):
+                if hasattr(ptl_module, "prepare_data"):
+                    ptl_module.prepare_data()
+                    called = True
+                train_loader = ptl_module.train_dataloader()
+
+        if val_dataloader is not None:
+            val_loader = val_dataloader
+        elif hasattr(ptl_module, "val_dataloader"):
+            if hasattr(ptl_module, "prepare_data") and not called:
+                ptl_module.prepare_data()
+            val_loader = ptl_module.val_dataloader()
+
+        self.model, self.optimizer = self.register(models=model,
+                                                   optimizers=optimizer,
+                                                   train_loader=train_loader,
+                                                   validation_loader=val_loader)
+
+    def train_batch(self, batch, batch_info):
+        batch_idx = batch_info["batch_idx"]
+        result = self.ptl_module.training_step(batch, batch_idx)
+        return
 
 class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
