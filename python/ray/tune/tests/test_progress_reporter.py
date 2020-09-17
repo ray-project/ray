@@ -73,14 +73,14 @@ tune.run_experiments({
     },
 }, verbose=1)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 1 (1 RUNNING)
+EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
 +---------------+----------+-------+-----+
 | Trial name    | status   | loc   |   a |
 |---------------+----------+-------+-----|
 | f_xxxxx_00000 | RUNNING  |       |   0 |
 +---------------+----------+-------+-----+"""
 
-EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|
@@ -116,7 +116,7 @@ EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
 | f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
 +---------------+------------+-------+-----+-----+-----+"""
 
-EXPECTED_END_TO_END_AC = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|

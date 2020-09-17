@@ -6,8 +6,8 @@ from typing import Dict, List, Union
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
-                                                flatten_resolved_vars)
+from ray.tune.suggest.variant_generator import (
+    count_variants, generate_variants, format_vars, flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -56,6 +56,12 @@ class BasicVariantGenerator(SearchAlgorithm):
         else:
             self._uuid_prefix = str(uuid.uuid1().hex)[:5] + "_"
 
+        self._total_samples = 0
+
+    @property
+    def total_samples(self):
+        return self._total_samples
+
     def add_configurations(
             self,
             experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
@@ -66,6 +72,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
+            self._total_samples += count_variants(experiment.spec)
             self._trial_generator = itertools.chain(
                 self._trial_generator,
                 self._generate_trials(

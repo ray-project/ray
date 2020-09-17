@@ -67,12 +67,16 @@ class SearchGenerator(SearchAlgorithm):
         self._parser = make_parser()
         self._experiment = None
         self._counter = 0  # Keeps track of number of trials created.
-        self._total_samples = None  # int: total samples to evaluate.
+        self._total_samples = 0  # int: total samples to evaluate.
         self._finished = False
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         return self.searcher.set_search_properties(metric, mode, config)
+
+    @property
+    def total_samples(self):
+        return self._total_samples
 
     def add_configurations(
             self,
