@@ -11,22 +11,22 @@ class GlobalSignals:
 
 
 class DataSource:
-    # {ip address(str): node stats(dict of GetNodeStatsReply
+    # {node id hex(str): node stats(dict of GetNodeStatsReply
     # in node_manager.proto)}
     node_stats = Dict()
-    # {ip address(str): node physical stats(dict from reporter_agent.py)}
+    # {node id hex(str): node physical stats(dict from reporter_agent.py)}
     node_physical_stats = Dict()
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
-    # {ip address(str): dashboard agent [http port(int), grpc port(int)]}
+    # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
-    # {ip address(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
+    # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {hostname(str): ip address(str)}
-    hostname_to_ip = Dict()
-    # {ip address(str): hostname(str)}
-    ip_to_hostname = Dict()
+    # {node id hex(str): ip address(str)}
+    node_id_to_ip = Dict()
+    # {node id hex(str): hostname(str)}
+    node_id_to_hostname = Dict()
 
 
 class DataOrganizer:
@@ -37,20 +37,23 @@ class DataOrganizer:
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * hostname_to_ip
-        #   * ip_to_hostname
+        #   * node_id_to_ip
+        #   * node_id_to_hostname
         logger.info("Purge data.")
-        valid_keys = DataSource.ip_to_hostname.keys()
-        for key in DataSource.node_stats.keys() - valid_keys:
+        alive_nodes = {
+            node_id
+            for node_id, node_info in DataSource.nodes.items()
+            if node_info["state"] == "ALIVE"
+        }
+        for key in DataSource.node_stats.keys() - alive_nodes:
             DataSource.node_stats.pop(key)
 
-        for key in DataSource.node_physical_stats.keys() - valid_keys:
+        for key in DataSource.node_physical_stats.keys() - alive_nodes:
             DataSource.node_physical_stats.pop(key)
 
     @classmethod
-    async def get_node_actors(cls, hostname):
-        ip = DataSource.hostname_to_ip[hostname]
-        node_stats = DataSource.node_stats.get(ip, {})
+    async def get_node_actors(cls, node_id):
+        node_stats = DataSource.node_stats.get(node_id, {})
         node_worker_id_set = set()
         for worker_stats in node_stats.get("workersStats", []):
             node_worker_id_set.add(worker_stats["workerId"])
@@ -61,10 +64,10 @@ class DataOrganizer:
         return node_actors
 
     @classmethod
-    async def get_node_info(cls, hostname):
-        ip = DataSource.hostname_to_ip[hostname]
-        node_physical_stats = DataSource.node_physical_stats.get(ip, {})
-        node_stats = DataSource.node_stats.get(ip, {})
+    async def get_node_info(cls, node_id):
+        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
+        node_stats = DataSource.node_stats.get(node_id, {})
+        node = DataSource.nodes.get(node_id, {})
 
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         workers_stats = node_stats.pop("workersStats", {})
@@ -86,11 +89,13 @@ class DataOrganizer:
             worker["language"] = pid_to_language.get(worker["pid"], "")
             worker["jobId"] = pid_to_job_id.get(worker["pid"], "ffff")
 
-        # Merge node stats to node physical stats
         node_info = node_physical_stats
+        # Merge node stats to node physical stats
         node_info["raylet"] = node_stats
-        node_info["actors"] = await cls.get_node_actors(hostname)
-        node_info["state"] = DataSource.nodes.get(ip, {}).get("state", "DEAD")
+        # Merge GcsNodeInfo to node physical stats
+        node_info["raylet"].update(node)
+        # Merge actors to node physical stats
+        node_info["actors"] = await cls.get_node_actors(node_id)
 
         await GlobalSignals.node_info_fetched.send(node_info)
 
@@ -99,8 +104,8 @@ class DataOrganizer:
     @classmethod
     async def get_all_node_summary(cls):
         all_nodes_summary = []
-        for hostname in DataSource.hostname_to_ip.keys():
-            node_info = await cls.get_node_info(hostname)
+        for node_id in DataSource.nodes.keys():
+            node_info = await cls.get_node_info(node_id)
             node_info.pop("workers", None)
             node_info.pop("actors", None)
             node_info["raylet"].pop("workersStats", None)

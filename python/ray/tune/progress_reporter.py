@@ -1,6 +1,8 @@
 from __future__ import print_function
 
 import collections
+import sys
+
 import numpy as np
 import time
 
@@ -94,10 +96,12 @@ class TuneReporterBase(ProgressReporter):
     def __init__(self,
                  metric_columns=None,
                  parameter_columns=None,
+                 total_samples=None,
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5,
                  infer_limit=3):
+        self._total_samples = total_samples
         self._metrics_override = metric_columns is not None
         self._inferred_metrics = {}
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS.copy()
@@ -108,6 +112,9 @@ class TuneReporterBase(ProgressReporter):
 
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
+
+    def set_total_samples(self, total_samples):
+        self._total_samples = total_samples
 
     def should_report(self, trials, done=False):
         if time.time() - self._last_report_time > self._max_report_freqency:
@@ -191,6 +198,7 @@ class TuneReporterBase(ProgressReporter):
                 trials,
                 metric_columns=self._metric_columns,
                 parameter_columns=self._parameter_columns,
+                total_samples=self._total_samples,
                 fmt=fmt,
                 max_rows=max_progress))
         messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
@@ -243,12 +251,13 @@ class JupyterNotebookReporter(TuneReporterBase):
                  overwrite,
                  metric_columns=None,
                  parameter_columns=None,
+                 total_samples=None,
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
         super(JupyterNotebookReporter, self).__init__(
-            metric_columns, parameter_columns, max_progress_rows,
-            max_error_rows, max_report_frequency)
+            metric_columns, parameter_columns, total_samples,
+            max_progress_rows, max_error_rows, max_report_frequency)
         self._overwrite = overwrite
 
     def report(self, trials, done, *sys_info):
@@ -287,13 +296,14 @@ class CLIReporter(TuneReporterBase):
     def __init__(self,
                  metric_columns=None,
                  parameter_columns=None,
+                 total_samples=None,
                  max_progress_rows=20,
                  max_error_rows=20,
                  max_report_frequency=5):
 
         super(CLIReporter, self).__init__(metric_columns, parameter_columns,
-                                          max_progress_rows, max_error_rows,
-                                          max_report_frequency)
+                                          total_samples, max_progress_rows,
+                                          max_error_rows, max_report_frequency)
 
     def report(self, trials, done, *sys_info):
         print(self._progress_str(trials, done, *sys_info))
@@ -324,6 +334,7 @@ def memory_debug_str():
 def trial_progress_str(trials,
                        metric_columns,
                        parameter_columns=None,
+                       total_samples=0,
                        fmt="psql",
                        max_rows=None):
     """Returns a human readable message for printing to the console.
@@ -342,6 +353,7 @@ def trial_progress_str(trials,
             values are the names to use in the message. If this is a list,
             the parameter name is used in the message directly. If this is
             empty, all parameters are used in the message.
+        total_samples (int): Total number of trials that will be generated.
         fmt (str): Output format (see tablefmt in tabulate API).
         max_rows (int): Maximum number of rows in the trial table. Defaults to
             unlimited.
@@ -381,8 +393,13 @@ def trial_progress_str(trials,
         overflow_str = ", ".join(overflow_strs)
     else:
         overflow = False
-    messages.append("Number of trials: {} ({})".format(
-        num_trials, ", ".join(num_trials_strs)))
+
+    if total_samples >= sys.maxsize:
+        total_samples = "infinite"
+
+    messages.append("Number of trials: {}{} ({})".format(
+        num_trials, f"/{total_samples}"
+        if total_samples else "", ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, Mapping):

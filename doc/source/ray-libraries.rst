@@ -32,22 +32,7 @@ Flambe |flambe|
 
 Flambé is a machine learning experimentation framework built to accelerate the entire research life cycle. Flambé’s main objective is to provide a unified interface for prototyping models, running experiments containing complex pipelines, monitoring those experiments in real-time, reporting results, and deploying a final model for inference.
 
-Github: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
-
-MARS |mars|
------------
-
-Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
-
-
-[`Link to integration <mars-on-ray.html>`__]
-
-Modin |modin|
--------------
-
-Scale your pandas workflows by changing one line of code. Modin transparently distributes the data and computation so that all you need to do is continue using the pandas API as you were before installing Modin. 
-
-GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
+GitHub: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
 
 Horovod |horovod|
 -----------------
@@ -70,19 +55,40 @@ Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big d
 
 [`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
 
+MARS |mars|
+-----------
+
+Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
+
+[`Link to integration <mars-on-ray.html>`__]
+
+Modin |modin|
+-------------
+
+Scale your pandas workflows by changing one line of code. Modin transparently distributes the data and computation so that all you need to do is continue using the pandas API as you were before installing Modin.
+
+GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
+
 PyCaret |pycaret|
 -----------------
 
 PyCaret is an open source low-code machine learning library in Python that aims to reduce the hypothesis to insights cycle time in a ML experiment. It enables data scientists to perform end-to-end experiments quickly and efficiently.
 
-Github: `https://github.com/pycaret/pycaret/ <https://github.com/pycaret/pycaret/>`_
+GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
+
+RayDP |raydp|
+-------------
+
+RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
+
+GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
 
 Seldon Alibi |seldon|
 ---------------------
 
 Alibi is an open source Python library aimed at machine learning model inspection and interpretation. The focus of the library is to provide high-quality implementations of black-box, white-box, local and global explanation methods for classification and regression models.
 
-Github: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
+GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
 Spacy |spacy|
 -------------
@@ -123,6 +129,10 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |pycaret| image:: images/pycaret.png
+    :class: inline-figure
+    :height: 30
+
+.. |raydp| image:: images/intel.png
     :class: inline-figure
     :height: 30
 

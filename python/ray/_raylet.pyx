@@ -783,6 +783,10 @@ cdef class CoreWorker:
         return JobID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentJobId().Binary())
 
+    def get_current_node_id(self):
+        return ClientID(
+            CCoreWorkerProcess.GetCoreWorker().GetCurrentNodeId().Binary())
+
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
