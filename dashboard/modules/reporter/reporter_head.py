@@ -27,10 +27,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = change.old
+            node_id, port = change.old
+            ip = DataSource.node_id_to_ip[node_id]
             self._stubs.pop(ip)
         if change.new:
-            ip, ports = change.new
+            node_id, ports = change.new
+            ip = DataSource.node_id_to_ip[node_id]
             channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
@@ -60,9 +62,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         async for sender, msg in receiver.iter():
             try:
-                _, data = msg
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
+                key, data = msg
                 data = json.loads(ray.utils.decode(data))
-                DataSource.node_physical_stats[data["ip"]] = data
+                key = key.decode("utf-8")
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent.")
