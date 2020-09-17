@@ -126,7 +126,7 @@ def push_error_to_driver_through_redis(redis_client,
     pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
-                         pubsub_msg.SerializeAsString())
+                         pubsub_msg.SerializeToString())
 
 
 def is_cython(obj):
