@@ -2,10 +2,11 @@ import os
 import copy
 import logging
 import glob
+from typing import Dict, List, Optional, Union
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.suggestion import Searcher
@@ -21,7 +22,7 @@ def _warn_on_repeater(searcher, total_samples):
     _warn_num_samples(searcher, total_samples)
 
 
-def _atomic_save(state, checkpoint_dir, file_name):
+def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str):
     """Atomically saves the object to the checkpoint directory
 
     This is automatically used by tune.run during a Tune job.
@@ -34,7 +35,7 @@ def _atomic_save(state, checkpoint_dir, file_name):
     os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
 
 
-def _find_newest_ckpt(dirpath, pattern):
+def _find_newest_ckpt(dirpath: str, pattern: str):
     """Returns path to most recently modified checkpoint."""
     full_paths = glob.glob(os.path.join(dirpath, pattern))
     if not full_paths:
@@ -58,7 +59,7 @@ class SearchGenerator(SearchAlgorithm):
     """
     CKPT_FILE_TMPL = "search_gen_state-{}.json"
 
-    def __init__(self, searcher):
+    def __init__(self, searcher: Searcher):
         assert issubclass(
             type(searcher),
             Searcher), ("Searcher should be subclassing Searcher.")
@@ -69,7 +70,13 @@ class SearchGenerator(SearchAlgorithm):
         self._total_samples = None  # int: total samples to evaluate.
         self._finished = False
 
-    def add_configurations(self, experiments):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
+        return self.searcher.set_search_properties(metric, mode, config)
+
+    def add_configurations(
+            self,
+            experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
         """Registers experiment specifications.
 
         Arguments:
@@ -88,7 +95,7 @@ class SearchGenerator(SearchAlgorithm):
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
-    def next_trials(self):
+    def next_trials(self) -> List[Trial]:
         """Provides a batch of Trial objects to be queued into the TrialRunner.
 
         Returns:
@@ -103,7 +110,8 @@ class SearchGenerator(SearchAlgorithm):
             trials.append(trial)
         return trials
 
-    def create_trial_if_possible(self, experiment_spec, output_path):
+    def create_trial_if_possible(self, experiment_spec: Dict,
+                                 output_path: str) -> Optional[Trial]:
         logger.debug("creating trial")
         trial_id = Trial.generate_id()
         suggested_config = self.searcher.suggest(trial_id)
@@ -132,18 +140,21 @@ class SearchGenerator(SearchAlgorithm):
             trial_id=trial_id)
         return trial
 
-    def on_trial_result(self, trial_id, result):
+    def on_trial_result(self, trial_id: str, result: Dict):
         """Notifies the underlying searcher."""
         self.searcher.on_trial_result(trial_id, result)
 
-    def on_trial_complete(self, trial_id, result=None, error=False):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
         self.searcher.on_trial_complete(
             trial_id=trial_id, result=result, error=error)
 
-    def is_finished(self):
+    def is_finished(self) -> bool:
         return self._counter >= self._total_samples or self._finished
 
-    def get_state(self):
+    def get_state(self) -> Dict:
         return {
             "counter": self._counter,
             "total_samples": self._total_samples,
@@ -151,17 +162,17 @@ class SearchGenerator(SearchAlgorithm):
             "experiment": self._experiment
         }
 
-    def set_state(self, state):
+    def set_state(self, state: Dict):
         self._counter = state["counter"]
         self._total_samples = state["total_samples"]
         self._finished = state["finished"]
         self._experiment = state["experiment"]
 
-    def has_checkpoint(self, dirpath):
+    def has_checkpoint(self, dirpath: str):
         return bool(
             _find_newest_ckpt(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
-    def save_to_dir(self, dirpath, session_str):
+    def save_to_dir(self, dirpath: str, session_str: str):
         """Saves self + searcher to dir.
 
         Separates the "searcher" from its wrappers (concurrency, repeating).
@@ -193,7 +204,7 @@ class SearchGenerator(SearchAlgorithm):
         _atomic_save(search_alg_state, dirpath,
                      self.CKPT_FILE_TMPL.format(session_str))
 
-    def restore_from_dir(self, dirpath):
+    def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
 
         searcher = self.searcher

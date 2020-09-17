@@ -5,10 +5,10 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>0.9.0-SNAPSHOT</version>
+  <version>1.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
-  <description>A simple and universal API for building distributed applications.
+  <description>An open source framework that provides a simple, universal API for building distributed applications.
   </description>
   <url>https://github.com/ray-project/ray</url>
 
@@ -24,6 +24,12 @@
     <connection>git@github.com:ray-project/ray.git</connection>
     <developerConnection>scm:git:ssh://github.com:ray-project/ray.git</developerConnection>
   </scm>
+
+  <developers>
+    <developer>
+      <organizationUrl>https://ray.io</organizationUrl>
+    </developer>
+  </developers>
 
   <distributionManagement>
     <snapshotRepository>
@@ -51,13 +57,12 @@
     <module>api</module>
     <module>runtime</module>
     <module>test</module>
-    <module>tutorial</module>
   </modules>
 
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>0.9.0-SNAPSHOT</projetct.version>
+    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
   </properties>
 
   <profiles>
@@ -119,7 +124,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <version>3.1.0</version>
           <executions>
             <execution>
               <id>attach-javadocs</id>

@@ -174,6 +174,43 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
       });
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *env, jclass,
+                                                                   jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  const auto &rpc_address =
+      ray::CoreWorkerProcess::GetCoreWorker().GetOwnerAddress(object_id);
+  return NativeStringToJavaByteArray(env, rpc_address.SerializeAsString());
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(
+    JNIEnv *env, jclass, jbyteArray objectId) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  ray::CoreWorkerProcess::GetCoreWorker().PromoteObjectToPlasma(object_id);
+  ray::rpc::Address address;
+  ray::CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address);
+  auto address_str = address.SerializeAsString();
+  auto arr = NativeStringToJavaByteArray(env, address_str);
+  return arr;
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *env, jclass, jbyteArray objectId, jbyteArray outerObjectId,
+    jbyteArray ownerAddress) {
+  auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
+  auto outer_objectId = ray::ObjectID::Nil();
+  if (outerObjectId != NULL) {
+    outer_objectId = JavaByteArrayToId<ray::ObjectID>(env, outerObjectId);
+  }
+  auto ownerAddressStr = JavaByteArrayToNativeString(env, ownerAddress);
+  ray::rpc::Address address;
+  address.ParseFromString(ownerAddressStr);
+  ray::CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
+      object_id, outer_objectId, address);
+}
+
 #ifdef __cplusplus
 }
 #endif

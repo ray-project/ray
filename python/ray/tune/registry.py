@@ -149,3 +149,27 @@ class _Registry:
 
 _global_registry = _Registry()
 ray.worker._post_init_hooks.append(_global_registry.flush_values)
+
+
+class _ParameterRegistry:
+    def __init__(self):
+        self.to_flush = {}
+        self.references = {}
+
+    def put(self, k, v):
+        self.to_flush[k] = v
+        if ray.is_initialized():
+            self.flush()
+
+    def get(self, k):
+        if not ray.is_initialized():
+            return self.to_flush[k]
+        return ray.get(self.references[k])
+
+    def flush(self):
+        for k, v in self.to_flush.items():
+            self.references[k] = ray.put(v)
+
+
+parameter_registry = _ParameterRegistry()
+ray.worker._post_init_hooks.append(parameter_registry.flush)

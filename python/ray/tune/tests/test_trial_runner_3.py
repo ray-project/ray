@@ -385,10 +385,7 @@ class TrialRunnerTest3(unittest.TestCase):
         assert trials[0].status == Trial.ERROR
         del runner
 
-        new_runner = TrialRunner(
-            run_errored_only=False,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+        new_runner = TrialRunner(resume=True, local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
@@ -418,9 +415,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            run_errored_only=True,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
@@ -545,7 +540,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()
 
     def testCheckpointWithFunction(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial(
             "__fake",
             config={"callbacks": {
@@ -570,7 +566,8 @@ class TrialRunnerTest3(unittest.TestCase):
                         and fname.endswith(".json"))
                        for fname in os.listdir(cdir))
 
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)

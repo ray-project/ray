@@ -57,7 +57,10 @@ void AgentManager::StartAgent() {
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
-  Process child(argv.data(), nullptr, ec);
+  // Set node id to agent.
+  ProcessEnvironment env;
+  env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
+  Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "

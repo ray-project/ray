@@ -76,7 +76,7 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init()
+    ray.init(num_cpus=2)
     datasets.MNIST("~/data", train=True, download=True)
 
     # check if PytorchTrainble will save/restore correctly before execution
@@ -131,8 +131,9 @@ if __name__ == "__main__":
         })
     # __tune_end__
 
-    best_trial = analysis.get_best_trial("mean_accuracy")
-    best_checkpoint = analysis.get_best_checkpoint(best_trial, metric="mean_accuracy")
+    best_trial = analysis.get_best_trial("mean_accuracy", "max")
+    best_checkpoint = analysis.get_best_checkpoint(
+        best_trial, metric="mean_accuracy", mode="max")
     restored_trainable = PytorchTrainable()
     restored_trainable.restore(best_checkpoint)
     best_model = restored_trainable.model

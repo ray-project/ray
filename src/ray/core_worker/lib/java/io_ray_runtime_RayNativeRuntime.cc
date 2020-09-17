@@ -105,7 +105,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
   RayConfig::instance().initialize(raylet_config);
 
   auto task_execution_callback =
-      [](ray::TaskType task_type, const ray::RayFunction &ray_function,
+      [](ray::TaskType task_type, const std::string task_name,
+         const ray::RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
@@ -144,6 +145,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         jobject java_return_objects =
             env->CallObjectMethod(java_task_executor, java_task_executor_execute,
                                   ray_function_array_list, args_array_list);
+        // Check whether the exception is `IntentionalSystemExit`.
+        jthrowable throwable = env->ExceptionOccurred();
+        if (throwable &&
+            env->IsInstanceOf(throwable,
+                              java_ray_intentional_system_exit_exception_class)) {
+          return ray::Status::IntentionalSystemExit();
+        }
         RAY_CHECK_JAVA_EXCEPTION(env);
 
         // Process return objects.
@@ -205,37 +213,27 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
 
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
-  ray::CoreWorkerOptions options = {
-      static_cast<ray::WorkerType>(workerMode),     // worker_type
-      ray::Language::JAVA,                          // langauge
-      JavaStringToNativeString(env, storeSocket),   // store_socket
-      JavaStringToNativeString(env, rayletSocket),  // raylet_socket
-      JavaByteArrayToId<ray::JobID>(env, jobId),    // job_id
-      ToGcsClientOptions(env, gcsClientOptions),    // gcs_options
-      true,                                         // enable_logging
-      JavaStringToNativeString(env, logDir),        // log_dir
-      // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
-      false,                                         // install_failure_signal_handler
-      JavaStringToNativeString(env, nodeIpAddress),  // node_ip_address
-      static_cast<int>(nodeManagerPort),             // node_manager_port
-      JavaStringToNativeString(env, nodeIpAddress),  // raylet_ip_address
-      JavaStringToNativeString(env, driverName),     // driver_name
-      "",                                            // stdout_file
-      "",                                            // stderr_file
-      task_execution_callback,                       // task_execution_callback
-      nullptr,                                       // check_signals
-      gc_collect,                                    // gc_collect
-      nullptr,                                       // spill_objects
-      nullptr,                                       // restore_spilled_objects
-      nullptr,                                       // get_lang_stack
-      nullptr,                                       // kill_main
-      true,                                          // ref_counting_enabled
-      false,                                         // is_local_mode
-      static_cast<int>(numWorkersPerProcess),        // num_workers
-      nullptr,                                       // terminate_asyncio_thread
-      serialized_job_config,                         // serialized_job_config
-      -1,                                            // metrics_agent_port
-  };
+  ray::CoreWorkerOptions options;
+  options.worker_type = static_cast<ray::WorkerType>(workerMode);
+  options.language = ray::Language::JAVA;
+  options.store_socket = JavaStringToNativeString(env, storeSocket);
+  options.raylet_socket = JavaStringToNativeString(env, rayletSocket);
+  options.job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
+  options.gcs_options = ToGcsClientOptions(env, gcsClientOptions);
+  options.enable_logging = true;
+  options.log_dir = JavaStringToNativeString(env, logDir);
+  // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
+  options.install_failure_signal_handler = false;
+  options.node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
+  options.node_manager_port = static_cast<int>(nodeManagerPort);
+  options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
+  options.driver_name = JavaStringToNativeString(env, driverName);
+  options.task_execution_callback = task_execution_callback;
+  options.gc_collect = gc_collect;
+  options.ref_counting_enabled = true;
+  options.num_workers = static_cast<int>(numWorkersPerProcess);
+  options.serialized_job_config = serialized_job_config;
+  options.metrics_agent_port = -1;
 
   ray::CoreWorkerProcess::Initialize(options);
 }
@@ -278,10 +276,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   } else {
     actor_id = ray::ActorID::Nil();
   }
-  jbyteArray bytes = env->NewByteArray(actor_id.Size());
-  env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
-                          reinterpret_cast<const jbyte *>(actor_id.Data()));
-  return bytes;
+  return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(

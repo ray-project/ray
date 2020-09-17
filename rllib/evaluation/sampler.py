@@ -49,6 +49,15 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 StateBatch = List[List[Any]]
 
 
+class NewEpisodeDefaultDict(defaultdict):
+    def __missing__(self, env_index):
+        if self.default_factory is None:
+            raise KeyError(env_index)
+        else:
+            ret = self[env_index] = self.default_factory(env_index)
+            return ret
+
+
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
@@ -505,7 +514,7 @@ def _env_runner(
             return MultiAgentSampleBatchBuilder(policies, clip_rewards,
                                                 callbacks)
 
-    def new_episode():
+    def new_episode(env_index):
         episode = MultiAgentEpisode(policies, policy_mapping_fn,
                                     get_batch_builder, extra_batch_callback)
         # Call each policy's Exploration.on_episode_start method.
@@ -521,10 +530,13 @@ def _env_runner(
             worker=worker,
             base_env=base_env,
             policies=policies,
-            episode=episode)
+            episode=episode,
+            env_index=env_index,
+        )
         return episode
 
-    active_episodes: Dict[str, MultiAgentEpisode] = defaultdict(new_episode)
+    active_episodes: Dict[str, MultiAgentEpisode] = \
+        NewEpisodeDefaultDict(new_episode)
     eval_results = None
 
     while True:
@@ -830,7 +842,10 @@ def _process_observations(
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
-            worker=worker, base_env=base_env, episode=episode)
+            worker=worker,
+            base_env=base_env,
+            episode=episode,
+            env_index=env_id)
 
         # Cut the batch if ...
         # - all-agents-done and not packing multiple episodes into one
@@ -869,7 +884,9 @@ def _process_observations(
                 worker=worker,
                 base_env=base_env,
                 policies=policies,
-                episode=episode)
+                episode=episode,
+                env_index=env_id,
+            )
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[AgentID, EnvObsType] = agent_obs
@@ -969,17 +986,18 @@ def _process_observations_w_trajectory_view_api(
             logger.warning(
                 "More than {} observations for {} env steps ".format(
                     _sample_collector.total_env_steps(),
-                    _sample_collector.count) + "are buffered in "
-                "the sampler. If this is more than you expected, check that "
-                "that you set a horizon on your environment correctly and that"
-                " it terminates at some point. "
+                    _sample_collector.count) +
+                "are buffered in the sampler. If this is more than you "
+                "expected, check that that you set a horizon on your "
+                "environment correctly and that it terminates at some point. "
                 "Note: In multi-agent environments, `rollout_fragment_length` "
-                "sets the batch size based on environment steps, not the "
-                "steps of "
-                "individual agents, which can result in unexpectedly large "
-                "batches. Also, you may be in evaluation waiting for your Env "
-                "to terminate (batch_mode=`complete_episodes`). Make sure it "
-                "does at some point.")
+                "sets the batch size based on (across-agents) environment "
+                "steps, not the steps of individual agents, which can result "
+                "in unexpectedly large batches." +
+                ("Also, you may be in evaluation waiting for your Env to "
+                 "terminate (batch_mode=`complete_episodes`). Make sure it "
+                 "does at some point."
+                 if not multiple_episodes_in_batch else ""))
 
         # Check episode termination conditions.
         if dones[env_id]["__all__"] or episode.length >= horizon:
@@ -1075,7 +1093,10 @@ def _process_observations_w_trajectory_view_api(
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
-            worker=worker, base_env=base_env, episode=episode)
+            worker=worker,
+            base_env=base_env,
+            episode=episode,
+            env_index=env_id)
 
         # Cut the batch if ...
         # - all-agents-done and not packing multiple episodes into one
@@ -1120,7 +1141,9 @@ def _process_observations_w_trajectory_view_api(
                 worker=worker,
                 base_env=base_env,
                 policies=policies,
-                episode=episode)
+                episode=episode,
+                env_index=env_id,
+            )
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
                 resetted_obs: Dict[AgentID, EnvObsType] = agent_obs

@@ -48,18 +48,18 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     def add_ppo_metrics(batch):
         print("PPO policy learning on samples from",
-              batch.policy_batches.keys(), "env steps", batch.count,
-              "agent steps", batch.total())
+              batch.policy_batches.keys(), "env steps", batch.env_steps(),
+              "agent steps", batch.env_steps())
         metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_PPO"] += batch.total()
+        metrics.counters["agent_steps_trained_PPO"] += batch.env_steps()
         return batch
 
     def add_dqn_metrics(batch):
         print("DQN policy learning on samples from",
-              batch.policy_batches.keys(), "env steps", batch.count,
-              "agent steps", batch.total())
+              batch.policy_batches.keys(), "env steps", batch.env_steps(),
+              "agent steps", batch.env_steps())
         metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_DQN"] += batch.total()
+        metrics.counters["agent_steps_trained_DQN"] += batch.env_steps()
         return batch
 
     # Generate common experiences.

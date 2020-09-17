@@ -1,3 +1,5 @@
+from typing import Any, Optional, Tuple
+
 import kubernetes
 import subprocess
 
@@ -7,15 +9,11 @@ from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 
 
-def NamespacedKubernetesSyncer(namespace, use_rsync=False):
+def NamespacedKubernetesSyncer(namespace):
     """Wrapper to return a ``KubernetesSyncer`` for a Kubernetes namespace.
 
     Args:
         namespace (str): Kubernetes namespace.
-        use_rsync (bool):  Use ``rsync`` if True or ``kubectl cp``
-            if False. If True, ``rsync`` will need to be
-            installed in the Kubernetes pods for this to work.
-            If False, ``tar`` will need to be installed instead.
 
     Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
@@ -31,7 +29,6 @@ def NamespacedKubernetesSyncer(namespace, use_rsync=False):
 
     class _NamespacedKubernetesSyncer(KubernetesSyncer):
         _namespace = namespace
-        _use_rsync = use_rsync
 
     return _NamespacedKubernetesSyncer
 
@@ -49,25 +46,26 @@ class KubernetesSyncer(NodeSyncer):
     """
 
     _namespace = "ray"
-    _use_rsync = False
 
-    def __init__(self, local_dir, remote_dir, sync_client=None):
+    def __init__(self,
+                 local_dir: str,
+                 remote_dir: str,
+                 sync_client: Optional[SyncClient] = None):
         self.local_ip = services.get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None
         self.worker_node = None
 
         sync_client = sync_client or KubernetesSyncClient(
-            namespace=self.__class__._namespace,
-            use_rsync=self.__class__._use_rsync)
+            namespace=self.__class__._namespace)
 
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
-    def set_worker_ip(self, worker_ip):
+    def set_worker_ip(self, worker_ip: str):
         self.worker_ip = worker_ip
         self.worker_node = self._get_kubernetes_node_by_ip(worker_ip)
 
-    def _get_kubernetes_node_by_ip(self, node_ip):
+    def _get_kubernetes_node_by_ip(self, node_ip: str) -> Optional[str]:
         """Return node name by internal or external IP"""
         kubernetes.config.load_incluster_config()
         api = kubernetes.client.CoreV1Api()
@@ -82,8 +80,8 @@ class KubernetesSyncer(NodeSyncer):
         return None
 
     @property
-    def _remote_path(self):
-        return (self.worker_node, self._remote_dir)
+    def _remote_path(self) -> Tuple[str, str]:
+        return self.worker_node, self._remote_dir
 
 
 class KubernetesSyncClient(SyncClient):
@@ -97,22 +95,17 @@ class KubernetesSyncClient(SyncClient):
 
     Args:
         namespace (str): Namespace in which the pods live.
-        use_rsync (bool): Use ``rsync`` if True or ``kubectl cp``
-            if False. If True, ``rsync`` will need to be
-            installed in the Kubernetes pods for this to work.
-            If False, ``tar`` will need to be installed instead.
         process_runner: How commands should be called.
             Defaults to ``subprocess``.
 
     """
 
-    def __init__(self, namespace, use_rsync=False, process_runner=subprocess):
+    def __init__(self, namespace: str, process_runner: Any = subprocess):
         self.namespace = namespace
-        self.use_rsync = use_rsync
         self._process_runner = process_runner
         self._command_runners = {}
 
-    def _create_command_runner(self, node_id):
+    def _create_command_runner(self, node_id: str) -> KubernetesCommandRunner:
         """Create a command runner for one Kubernetes node"""
         return KubernetesCommandRunner(
             log_prefix="KubernetesSyncClient: {}:".format(node_id),
@@ -121,7 +114,7 @@ class KubernetesSyncClient(SyncClient):
             auth_config=None,
             process_runner=self._process_runner)
 
-    def _get_command_runner(self, node_id):
+    def _get_command_runner(self, node_id: str) -> KubernetesCommandRunner:
         """Create command runner if it doesn't exist"""
         # Todo(krfricke): These cached runners are currently
         # never cleaned up. They are cheap so this shouldn't
@@ -132,7 +125,7 @@ class KubernetesSyncClient(SyncClient):
             self._command_runners[node_id] = command_runner
         return self._command_runners[node_id]
 
-    def sync_up(self, source, target):
+    def sync_up(self, source: str, target: Tuple[str, str]) -> bool:
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
@@ -141,13 +134,10 @@ class KubernetesSyncClient(SyncClient):
         target_dir += "/" if not target_dir.endswith("/") else ""
 
         command_runner = self._get_command_runner(target_node)
-        if self.use_rsync:
-            command_runner.run_rsync_up(source, target_dir)
-        else:
-            command_runner.run_cp_up(source, target_dir)
+        command_runner.run_rsync_up(source, target_dir)
         return True
 
-    def sync_down(self, source, target):
+    def sync_down(self, source: Tuple[str, str], target: str) -> bool:
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
 
@@ -156,13 +146,10 @@ class KubernetesSyncClient(SyncClient):
         target += "/" if not target.endswith("/") else ""
 
         command_runner = self._get_command_runner(source_node)
-        if self.use_rsync:
-            command_runner.run_rsync_down(source_dir, target)
-        else:
-            command_runner.run_cp_down(source_dir, target)
+        command_runner.run_rsync_down(source_dir, target)
         return True
 
-    def delete(self, target):
+    def delete(self, target: str) -> bool:
         """No delete function because it is only used by
         the KubernetesSyncer, which doesn't call delete."""
         return True

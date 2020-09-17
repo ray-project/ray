@@ -30,10 +30,10 @@ def echo_v2(_):
     return "v2"
 
 
-serve.init()
+client = serve.start()
 
-serve.create_backend("echo:v1", echo_v1)
-serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
+client.create_backend("echo:v1", echo_v1)
+client.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 for _ in range(3):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
@@ -42,8 +42,8 @@ for _ in range(3):
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
 
-serve.create_backend("echo:v2", echo_v2)
-serve.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
+client.create_backend("echo:v2", echo_v2)
+client.set_traffic("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo").json()
     print(pformat_color_json(resp))

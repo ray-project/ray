@@ -14,6 +14,10 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle
+
 
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
@@ -671,6 +675,33 @@ def test_multiple_return_values(ray_start_regular_shared):
 
     id3a, id3b, id3c = f.method3.remote()
     assert ray.get([id3a, id3b, id3c]) == [1, 2, 3]
+
+
+def test_options_num_returns(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self):
+            return 1, 2
+
+    f = Foo.remote()
+
+    obj = f.method.remote()
+    assert ray.get(obj) == (1, 2)
+
+    obj1, obj2 = f.method.options(num_returns=2).remote()
+    assert ray.get([obj1, obj2]) == [1, 2]
+
+
+def test_options_name(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self, name):
+            assert setproctitle.getproctitle() == f"ray::{name}"
+
+    f = Foo.remote()
+
+    ray.get(f.method.options(name="foo").remote("foo"))
+    ray.get(f.method.options(name="bar").remote("bar"))
 
 
 def test_define_actor(ray_start_regular_shared):

@@ -291,7 +291,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         policy_config: TrainerConfigDict = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
-                and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
                 and not tf1.executing_eagerly()):
@@ -388,9 +387,10 @@ class RolloutWorker(ParallelIteratorWorker):
             np.random.seed(seed)
             random.seed(seed)
             if not hasattr(self.env, "seed"):
-                raise ValueError("Env doesn't support env.seed(): {}".format(
+                logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
-            self.env.seed(seed)
+            else:
+                self.env.seed(seed)
             try:
                 assert torch is not None
                 torch.manual_seed(seed)
