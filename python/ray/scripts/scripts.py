@@ -332,7 +332,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--load-code-from-local",
     is_flag=True,
-    hidden=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
 @click.option(
