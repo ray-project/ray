@@ -73,34 +73,14 @@ tune.run_experiments({
     },
 }, verbose=1)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
-+---------------+----------+-------+-----+-----+
-| Trial name    | status   | loc   |   a |   b |
-|---------------+----------+-------+-----+-----|
-| f_xxxxx_00001 | PENDING  |       |   1 |     |
-| f_xxxxx_00002 | PENDING  |       |   2 |     |
-| f_xxxxx_00003 | PENDING  |       |   3 |     |
-| f_xxxxx_00004 | PENDING  |       |   4 |     |
-| f_xxxxx_00005 | PENDING  |       |   5 |     |
-| f_xxxxx_00006 | PENDING  |       |   6 |     |
-| f_xxxxx_00007 | PENDING  |       |   7 |     |
-| f_xxxxx_00008 | PENDING  |       |   8 |     |
-| f_xxxxx_00009 | PENDING  |       |   9 |     |
-| f_xxxxx_00010 | PENDING  |       |     |   0 |
-| f_xxxxx_00011 | PENDING  |       |     |   1 |
-| f_xxxxx_00012 | PENDING  |       |     |   2 |
-| f_xxxxx_00013 | PENDING  |       |     |   3 |
-| f_xxxxx_00014 | PENDING  |       |     |   4 |
-| f_xxxxx_00015 | PENDING  |       |     |   5 |
-| f_xxxxx_00016 | PENDING  |       |     |   6 |
-| f_xxxxx_00017 | PENDING  |       |     |   7 |
-| f_xxxxx_00018 | PENDING  |       |     |   8 |
-| f_xxxxx_00019 | PENDING  |       |     |   9 |
-| f_xxxxx_00000 | RUNNING  |       |   0 |     |
-+---------------+----------+-------+-----+-----+
-... 10 more trials not shown (10 PENDING)"""
+EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
++---------------+----------+-------+-----+
+| Trial name    | status   | loc   |   a |
+|---------------+----------+-------+-----|
+| f_xxxxx_00000 | RUNNING  |       |   0 |
++---------------+----------+-------+-----+"""
 
-EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|
@@ -136,7 +116,7 @@ EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
 | f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
 +---------------+------------+-------+-----+-----+-----+"""
 
-EXPECTED_END_TO_END_AC = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|

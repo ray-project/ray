@@ -14,9 +14,6 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 # This test checks that when a worker dies in the middle of a get, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
@@ -65,9 +62,6 @@ def test_dying_worker_get(ray_start_2_cpus):
 
 # This test checks that when a driver dies in the middle of a get, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_driver_get(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
@@ -109,9 +103,6 @@ ray.get(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
 
 # This test checks that when a worker dies in the middle of a wait, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
@@ -150,9 +141,6 @@ def test_dying_worker_wait(ray_start_2_cpus):
 
 # This test checks that when a driver dies in the middle of a wait, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_driver_wait(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
@@ -193,5 +181,4 @@ ray.wait([ray.ObjectRef(ray.utils.hex_to_binary("{}"))])
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
