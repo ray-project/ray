@@ -30,8 +30,8 @@ cc_library(
     ]),
     copts = COPTS,
     linkopts = ["-ldl"],
-    strip_include_prefix = "include",
     linkstatic = True,
+    strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
