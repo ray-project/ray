@@ -507,12 +507,17 @@ def wrap_function(train_func, warn=True):
                 fn = partial(train_func, config, reporter)
 
             def handle_output(output):
-                if isinstance(output, dict):
+                if not output:
+                    return
+                elif isinstance(output, dict):
                     reporter(**output)
                 elif isinstance(output, Number):
                     reporter(_metric=output)
                 else:
-                    pass  # Warn?
+                    raise ValueError(
+                        "Invalid return or yield value. Either return/yield "
+                        "a single number or a dictionary object in your "
+                        "trainable function.")
 
             output = None
             if inspect.isgeneratorfunction(train_func):
