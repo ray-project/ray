@@ -328,9 +328,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   // TODO(Guyang Song): Remove this env.
   if (language == Language::CPP) {
     env.insert({"IS_DEFAULT_WORKER", "true"});
-    printf("add env of cpp worker");
-  } else {
-    printf("not set");
   }
 
   Process proc = StartProcess(worker_command_args, env);
@@ -340,7 +337,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
     state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
   }
-  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
+  RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);

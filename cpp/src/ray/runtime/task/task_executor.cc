@@ -89,7 +89,6 @@ Status TaskExecutor::ExecuteTask(
       }
     }
   }
-  // AbstractRayRuntime::GetInstance()->Put(std::move(data), return_ids[0]);
   return ray::Status::OK();
 }
 

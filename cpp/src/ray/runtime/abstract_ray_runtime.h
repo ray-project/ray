@@ -65,11 +65,6 @@ class AbstractRayRuntime : public RayRuntime {
 
   void Execute(const TaskSpecification &task_spec);
 
-  // InvocationSpec BuildInvocationSpec(TaskType task_type,
-  //                                  RemoteFunctionPtrHolder &fptr,
-  //                                  std::shared_ptr<msgpack::sbuffer> args,
-  //                                  ActorID &actor)
-
   friend class Ray;
 };
 }  // namespace api
