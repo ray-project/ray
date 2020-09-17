@@ -15,13 +15,8 @@ For end to end examples leveraging RaySGD TorchTrainer, jump to :ref:`raysgd-tor
 
 .. contents:: :local:
 
-<<<<<<< HEAD
-TorchTrainer
-------------
-=======
 Basic Usage
 -----------
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
 Setting up training
 ~~~~~~~~~~~~~~~~~~~
@@ -30,18 +25,14 @@ Setting up training
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
-<<<<<<< HEAD
-.. warning:: You must call ``self.register(...)`` inside the ``setup`` method of your custom ``TrainingOperator`` to register the necessary training components with Ray SGD.
-=======
 .. warning:: You should call ``self.register(...)`` and ``self.register_data(...)`` inside the ``setup`` method of your custom ``TrainingOperator`` to register the necessary training components with Ray SGD.
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
     :language: python
     :start-after: __torch_operator_start__
     :end-before: __torch_operator_end__
 
-Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor. One of the replicas will be on the main process, which can simplify the debugging and logging experience.
+Under the hood, ``TorchTrainer`` will create *replicas* of your model (controlled by ``num_workers``), each of which is managed by a Ray actor.
 
 Before instantiating the trainer, first start or connect to a Ray cluster:
 
@@ -135,35 +126,15 @@ After training, you may want to reappropriate the Ray cluster. To release Ray re
 .. note:: Be sure to call ``trainer.save()`` or ``trainer.get_model()`` before shutting down.
 
 See the documentation on the TorchTrainer here: :ref:`ref-torch-trainer`.
+
 See the documentation on the TrainingOperator here: :ref:`ref-torch-operator`.
-
-<<<<<<< HEAD
-.. _backwards-compat:
-
-Backwards Compatibility
-~~~~~~~~~~~~~~~~~~~~~~~
-In previous versions of Ray, *creator functions* (``model_creator``, ``optimizer_creator``, etc.) were necessary to setup the training components.
-These creator functions are no longer used and instead training component setup should be specified inside the ``setup`` method of a custom ``TrainingOperator``.
-However, if you have these creator functions already and do not want to change your code, you can easily use these creator functions to create a custom ``TrainingOperator``.
-
-.. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
-   :language: python
-   :start-after: __backwards_compat__start
-   :end-before: __backwards_compat_end
-=======
-See the documentation on the TrainingOperator here: :ref:`ref-torch-operator`.
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
 .. _raysgd-custom-training:
 
 Custom Training and Validation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-<<<<<<< HEAD
-If you would like to implement custom training and validation logic, you can do so by overriding the appropiate methods inside your custom :ref:`ref-torch-operator`.
-=======
 If you would like to implement custom training and validation logic, you can do so by overriding the appropiate methods inside your :ref:`ref-torch-operator` subclass.
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
 For both training and validation, there are two granularities that you can provide customization - per epoch and per batch. These correspond to ``train_batch``,
 ``train_epoch``, ``validate``, and ``validate_batch``. Other useful methods to override include ``state_dict`` and ``load_state_dict``. You can use these
@@ -190,10 +161,7 @@ Below is a partial example of a custom ``TrainingOperator`` that provides a ``tr
             """
             ...
             self.models, self.optimizers, ... = self.register(...)
-<<<<<<< HEAD
-=======
             self.register_data(...)
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
         def train_batch(self, batch, batch_info):
             """Trains on one batch of data from the data creator.
@@ -309,8 +277,6 @@ By setting ``TorchTrainer(wrap_ddp=False)``, you can change the parameters on th
         num_workers=2,
         use_gpu=True
         wrap_ddp=False)
-<<<<<<< HEAD
-=======
 
 .. _backwards-compat:
 
@@ -322,9 +288,8 @@ However, if you have these creator functions already and do not want to change y
 
 .. literalinclude:: ../../../python/ray/util/sgd/torch/examples/raysgd_torch_signatures.py
    :language: python
-   :start-after: __backwards_compat__start
-   :end-before: __backwards_compat_end
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
+   :start-after: __backwards_compat_start__
+   :end-before: __backwards_compat_end__
 
 Initialization Functions
 ------------------------
@@ -572,10 +537,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 
             # Register all the components.
             self.models, self.optimizers, ... = self.register(models=(net_d, net_g), optimizers=(d_opt, g_opt), ...)
-<<<<<<< HEAD
-=======
             self.register_data(...)
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
         def train_epoch(self, iterator, info):
             result = {}
@@ -685,11 +647,7 @@ or use `Python profiling <https://docs.python.org/3/library/debug.html>`_.
 
 **My setup function downloads data, and I don't want multiple processes downloading to the same path at once.**
 
-<<<<<<< HEAD
-Use ``filelock`` within the creator functions to create locks for critical regions. You may find ``sgd.utils.RayFileLock`` useful here. For example:
-=======
 Use ``FileLock`` to create locks for critical regions. For example:
->>>>>>> 4ccfd07a614c3b0620e75ccb47c327bb0f817299
 
 .. code-block:: python
 

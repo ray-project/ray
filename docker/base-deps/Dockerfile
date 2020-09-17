@@ -9,6 +9,7 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/root"
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTHON_VERSION=3.7.7
 RUN apt-get update -y && apt-get upgrade -y \
     && apt-get install -y \
         git \
@@ -28,7 +29,7 @@ RUN apt-get update -y && apt-get upgrade -y \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' > /etc/profile.d/conda.sh \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=3.7.7 \ 
+        libgcc python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \

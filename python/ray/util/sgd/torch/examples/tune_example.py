@@ -51,8 +51,7 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
         stop={"training_iteration": 2},
         verbose=1)
 
-    return analysis.get_best_config(metric="validation_loss", mode="min")
-
+    return analysis.get_best_config(metric="val_loss", mode="min")
 # __end_torch_tune_example__
 
 

@@ -34,21 +34,6 @@ Flambé is a machine learning experimentation framework built to accelerate the 
 
 Github: `https://github.com/asappresearch/flambe <https://github.com/asappresearch/flambe>`_
 
-MARS |mars|
------------
-
-Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
-
-
-[`Link to integration <mars-on-ray.html>`__]
-
-Modin |modin|
--------------
-
-Scale your pandas workflows by changing one line of code. Modin transparently distributes the data and computation so that all you need to do is continue using the pandas API as you were before installing Modin. 
-
-GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
-
 Horovod |horovod|
 -----------------
 
@@ -69,6 +54,20 @@ Intel Analytics Zoo |zoo|
 Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
 
 [`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
+
+MARS |mars|
+-----------
+
+Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
+
+[`Link to integration <mars-on-ray.html>`__]
+
+Modin |modin|
+-------------
+
+Scale your pandas workflows by changing one line of code. Modin transparently distributes the data and computation so that all you need to do is continue using the pandas API as you were before installing Modin.
+
+GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
 
 PyCaret |pycaret|
 -----------------
