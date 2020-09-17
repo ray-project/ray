@@ -1,4 +1,5 @@
 import sys
+import time
 
 import ray
 import pytest
@@ -28,14 +29,20 @@ def increase(x):
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):
     actor1 = Increase.remote()
-    result = ray.get(actor1.method.remote(1))
-    assert result == 3
+    for i in range(0, 3):
+        result = ray.get(actor1.method.remote(1))
+        assert result == 3
 
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    result = ray.get(actor1.method.remote(7))
-    assert result == 9
+    # Sleep for 5 seconds to ensure that the
+    # GCS client gets data after the GCS server restarts.
+    time.sleep(5)
+
+    for i in range(0, 3):
+        result = ray.get(actor1.method.remote(7))
+        assert result == 9
 
     actor2 = Increase.remote()
     result = ray.get(actor2.method.remote(2))
