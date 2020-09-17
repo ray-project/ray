@@ -74,6 +74,7 @@ if __name__ == "__main__":
         "unity3d",
         lambda c: Unity3DEnv(
             file_name=c["file_name"],
+            no_graphics=c["file_name"] is not None,
             episode_horizon=c["episode_horizon"],
         ))
 
