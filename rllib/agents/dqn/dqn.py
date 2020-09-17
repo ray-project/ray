@@ -131,6 +131,11 @@ DEFAULT_CONFIG = with_common_config({
     # This only applies if async mode is used (above config setting).
     # Controls the max number of async requests in flight per actor
     "parallel_rollouts_num_async": None,
+    # Which mode to use in the Concurrently operator used at the end
+    # of the execution plan. This allows you to control how we pull
+    # data from the rollout task and the replay-learning task, concurrently.
+    # For more details check the operator in concurrency_ops.py module.
+    "rollout_learn_concurrency_mode": "round_robin",
 
     # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
     # by user's config). If we don't set them here, we will get an error
@@ -305,17 +310,13 @@ def execution_plan(workers, config):
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
-    if parallel_rollouts_mode == "bulk_sync":
-        train_op = Concurrently(
-            [store_op, replay_op],
-            mode="round_robin",
-            output_indexes=[1],
-            round_robin_weights=calculate_rr_weights(config))
-    else:
-        train_op = Concurrently(
-            [store_op, replay_op],
-            mode="async",
-            output_indexes=[1])
+    rollout_learn_concurrency_mode = config.get("rollout_learn_concurrency_mode",
+                                                "round_robin")
+    train_op = Concurrently(
+        [store_op, replay_op],
+        mode=rollout_learn_concurrency_mode,
+        output_indexes=[1],
+        round_robin_weights=calculate_rr_weights(config))
 
     return StandardMetricsReporting(train_op, workers, config)
 

@@ -49,6 +49,10 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # This only applies if async mode is used (above config setting).
         # Controls the max number of async requests in flight per actor
         "parallel_rollouts_num_async": 2,
+        # If this setting is different than None
+        # we report metrics from the workers with the lowest
+        # 1/worker_amount_to_collect_metrics_from of epsilons
+        "worker_amount_to_collect_metrics_from": 3,
     },
 )
 # __sphinx_doc_end__
@@ -183,8 +187,11 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
         return result
 
     # Only report metrics from the workers with the lowest 1/3 of epsilons.
-    selected_workers = workers.remote_workers()[
-        -len(workers.remote_workers()) // 3:]
+    selected_workers = None
+    worker_amount_to_collect_metrics_from = config.get("worker_amount_to_collect_metrics_from")
+    if worker_amount_to_collect_metrics_from:
+        selected_workers = workers.remote_workers()[
+            -len(workers.remote_workers()) // worker_amount_to_collect_metrics_from:]
 
     return StandardMetricsReporting(
         merged_op, workers, config,
