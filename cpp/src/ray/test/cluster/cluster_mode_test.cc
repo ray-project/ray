@@ -48,9 +48,11 @@ TEST(RayClusterModeTest, FullTest) {
   Ray::Shutdown();
 }
 
-/// TODO(Guyang Song): Make default worker standalone.
-/// We put default worker and test driver together to avoid library conflict during shared
-/// object loading.
+/// TODO(Guyang Song): Separate default worker from this test.
+/// Currently, we compile `default_worker` and `cluster_mode_test` in one single binary,
+/// to work around a symbol conflicting issue.
+/// This is the main function of the binary, and we use the `IS_DEFAULT_WORKER` env var to
+/// tell if this binary is used as `default_worker` or `cluster_mode_test`.
 int main(int argc, char **argv) {
   auto is_default_worker = std::getenv("IS_DEFAULT_WORKER");
   if (is_default_worker &&

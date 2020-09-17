@@ -21,8 +21,6 @@ int default_worker_main(int argc, char **argv) {
   RAY_CHECK(pos != std::string::npos);
   config->redis_ip = redis_address.substr(0, pos);
   config->redis_port = std::stoi(redis_address.substr(pos + 1, redis_address.length()));
-  RAY_LOG(INFO) << "redis ip: " << config->redis_ip
-                << ", redis port: " << config->redis_port;
   config->redis_password = std::string(std::string(argv[5]));
   config->session_dir = std::string(std::string(argv[6]));
 

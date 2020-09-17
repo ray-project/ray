@@ -325,10 +325,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
-  // TODO(Guyang Song): Remove this env.
-  if (language == Language::CPP) {
-    env.insert({"IS_DEFAULT_WORKER", "true"});
-  }
 
   Process proc = StartProcess(worker_command_args, env);
   if (RayConfig::instance().enable_multi_tenancy()) {

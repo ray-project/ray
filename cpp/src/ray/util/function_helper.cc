@@ -28,7 +28,7 @@ uintptr_t FunctionHelper::LoadLibrary(std::string lib_name) {
   void *example = dlopen(lib_name.c_str(), RTLD_LAZY);
   uintptr_t base_addr = BaseAddressForHandle(example);
   RAY_CHECK(base_addr > 0);
-  RAY_LOG(INFO) << "Load library " << lib_name << " to base address " << base_addr;
+  RAY_LOG(INFO) << "Loaded library " << lib_name << " to base address " << base_addr;
   loaded_library_.emplace(lib_name, base_addr);
   return base_addr;
 }
