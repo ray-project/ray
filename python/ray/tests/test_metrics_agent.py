@@ -7,7 +7,7 @@ from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.experimental.metrics import Count, Histogram
+from ray.util.metrics import Count, Histogram
 from ray.test_utils import wait_for_condition, SignalActor
 
 

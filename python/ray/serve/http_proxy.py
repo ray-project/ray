@@ -7,7 +7,7 @@ import uvicorn
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.context import TaskContext
-from ray.experimental import metrics
+from ray.util import metrics
 from ray.serve.http_util import Response
 from ray.serve.router import Router, RequestMetadata
 

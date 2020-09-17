@@ -12,7 +12,7 @@ from ray.async_compat import sync_to_async
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
                              unpack_future)
 from ray.serve.exceptions import RayServeException
-from ray.experimental import metrics
+from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.router import Query
 from ray.serve.constants import DEFAULT_LATENCY_BUCKET_MS
