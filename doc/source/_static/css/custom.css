@@ -53,6 +53,12 @@ img.inline-figure {
   z-index: 1;
 }
 
+span.rst-current-version > span.fa.fa-book {
+  /* Move the book icon away from the top right
+   * corner of the version flyout menu */
+  margin: 10px 0px 0px 5px;
+}
+
 /* Adjustment to Version block */
 .rst-versions {
   z-index: 1200;
