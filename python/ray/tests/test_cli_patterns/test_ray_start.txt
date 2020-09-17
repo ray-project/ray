@@ -10,7 +10,7 @@ Next steps
 
   Alternatively, use the following Python code:
     import ray
-    ray\.init\(address='auto', redis_password='.+'\)
+    ray\.init\(address='auto', _redis_password='.+'\)
 
   If connection fails, check your firewall settings other network configuration.
 
