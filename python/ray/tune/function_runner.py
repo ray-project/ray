@@ -6,6 +6,8 @@ import shutil
 import threading
 import traceback
 import uuid
+from functools import partial
+from numbers import Number
 
 from ray.tune.registry import parameter_registry
 from six.moves import queue
@@ -280,7 +282,7 @@ class FunctionRunner(Trainable):
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
 
-    def _trainable_func(self):
+    def _trainable_func(self, config, reporter, checkpoint_dir):
         """Subclasses can override this to set the trainable func."""
 
         raise NotImplementedError
@@ -495,11 +497,27 @@ def wrap_function(train_func, warn=True):
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:
-                output = train_func(config)
+                fn = partial(train_func, config)
             elif use_checkpoint:
-                output = train_func(config, checkpoint_dir=checkpoint_dir)
+                fn = partial(train_func, config, checkpoint_dir=checkpoint_dir)
             else:
-                output = train_func(config, reporter)
+                fn = partial(train_func, config, reporter)
+
+            def handle_output(output):
+                if isinstance(output, dict):
+                    reporter(**output)
+                elif isinstance(output, Number):
+                    reporter(_metric=output)
+                else:
+                    pass  # Warn?
+
+            output = None
+            if inspect.isgeneratorfunction(train_func):
+                for output in fn():
+                    handle_output(output)
+            else:
+                output = fn()
+                handle_output(output)
 
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
