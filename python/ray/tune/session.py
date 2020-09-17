@@ -7,6 +7,12 @@ logger = logging.getLogger(__name__)
 _session = None
 
 
+def is_session_enabled() -> bool:
+    """Returns True if running within an Tune process."""
+    global _session
+    return _session is not None
+
+
 def get_session():
     global _session
     if not _session:
