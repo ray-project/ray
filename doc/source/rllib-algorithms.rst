@@ -402,10 +402,7 @@ HalfCheetah    9664                       ~7700
 Soft Actor Critic (SAC)
 ------------------------
 |pytorch| |tensorflow|
-`[original paper] <https://arxiv.org/pdf/1801.01290>`__,
-`[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__,
-`[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
-
+`[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
 
 .. figure:: dqn-arch.svg
@@ -415,9 +412,10 @@ Soft Actor Critic (SAC)
 RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs.
 Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, the ``model`` field of the config will be ignored.
 
-Tuned examples:
+Tuned examples (continuous actions):
 `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
+Tuned examples (discrete actions):
 `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
 **MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
