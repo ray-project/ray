@@ -5,12 +5,7 @@ from ray._raylet import PlacementGroupID, ObjectRef
 
 
 class PlacementGroup:
-    """A handle to a placement group.
-
-    Args:
-        id: Placement group id.
-        bundles: List of bundles.
-    """
+    """A handle to a placement group."""
 
     @staticmethod
     def empty():
@@ -21,7 +16,19 @@ class PlacementGroup:
         self.bundles = bundles
 
     def ready(self) -> ObjectRef:
-        """Returns an object ID to check ready status."""
+        """Returns an ObjectRef to check ready status.
+
+        This API runs a small dummy task to wait for placement group creation.
+        It is compatible to ray.get and ray.wait.
+
+        Example:
+
+        >>> pg = placement_group([{"CPU": 1}])
+            ray.get(pg.ready())
+
+        >>> pg = placement_group([{"CPU": 1}])
+            ray.wait([pg.ready()], timeout=0)
+        """
         worker = ray.worker.global_worker
         worker.check_connected()
 
@@ -58,6 +65,11 @@ class PlacementGroup:
             resources=resources).remote(self)
 
     @property
+    def bundle_specs(self) -> List[Dict]:
+        """List[Dict]: Return bundles belonging to this placement group."""
+        return self.bundles
+
+    @property
     def bundle_count(self):
         return len(self.bundles)
 
@@ -71,21 +83,24 @@ class PlacementGroup:
 
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
-                    name: str = "unnamed_group"):
-    """
-    Create a placement group.
-
-    This method is the api to create placement group.
+                    name: str = "unnamed_group") -> PlacementGroup:
+    """Asynchronously creates a PlacementGroup.
 
     Args:
-        bundles: A list of bundles which represent the resources needed.
-        strategy: The strategy to create the placement group.
-            PACK: Packs Bundles into as few nodes as possible.
-            SPREAD: Places Bundles across distinct nodes as even as possible.
-            STRICT_PACK: Packs Bundles into one node.
-            STRICT_SPREAD: Packs Bundles across distinct nodes.
-            The group is not allowed to span multiple nodes.
-        name: The name of the placement group.
+        bundles(List[Dict]): A list of bundles which
+            represent the resources requirements.
+        strategy(str): The strategy to create the placement group.
+
+         - "PACK": Packs Bundles into as few nodes as possible.
+         - "SPREAD": Places Bundles across distinct nodes as even as possible.
+         - "STRICT_PACK": Packs Bundles into one node. The group is
+           not allowed to span multiple nodes.
+         - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+
+        name(str): The name of the placement group.
+
+    Return:
+        PlacementGroup: Placement group object.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
@@ -108,7 +123,12 @@ def placement_group(bundles: List[Dict[str, float]],
     return PlacementGroup(placement_group_id, bundles)
 
 
-def remove_placement_group(placement_group):
+def remove_placement_group(placement_group: PlacementGroup):
+    """Asynchronously remove placement group.
+
+    Args:
+        placement_group (PlacementGroup): The placement group to delete.
+    """
     assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
@@ -116,14 +136,21 @@ def remove_placement_group(placement_group):
     worker.core_worker.remove_placement_group(placement_group.id)
 
 
-def placement_group_table(placement_group):
+def placement_group_table(placement_group: PlacementGroup) -> dict:
+    """Get the state of the placement group from GCS.
+
+    Args:
+        placement_group (PlacementGroup): placement group to see
+            states.
+    """
     assert placement_group is not None
     worker = ray.worker.global_worker
     worker.check_connected()
     return ray.state.state.placement_group_table(placement_group.id)
 
 
-def check_placement_group_index(placement_group, bundle_index):
+def check_placement_group_index(placement_group: PlacementGroup,
+                                bundle_index: int):
     assert placement_group is not None
     if placement_group.id.is_nil():
         if bundle_index != -1:
