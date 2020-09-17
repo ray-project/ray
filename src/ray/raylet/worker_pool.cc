@@ -325,7 +325,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
-
   Process proc = StartProcess(worker_command_args, env);
   if (RayConfig::instance().enable_multi_tenancy()) {
     // If the pid is reused between processes, the old process must have exited.
