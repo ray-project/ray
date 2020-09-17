@@ -394,7 +394,7 @@ def trial_progress_str(trials,
     else:
         overflow = False
 
-    if total_samples == sys.maxsize:
+    if total_samples >= sys.maxsize:
         total_samples = "infinite"
 
     messages.append("Number of trials: {}{} ({})".format(
