@@ -257,9 +257,6 @@ def test_not_logging_to_driver(shutdown_only):
     assert len(err_lines) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
