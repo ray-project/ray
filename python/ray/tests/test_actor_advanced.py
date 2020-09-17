@@ -189,9 +189,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
                 ray.get(x_id)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -347,9 +344,6 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Hanging with new GCS API.")
 def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
     cluster = ray_start_cluster_2_nodes
     counter, ids = setup_counter_actor(test_checkpoint=True)

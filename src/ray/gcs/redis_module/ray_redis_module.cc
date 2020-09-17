@@ -30,19 +30,6 @@ using ray::rpc::GcsEntry;
 using ray::rpc::TablePrefix;
 using ray::rpc::TablePubsub;
 
-#if RAY_USE_NEW_GCS
-// Under this flag, ray-project/credis will be loaded.  Specifically, via
-// "path/redis-server --loadmodule <credis module> --loadmodule <current
-// libray_redis_module>" (dlopen() under the hood) will a definition of "module"
-// be supplied.
-//
-// All commands in this file that depend on "module" must be wrapped by "#if
-// RAY_USE_NEW_GCS", until we switch to this launch configuration as the
-// default.
-#include "ray/gcs/redis_module/chain_module.h"
-extern RedisChainModule module;
-#endif
-
 #define REPLY_AND_RETURN_IF_FALSE(CONDITION, MESSAGE) \
   if (!(CONDITION)) {                                 \
     RedisModule_ReplyWithError(ctx, (MESSAGE));       \
@@ -328,13 +315,6 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
   return TableAdd_DoPublish(ctx, argv, argc);
 }
 
-#if RAY_USE_NEW_GCS
-int ChainTableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-  return module.ChainReplicate(ctx, argv, argc, /*node_func=*/TableAdd_DoWrite,
-                               /*tail_func=*/TableAdd_DoPublish);
-}
-#endif
-
 int TableAppend_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
                         RedisModuleString **mutated_key_str) {
   if (argc < 5 || argc > 6) {
@@ -434,15 +414,6 @@ int TableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   }
   return TableAppend_DoPublish(ctx, argv, argc);
 }
-
-#if RAY_USE_NEW_GCS
-int ChainTableAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv,
-                                  int argc) {
-  return module.ChainReplicate(ctx, argv, argc,
-                               /*node_func=*/TableAppend_DoWrite,
-                               /*tail_func=*/TableAppend_DoPublish);
-}
-#endif
 
 int Set_DoPublish(RedisModuleCtx *ctx, RedisModuleString **argv, bool is_add) {
   RedisModuleString *pubsub_channel_str = argv[2];
@@ -983,10 +954,6 @@ AUTO_MEMORY(TableRequestNotifications_RedisCommand);
 AUTO_MEMORY(TableDelete_RedisCommand);
 AUTO_MEMORY(TableCancelNotifications_RedisCommand);
 AUTO_MEMORY(DebugString_RedisCommand);
-#if RAY_USE_NEW_GCS
-AUTO_MEMORY(ChainTableAdd_RedisCommand);
-AUTO_MEMORY(ChainTableAppend_RedisCommand);
-#endif
 
 extern "C" {
 
@@ -1054,19 +1021,6 @@ __declspec(dllexport)
                                 "readonly", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
-
-#if RAY_USE_NEW_GCS
-  // Chain-enabled commands that depend on ray-project/credis.
-  if (RedisModule_CreateCommand(ctx, "ray.chain.table_add", ChainTableAdd_RedisCommand,
-                                "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-  if (RedisModule_CreateCommand(ctx, "ray.chain.table_append",
-                                ChainTableAppend_RedisCommand, "write pubsub", 0, 0,
-                                0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-#endif
 
   return REDISMODULE_OK;
 }
