@@ -41,7 +41,8 @@ if __name__ == "__main__":
     config["env_config"] = {"local_ratio": 0.5}
 
     # 3. Register env
-    register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
+    register_env("pistonball",
+                 lambda config: PettingZooEnv(env_creator(config)))
 
     # 4. Extract space dimensions
     test_env = PettingZooEnv(env_creator({}))
