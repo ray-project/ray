@@ -59,16 +59,16 @@ def _setup_cluster_for_test(ray_start_cluster):
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
-        counter = Count(f"test_counter", "desc", "unit", [])
-        counter.record(1, {})
+        counter = Count(f"test_counter", description="desc")
+        counter.record(1)
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
     class A:
         async def ping(self):
-            histogram = Histogram("test_histogram", "desc", "unit", [0.1, 1.6],
-                                  [])
-            histogram.record(1.5, {})
+            histogram = Histogram(
+                "test_histogram", description="desc", boundaries=[0.1, 1.6])
+            histogram.record(1.5)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()

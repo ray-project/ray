@@ -139,21 +139,25 @@ class Router:
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
             "num_router_requests",
-            "Number of requests processed by the router.", "requests",
-            ["endpoint"])
+            description="Number of requests processed by the router.",
+            tags={"endpoint": None})
         self.num_error_endpoint_requests = metrics.Count(
             "num_error_endpoint_requests",
-            ("Number of requests that errored when getting results "
-             "for the endpoint."), "requests", ["endpoint"])
+            description=(
+                "Number of requests that errored when getting results "
+                "for the endpoint."),
+            tags={"endpoint": None})
         self.num_error_backend_requests = metrics.Count(
             "num_error_backend_requests",
-            ("Number of requests that errored when getting result "
-             "from the backend."), "requests", ["backend"])
+            description=("Number of requests that errored when getting result "
+                         "from the backend."),
+            tags={"backend": None})
 
         self.backend_queue_size = metrics.Gauge(
             "backend_queued_queries",
-            "Current number of queries queued in the router for a backend",
-            "requests", ["backend"])
+            description=("Current number of queries queued "
+                         "in the router for a backend"),
+            tags={"backend": None})
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 

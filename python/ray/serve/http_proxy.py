@@ -32,8 +32,9 @@ class HTTPProxy:
         self.route_table = await controller.get_router_config.remote()
 
         self.request_counter = metrics.Count(
-            "num_http_requests", "The number of HTTP requests processed",
-            "requests", ["route"])
+            "num_http_requests",
+            description="The number of HTTP requests processed",
+            tags={"route": None})
 
         self.router = Router()
         await self.router.setup(name, controller_name)
