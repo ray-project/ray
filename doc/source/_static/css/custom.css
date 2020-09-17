@@ -59,3 +59,7 @@ span.rst-current-version > span.fa.fa-book {
   margin: 10px 0px 0px 5px;
 }
 
+/* Adjustment to Version block */
+.rst-versions {
+  z-index: 1200;
+}
