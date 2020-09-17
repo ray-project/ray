@@ -5,6 +5,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Common.WorkerType;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
+import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 import org.apache.log4j.RollingFileAppender;
@@ -20,6 +21,8 @@ public class LoggingUtil {
     }
     setup = true;
 
+    LogManager.resetConfiguration();
+    Logger.getRootLogger().removeAllAppenders();
     WriterAppender appender;
     Config config = rayConfig.getInternalConfig();
     if (rayConfig.workerMode == WorkerType.DRIVER) {
@@ -37,12 +40,13 @@ public class LoggingUtil {
       rfAppender.setMaxFileSize(config.getString("ray.logging.max-file-size"));
       rfAppender.setMaxBackupIndex(config.getInt("ray.logging.max-backup-files"));
     }
-    Level level = Level.toLevel(config.getString("ray.logging.level"));
-    appender.setThreshold(level);
     PatternLayout patternLayout = new PatternLayout(config.getString("ray.logging.pattern"));
     appender.setLayout(patternLayout);
     appender.activateOptions();
-    Logger.getLogger("io.ray").addAppender(appender);
+    Logger.getRootLogger().addAppender(appender);
+    Logger.getRootLogger().setLevel(Level.toLevel(config.getString("ray.logging.level")));
+    Logger.getLogger("io.ray").setLevel(
+        Level.toLevel(config.getString("ray.logging.ray-level")));
   }
 
 }
