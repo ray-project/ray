@@ -411,3 +411,14 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
             print("Request coming from web!")
         elif isinstance(request, ServeRequest):
             print("Request coming from Python!")
+
+.. note::
+
+    Once special case is when you pass a web request to a handle.
+
+    .. code-block:: python
+
+        handle.remote(flask_request)
+
+    In this case, Serve will `not` wrap it in ServeRequest. You can directly
+    process the request as a ``flask.Request``.
