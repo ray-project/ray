@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from collections import defaultdict
 import numpy as np
 import logging
 import time
@@ -110,14 +111,14 @@ for N in [1000, 100000]:
 stage_3_time = time.time() - start_time
 logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 
-#This tests https://github.com/ray-project/ray/issues/10150.
-# The only way to integration test this is via performance. We launch a
-# cluster of 10 nodes w/ 10 cpu's per node. Then we launch 100 tasks. Since
-# the driver submits all these tasks it should easily be able to schedule
-# each task in O(1) iterative spillback queries. If spillback behavior is
-# incorrect, each task will require O(N) queries. Since we limit the number
-# of inflight requests, we will run into head of line blocking and we should
-# be able to measure this timing.
+# This tests https://github.com/ray-project/ray/issues/10150. The only way to
+# integration test this is via performance. The goal is to fill up the cluster
+# so that all tasks can be run, but spillback is required. Since the driver
+# submits all these tasks it should easily be able to schedule each task in
+# O(1) iterative spillback queries. If spillback behavior is incorrect, each
+# task will require O(N) queries. Since we limit the number of inflight
+# requests, we will run into head of line blocking and we should be able to
+# measure this timing.
 num_tasks = int(ray.cluster_resources()["GPU"])
 logger.info(f"Scheduling many tasks for spillback.")
 
@@ -126,9 +127,9 @@ logger.info(f"Scheduling many tasks for spillback.")
 def func(t):
     if t % 100 == 0:
         logger.info(f"[spillback test] {t}/{num_tasks}")
-    start = perf_counter()
+    start = time.perf_counter()
     time.sleep(1)
-    end = perf_counter()
+    end = time.perf_counter()
     return start, end, ray.worker.global_worker.node.unique_id
 
 
