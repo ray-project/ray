@@ -491,8 +491,7 @@ class CoreWorkerDirectTaskReceiver {
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
-        task_done_(task_done),
-        this_worker_id_(worker_context.GetWorkerID()) {}
+        task_done_(task_done) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
@@ -542,8 +541,6 @@ class CoreWorkerDirectTaskReceiver {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;
-  /// The Worker ID of the worker running this task receiver
-  WorkerID this_worker_id_;
   /// Protects the non_actor_task_queue_ deque
   absl::Mutex mu_;
   /// Queue containing the TaskSpecification of each non actor task that has been received

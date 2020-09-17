@@ -333,7 +333,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
     if (stolen) {
       RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
-                     << this_worker_id_
+                     << worker_context_.GetWorkerID()
                      << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
       // task stolen. respond accordingly
       reply->set_task_stolen(true);
@@ -341,7 +341,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       return;
     }
     RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was NOT stolen from "
-                   << this_worker_id_
+                   << worker_context_.GetWorkerID()
                    << "'s non_actor_task_queue_! Proceeding with HandlePushTask normally";
   }
 
@@ -455,7 +455,6 @@ void CoreWorkerDirectTaskReceiver::HandleStealWork(
   absl::MutexLock lock(&mu_);
 
   size_t half = non_actor_task_queue_.size() / 2;
-  RAY_CHECK(half >= 0);
 
   if (half == 0) {
     RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
@@ -483,7 +482,7 @@ void CoreWorkerDirectTaskReceiver::HandleStealWork(
     // Add the task's TaskSpecification to the StealWork RPC reply
     reply->add_tasks_stolen()->CopyFrom(reverse_it->first.GetMessage());
     RAY_LOG(DEBUG) << "Task " << reverse_it->first.TaskId()
-                   << " was marked as stolen from worker " << this_worker_id_
+                   << " was marked as stolen from worker " << worker_context_.GetWorkerID()
                    << "'s non_actor_task_queue_!";
 
     n_tasks_stolen++;

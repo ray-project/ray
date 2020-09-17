@@ -279,7 +279,7 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
         RAY_LOG(DEBUG) << "thief_entry.stealable_tasks.size() (thief): "
                        << thief_entry.stealable_tasks.size();
 
-        size_t tasks_in_flight_before_stealing = thief_entry.tasks_in_flight;
+        //size_t tasks_in_flight_before_stealing = thief_entry.tasks_in_flight;
 
         ssize_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
         RAY_CHECK(number_of_tasks_stolen == reply.tasks_stolen_size());
@@ -306,23 +306,27 @@ void CoreWorkerDirectTaskSubmitter::StealWorkIfNeeded(
           RAY_CHECK(victim_entry.lease_client);
           victim_entry.stealable_tasks.erase(task_spec.TaskId());
 
-          auto &client = *client_cache_->GetOrConnect(thief_addr.ToProto());
+          //auto &client = *client_cache_->GetOrConnect(thief_addr.ToProto());
 
           RAY_CHECK(thief_entry.lease_client);
-          RAY_CHECK(thief_entry.tasks_in_flight ==
-                    tasks_in_flight_before_stealing + (size_t)i);
-
-          thief_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
-                                          // the worker
-
+          //RAY_CHECK(thief_entry.tasks_in_flight ==
+          //          tasks_in_flight_before_stealing + (size_t)i);
           auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          scheduling_key_entry.total_tasks_in_flight++;
+          scheduling_key_entry.task_queue.push_back(task_spec);
+          OnWorkerIdle(thief_addr, scheduling_key, false, thief_entry.assigned_resources);
 
-          auto res = thief_entry.stealable_tasks.emplace(task_spec.TaskId());
-          RAY_CHECK(res.second);
-          executing_tasks_.emplace(task_spec.TaskId(), thief_addr);
-          PushNormalTask(thief_addr, client, scheduling_key, task_spec,
-                         assigned_resources);
+          // thief_entry.tasks_in_flight++;  // Increment the number of tasks in flight to
+          //                                 // the worker
+
+          // auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+          
+          // scheduling_key_entry.total_tasks_in_flight++;
+
+          // auto res = thief_entry.stealable_tasks.emplace(task_spec.TaskId());
+          // RAY_CHECK(res.second);
+          // executing_tasks_.emplace(task_spec.TaskId(), thief_addr);
+          // PushNormalTask(thief_addr, client, scheduling_key, task_spec,
+          //                assigned_resources);
         }
 
         if (number_of_tasks_stolen == 0) {
