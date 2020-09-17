@@ -14,7 +14,7 @@ export const NodeWorkerRow: React.FC<NodeWorkerRowProps> = ({
   data,
   key,
 }) => {
-  const { node, worker, rayletWorker } = data;
+  const { node, worker } = data;
   return (
     <TableRow hover key={key}>
       <StyledTableCell />
@@ -23,7 +23,6 @@ export const NodeWorkerRow: React.FC<NodeWorkerRowProps> = ({
           <WorkerFeature
             node={node}
             worker={worker}
-            rayletWorker={rayletWorker}
           />
         </StyledTableCell>
       ))}

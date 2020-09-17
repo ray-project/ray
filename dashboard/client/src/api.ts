@@ -3,6 +3,11 @@ const base =
     ? "http://localhost:8265"
     : window.location.origin;
 
+type APIResponse<T> = {
+  result: boolean;
+  msg: string;
+  data?: T;
+};
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
   const url = new URL(path, base);
@@ -55,23 +60,39 @@ export type RayConfigResponse = {
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
-export type NodeInfoResponseWorker = {
+export type Worker = {
   pid: number;
-  create_time: number;
-  cmdline: string[];
-  cpu_percent: number;
-  cpu_times: {
-    system: number;
-    children_system: number;
-    user: number;
-    children_user: number;
-  };
-  memory_info: {
-    pageins: number;
-    pfaults: number;
-    vms: number;
+  createTime: number;
+  memoryInfo: {
     rss: number;
+    vms: number;
+    shared: number;
+    text: number;
+    lib: number;
+    data: number;
+    dirty: Number;
   };
+  cmdline: string[];
+  cpuTimes: {
+    user: number;
+    system: number;
+    childrenUser: number;
+    childrenSystem: number;
+    iowait: number;
+  };
+  cpuPercent: number;
+  logCount: number;
+  errorCount: number;
+  coreWorkerStats: CoreWorkerStats[];
+};
+
+export type CoreWorkerStats = {
+  ipAddress: string;
+  port: number;
+  usedResources: { [key: string]: ResourceAllocations };
+  numExecutedTasks: number;
+  workerId: string;
+  // We need the below but Ant's API does not yet support it.
 };
 
 export type GPUProcessStats = {
@@ -79,7 +100,7 @@ export type GPUProcessStats = {
   // utilization of a single process of a single GPU.
   username: string;
   command: string;
-  gpu_memory_usage: number;
+  gpuMemoryUsage: number;
   pid: number;
 };
 
@@ -87,43 +108,55 @@ export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;
   name: string;
-  temperature_gpu: number;
-  fan_speed: number;
-  utilization_gpu: number;
-  power_draw: number;
-  enforced_power_limit: number;
-  memory_used: number;
-  memory_total: number;
-  processes: Array<GPUProcessStats>;
+  temperatureGpu: number;
+  fanSpeed: number;
+  utilizationGpu: number;
+  powerDraw: number;
+  enforcedPowerLimit: number;
+  memoryUsed: number;
+  memoryTotal: number;
+  processes: GPUProcessStats[];
+};
+
+export type NodeSummary = BaseNodeInfo;
+
+export type NodeDetails = {
+  workers: Worker[];
+} & BaseNodeInfo;
+
+type BaseNodeInfo = {
+  now: number;
+  hostname: string;
+  ip: string;
+  bootTime: number; // System boot time expressed in seconds since epoch
+  cpu: number; // System-wide CPU utilization expressed as a percentage
+  cpus: [number, number]; // Number of logical CPUs and physical CPUs
+  gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
+  mem: [number, number, number]; // Total, available, and used percentage of memory
+  disk: {
+    [dir: string]: {
+      total: number;
+      free: number;
+      used: number;
+      percent: number;
+    };
+  };
+  loadAvg: [[number, number, number], [number, number, number]];
+  net: [number, number]; // Sent and received network traffic in bytes / second
+  logCount: number;
+  errorCount: number;
+  raylet: {
+    numWorkers: number;
+    pid: number;
+  }
+  plasma: PlasmaStats;
 };
 
 export type NodeInfoResponse = {
-  clients: Array<{
-    now: number;
-    hostname: string;
-    ip: string;
-    boot_time: number; // System boot time expressed in seconds since epoch
-    cpu: number; // System-wide CPU utilization expressed as a percentage
-    cpus: [number, number]; // Number of logical CPUs and physical CPUs
-    gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
-    mem: [number, number, number]; // Total, available, and used percentage of memory
-    disk: {
-      [path: string]: {
-        total: number;
-        free: number;
-        used: number;
-        percent: number;
-      };
-    };
-    load_avg: [[number, number, number], [number, number, number]];
-    net: [number, number]; // Sent and received network traffic in bytes / second
-    log_count?: { [pid: string]: number };
-    error_count?: { [pid: string]: number };
-    workers: Array<NodeInfoResponseWorker>;
-  }>;
+  clients: NodeDetails[];
 };
 
-export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
+export const getNodeInfo = () => get<NodeInfoResponse>("/all_node_details", {});
 
 export type ResourceSlot = {
   slot: number;
@@ -134,29 +167,17 @@ export type ResourceAllocations = {
   resourceSlots: ResourceSlot[];
 };
 
-export type RayletCoreWorkerStats = {
-  usedResources: {
-    [key: string]: ResourceAllocations;
-  };
-};
-
-export type RayletWorkerStats = {
-  pid: number;
-  isDriver?: boolean;
-  coreWorkerStats: RayletCoreWorkerStats;
-};
-
 export enum ActorState {
   // These two are virtual states that we air because there is
   // an existing task to create an actor
-  Infeasible = -2, // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
-  PendingResources = -1, // Actor task is waiting on resources the cluster has but are in-use
+  Infeasible = "INFEASIBLE", // Actor task is waiting on resources (e.g. RAM, CPUs or GPUs) that the cluster does not have
+  PendingResources = "PENDING_RESOURCES", // Actor task is waiting on resources the cluster has but are in-use
   // The rest below are "official" GCS actor states
-  DependenciesUnready = 0, // Actor is pending on an argument to be ready
-  PendingCreation = 1, // Actor creation is running
-  Alive = 2, // Actor is alive and handling tasks
-  Restarting = 3, // Actor died and is being restarted
-  Dead = 4, // Actor died and is not being restarted
+  DependenciesUnready = "PENDING", // Actor is pending on an argument to be ready
+  PendingCreation = "CREATING", // Actor creation is running
+  Alive = "ALIVE", // Actor is alive and handling tasks
+  Restarting = "RESTARTING", // Actor died and is being restarted
+  Dead = "DEAD", // Actor died and is not being restarted
 }
 
 export type ActorInfo = FullActorInfo | ActorTaskInfo;
@@ -221,29 +242,15 @@ export type ActorGroup = {
   summary: ActorGroupSummary;
 };
 
-export type RayletInfoResponse = {
-  nodes: {
-    [ip: string]: {
-      extraInfo?: string;
-      workersStats: Array<RayletWorkerStats>;
-    };
-  };
-  actorGroups: {
-    [groupKey: string]: ActorGroup;
-  };
-  plasmaStats: {
-    [ip: string]: PlasmaStats;
-  };
+export type ActorsResponse = {
+  groups: { [key: string]: ActorGroup };
 };
 
 export type PlasmaStats = {
-  object_store_num_local_objects: number;
-  object_store_available_memory: number;
-  object_store_used_memory: number;
+  numLocalObjects: number;
+  availableMemory: number;
+  usedMemory: number;
 };
-
-export const getRayletInfo = () =>
-  get<RayletInfoResponse>("/api/raylet_info", {});
 
 export type ErrorsResponse = {
   [pid: string]: Array<{

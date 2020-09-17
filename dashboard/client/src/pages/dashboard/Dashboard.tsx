@@ -17,6 +17,7 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
+const { setNodeInfo, setTuneAvailability, setError, setTab } = dashboardActions;
 const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
@@ -48,7 +49,6 @@ const Dashboard: React.FC = () => {
   const dispatch = useDispatch();
   const tuneAvailability = useSelector(tuneAvailabilitySelector);
   const tab = useSelector(tabSelector);
-  const { setNodeInfo, setTuneAvailability, setError, setTab } = dashboardActions;
   const classes = useDashboardStyles();
 
   // Polling Function

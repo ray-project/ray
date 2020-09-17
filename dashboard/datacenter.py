@@ -115,8 +115,14 @@ class DataOrganizer:
         node_details = []
         for hostname in DataSource.hostname_to_ip.keys():
             node_details.append(await cls.get_node_info(hostname))
-        logger.warning(f"node_details={node_details}")
         return node_details
+
+    @classmethod
+    async def get_all_actors(cls):
+        actors = []
+        for hostname in DataSource.hostname_to_ip.keys():
+            actors.append(await cls.get_node_actors(hostname))
+        return actors
 
     @classmethod
     async def get_memory_table(cls, sort_by=memory.SortingType.OBJECT_SIZE, group_by=memory.GroupByType.STACK_TRACE):

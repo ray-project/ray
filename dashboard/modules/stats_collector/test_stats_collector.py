@@ -154,12 +154,12 @@ def test_get_all_node_details(ray_start_with_dashboard):
             time.sleep(.5)
             continue
         resp_data = resp.json()["data"]
-        print(resp_data)
         clients = resp_data["clients"]
-        logger.warning(clients)
         try:
             assert len(clients) == 1
             assert len(clients[0].get('actors')) == 2
+            # Workers information should be in the detailed payload
+            assert "workers" in clients[0]
         except AssertionError as e:
             time.sleep(.5)
             continue

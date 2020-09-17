@@ -14,12 +14,13 @@ import {
 } from "./types";
 
 export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
-  plasmaStats,
+  nodes
 }) => {
   const totalAvailable = sum(
-    plasmaStats.map((s) => s.object_store_available_memory),
+    nodes.map(n => n.plasma.availableMemory),
   );
-  const totalUsed = sum(plasmaStats.map((s) => s.object_store_used_memory));
+
+  const totalUsed = sum(nodes.map(n => n.plasma.usedMemory));
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
@@ -30,8 +31,8 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
   );
 };
 
-export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ plasmaStats }) => {
-  if (!plasmaStats) {
+export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
+  if (!node.plasma) {
     return (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A
@@ -39,17 +40,17 @@ export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ plasmaStats }) => {
     );
   }
   const {
-    object_store_used_memory,
-    object_store_available_memory,
-  } = plasmaStats;
-  const usageRatio = object_store_used_memory / object_store_available_memory;
+    usedMemory,
+    availableMemory,
+  } = node.plasma;
+  const usageRatio = usedMemory / availableMemory;
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
         percent={usageRatio * 100}
         text={formatUsage(
-          object_store_used_memory,
-          object_store_available_memory,
+          usedMemory,
+          availableMemory,
           "mebibyte",
           false,
         )}
@@ -59,10 +60,9 @@ export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ plasmaStats }) => {
 };
 
 export const nodeObjectStoreMemoryAccessor: Accessor<NodeFeatureData> = ({
-  plasmaStats,
-}) => {
-  return plasmaStats?.object_store_used_memory ?? 0;
-};
+  node
+}) => node.plasma?.usedMemory ?? 0;
+
 
 export const WorkerObjectStoreMemory: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">

@@ -10,7 +10,6 @@ import {
 } from "@material-ui/core";
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
-import { RayletInfoResponse } from "../../../api";
 import SortableTableHead, {
   HeaderInfo,
 } from "../../../common/SortableTableHead";
@@ -68,24 +67,17 @@ const makeGroupedTableContents = (
   nodes: Node[],
   sortWorkerComparator: any,
   sortGroupComparator: any,
-  rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
   const sortedGroups = sortGroupComparator
     ? stableSort(nodes, sortGroupComparator)
     : nodes;
   return sortedGroups.map((node) => {
-    const plasmaStats = rayletInfo?.plasmaStats?.[node.ip];
     const workerFeatureData: WorkerFeatureData[] = node.workers.map(
       (worker) => {
-        const rayletWorker =
-          rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
-            (workerStats) => workerStats.pid === worker.pid,
-          ) || null;
         return {
           node,
           worker,
-          rayletWorker,
         };
       },
     );
@@ -100,7 +92,6 @@ const makeGroupedTableContents = (
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
-        plasmaStats={plasmaStats}
         initialExpanded={nodes.length <= 1}
       />
     );
@@ -110,7 +101,6 @@ const makeGroupedTableContents = (
 const makeUngroupedTableContents = (
   nodes: Node[],
   sortWorkerComparator: any,
-  rayletInfo: RayletInfoResponse | null,
   nodeInfoFeatures: NodeInfoFeature[],
 ) => {
   const workerInfoFeatures = nodeInfoFeatures.map(
@@ -118,14 +108,9 @@ const makeUngroupedTableContents = (
   );
   const allWorkerFeatures: WorkerFeatureData[] = nodes.flatMap((node) => {
     return node.workers.map((worker) => {
-      const rayletWorker =
-        rayletInfo?.nodes?.[node.ip]?.workersStats?.find(
-          (workerStats) => workerStats.pid === worker.pid,
-        ) || null;
       return {
-        node: node,
+        node,
         worker,
-        rayletWorker,
       };
     });
   });
@@ -154,10 +139,8 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const nodeInfoSelector = (state: StoreState) => ({
-  nodeInfo: state.dashboard.nodeInfo,
-  rayletInfo: state.dashboard.rayletInfo,
-});
+const nodesSelector = (state: StoreState) =>
+  state.dashboard?.nodeInfo?.clients;
 
 type DialogState = {
   hostname: string;
@@ -188,12 +171,12 @@ const NodeInfo: React.FC<{}> = () => {
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
-  const { nodeInfo, rayletInfo } = useSelector(nodeInfoSelector);
-  if (nodeInfo === null || rayletInfo === null) {
+  const nodes = useSelector(nodesSelector);
+  if (!nodes) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
   const clusterTotalWorkers = sum(
-    nodeInfo.clients.map((c) => c.workers.length),
+    nodes.map((n) => n.workers.length),
   );
   const nodeInfoFeatures: NodeInfoFeature[] = [
     hostFeature,
@@ -222,16 +205,14 @@ const NodeInfo: React.FC<{}> = () => {
     sortWorkerAccessor && getFnComparator(order, sortWorkerAccessor);
   const tableContents = isGrouped
     ? makeGroupedTableContents(
-        nodeInfo.clients,
+        nodes,
         sortWorkerComparator,
         sortNodeComparator,
-        rayletInfo,
         nodeInfoFeatures,
       )
     : makeUngroupedTableContents(
-        nodeInfo.clients,
+        nodes,
         sortWorkerComparator,
-        rayletInfo,
         nodeInfoFeatures,
       );
   return (
@@ -265,8 +246,7 @@ const NodeInfo: React.FC<{}> = () => {
           {tableContents}
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
-            nodes={nodeInfo.clients}
-            plasmaStats={Object.values(rayletInfo.plasmaStats)}
+            nodes={nodes}
             features={nodeInfoFeatures.map(
               (feature) => feature.ClusterFeatureRenderFn,
             )}
