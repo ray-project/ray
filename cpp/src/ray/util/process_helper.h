@@ -12,7 +12,7 @@ class ProcessHelper {
                 CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop(std::shared_ptr<RayConfig> config);
 
-  static ProcessHelper &getInstance() {
+  static ProcessHelper &GetInstance() {
     static ProcessHelper processHelper;
     return processHelper;
   }

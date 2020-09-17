@@ -44,7 +44,7 @@ Status TaskExecutor::ExecuteTask(
   /// TODO(Guyang Song): Avoid the memory copy.
   args_sbuffer->write(reinterpret_cast<const char *>(args_buffer->Data()),
                       args_buffer->Size());
-  auto base_addr = FunctionHelper::GetInstance()->GetBaseAddress(lib_name);
+  auto base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
 
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {

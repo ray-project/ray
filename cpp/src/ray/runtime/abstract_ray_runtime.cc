@@ -22,7 +22,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit(
   if (config->run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime(config));
   } else {
-    ProcessHelper::getInstance().RayStart(config, TaskExecutor::ExecuteTask);
+    ProcessHelper::GetInstance().RayStart(config, TaskExecutor::ExecuteTask);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime(config));
   }
   runtime->config_ = config;
@@ -37,7 +37,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 
 void AbstractRayRuntime::DoShutdown(std::shared_ptr<RayConfig> config) {
   if (config->run_mode == RunMode::CLUSTER) {
-    ProcessHelper::getInstance().RayStop(config);
+    ProcessHelper::GetInstance().RayStop(config);
   }
 }
 
