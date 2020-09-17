@@ -79,7 +79,7 @@ Starter SLURM script
   redis_password = sys.argv[1]
   num_cpus = int(sys.argv[2])
 
-  ray.init(address=os.environ["ip_head"], redis_password=redis_password)
+  ray.init(address=os.environ["ip_head"], _redis_password=redis_password)
 
   print("Nodes in the Ray cluster:")
   print(ray.nodes())

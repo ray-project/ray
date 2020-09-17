@@ -584,7 +584,7 @@ def start(node_ip_address, redis_address, address, redis_port, port,
                     cli_logger.print(
                         "ray{}init(address{}{}{})", c.magenta("."),
                         c.magenta("="), c.yellow("'auto'"),
-                        ", redis_password{}{}".format(
+                        ", _redis_password{}{}".format(
                             c.magenta("="),
                             c.yellow("'" + redis_password + "'"))
                         if redis_password else "")
