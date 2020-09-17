@@ -49,7 +49,7 @@ def shutdown():
     _session = None
 
 
-def report(**kwargs):
+def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
     .. code-block:: python
@@ -65,12 +65,13 @@ def report(**kwargs):
         analysis = tune.run(run_me)
 
     Args:
+        _metric: Optional default anonymous metric for ``tune.report(value)``
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
     _session = get_session()
     if _session:
-        return _session(**kwargs)
+        return _session(_metric, **kwargs)
 
 
 def make_checkpoint_dir(step=None):

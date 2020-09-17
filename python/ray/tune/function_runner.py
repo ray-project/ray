@@ -132,7 +132,7 @@ class StatusReporter:
         self._last_checkpoint = None
         self._fresh_checkpoint = False
 
-    def __call__(self, **kwargs):
+    def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
 
         Pass in `done=True` when the training job is completed.
@@ -152,6 +152,9 @@ class StatusReporter:
         assert self._last_report_time is not None, (
             "StatusReporter._start() must be called before the first "
             "report __call__ is made to ensure correct runtime metrics.")
+
+        if _metric:
+            kwargs["_metric"] = _metric
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
