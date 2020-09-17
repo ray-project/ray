@@ -42,6 +42,7 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
+        self.local_rank = None
 
     def setup_address(self):
         return setup_address()
@@ -61,6 +62,14 @@ class DistributedTorchRunner(TorchRunner):
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
 
+    def set_local_rank(self, local_rank):
+        """Sets the local rank of this runner.
+
+        Args:
+            local_rank (int): the index of the runner on its node.
+        """
+        self.local_rank = local_rank
+
     def setup_operator(self):
         """Runs distributed coordination components.
 
@@ -74,6 +83,7 @@ class DistributedTorchRunner(TorchRunner):
         self.training_operator = self.training_operator_cls(
             self.config,
             world_rank=self.world_rank,
+            local_rank=self.local_rank,
             device_ids=device_ids,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,

@@ -1,6 +1,7 @@
 import io
 import logging
 import time
+from collections import defaultdict
 from datetime import timedelta
 
 import ray
@@ -191,6 +192,20 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         ]
         return remote_operator_setups
 
+    def _setup_local_rank(self, rank_counter_dict=defaultdict(int)):
+        """Sets local rank for all workers."""
+        node_ips = ray.get([w.get_node_ip.remote() for w in
+                            self.remote_workers])
+        futures = []
+        for i in range(self.remote_workers):
+            ip = node_ips[i]
+            rank = rank_counter_dict[ip]
+            worker = self.remote_workers[i]
+            futures.append(worker.set_local_rank.remote(rank))
+            rank_counter_dict[i] += 1
+        return futures
+
+
     def start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
         if num_workers == 1:
@@ -211,6 +226,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             ray.get(
                 self._setup_process_group(
                     address=address, world_size=num_workers))
+
+            ray.get(self._setup_local_rank())
 
             ray.get(self._setup_operator())
 
@@ -453,6 +470,12 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 world_size=num_workers,
                 timeout=timedelta(self._timeout_s))
             ray.get(remote_pgs)
+
+            local_node_ip = ray.services.get_node_ip_address()
+            rank_dict = defaultdict(int)
+            self.local_worker.set_local_rank(local_rank=0)
+            rank_dict[local_node_ip] += 1
+            self.remote_worker_group._setup_local_rank(rank_dict)
 
             remote_operators = self.remote_worker_group._setup_operator()
             self.local_worker.setup_operator()

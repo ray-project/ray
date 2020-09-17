@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from filelock import FileLock
 from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
+from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
@@ -123,6 +124,7 @@ class TrainingOperator:
     def __init__(self,
                  config,
                  world_rank,
+                 local_rank,
                  device_ids=None,
                  use_gpu=False,
                  use_fp16=False,
@@ -134,6 +136,7 @@ class TrainingOperator:
                  scheduler_step_freq=None):
         # You are not expected to override this method.
         self._world_rank = world_rank
+        self._local_rank = local_rank
         self._config = config
         self._use_fp16 = use_fp16
         self._device_ids = device_ids
@@ -771,6 +774,11 @@ class TrainingOperator:
         return self._world_rank
 
     @property
+    def local_rank(self):
+        """int: Local rank of parent runner. Always 0 if not distributed."""
+        return self._local_rank
+
+    @property
     def use_gpu(self):
         """Returns True if cuda is available and use_gpu is True."""
         return self._use_gpu
@@ -803,41 +811,124 @@ class TrainingOperator:
         return self._scheduler_step_freq
 
 
-class PTLOperator(TrainingOperator, TrainerModelHooksMixin):
+class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
+                  TrainerOptimizersMixin):
     def setup(self, config):
         ptl_module = self.__class___._lightning_module_cls()
         self.ptl_module = ptl_module
         model = ptl_module
-        optimizer = ptl_module.configure_optimizers()
 
         if self.is_function_implemented("on_fit_start", model):
             model.on_fit_start()
 
-        if self.is_function_implemented("prepare_data", model) and \
-            self.world_rank == 0:
+        # Only run data preparation once per node.
+        if self.local_rank == 0 and self.is_function_implemented(
+            "prepare_data", model):
             model.prepare_data()
 
 
-        train_loader = self.__class__._train_data_loader
-        val_loader = self.__class__._val_data_loader
-        if train_loader is None:
-            if hasattr(ptl_module, "train_dataloader"):
-                if hasattr(ptl_module, "prepare_data"):
-                    ptl_module.prepare_data()
-                    called = True
-                train_loader = ptl_module.train_dataloader()
+        model.setup("fit")
 
-        if val_dataloader is not None:
-            val_loader = val_dataloader
-        elif hasattr(ptl_module, "val_dataloader"):
-            if hasattr(ptl_module, "prepare_data") and not called:
-                ptl_module.prepare_data()
-            val_loader = ptl_module.val_dataloader()
+        optimizers, schedulers, frequencies = self.init_optimizers(model=model)
+        if len(frequencies) > 0:
+            logger.warning("Optimizer frequencies will be ignored. When "
+                           "passing in multiple optimizers, you should "
+                           "implement your own custom training loop.")
+        for i in range(len(schedulers)):
+            scheduler = schedulers[i]
+            if isinstance(scheduler, dict):
+                logger.info("lr_dict will be ignored. To set the scheduler "
+                            "update interval, pass `scheduler_step_freq` to "
+                            "TorchTrainer. To manually update the scheduler "
+                            "(for ReduceLROnPlateau), "
+                            "call TorchTrainer.update_scheduler.")
+                schedulers[i] = scheduler["scheduler"]
+        if len(schedulers) == 0:
+            self.model, self.optimizers = self.register(models=model,
+                                                        optimizers=optimizers)
+        else:
+            self.model, self.optimizers, self.schedulers = self.register(
+                models=model, optimizers=optimizers, schedulers=schedulers)
+            self.scheduler = self.schedulers[0]
+        self.optimizer = self.optimizer[0]
 
-        self.model, self.optimizer = self.register(models=model,
-                                                   optimizers=optimizer,
-                                                   train_loader=train_loader,
-                                                   validation_loader=val_loader)
+        if self.is_function_implemented("on_pretrain_routine_start",
+                                        model):
+            model.on_pretrain_routine_start()
+        if self.is_function_implemented("on_pretrain_routine_end", model):
+            model.on_pretrain_routine_end()
+
+        train_data_loader = None
+        if self.__class__._train_loader:
+            train_data_loader = self.__class__._train_loader
+        elif self.is_function_implemented("train_dataloader", model):
+            train_data_loader = model.train_dataloader()
+
+        val_data_loader = None
+        if self.__class__._validation_loader:
+            val_data_loader = self.__class__._validation_loader
+        elif self.is_function_implemented("val_dataloader", model):
+            val_data_loader = model.val_dataloader()
+
+        self.register_data(train_loader=train_data_loader,
+                           validation_loader=val_data_loader)
+
+    def train_epoch(self, iterator, info):
+        model = self.model
+        module = model.module
+        scheduler = None
+        if hasattr(self, "scheduler"):
+            scheduler = self.scheduler
+
+        module.on_train_epoch_start()
+
+        if self.use_tqdm and self.world_rank == 0:
+            desc = ""
+            if info is not None and "epoch_idx" in info:
+                if "num_epochs" in info:
+                    desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
+                else:
+                    desc = f"{info['epoch_idx'] + 1}e"
+
+            # TODO: Implement len for Dataset?
+            total = info[NUM_STEPS]
+            if total is None:
+                if hasattr(iterator, "__len__"):
+                    total = len(iterator)
+
+            _progress_bar = tqdm(
+                total=total, desc=desc, unit="batch", leave=False)
+
+        metric_meters = AverageMeterCollection()
+
+        model.train()
+        for batch_idx, batch in enumerate(iterator):
+            batch_info = {
+                "batch_idx": batch_idx,
+                "global_step": self.global_step
+            }
+            batch_info.update(info)
+            metrics = self.train_batch(batch, batch_info=batch_info)
+
+            if self.use_tqdm and self.world_rank == 0:
+                _progress_bar.n = batch_idx + 1
+                postfix = {}
+                if "train_loss" in metrics:
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
+
+            if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_BATCH:
+                scheduler.step()
+
+            metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
+            self.global_step += 1
+
+        if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_EPOCH:
+            scheduler.step()
+
+        return metric_meters.summary()
+
+
 
     def train_batch(self, batch, batch_info):
         batch_idx = batch_info["batch_idx"]
@@ -912,12 +1003,18 @@ class CreatorOperator(TrainingOperator):
 
         state = self.register(**kwargs)
         self.models, self.optimizers = state[:2]
-        if isinstance(self.models, tuple):
+        if isinstance(self.models, (list, tuple)):
+            logger.info("Multiple models have been registered. If custom "
+                        "training methods are not provided, only the first "
+                        "model will be used.")
             self.model = self.models[0]
         else:
             self.model = self.models
 
-        if isinstance(self.optimizers, tuple):
+        if isinstance(self.optimizers, (list, tuple)):
+            logger.info("Multiple optimizers have been registered. If custom "
+                        "training methods are not provided, only the first "
+                        "optimizer will be used.")
             self.optimizer = self.optimizers[0]
         else:
             self.optimizer = self.optimizers
@@ -926,7 +1023,10 @@ class CreatorOperator(TrainingOperator):
             self.criterion = state[2]
         if len(state) == 4:
             self.schedulers = state[3]
-            if isinstance(self.schedulers, tuple):
+            if isinstance(self.schedulers, (list, tuple)):
+                logger.info("Multiple schedulers have been registered. If "
+                            "custom training methods are not provided, "
+                            "only the first scheduler will be used.")
                 self.scheduler = self.schedulers[0]
             else:
                 self.scheduler = self.schedulers

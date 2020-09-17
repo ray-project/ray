@@ -1,6 +1,8 @@
 import logging
 import io
 import itertools
+
+import ray
 import torch
 
 from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
@@ -50,6 +52,7 @@ class TorchRunner:
         self.training_operator = self.training_operator_cls(
             self.config,
             world_rank=0,
+            local_rank=0,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
@@ -203,6 +206,9 @@ class TorchRunner:
     def get_models(self):
         """Getter method. Needed for remote actor calls."""
         return self.models
+
+    def get_node_ip(self):
+        return ray.services.get_node_ip_address()
 
     @property
     def models(self):
