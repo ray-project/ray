@@ -10,7 +10,6 @@ namespace api {
 
 class NativeTaskSubmitter : public TaskSubmitter {
  public:
-
   ObjectID SubmitTask(const InvocationSpec &invocation);
 
   ActorID CreateActor(const InvocationSpec &invocation);
