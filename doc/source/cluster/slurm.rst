@@ -51,7 +51,7 @@ Starter SLURM script
   # the worker will not be able to connect to redis. In case of longer delay,
   # adjust the sleeptime above to ensure proper order.
 
-  srun --nodes=${worker_num} --ntasks${worker_num} --cpus-per-task=${SLURM_CPUS_PER_TASK} --exclude=`hostname` ray start --address $ip_head --block --num-cpus ${SLURM_CPUS_PER_TASK} &
+  srun --nodes=${worker_num} --ntasks=${worker_num} --cpus-per-task=${SLURM_CPUS_PER_TASK} --exclude=`hostname` ray start --address $ip_head --block --num-cpus ${SLURM_CPUS_PER_TASK} &
   sleep 5
 
   python -u trainer.py ${total_cores} # Pass the total number of allocated CPUs
