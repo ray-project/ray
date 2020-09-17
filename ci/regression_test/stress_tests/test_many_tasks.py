@@ -110,7 +110,6 @@ for N in [1000, 100000]:
 stage_3_time = time.time() - start_time
 logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 
-
 #This tests https://github.com/ray-project/ray/issues/10150.
 # The only way to integration test this is via performance. We launch a
 # cluster of 10 nodes w/ 10 cpu's per node. Then we launch 100 tasks. Since
@@ -122,14 +121,16 @@ logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 num_tasks = int(ray.cluster_resources()["GPU"])
 logger.info(f"Scheduling many tasks for spillback.")
 
+
 @ray.remote(num_gpus=1)
 def func(t):
-    if t%100 == 0:
+    if t % 100 == 0:
         logger.info(f"[spillback test] {t}/{num_tasks}")
     start = perf_counter()
     time.sleep(1)
     end = perf_counter()
     return start, end, ray.worker.global_worker.node.unique_id
+
 
 results = ray.get([func.remote(i) for i in range(num_tasks)])
 
@@ -146,7 +147,7 @@ for host in host_to_start_times:
     logger.info(f"Spread: {last - first}\tLast: {last}\tFirst: {first}")
 
 # avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7 scheduler.
-avg_spread = sum(spreads)/len(spreads)
+avg_spread = sum(spreads) / len(spreads)
 logger.info(f"Avg spread: {sum(spreads)/len(spreads)}")
 
 print("Stage 0 results:")
