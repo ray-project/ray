@@ -1330,6 +1330,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   int port = message->port();
   worker->Connect(port);
   if (is_worker) {
+    worker_pool_.OnWorkerStarted(worker);
     HandleWorkerAvailable(worker->Connection());
   }
 }

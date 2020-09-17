@@ -124,6 +124,12 @@ class WorkerPool : public WorkerPoolInterface {
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
                         std::function<void(Status, int)> send_reply_callback);
 
+  /// To be invoked when a worker is started. This method should be called when the worker
+  /// announcces its port.
+  ///
+  /// \param[in] worker The worker which is started.
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
+
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
