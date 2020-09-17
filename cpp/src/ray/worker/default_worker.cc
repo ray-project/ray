@@ -8,7 +8,7 @@ namespace api {
 
 int default_worker_main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
-  RAY_CHECK(argc == 7);
+  RAY_CHECK(argc == 8);
 
   auto config = ray::api::RayConfig::GetInstance();
   config->run_mode = RunMode::CLUSTER;

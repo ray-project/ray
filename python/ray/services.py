@@ -1582,13 +1582,13 @@ def build_cpp_worker_command(
         The command string for starting CPP worker.
     """
 
-    # TODO(Guyang Song): Remove the env IS_DEFAULT_WORKER.
+    # TODO(Guyang Song): Remove the arg is_default_worker.
     # See `cluster_mode_test.cc` for why this workaround is currently needed
     # for C++ workers.
     command = [
-        "IS_DEFAULT_WORKER=true", DEFAULT_WORKER_EXECUTABLE, plasma_store_name,
-        raylet_name,
-        str(node_manager_port), redis_address, redis_password, session_dir
+        DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
+        str(node_manager_port), redis_address, redis_password, session_dir,
+        "is_default_worker"
     ]
 
     return command

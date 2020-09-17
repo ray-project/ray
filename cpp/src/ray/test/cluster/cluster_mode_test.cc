@@ -51,12 +51,13 @@ TEST(RayClusterModeTest, FullTest) {
 /// TODO(Guyang Song): Separate default worker from this test.
 /// Currently, we compile `default_worker` and `cluster_mode_test` in one single binary,
 /// to work around a symbol conflicting issue.
-/// This is the main function of the binary, and we use the `IS_DEFAULT_WORKER` env var to
+/// This is the main function of the binary, and we use the `is_default_worker` arg to
 /// tell if this binary is used as `default_worker` or `cluster_mode_test`.
 int main(int argc, char **argv) {
-  auto is_default_worker = std::getenv("IS_DEFAULT_WORKER");
-  if (is_default_worker &&
-      memcmp(is_default_worker, "true", strlen(is_default_worker)) == 0) {
+  const char *default_worker_magic = "is_default_worker";
+  /// `is_default_worker` is the last arg of `argv`
+  if (argc > 1 &&
+      memcmp(argv[argc - 1], default_worker_magic, strlen(default_worker_magic)) == 0) {
     default_worker_main(argc, argv);
     return 0;
   }
