@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import socket
+import tempfile
 import time
 
 import numpy as np
@@ -734,6 +735,56 @@ def test_accelerator_type_api(shutdown_only):
         accelerator_type=v100).remote()
     ray.get(with_options.initialized.remote())
     assert ray.available_resources()[resource_name] < quantity
+
+
+def test_detect_docker_cpus():
+    # No limits set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 64
+
+    # No cpuset used
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-10,20,50-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 26
+
+    # Quota set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("42")
+        period_file.write("100")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 0.42
 
 
 if __name__ == "__main__":
