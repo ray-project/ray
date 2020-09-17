@@ -585,25 +585,30 @@ def test_many_custom_resources(shutdown_only):
 def test_zero_capacity_deletion_semantics(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
 
-    def test():
-        resources = ray.available_resources()
-        MAX_RETRY_ATTEMPTS = 5
-        retry_count = 0
-
+    def delete_miscellaneous_item(resources):
         del resources["memory"]
         del resources["object_store_memory"]
         for key in list(resources.keys()):
             if key.startswith("node:"):
                 del resources[key]
 
+    def test():
+        resources = ray.available_resources()
+        MAX_RETRY_ATTEMPTS = 5
+        retry_count = 0
+
+        delete_miscellaneous_item(resources)
+
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
             resources = ray.available_resources()
+            delete_miscellaneous_item(resources)
             retry_count += 1
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.", resources)
+                "Resources were available even after {} retries.".format(
+                    MAX_RETRY_ATTEMPTS), resources)
 
         return resources
 
