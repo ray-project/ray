@@ -1,11 +1,12 @@
-#define BOOST_BIND_NO_PLACEHOLDERS
+
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
 #include <ray/util/logging.h>
 
-using namespace ray::api;
+namespace ray {
+namespace api {
 
-int main(int argc, char **argv) {
+int default_worker_main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started";
   RAY_CHECK(argc == 7);
 
@@ -30,3 +31,7 @@ int main(int argc, char **argv) {
   ::ray::CoreWorkerProcess::RunTaskExecutionLoop();
   return 0;
 }
+
+}  // namespace api
+}  // namespace ray
+

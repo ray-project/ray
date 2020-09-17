@@ -21,6 +21,7 @@ cc_library(
         "src/ray/util/*.h",
         "src/ray/*.cc",
         "src/ray/*.h",
+        "src/ray/worker/default_worker.cc",
     ]),
     hdrs = glob([
         "include/ray/*.h",
@@ -43,34 +44,17 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "default_worker",
-    srcs = [
-        "src/ray/worker/default_worker_experience.cc",
-    ],
-    copts = COPTS,
-    linkstatic = True,
-    deps = [
-        "ray_api",
-    ],
-)
-
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = [
-        "default_worker",
-        "ray_api",
-    ],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-)
+# cc_binary(
+#     name = "default_worker",
+#     srcs = [
+#         "src/ray/worker/default_worker_experience.cc",
+#     ],
+#     copts = COPTS,
+#     linkstatic = True,
+#     deps = [
+#         "ray_api",
+#     ],
+# )
 
 cc_binary(
     name = "example",
@@ -85,33 +69,33 @@ cc_binary(
     ],
 )
 
-cc_binary(
+# cc_binary(
 
-    name = "example.so",
-    # testonly = 1,
-    linkshared = 1,
-    linkstatic = False,
-    srcs = glob([
-        "src/example/example.cc",
-    ]),
-    copts = COPTS,
-    deps = [
-        "ray_api",
-    ],
-)
+#     name = "example.so",
+#     # testonly = 1,
+#     linkshared = 1,
+#     linkstatic = False,
+#     srcs = glob([
+#         "src/example/example.cc",
+#     ]),
+#     copts = COPTS,
+#     deps = [
+#         "ray_api",
+#     ],
+# )
 
-cc_binary(
-    name = "load",
-    # testonly = 1,
-    linkstatic = False,
-    srcs = glob([
-        "src/ray/test/so/*.cc",
-    ]),
-    copts = COPTS,
-    deps = [
-        "@msgpack",
-    ],
-)
+# cc_binary(
+#     name = "load",
+#     # testonly = 1,
+#     linkstatic = False,
+#     srcs = glob([
+#         "src/ray/test/so/*.cc",
+#     ]),
+#     copts = COPTS,
+#     deps = [
+#         "@msgpack",
+#     ],
+# )
 
 # cc_binary(
 #     name = "libray_api.so",
@@ -121,33 +105,33 @@ cc_binary(
 #     deps = ["ray_api"],
 # )
 
-cc_binary(
-    name = "example_cluster_mode_driver",
-    testonly = 1,
-    srcs = glob([
-        "src/example/example_cluster_mode.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = False,
-    deps = [
-        "ray_api",
-    ],
-)
+# cc_binary(
+#     name = "example_cluster_mode_driver",
+#     testonly = 1,
+#     srcs = glob([
+#         "src/example/example_cluster_mode.cc",
+#     ]),
+#     copts = COPTS,
+#     linkstatic = False,
+#     deps = [
+#         "ray_api",
+#     ],
+# )
 
-cc_binary(
-    name = "example_cluster_mode.so",
-    # testonly = 1,
-    # linkopts = ["-Wl,--exclude-libs,ALL"],
-    linkshared = 1,
-    linkstatic = True,
-    srcs = glob([
-        "src/example/example_cluster_mode.cc",
-    ]),
-    copts = COPTS,
-    deps = [
-        "ray_api",
-    ],
-)
+# cc_binary(
+#     name = "example_cluster_mode.so",
+#     # testonly = 1,
+#     # linkopts = ["-Wl,--exclude-libs,ALL"],
+#     linkshared = 1,
+#     linkstatic = True,
+#     srcs = glob([
+#         "src/example/example_cluster_mode.cc",
+#     ]),
+#     copts = COPTS,
+#     deps = [
+#         "ray_api",
+#     ],
+# )
 
 cc_test(
     name = "api_test",
@@ -164,13 +148,31 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
+    testonly = 0,
     srcs = glob([
         "src/ray/test/cluster/*.cc",
     ]),
     copts = COPTS,
-    linkstatic = False,
+    linkstatic = True,
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "cluster_mode_test",
+        "ray_api",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(location cluster_mode_test) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
+        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
 )

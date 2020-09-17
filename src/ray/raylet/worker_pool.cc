@@ -325,6 +325,14 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
+  // TODO(Guyang Song): Remove this env.
+  if (language == Language::CPP) {
+    env.insert({"IS_DEFAULT_WORKER", "true"});
+    printf("add env of cpp worker");
+  } else {
+    printf("not set");
+  }
+
   Process proc = StartProcess(worker_command_args, env);
   if (RayConfig::instance().enable_multi_tenancy()) {
     // If the pid is reused between processes, the old process must have exited.
@@ -332,7 +340,7 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
     state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
   }
-  RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
+  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);

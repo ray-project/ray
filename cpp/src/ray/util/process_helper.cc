@@ -23,10 +23,10 @@ static std::string GetSessionDir(std::string redis_ip, int port, std::string pas
   return session_dir;
 }
 
-static void StartRayNode(int redis_port, std::string redis_password) {
-  std::vector<std::string> cmdargs({"ray", "start", "--head", "--redis-port",
+static void StartRayNode(int redis_port, std::string redis_password, int node_manager_port) {
+  std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
-                                    redis_password});
+                                    redis_password, "--node-manager-port", std::to_string(node_manager_port)});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
@@ -37,7 +37,7 @@ static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
-  usleep(200 * 1000);
+  sleep(3);
   return;
 }
 
@@ -46,7 +46,7 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   std::string redis_ip = config->redis_ip;
   if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
-    StartRayNode(config->redis_port, config->redis_password);
+    StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);
   }
 
   auto session_dir =
