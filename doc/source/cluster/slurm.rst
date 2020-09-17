@@ -45,13 +45,13 @@ Starter SLURM script
   ip_head=`hostname`:$suffix
   export ip_head # Exporting for latter access by trainer.py
 
-  srun --nodes=1 --ntasks=1 --cpus-per-task=${SLURM_CPUS_PER_TASK} -w `hostname` ray start --head --block --dashboard-host 0.0.0.0 --port=6379 &
+  srun --nodes=1 --ntasks=1 --cpus-per-task=${SLURM_CPUS_PER_TASK} --nodelist=`hostname` ray start --head --block --dashboard-host 0.0.0.0 --port=6379 &
   sleep 5
   # Make sure the head successfully starts before any worker does, otherwise
   # the worker will not be able to connect to redis. In case of longer delay,
   # adjust the sleeptime above to ensure proper order.
 
-  srun --nodes=${worker_num} --ntasks${worker_num} --cpus-per-task=${SLURM_CPUS_PER_TASK} -x `hostname` ray start --address $ip_head --block --num-cpus ${SLURM_CPUS_PER_TASK} &
+  srun --nodes=${worker_num} --ntasks${worker_num} --cpus-per-task=${SLURM_CPUS_PER_TASK} --exclude=`hostname` ray start --address $ip_head --block --num-cpus ${SLURM_CPUS_PER_TASK} &
   sleep 5
 
   python -u trainer.py ${total_cores} # Pass the total number of allocated CPUs
