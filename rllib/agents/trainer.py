@@ -78,9 +78,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of GPUs to allocate to the trainer process. Note that not all
     # algorithms can take advantage of trainer GPUs. This can be fractional
     # (e.g., 0.3 GPUs).
-    # None (default): Use all available GPUs.
-    # 0: Will not use any GPUs, even if one is available.
-    "num_gpus": None,
+    "num_gpus": 0,
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
     # Samples batches will be concatenated together to a batch of this size,
     # which is then passed to SGD.
