@@ -43,6 +43,7 @@ MOCK_MODULES = [
     "mxnet",
     "mxnet.model",
     "psutil",
+    "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
     "ray.core.generated.gcs_pb2",
