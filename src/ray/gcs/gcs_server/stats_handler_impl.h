@@ -36,6 +36,7 @@ class DefaultStatsHandler : public rpc::StatsHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  int cursor_ = 0;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
