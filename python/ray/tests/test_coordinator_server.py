@@ -3,10 +3,11 @@ import unittest
 import socket
 import json
 
-from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler.node_provider import NODE_PROVIDERS, get_node_provider
-from ray.autoscaler.local.node_provider import LocalNodeProvider
-from ray.autoscaler.local.coordinator_node_provider import (
+from ray.autoscaler._private.local.coordinator_server import \
+    OnPremCoordinatorServer
+from ray.autoscaler._private.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
 from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, TAG_RAY_CLUSTER_NAME,
                                  TAG_RAY_NODE_NAME, NODE_KIND_WORKER,

@@ -2,7 +2,7 @@ import os
 import yaml
 import ray
 
-from ray.autoscaler.commands import prepare_config, validate_config
+from ray.autoscaler._private.commands import prepare_config, validate_config
 from ray.tests.aws.utils.constants import DEFAULT_CLUSTER_NAME
 
 

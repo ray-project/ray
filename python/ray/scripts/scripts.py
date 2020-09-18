@@ -21,7 +21,7 @@ from ray.autoscaler._commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)

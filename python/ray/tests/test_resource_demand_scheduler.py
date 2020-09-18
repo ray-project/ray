@@ -8,13 +8,14 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
-from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.load_metrics import LoadMetrics
-from ray.autoscaler.node_provider import NODE_PROVIDERS
-from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
-from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.node_provider import NODE_PROVIDERS
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.resource_demand_scheduler import \
+    _utilization_score, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.test_utils import same_elements
 
 from time import sleep

@@ -11,22 +11,22 @@ from ray.autoscaler._private.command_runner import \
 logger = logging.getLogger(__name__)
 
 
-def import_aws(provider_config):
+def _import_aws(provider_config):
     from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
     return AWSNodeProvider
 
 
-def import_gcp(provider_config):
+def _import_gcp(provider_config):
     from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
     return GCPNodeProvider
 
 
-def import_azure(provider_config):
+def _import_azure(provider_config):
     from ray.autoscaler._private.azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 
-def import_local(provider_config):
+def _import_local(provider_config):
     if "coordinator_address" in provider_config:
         from ray.autoscaler._private.local.coordinator_node_provider import (
             CoordinatorSenderNodeProvider)
@@ -37,13 +37,13 @@ def import_local(provider_config):
         return LocalNodeProvider
 
 
-def import_kubernetes(provider_config):
+def _import_kubernetes(provider_config):
     from ray.autoscaler._private.kubernetes.node_provider import \
         KubernetesNodeProvider
     return KubernetesNodeProvider
 
 
-def load_local_example_config():
+def _load_local_example_config():
     import ray.autoscaler._private.local as ray_local
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
@@ -71,21 +71,22 @@ def load_azure_example_config():
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
-def import_external(provider_config):
-    provider_cls = load_class(path=provider_config["module"])
+def _import_external(provider_config):
+    provider_cls = _load_class(path=provider_config["module"])
     return provider_cls
 
 
-NODE_PROVIDERS = {
-    "local": import_local,
-    "aws": import_aws,
-    "gcp": import_gcp,
-    "azure": import_azure,
-    "kubernetes": import_kubernetes,
+_NODE_PROVIDERS = {
+    "local": _import_local,
+    "aws": _import_aws,
+    "gcp": _import_gcp,
+    "azure": _import_azure,
+    "kubernetes": _import_kubernetes,
     "docker": None,
-    "external": import_external  # Import an external module
+    "external": _import_external  # Import an external module
 }
-PROVIDER_PRETTY_NAMES = {
+
+_PROVIDER_PRETTY_NAMES = {
     "local": "Local",
     "aws": "AWS",
     "gcp": "GCP",
@@ -95,8 +96,8 @@ PROVIDER_PRETTY_NAMES = {
     "external": "External"
 }
 
-DEFAULT_CONFIGS = {
-    "local": load_local_example_config,
+_DEFAULT_CONFIGS = {
+    "local": _load_local_example_config,
     "aws": load_aws_example_config,
     "gcp": load_gcp_example_config,
     "azure": load_azure_example_config,
@@ -105,29 +106,8 @@ DEFAULT_CONFIGS = {
 }
 
 
-def try_logging_config(config):
-    if config["provider"]["type"] == "aws":
-        from ray.autoscaler.aws.config import log_to_cli
-        log_to_cli(config)
-
-
-def try_get_log_state(provider_config):
-    if provider_config["type"] == "aws":
-        from ray.autoscaler.aws.config import get_log_state
-        return get_log_state()
-
-
-def try_reload_log_state(provider_config, log_state):
-    if not log_state:
-        return
-    if provider_config["type"] == "aws":
-        from ray.autoscaler.aws.config import reload_log_state
-        return reload_log_state(log_state)
-
-
-def load_class(path):
-    """
-    Load a class at runtime given a full path.
+def _load_class(path):
+    """Load a class at runtime given a full path.
 
     Example of the path: mypkg.mysubpkg.myclass
     """
@@ -137,13 +117,13 @@ def load_class(path):
             "You need to pass a valid path like mymodule.provider_class")
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
-    module = importlib.import_module(module_path)
+    module = importlib._import_module(module_path)
     return getattr(module, class_str)
 
 
-def get_node_provider(provider_config: Dict[str, Any],
-                      cluster_name: str) -> Any:
-    importer = NODE_PROVIDERS.get(provider_config["type"])
+def _get_node_provider(provider_config: Dict[str, Any],
+                       cluster_name: str) -> Any:
+    importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))
@@ -151,10 +131,10 @@ def get_node_provider(provider_config: Dict[str, Any],
     return provider_cls(provider_config, cluster_name)
 
 
-def get_default_config(provider_config):
+def _get_default_config(provider_config):
     if provider_config["type"] == "external":
         return {}
-    load_config = DEFAULT_CONFIGS.get(provider_config["type"])
+    load_config = _DEFAULT_CONFIGS.get(provider_config["type"])
     if load_config is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
             provider_config["type"]))

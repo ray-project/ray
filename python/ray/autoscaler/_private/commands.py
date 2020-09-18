@@ -24,8 +24,7 @@ from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler._private.node_provider import get_node_provider, \
-    NODE_PROVIDERS, PROVIDER_PRETTY_NAMES, try_get_log_state, \
-    try_logging_config, try_reload_log_state
+    _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 
@@ -57,6 +56,26 @@ def _redis():
             global_worker.node.redis_address,
             password=global_worker.node.redis_password)
     return redis_client
+
+
+def try_logging_config(config):
+    if config["provider"]["type"] == "aws":
+        from ray.autoscaler._private.aws.config import log_to_cli
+        log_to_cli(config)
+
+
+def try_get_log_state(provider_config):
+    if provider_config["type"] == "aws":
+        from ray.autoscaler._private.aws.config import get_log_state
+        return get_log_state()
+
+
+def try_reload_log_state(provider_config, log_state):
+    if not log_state:
+        return
+    if provider_config["type"] == "aws":
+        from ray.autoscaler._private.aws.config import reload_log_state
+        return reload_log_state(log_state)
 
 
 def debug_status():
@@ -143,14 +162,14 @@ def create_or_update_cluster(config_file: str,
 
     # todo: validate file_mounts, ssh keys, etc.
 
-    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         cli_logger.abort(
             "Unknown provider type " + cf.bold("{}") + "\n"
             "Available providers are: {}", config["provider"]["type"],
             cli_logger.render_list([
-                k for k in NODE_PROVIDERS.keys()
-                if NODE_PROVIDERS[k] is not None
+                k for k in _NODE_PROVIDERS.keys()
+                if _NODE_PROVIDERS[k] is not None
             ]))
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
@@ -236,7 +255,7 @@ def _bootstrap_config(config: Dict[str, Any],
                 config_cache.get("_version", "none"), CONFIG_CACHE_VERSION)
     validate_config(config)
 
-    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
@@ -245,7 +264,7 @@ def _bootstrap_config(config: Dict[str, Any],
 
     with cli_logger.timed(
             "Checking {} environment settings",
-            PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
+            _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
