@@ -1,12 +1,13 @@
 import {
   createStyles,
+  makeStyles,
   Tab,
   Tabs,
   Theme,
-  Typography, makeStyles
+  Typography,
 } from "@material-ui/core";
-import React, { useEffect, useRef, useCallback } from "react";
-import { useDispatch, useSelector } from 'react-redux';
+import React, { useCallback, useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
@@ -32,10 +33,12 @@ const useDashboardStyles = makeStyles((theme: Theme) =>
       borderBottomStyle: "solid",
       borderBottomWidth: 1,
     },
-  }));
+  }),
+);
 
 const tabSelector = (state: StoreState) => state.dashboard.tab;
-const tuneAvailabilitySelector = (state: StoreState) => state.dashboard.tuneAvailability;
+const tuneAvailabilitySelector = (state: StoreState) =>
+  state.dashboard.tuneAvailability;
 
 const allTabs = [
   { label: "Machine view", component: NodeInfo },
@@ -72,16 +75,14 @@ const Dashboard: React.FC = () => {
     if (intervalId.current === null) {
       refreshInfo();
       intervalId.current = setInterval(refreshInfo, 1000);
-    } 
+    }
     const cleanup = () => {
       clearInterval(intervalId.current);
-    }
-    return cleanup
-  }, [refreshInfo])
+    };
+    return cleanup;
+  }, [refreshInfo]);
 
-
-  const handleTabChange = (_: any, value: number) =>
-    setTab(value);
+  const handleTabChange = (_: any, value: number) => setTab(value);
 
   const tabs = allTabs.slice();
 
@@ -109,6 +110,6 @@ const Dashboard: React.FC = () => {
       <LastUpdated />
     </div>
   );
-}
+};
 
 export default Dashboard;

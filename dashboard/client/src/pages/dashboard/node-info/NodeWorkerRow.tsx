@@ -18,10 +18,7 @@ export const NodeWorkerRow: React.FC<NodeWorkerRowProps> = ({
       <StyledTableCell />
       {features.map((WorkerFeature, index) => (
         <StyledTableCell key={index}>
-          <WorkerFeature
-            node={node}
-            worker={worker}
-          />
+          <WorkerFeature node={node} worker={worker} />
         </StyledTableCell>
       ))}
     </TableRow>

@@ -1,10 +1,10 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
+import { ViewData } from "../../../../api";
 import { formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { sum } from "../../../../common/util";
-import { ViewData } from '../../../../api';
 import {
   ClusterFeatureRenderFn,
   NodeFeatureData,
@@ -17,13 +17,13 @@ import {
 const getDouble = (view: ViewData | undefined) =>
   view?.measures[0]?.doubleValue ?? 0;
 
-export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
-  nodes
-}) => {
+export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
   const totalAvailable = sum(
-    nodes.map(n => getDouble(n.raylet.viewData?.objectStoreAvailableMemory)),
+    nodes.map((n) => getDouble(n.raylet.viewData?.objectStoreAvailableMemory)),
   );
-  const totalUsed = sum(nodes.map(n => getDouble(n.raylet.viewData.objectStoreUsedMemory)));
+  const totalUsed = sum(
+    nodes.map((n) => getDouble(n.raylet.viewData.objectStoreUsedMemory)),
+  );
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
@@ -35,7 +35,7 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
 };
 
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
-  const total = getDouble(node.raylet.viewData?.objectStoreAvailableMemory); 
+  const total = getDouble(node.raylet.viewData?.objectStoreAvailableMemory);
   const used = getDouble(node.raylet.viewData?.objectStoreUsedMemory);
   if (!used || !total) {
     return (
@@ -49,19 +49,14 @@ export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
     <div style={{ minWidth: 60 }}>
       <UsageBar
         percent={usageRatio * 100}
-        text={formatUsage(
-          used,
-          total,
-          "mebibyte",
-          false,
-        )}
+        text={formatUsage(used, total, "mebibyte", false)}
       />
     </div>
   );
 };
 
 export const nodeObjectStoreMemoryAccessor: Accessor<NodeFeatureData> = ({
-  node
+  node,
 }) => getDouble(node.raylet.viewData?.objectStoreUsedMemory);
 
 export const WorkerObjectStoreMemory: WorkerFeatureRenderFn = () => (

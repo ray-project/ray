@@ -139,8 +139,7 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const nodesSelector = (state: StoreState) =>
-  state.dashboard?.nodeInfo?.clients;
+const nodesSelector = (state: StoreState) => state.dashboard?.nodeInfo?.clients;
 
 type DialogState = {
   hostname: string;
@@ -175,9 +174,7 @@ const NodeInfo: React.FC<{}> = () => {
   if (!nodes) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
-  const clusterTotalWorkers = sum(
-    nodes.map((n) => n.workers.length),
-  );
+  const clusterTotalWorkers = sum(nodes.map((n) => n.workers.length));
   const nodeInfoFeatures: NodeInfoFeature[] = [
     hostFeature,
     workersFeature,
@@ -210,11 +207,7 @@ const NodeInfo: React.FC<{}> = () => {
         sortNodeComparator,
         nodeInfoFeatures,
       )
-    : makeUngroupedTableContents(
-        nodes,
-        sortWorkerComparator,
-        nodeInfoFeatures,
-      );
+    : makeUngroupedTableContents(nodes, sortWorkerComparator, nodeInfoFeatures);
   return (
     <React.Fragment>
       <FormControlLabel

@@ -1,5 +1,6 @@
 import {
   createStyles,
+  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -7,11 +8,10 @@ import {
   TableRow,
   Theme,
   Typography,
-  makeStyles
 } from "@material-ui/core";
 import classNames from "classnames";
-import React, { useEffect, useRef, useCallback } from "react";
-import { useDispatch, useSelector } from 'react-redux';
+import React, { useCallback, useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { getRayConfig } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
@@ -35,7 +35,8 @@ const useRayConfigStyles = makeStyles((theme: Theme) =>
     key: {
       color: theme.palette.text.secondary,
     },
-  }));
+  }),
+);
 const { setRayConfig, setError } = dashboardActions;
 const configSelector = (state: StoreState) => state.dashboard.rayConfig;
 
@@ -59,8 +60,8 @@ const RayConfig: React.FC = () => {
     }
     const cleanup = () => {
       clearInterval(intervalId.current);
-    }
-    return cleanup
+    };
+    return cleanup;
   }, [refreshData]);
   if (rayConfig === null) {
     return (
@@ -97,8 +98,9 @@ const RayConfig: React.FC = () => {
     },
     {
       key: "Idle timeout",
-      value: `${rayConfig.idleTimeoutMinutes} ${rayConfig.idleTimeoutMinutes === 1 ? "minute" : "minutes"
-        }`,
+      value: `${rayConfig.idleTimeoutMinutes} ${
+        rayConfig.idleTimeoutMinutes === 1 ? "minute" : "minutes"
+      }`,
     },
   ];
 
@@ -125,6 +127,6 @@ const RayConfig: React.FC = () => {
       </Table>
     </div>
   );
-}
+};
 
 export default RayConfig;

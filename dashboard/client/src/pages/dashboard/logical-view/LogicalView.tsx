@@ -31,7 +31,8 @@ const actorClassMatchesSearch = (
   return actorClass.toLowerCase().search(loweredNameFilter) !== -1;
 };
 
-const actorGroupsSelector = (state: StoreState) => state.dashboard.actors?.groups;
+const actorGroupsSelector = (state: StoreState) =>
+  state.dashboard.actors?.groups;
 
 const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");

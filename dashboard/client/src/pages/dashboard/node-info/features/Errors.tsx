@@ -13,7 +13,7 @@ import {
 } from "./types";
 
 const ClusterErrors: ClusterFeatureRenderFn = ({ nodes }) => {
-  const totalErrCount = sum(nodes.map(node => node.errorCount));
+  const totalErrCount = sum(nodes.map((node) => node.errorCount));
   return totalErrCount === 0 ? (
     <Typography color="textSecondary" component="span" variant="inherit">
       No errors

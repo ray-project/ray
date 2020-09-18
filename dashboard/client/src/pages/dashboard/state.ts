@@ -59,7 +59,7 @@ const slice = createSlice({
       state,
       action: PayloadAction<{
         actorsResponse: ActorsResponse;
-      }>
+      }>,
     ) => {
       state.actors = action.payload.actorsResponse;
     },

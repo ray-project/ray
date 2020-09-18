@@ -304,10 +304,7 @@ class TuneTable extends React.Component<
 
     const { metricColumns, paramColumns, open, errorTrial } = this.state;
 
-    if (
-      tuneInfo === null ||
-      Object.keys(tuneInfo.trialRecords).length === 0
-    ) {
+    if (tuneInfo === null || Object.keys(tuneInfo.trialRecords).length === 0) {
       return null;
     }
 

@@ -161,7 +161,7 @@ export type Measure = {
   distributionMax?: number;
   distributionCount?: number;
   distributionBucketBoundaries?: number[];
-  distributionBucketCounts?: number[]
+  distributionBucketCounts?: number[];
 };
 
 type BaseNodeInfo = {
@@ -454,4 +454,4 @@ export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
 };
 
 export const setMemoryTableCollection = (value: boolean) =>
-  post<{}>("/memory/set_fetch", {"shouldFetch": value});
+  post<{}>("/memory/set_fetch", { shouldFetch: value });

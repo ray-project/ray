@@ -37,10 +37,7 @@ type TotalRowProps = {
   features: (ClusterFeatureRenderFn | undefined)[];
 };
 
-const TotalRow: React.FC<TotalRowProps> = ({
-  nodes,
-  features,
-}) => {
+const TotalRow: React.FC<TotalRowProps> = ({ nodes, features }) => {
   const classes = useTotalRowStyles();
   return (
     <TableRow hover>

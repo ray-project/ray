@@ -28,10 +28,7 @@ const MemorySummary: React.FC<MemorySummaryProps> = ({
 }) => {
   const classes = useMemorySummaryStyles();
   const memoryData = [
-    [
-      "Total Local Reference Count",
-      `${memoryTableSummary.totalLocalRefCount}`,
-    ],
+    ["Total Local Reference Count", `${memoryTableSummary.totalLocalRefCount}`],
     ["Pinned in Memory Count", `${memoryTableSummary.totalPinnedInMemory}`],
     [
       "Total Used by Pending Tasks Count",
