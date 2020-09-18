@@ -14,7 +14,7 @@ import collections
 from typing import List, Dict, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ class ResourceDemandScheduler:
             nodes: List of existing nodes in the cluster.
             pending_nodes: Summary of node types currently being launched.
             resource_demands: Vector of resource demands from the scheduler.
+            usage_by_ip: Mapping from ip to available resources.
         """
 
         if resource_demands is None:
@@ -90,14 +91,9 @@ class ResourceDemandScheduler:
 
         def add_node(node_type, available_resources=None):
             if node_type not in self.node_types:
-                logger.warn(
-                    f"Missing entry for node_type {node_type} in "
-                    f"cluster config: {self.node_types} under entry "
-                    f"available_node_types. This node's resources will be "
-                    f"ignored. If you are using an unmanaged node, manually "
-                    f"set the user_node_type tag to \"{NODE_KIND_UNMANAGED}\""
-                    f"in your cloud provider's management console.")
-                return None
+                raise RuntimeError("Missing entry for node_type {} in "
+                                   "available_node_types config: {}".format(
+                                       node_type, self.node_types))
             # Careful not to include the same dict object multiple times.
             available = copy.deepcopy(self.node_types[node_type]["resources"])
             # If available_resources is None this might be because the node is
@@ -113,7 +109,6 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                node_type_counts[node_type] += 1
                 ip = self.provider.internal_ip(node_id)
                 available_resources = usage_by_ip.get(ip)
                 add_node(node_type, available_resources)
