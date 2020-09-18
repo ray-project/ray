@@ -58,10 +58,6 @@ def run_on_cluster(cluster_config: Union[dict, str],
                    *,
                    cmd: Optional[str] = None,
                    run_env: str = "auto",
-                   screen: bool = False,
-                   tmux: bool = False,
-                   stop: bool = False,
-                   start: bool = False,
                    no_config_cache: bool = False,
                    port_forward: Union[int, List[int]] = None,
                    with_output: bool = False) -> str:
@@ -73,13 +69,10 @@ def run_on_cluster(cluster_config: Union[dict, str],
         cmd (str): the command to run, or None for a no-op command.
         run_env (str): whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
-        screen (bool): whether to run in a screen session.
-        tmux (bool): whether to run in a tmux session.
-        stop (bool): whether to stop the cluster after the command.
-        start (bool): whether to start the cluster if it isn't up.
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         port_forward (int or list[int]): port(s) to forward.
+        with_output (bool): Whether to capture command output.
 
     Returns:
         The output of the command as a string.
@@ -90,8 +83,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
         run_env=run_env,
         screen=False,
         tmux=False,
-        stop=stop,
-        start=start,
+        stop=False,
+        start=False,
         override_cluster_name=None,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
