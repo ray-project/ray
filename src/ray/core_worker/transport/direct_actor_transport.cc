@@ -135,6 +135,12 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     return;
   }
 
+  if (queue->second.rpc_client &&
+      queue->second.rpc_client->Addr().worker_id() == address.worker_id()) {
+    RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id=" << actor_id;
+    return;
+  }
+
   if (queue->second.state == rpc::ActorTableData::DEAD) {
     // This message is about an old version of the actor and the actor has
     // already died since then. Skip the connection.
@@ -169,8 +175,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   absl::MutexLock lock(&mu_);
   auto queue = client_queues_.find(actor_id);
   if (queue == client_queues_.end()) {
-    RAY_LOG(INFO) << "Skip actor that has already been disconnected, actor_id="
-                  << actor_id;
+    RAY_LOG(DEBUG) << "Skip actor that has already been disconnected, actor_id="
+                   << actor_id;
     return;
   }
 

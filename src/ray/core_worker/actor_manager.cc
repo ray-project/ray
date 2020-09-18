@@ -135,21 +135,11 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-    alive_actors_.erase(actor_id);
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == gcs::ActorTableData::ALIVE) {
-    const auto &iter = alive_actors_.find(actor_id);
-    if (iter != alive_actors_.end() &&
-        iter->second.timestamp() >= actor_data.timestamp()) {
-      RAY_LOG(INFO) << "Skip actor that has already been connected, actor_id="
-                    << actor_id;
-      return;
-    } else {
-      alive_actors_.emplace(actor_id, actor_data);
-    }
     direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
                                           actor_data.num_restarts());
   } else {

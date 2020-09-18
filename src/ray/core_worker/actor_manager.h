@@ -195,9 +195,6 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
-
-  /// Alive actors.
-  absl::flat_hash_map<ActorID, rpc::ActorTableData> alive_actors_;
 };
 
 }  // namespace ray
