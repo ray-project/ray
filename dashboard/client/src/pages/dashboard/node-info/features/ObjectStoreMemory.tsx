@@ -4,6 +4,7 @@ import { formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { sum } from "../../../../common/util";
+import { ViewData } from '../../../../api';
 import {
   ClusterFeatureRenderFn,
   NodeFeatureData,
@@ -13,14 +14,16 @@ import {
   WorkerFeatureRenderFn,
 } from "./types";
 
+const getDouble = (view: ViewData | undefined) =>
+  view?.measures[0]?.doubleValue ?? 0;
+
 export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
   nodes
 }) => {
   const totalAvailable = sum(
-    nodes.map(n => n.plasma.availableMemory),
+    nodes.map(n => getDouble(n.raylet.viewData?.objectStoreAvailableMemory)),
   );
-
-  const totalUsed = sum(nodes.map(n => n.plasma.usedMemory));
+  const totalUsed = sum(nodes.map(n => getDouble(n.raylet.viewData.objectStoreUsedMemory)));
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
@@ -32,25 +35,23 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({
 };
 
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
-  if (!node.plasma) {
+  const total = getDouble(node.raylet.viewData?.objectStoreAvailableMemory); 
+  const used = getDouble(node.raylet.viewData?.objectStoreUsedMemory);
+  if (!used || !total) {
     return (
       <Typography color="textSecondary" component="span" variant="inherit">
         N/A
       </Typography>
     );
   }
-  const {
-    usedMemory,
-    availableMemory,
-  } = node.plasma;
-  const usageRatio = usedMemory / availableMemory;
+  const usageRatio = used / total;
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar
         percent={usageRatio * 100}
         text={formatUsage(
-          usedMemory,
-          availableMemory,
+          used,
+          total,
           "mebibyte",
           false,
         )}
@@ -61,8 +62,7 @@ export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
 
 export const nodeObjectStoreMemoryAccessor: Accessor<NodeFeatureData> = ({
   node
-}) => node.plasma?.usedMemory ?? 0;
-
+}) => getDouble(node.raylet.viewData?.objectStoreUsedMemory);
 
 export const WorkerObjectStoreMemory: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">

@@ -1,7 +1,6 @@
 import React from "react";
 import {
   NodeInfoResponse,
-  PlasmaStats,
 } from "../../../../api";
 import { Accessor } from "../../../../common/tableUtils";
 

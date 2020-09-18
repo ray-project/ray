@@ -49,19 +49,20 @@ const post = async <T>(path: string, params: { [key: string]: any }) => {
 };
 
 export type RayConfigResponse = {
-  min_workers: number;
-  max_workers: number;
-  initial_workers: number;
-  autoscaling_mode: string;
-  idle_timeout_minutes: number;
-  head_type: string;
-  worker_type: string;
+  minWorkers: number;
+  maxWorkers: number;
+  initialWorkers: number;
+  autoscalingMode: string;
+  idleTimeoutMinutes: number;
+  headType: string;
+  workerType: string;
 };
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
 export type Worker = {
   pid: number;
+  workerId: string;
   createTime: number;
   memoryInfo: {
     rss: number;
@@ -83,6 +84,8 @@ export type Worker = {
   cpuPercent: number;
   logCount: number;
   errorCount: number;
+  language: string;
+  jobId: string;
   coreWorkerStats: CoreWorkerStats[];
 };
 
@@ -122,7 +125,44 @@ export type NodeSummary = BaseNodeInfo;
 
 export type NodeDetails = {
   workers: Worker[];
+  raylet: RayletData;
 } & BaseNodeInfo;
+
+export type RayletData = {
+  // Merger of GCSNodeStats and GetNodeStatsReply
+  // GetNodeStatsReply fields.
+  // Note workers are in an array in NodeDetails
+  viewData: { [viewName: string]: ViewData };
+  numWorkers: number;
+
+  // GCSNodeStats fields
+  nodeId: number;
+  nodeManagerAddress: string;
+  rayletSocketName: string;
+  objectStoreSocketName: string;
+  nodeManagerPort: number;
+  objectManagerPort: number;
+  state: "ALIVE" | "DEAD";
+  nodeManagerHostname: string;
+  metricsExportPort: number;
+};
+
+export type ViewData = {
+  viewName: string;
+  measures: Measure[];
+};
+
+export type Measure = {
+  tags: string; // e.g.  "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+  intValue?: number;
+  doubleValue?: number;
+  distributionMin?: number;
+  distributionMean?: number;
+  distributionMax?: number;
+  distributionCount?: number;
+  distributionBucketBoundaries?: number[];
+  distributionBucketCounts?: number[]
+};
 
 type BaseNodeInfo = {
   now: number;
@@ -145,11 +185,6 @@ type BaseNodeInfo = {
   net: [number, number]; // Sent and received network traffic in bytes / second
   logCount: number;
   errorCount: number;
-  raylet: {
-    numWorkers: number;
-    pid: number;
-  }
-  plasma: PlasmaStats;
 };
 
 export type NodeInfoResponse = {
@@ -244,12 +279,6 @@ export type ActorGroup = {
 
 export type ActorsResponse = {
   groups: { [key: string]: ActorGroup };
-};
-
-export type PlasmaStats = {
-  numLocalObjects: number;
-  availableMemory: number;
-  usedMemory: number;
 };
 
 export type ErrorsResponse = {
@@ -377,7 +406,7 @@ export const setTuneExperiment = (experiment: string) =>
   });
 
 export const enableTuneTensorBoard = () =>
-  post<{}>("/api/enable_tensorboard", {});
+  post<{}>("/tune/enable_tensorboard", {});
 
 export type MemoryTableSummary = {
   totalActorHandles: number;
