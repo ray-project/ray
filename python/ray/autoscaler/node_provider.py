@@ -44,13 +44,13 @@ def _import_kubernetes(provider_config):
 
 
 def _load_local_example_config():
-    import ray.autoscaler._private.local as ray_local
+    import ray.autoscaler.local as ray_local
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
 
 
 def load_kubernetes_example_config():
-    import ray.autoscaler._private.kubernetes as ray_kubernetes
+    import ray.autoscaler.kubernetes as ray_kubernetes
     return os.path.join(
         os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
@@ -117,7 +117,7 @@ def _load_class(path):
             "You need to pass a valid path like mymodule.provider_class")
     module_path = ".".join(class_data[:-1])
     class_str = class_data[-1]
-    module = importlib._import_module(module_path)
+    module = importlib.import_module(module_path)
     return getattr(module, class_str)
 
 
