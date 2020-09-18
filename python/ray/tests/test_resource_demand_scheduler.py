@@ -195,7 +195,8 @@ def test_calculate_node_resources():
     pending_nodes = {"p2.8xlarge": 1}
     # requires 4 p2.8xls (only 3 are in cluster/pending)
     demands = [{"GPU": 8}] * (len(utilizations) + 2)
-    to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands, utilizations)
+    to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
+                                              utilizations)
 
     assert to_launch == [('p2.8xlarge', 1)]
 
