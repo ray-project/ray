@@ -53,4 +53,14 @@ public class TaskId extends BaseId implements Serializable {
   public int size() {
     return LENGTH;
   }
+
+  /**
+   * Get the id of the actor to which this task belongs.
+   * @return The `ActorID` of the actor which creates this task.
+   */
+  public ActorId actorId() {
+    byte[] actorId = new byte[ActorId.LENGTH];
+    System.arraycopy(getBytes(), UNIQUE_BYTES_LENGTH, actorId, 0, ActorId.LENGTH);
+    return ActorId.fromBytes(actorId);
+  }
 }

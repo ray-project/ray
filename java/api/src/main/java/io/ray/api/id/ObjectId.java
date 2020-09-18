@@ -42,4 +42,13 @@ public class ObjectId extends BaseId implements Serializable {
     return LENGTH;
   }
 
+  /**
+   * Compute the task ID of the task that created the object.
+   * @return The task ID of the task that created this object.
+   */
+  public TaskId taskId() {
+    byte[] taskId = new byte[TaskId.LENGTH];
+    System.arraycopy(getBytes(), 0, taskId, 0, TaskId.LENGTH);
+    return TaskId.fromBytes(taskId);
+  }
 }

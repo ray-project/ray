@@ -74,7 +74,7 @@ public class ObjectSerializer {
       } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
         return new RayWorkerException();
       } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-        return new RayActorException();
+        return new RayActorException(objectId.taskId().actorId());
       } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
         return new UnreconstructableException(objectId);
       } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
