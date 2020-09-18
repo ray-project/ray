@@ -59,7 +59,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             },
         }
         provider_config = cluster_config["provider"]
-        node_provider = get_node_provider(provider_config,
+        node_provider = _get_node_provider(provider_config,
                                           cluster_config["cluster_name"])
         assert isinstance(node_provider, LocalNodeProvider)
         expected_workers = {}
@@ -85,7 +85,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Test removing workers updates the cluster state.
         del expected_workers[provider_config["worker_ips"][0]]
         removed_ip = provider_config["worker_ips"].pop()
-        node_provider = get_node_provider(provider_config,
+        node_provider = _get_node_provider(provider_config,
                                           cluster_config["cluster_name"])
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
@@ -98,7 +98,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "state": "terminated",
         }
         provider_config["worker_ips"].append(removed_ip)
-        node_provider = get_node_provider(provider_config,
+        node_provider = _get_node_provider(provider_config,
                                           cluster_config["cluster_name"])
         workers = json.loads(open(state_save_path).read())
         assert workers == expected_workers
@@ -162,7 +162,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
             "worker_nodes": {},
         }
         provider_config = cluster_config["provider"]
-        node_provider_1 = get_node_provider(provider_config,
+        node_provider_1 = _get_node_provider(provider_config,
                                             cluster_config["cluster_name"])
         assert isinstance(node_provider_1, CoordinatorSenderNodeProvider)
 
@@ -189,7 +189,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Add another cluster.
         cluster_config["cluster_name"] = "random_name_2"
         provider_config = cluster_config["provider"]
-        node_provider_2 = get_node_provider(provider_config,
+        node_provider_2 = _get_node_provider(provider_config,
                                             cluster_config["cluster_name"])
         assert not node_provider_2.non_terminated_nodes({})
         assert not node_provider_2.is_running(self.list_of_node_ips[1])
@@ -211,7 +211,7 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         # Add another cluster (should fail because we only have two nodes).
         cluster_config["cluster_name"] = "random_name_3"
         provider_config = cluster_config["provider"]
-        node_provider_3 = get_node_provider(provider_config,
+        node_provider_3 = _get_node_provider(provider_config,
                                             cluster_config["cluster_name"])
         assert not node_provider_3.non_terminated_nodes(head_node_tags)
         head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(

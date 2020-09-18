@@ -511,7 +511,7 @@ def get_or_create_head_node(config,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
     provider = (_provider or _get_node_provider(config["provider"],
-                                               config["cluster_name"]))
+                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
     config_file = os.path.abspath(config_file)
