@@ -3,9 +3,8 @@ import unittest
 import socket
 import json
 
-from ray.autoscaler.node_provider import NODE_PROVIDERS, get_node_provider
-from ray.autoscaler._private.local.coordinator_server import \
-    OnPremCoordinatorServer
+from ray.autoscaler.node_provider import _NODE_PROVIDERS, _get_node_provider
+from ray.autoscaler.local.coordinator_server import OnPremCoordinatorServer
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.coordinator_node_provider import (
     CoordinatorSenderNodeProvider)
@@ -36,10 +35,10 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         """Check correct import when coordinator_address is in config yaml."""
 
         provider_config = {"coordinator_address": "fake_address:1234"}
-        coordinator_node_provider = NODE_PROVIDERS.get("local")(
+        coordinator_node_provider = _NODE_PROVIDERS.get("local")(
             provider_config)
         assert coordinator_node_provider is CoordinatorSenderNodeProvider
-        local_node_provider = NODE_PROVIDERS.get("local")({})
+        local_node_provider = _NODE_PROVIDERS.get("local")({})
         assert local_node_provider is LocalNodeProvider
 
     def testClusterStateInit(self):

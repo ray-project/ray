@@ -23,7 +23,7 @@ import ray.services as services
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler._private.node_provider import get_node_provider, \
+from ray.autoscaler._private.node_provider import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
@@ -317,7 +317,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             cli_logger.old_exception(
                 logger, "Ignoring error attempting a clean shutdown.")
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
 
         def remaining_nodes():
@@ -421,7 +421,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     cli_logger.confirm(yes, "A random node will be killed.")
     cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -510,7 +510,7 @@ def get_or_create_head_node(config,
                             _provider=None,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = (_provider or get_node_provider(config["provider"],
+    provider = (_provider or _get_node_provider(config["provider"],
                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
@@ -852,7 +852,7 @@ def exec_cluster(config_file: str,
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -974,7 +974,7 @@ def rsync(config_file: str,
                 is_file_mount = True
                 break
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = []
         if all_nodes:
@@ -1029,7 +1029,7 @@ def get_head_node_ip(config_file: str,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
         if config.get("provider", {}).get("use_internal_ips", False) is True:
@@ -1050,7 +1050,7 @@ def get_worker_node_ips(config_file: str,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -1070,7 +1070,7 @@ def _get_worker_nodes(config, override_cluster_name):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         return provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -1083,7 +1083,7 @@ def _get_head_node(config: Dict[str, Any],
                    config_file: str,
                    override_cluster_name: Optional[str],
                    create_if_needed: bool = False) -> str:
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
