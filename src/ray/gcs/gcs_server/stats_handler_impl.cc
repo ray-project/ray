@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace rpc {
@@ -34,10 +35,8 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_->ProfileTable().Put(
-      UniqueID::FromBinary(
-          std::to_string(cursor_++ % RayConfig::instance().maximum_profile_table_size())),
-      *profile_table_data, on_done);
+  Status status = gcs_table_storage_->ProfileTable().Put(ids_[cursor_++ % ids_.size()],
+                                                         *profile_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }

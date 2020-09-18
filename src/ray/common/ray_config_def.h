@@ -208,8 +208,8 @@ RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 /// Maximum number of items in one batch to scan from GCS storage.
 RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
 
-/// Maximum number of items in GCS profile table.
-RAY_CONFIG(uint32_t, maximum_profile_table_size, 1000)
+/// Maximum number of rows in GCS profile table.
+RAY_CONFIG(uint32_t, maximum_profile_table_rows_count, 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
