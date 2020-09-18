@@ -312,11 +312,17 @@ def execution_plan(workers, config):
     # of (2) since training metrics are not available until (2) runs.
     rollout_learn_concurrency_mode = config.get("rollout_learn_concurrency_mode",
                                                 "round_robin")
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode=rollout_learn_concurrency_mode,
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
+    if rollout_learn_concurrency_mode == "round_robin":
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode=rollout_learn_concurrency_mode,
+            output_indexes=[1],
+            round_robin_weights=calculate_rr_weights(config))
+    else:
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode=rollout_learn_concurrency_mode,
+            output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 
