@@ -178,3 +178,4 @@ def _as_config_file(cluster_config: Union[dict, str]):
         cluster_config = tmp.name
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
+    return cluster_config
