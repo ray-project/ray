@@ -5,49 +5,52 @@ from typing import Any, Dict
 
 import yaml
 
-from ray.autoscaler.command_runner import SSHCommandRunner, DockerCommandRunner
+from ray.autoscaler._private.command_runner import \
+    SSHCommandRunner, DockerCommandRunner
 
 logger = logging.getLogger(__name__)
 
 
 def import_aws(provider_config):
-    from ray.autoscaler.aws.node_provider import AWSNodeProvider
+    from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
     return AWSNodeProvider
 
 
 def import_gcp(provider_config):
-    from ray.autoscaler.gcp.node_provider import GCPNodeProvider
+    from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
     return GCPNodeProvider
 
 
 def import_azure(provider_config):
-    from ray.autoscaler.azure.node_provider import AzureNodeProvider
+    from ray.autoscaler._private.azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 
 def import_local(provider_config):
     if "coordinator_address" in provider_config:
-        from ray.autoscaler.local.coordinator_node_provider import (
+        from ray.autoscaler._private.local.coordinator_node_provider import (
             CoordinatorSenderNodeProvider)
         return CoordinatorSenderNodeProvider
     else:
-        from ray.autoscaler.local.node_provider import LocalNodeProvider
+        from ray.autoscaler._private.local.node_provider import \
+            LocalNodeProvider
         return LocalNodeProvider
 
 
 def import_kubernetes(provider_config):
-    from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
+    from ray.autoscaler._private.kubernetes.node_provider import \
+        KubernetesNodeProvider
     return KubernetesNodeProvider
 
 
 def load_local_example_config():
-    import ray.autoscaler.local as ray_local
+    import ray.autoscaler._private.local as ray_local
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
 
 
 def load_kubernetes_example_config():
-    import ray.autoscaler.kubernetes as ray_kubernetes
+    import ray.autoscaler._private.kubernetes as ray_kubernetes
     return os.path.join(
         os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
