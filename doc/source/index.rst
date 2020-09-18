@@ -194,8 +194,8 @@ Papers
    :caption: Overview of Ray
 
    ray-overview/index.rst
+   ray-libraries.rst
    installation.rst
-   oss-users.rst
 
 .. toctree::
    :hidden:
@@ -205,6 +205,7 @@ Papers
    walkthrough.rst
    using-ray.rst
    configure.rst
+   ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
    package-ref.rst
 
@@ -276,12 +277,11 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Community Libraries
+   :caption: More Libraries
 
    multiprocessing.rst
    joblib.rst
    iter.rst
-   pandas_on_ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
 

@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 
 from ray.autoscaler.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
@@ -114,6 +115,7 @@ class CommandRunnerInterface:
             environment_variables: Dict[str, object] = None,
             run_env: str = "auto",
             ssh_options_override_ssh_key: str = "",
+            shutdown_after_run: bool = False,
     ) -> str:
         """Run the given command on the cluster node and optionally get output.
 
@@ -133,6 +135,8 @@ class CommandRunnerInterface:
                 DockerCommandRunner to determine the run environment.
             ssh_options_override_ssh_key (str): if provided, overwrites
                 SSHOptions class with SSHOptions(ssh_options_override_ssh_key).
+            shutdown_after_run (bool): if provided, shutdowns down the machine
+            after executing the command with `sudo shutdown -h now`.
         """
         raise NotImplementedError
 
@@ -164,6 +168,15 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
+    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
+        """Used to run extra initialization commands.
+
+        Args:
+            as_head (bool): Run as head image or worker.
+            file_mounts (dict): Files to copy to the head and worker nodes.
+        """
+        pass
+
 
 class KubernetesCommandRunner(CommandRunnerInterface):
     def __init__(self, log_prefix, namespace, node_id, auth_config,
@@ -185,7 +198,10 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",  # Unused argument.
+            shutdown_after_run=False,
     ):
+        if shutdown_after_run:
+            cmd += "; sudo shutdown -h now"
         if cmd and port_forward:
             raise Exception(
                 "exec with Kubernetes can't forward ports and execute"
@@ -253,19 +269,17 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "{}@{}:{}".format(self.node_id, self.namespace, target),
             ])
         except Exception as e:
-            logger.warning(self.log_prefix +
-                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e))
-            self.run_cp_up(source, target)
+            warnings.warn(
+                self.log_prefix +
+                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
+                UserWarning)
+            if target.startswith("~"):
+                target = "/root" + target[1:]
 
-    def run_cp_up(self, source, target):
-        if target.startswith("~"):
-            target = "/root" + target[1:]
-
-        self.process_runner.check_call(self.kubectl + [
-            "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
-                                            target)
-        ])
+            self.process_runner.check_call(self.kubectl + [
+                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                                target)
+            ])
 
     def run_rsync_down(self, source, target, options=None):
         if target.startswith("~"):
@@ -279,19 +293,17 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 target,
             ])
         except Exception as e:
-            logger.warning(self.log_prefix +
-                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
-                           .format(e))
-            self.run_cp_down(source, target)
+            warnings.warn(
+                self.log_prefix +
+                "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
+                UserWarning)
+            if target.startswith("~"):
+                target = "/root" + target[1:]
 
-    def run_cp_down(self, source, target):
-        if target.startswith("~"):
-            target = "/root" + target[1:]
-
-        self.process_runner.check_call(self.kubectl + [
-            "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
-            target
-        ])
+            self.process_runner.check_call(self.kubectl + [
+                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+                target
+            ])
 
     def remote_shell_command_str(self):
         return "{} exec -it {} bash".format(" ".join(self.kubectl),
@@ -369,7 +381,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self.provider.external_ip(self.node_id)
 
-    def wait_for_ip(self, deadline):
+    def _wait_for_ip(self, deadline):
         # if we have IP do not print waiting info
         ip = self._get_node_ip()
         if ip is not None:
@@ -401,7 +413,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
-            ip = self.wait_for_ip(deadline)
+            ip = self._wait_for_ip(deadline)
 
             cli_logger.doassert(ip is not None,
                                 "Could not get node IP.")  # todo: msg
@@ -483,7 +495,10 @@ class SSHCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
+            shutdown_after_run=False,
     ):
+        if shutdown_after_run:
+            cmd += "; sudo shutdown -h now"
         if ssh_options_override_ssh_key:
             ssh_options = SSHOptions(ssh_options_override_ssh_key)
         else:
@@ -582,7 +597,6 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.container_name = docker_config["container_name"]
         self.docker_config = docker_config
         self.home_dir = None
-        self.shutdown = False
         self.initialized = False
 
     def run(
@@ -595,6 +609,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             environment_variables: Dict[str, object] = None,
             run_env="auto",
             ssh_options_override_ssh_key="",
+            shutdown_after_run=False,
     ):
         if run_env == "auto":
             run_env = "host" if cmd.find("docker") == 0 else "docker"
@@ -610,8 +625,11 @@ class DockerCommandRunner(CommandRunnerInterface):
                 container_name=self.container_name,
                 with_interactive=True)[0]
 
-        if self.shutdown:
+        if shutdown_after_run:
+            # sudo shutdown should run after `with_docker_exec` command above
             cmd += "; sudo shutdown -h now"
+        # Do not pass shutdown_after_run argument to ssh_command_runner.run()
+        # since it is handled above.
         return self.ssh_command_runner.run(
             cmd,
             timeout=timeout,
@@ -677,9 +695,6 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "Docker not installed. You can install Docker by adding the "
                 "following commands to 'initialization_commands':\n" +
                 "\n".join(install_commands))
-
-    def _shutdown_after_next_cmd(self):
-        self.shutdown = True
 
     def _check_container_status(self):
         if self.initialized:

@@ -11,7 +11,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.command_runner import NODE_START_WAIT_S, \
-    ProcessRunnerError, DockerCommandRunner
+    ProcessRunnerError
 from ray.autoscaler.log_timer import LogTimer
 
 import ray.autoscaler.subprocess_output_util as cmd_output_util
@@ -102,6 +102,7 @@ class NodeUpdater:
         ]
         self.auth_config = auth_config
         self.is_head_node = is_head_node
+        self.docker_config = docker_config
 
     def run(self):
         cli_logger.old_info(logger, "{}Updating to {}", self.log_prefix,
@@ -194,8 +195,10 @@ class NodeUpdater:
 
             with LogTimer(self.log_prefix +
                           "Synced {} to {}".format(local_path, remote_path)):
-                if not isinstance(self.cmd_runner, DockerCommandRunner):
-                    # The DockerCommandRunner handles this internally
+                is_docker = (self.docker_config
+                             and self.docker_config["container_name"] != "")
+                if not is_docker:
+                    # The DockerCommandRunner handles this internally.
                     self.cmd_runner.run(
                         "mkdir -p {}".format(os.path.dirname(remote_path)),
                         run_env="host")
@@ -291,10 +294,16 @@ class NodeUpdater:
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
 
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            # When resuming from a stopped instance the runtime_hash may be the
+            # same, but the container will not be started.
+            self.cmd_runner.run_init(
+                as_head=self.is_head_node, file_mounts=self.file_mounts)
+
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
-                self.file_mounts_contents_hash is None
+                not self.file_mounts_contents_hash
                 or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
                 self.file_mounts_contents_hash):
             # todo: we lie in the confirmation message since
@@ -306,12 +315,6 @@ class NodeUpdater:
             cli_logger.old_info(logger,
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
-
-            # When resuming from a stopped instance the runtime_hash may be the
-            # same, but the container will not be started.
-            if isinstance(self.cmd_runner, DockerCommandRunner):
-                self.cmd_runner.run_init(
-                    as_head=self.is_head_node, file_mounts=self.file_mounts)
 
         else:
             cli_logger.print(
@@ -364,10 +367,8 @@ class NodeUpdater:
                     cli_logger.print(
                         "No initialization commands to run.",
                         _numbered=("[]", 3, 6))
-                if isinstance(self.cmd_runner, DockerCommandRunner):
-                    self.cmd_runner.run_init(
-                        as_head=self.is_head_node,
-                        file_mounts=self.file_mounts)
+                self.cmd_runner.run_init(
+                    as_head=self.is_head_node, file_mounts=self.file_mounts)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",

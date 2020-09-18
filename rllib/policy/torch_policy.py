@@ -4,7 +4,6 @@ import numpy as np
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
-import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -104,7 +103,7 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available() and ray.get_gpu_ids():
+        if torch.cuda.is_available():
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")

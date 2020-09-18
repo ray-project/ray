@@ -6,11 +6,10 @@ import { StyledTableCell } from "../../../common/TableCell";
 
 type Props = {
   memoryTableEntry: MemoryTableEntry;
-  key: string;
 };
 
 export const MemoryTableRow = (props: Props) => {
-  const { memoryTableEntry, key } = props;
+  const { memoryTableEntry } = props;
   const object_size =
     memoryTableEntry.objectSize === -1
       ? "?"
@@ -25,9 +24,9 @@ export const MemoryTableRow = (props: Props) => {
     memoryTableEntry.callSite,
   ];
   return (
-    <TableRow hover key={key}>
+    <TableRow hover>
       {memoryTableEntryValues.map((value, index) => (
-        <StyledTableCell key={`${key}-${index}`}>{value}</StyledTableCell>
+        <StyledTableCell key={`${index}`}>{value}</StyledTableCell>
       ))}
     </TableRow>
   );

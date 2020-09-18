@@ -53,7 +53,7 @@ const TotalRow: React.FC<TotalRowProps> = ({
             <ClusterFeature nodes={nodes} />
           </TableCell>
         ) : (
-          <StyledTableCell />
+          <StyledTableCell key={index} />
         ),
       )}
     </TableRow>

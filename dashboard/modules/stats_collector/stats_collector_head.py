@@ -52,14 +52,15 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
     async def _update_stubs(self, change):
         if change.old:
-            ip, port = change.old
-            self._stubs.pop(ip)
+            node_id, node_info = change.old
+            self._stubs.pop(node_id)
         if change.new:
-            ip, node_info = change.new
-            address = "{}:{}".format(ip, int(node_info["nodeManagerPort"]))
+            node_id, node_info = change.new
+            address = "{}:{}".format(node_info["nodeManagerAddress"],
+                                     int(node_info["nodeManagerPort"]))
             channel = aiogrpc.insecure_channel(address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._stubs[ip] = stub
+            self._stubs[node_id] = stub
 
     @routes.get("/nodes")
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
@@ -78,18 +79,22 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 clients=all_node_details,
             )
         elif view is not None and view.lower() == "hostNameList".lower():
+            alive_hostnames = set()
+            for node in DataSource.nodes.values():
+                if node["state"] == "ALIVE":
+                    alive_hostnames.add(node["nodeManagerHostname"])
             return await dashboard_utils.rest_response(
                 success=True,
                 message="Node hostname list fetched.",
-                host_name_list=list(DataSource.hostname_to_ip.keys()))
+                host_name_list=list(alive_hostnames))
         else:
             return await dashboard_utils.rest_response(
                 success=False, message=f"Unknown view {view}")
 
-    @routes.get("/nodes/{hostname}")
+    @routes.get("/nodes/{node_id}")
     async def get_node(self, req) -> aiohttp.web.Response:
-        hostname = req.match_info.get("hostname")
-        node_info = await DataOrganizer.get_node_info(hostname)
+        node_id = req.match_info.get("node_id")
+        node_info = await DataOrganizer.get_node_info(node_id)
         return await dashboard_utils.rest_response(
             success=True, message="Node details fetched.", detail=node_info)
 
@@ -170,8 +175,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
-        for ip, stub in self._stubs.items():
-            node_info = DataSource.nodes.get(ip)
+        for node_id, stub in self._stubs.items():
+            node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
             try:
@@ -180,9 +185,9 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                             include_memory_info=self._collect_memory_info),
                     timeout=2)
                 reply_dict = node_stats_to_dict(reply)
-                DataSource.node_stats[ip] = reply_dict
+                DataSource.node_stats[node_id] = reply_dict
             except Exception:
-                logger.exception(f"Error updating node stats of {ip}.")
+                logger.exception(f"Error updating node stats of {node_id}.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

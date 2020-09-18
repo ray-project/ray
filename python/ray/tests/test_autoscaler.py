@@ -1110,7 +1110,10 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "start_ray_worker")
 
     def testSetupCommandsWithStoppedNodeCaching(self):
+        file_mount_dir = tempfile.mkdtemp()
         config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/root/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
         config["min_workers"] = 1
         config["max_workers"] = 1
         config_path = self.write_config(config)
@@ -1133,6 +1136,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.0", "setup_cmd")
         runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
 
         # Check the node was indeed reused
         self.provider.terminate_node(0)
@@ -1147,6 +1151,25 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call("172.0.0.0", "setup_cmd")
         runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
+
+        with open(f"{file_mount_dir}/new_file", "w") as f:
+            f.write("abcdefgh")
+
+        # Check that run_init happens when file_mounts have updated
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
 
         runner.clear_history()
         autoscaler.update()

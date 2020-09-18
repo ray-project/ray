@@ -20,8 +20,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitTask(const InvocationSpec &invocation);
 
-  ActorID CreateActor(RemoteFunctionPtrHolder &fptr,
-                      std::shared_ptr<msgpack::sbuffer> args);
+  ActorID CreateActor(const InvocationSpec &invocation);
 
   ObjectID SubmitActorTask(const InvocationSpec &invocation);
 
@@ -34,7 +33,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 
-  ObjectID Submit(const InvocationSpec &invocation, TaskType type);
+  ObjectID Submit(const InvocationSpec &invocation);
 };
 }  // namespace api
 }  // namespace ray
