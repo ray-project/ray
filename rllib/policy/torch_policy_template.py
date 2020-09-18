@@ -65,7 +65,8 @@ def build_torch_policy(
         mixins: Optional[List[type]] = None,
         training_view_requirements_fn: Optional[Callable[[], Dict[
             str, ViewRequirement]]] = None,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None):
+        get_batch_divisibility_req: Optional[
+            Callable[[Policy], int]] = None) -> Type[TorchPolicy]:
     """Helper function for creating a torch policy class at runtime.
 
     Args:
@@ -165,7 +166,8 @@ def build_torch_policy(
             sample batches. If None, will assume a value of 1.
 
     Returns:
-        type: TorchPolicy child class constructed from the specified args.
+        Type[TorchPolicy]: TorchPolicy child class constructed from the
+            specified args.
     """
 
     original_kwargs = locals().copy()

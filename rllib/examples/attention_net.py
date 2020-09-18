@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -42,6 +43,8 @@ if __name__ == "__main__":
             "repeat_delay": 2,
         },
         "gamma": 0.99,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS"), "0"),
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.001,

@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -37,6 +38,8 @@ if __name__ == "__main__":
     config = dict(
         configs[args.run], **{
             "env": StatelessCartPole,
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
                 "use_lstm": True,
                 "lstm_use_prev_action_reward": args.use_prev_action_reward,
@@ -50,7 +53,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

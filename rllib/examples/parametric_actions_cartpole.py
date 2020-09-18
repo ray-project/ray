@@ -15,6 +15,7 @@ Working configurations are given below.
 """
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -60,6 +61,8 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "pa_model",
         },
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "framework": "torch" if args.torch else "tf",
     }, **cfg)
