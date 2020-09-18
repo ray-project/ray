@@ -16,15 +16,15 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   }
 
   const response = await fetch(url.toString());
-  const json = await response.json();
+  const json: APIResponse<T> = await response.json();
 
-  const { result, error } = json;
+  const { result, msg, data } = json;
 
-  if (error !== null) {
-    throw Error(error);
+  if (!result) {
+    throw Error(msg);
   }
 
-  return result as T;
+  return data as T;
 };
 
 const post = async <T>(path: string, params: { [key: string]: any }) => {
@@ -37,15 +37,15 @@ const post = async <T>(path: string, params: { [key: string]: any }) => {
   const url = new URL(path, base);
 
   const response = await fetch(url.toString(), requestOptions);
-  const json = await response.json();
+  const json: APIResponse<T> = await response.json();
 
-  const { result, error } = json;
+  const { result, msg, data } = json;
 
-  if (error !== null) {
-    throw Error(error);
+  if (!result) {
+    throw Error(msg);
   }
 
-  return result as T;
+  return data as T;
 };
 
 export type RayConfigResponse = {
@@ -357,7 +357,7 @@ export type TuneJobResponse = {
   };
 };
 
-export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+export const getTuneInfo = () => get<TuneJobResponse>("/tune/info", {});
 
 export type TuneAvailabilityResponse = {
   available: boolean;
@@ -365,19 +365,19 @@ export type TuneAvailabilityResponse = {
 };
 
 export const getTuneAvailability = () =>
-  get<TuneAvailabilityResponse>("/api/tune_availability", {});
+  get<TuneAvailabilityResponse>("/tune/availability", {});
 
 export type TuneSetExperimentReponse = {
   experiment: string;
 };
 
 export const setTuneExperiment = (experiment: string) =>
-  post<TuneSetExperimentReponse>("/api/set_tune_experiment", {
+  post<TuneSetExperimentReponse>("/tune/set_experiment", {
     experiment: experiment,
   });
 
 export const enableTuneTensorBoard = () =>
-  post<{}>("/api/enable_tune_tensorboard", {});
+  post<{}>("/api/enable_tensorboard", {});
 
 export type MemoryTableSummary = {
   totalActorHandles: number;
