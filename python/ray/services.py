@@ -1038,12 +1038,11 @@ def start_dashboard(require_dashboard,
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
-    append_log_dir = None
     if "RAY_USE_NEW_DASHBOARD" in os.environ:
         dashboard_dir = "new_dashboard"
-        append_log_dir = log_dir
     else:
         dashboard_dir = "dashboard"
+        log_dir = None
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
@@ -1057,8 +1056,8 @@ def start_dashboard(require_dashboard,
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
     ]
-    if append_log_dir:
-        command += [f"--log-dir={append_log_dir}"]
+    if log_dir:
+        command += [f"--log-dir={log_dir}"]
     if redis_password:
         command += ["--redis-password", redis_password]
 
