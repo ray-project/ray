@@ -170,7 +170,7 @@ def request_resources(num_cpus=None, bundles=None):
     return commands.request_resources(num_cpus, bundles)
 
 
-def _as_config_file(cluster_config):
+def _as_config_file(cluster_config: Union[dict, str]):
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
