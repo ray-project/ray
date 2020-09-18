@@ -50,7 +50,7 @@ Starter SLURM script
   # network interfaces. This allows to access the dashboard through port-forwarding:
   # Let's say the hostname=cluster-node-500 To view the dashboard on localhost:8265, set up an ssh-tunnel like this: (assuming the firewall allows it)
   # $  ssh -N -f -L 8265:cluster-node-500:8265 user@big-cluster
-  srun --nodes=1 --ntasks=1 --cpus-per-task=${SLURM_CPUS_PER_TASK} --nodelist=`hostname` ray start --head --block --dashboard-host 0.0.0.0 --port=6379 &
+  srun --nodes=1 --ntasks=1 --cpus-per-task=${SLURM_CPUS_PER_TASK} --nodelist=`hostname` ray start --head --block --dashboard-host 0.0.0.0 --port=6379 --num-cpus ${SLURM_CPUS_PER_TASK} &
   sleep 5
   # Make sure the head successfully starts before any worker does, otherwise
   # the worker will not be able to connect to redis. In case of longer delay,
