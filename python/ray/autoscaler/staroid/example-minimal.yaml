@@ -1,0 +1,41 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+max_workers: 1
+
+# Kubernetes resources that need to be configured for the autoscaler to be
+# able to manage the Ray cluster. If any of the provided resources don't
+# exist, the autoscaler will attempt to create them. If this fails, you may
+# not have the required permissions and will have to request them to be
+# created by your cluster administrator.
+provider:
+    type: staroid
+
+    # Access token for Staroid from https://staroid.com/settings/accesstokens.
+    # Alternatively, you can set STAROID_ACCESS_TOKEN environment variable.
+    # https://github.com/staroids/staroid-python#configuration for more information.
+    access_token:
+
+    # Staroid account to use. e.g. GITHUB/staroids
+    # Alternatively, you can set STAROID_ACCOUNT environment variable.
+    # Leave empty to select default account for given access token.
+    # https://github.com/staroids/staroid-python#configuration for more information.
+    account:
+
+    # Name of a Staroid Kubernetes Engine (SKE) instance.
+    # Alternatively, you can set STAROID_SKE environment variable.
+    # An SKE is a virtualized Kubernetes cluster.
+    # Will create a new if not exists.
+    ske: "Ray cluster"
+
+    # Cloud and Region to create an SKE when not exists.
+    # If SKE already exists, this value will be ignored.
+    # Supported cloud region
+    #  - "gcp us-west1"
+    #  - "aws us-west2"
+    ske_region: "aws us-west2"
+
+    # Exposing external IP addresses for ray pods isn't currently supported.
+    use_internal_ips: true
