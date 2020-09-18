@@ -580,8 +580,3 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
-
-
-def request_resources(num_cpus=None, num_gpus=None):
-    raise DeprecationWarning(
-        "Please use ray.autoscaler.commands.request_resources instead.")
