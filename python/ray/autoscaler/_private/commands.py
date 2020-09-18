@@ -810,7 +810,7 @@ def attach_cluster(config_file: str,
 
 def exec_cluster(config_file: str,
                  *,
-                 cmd: Any = None,
+                 cmd: str = None,
                  run_env: str = "auto",
                  screen: bool = False,
                  tmux: bool = False,

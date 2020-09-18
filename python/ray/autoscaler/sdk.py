@@ -1,112 +1,163 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from typing import Any, Optional, List
+from typing import Optional, List, Union
+import json
+import os
+import tempfile
 
 from ray.autoscaler._private import commands
 
 
-def create_or_update_cluster(config_file: str,
-                             override_min_workers: Optional[int],
-                             override_max_workers: Optional[int],
-                             no_restart: bool,
-                             restart_only: bool,
-                             yes: bool,
-                             override_cluster_name: Optional[str],
-                             no_config_cache: bool = False,
-                             redirect_command_output: bool = False,
-                             use_login_shells: bool = True) -> None:
+def create_or_update_cluster(cluster_config: Union[dict, str],
+                             *,
+                             no_restart: bool = False,
+                             restart_only: bool = False,
+                             no_config_cache: bool = False) -> None:
     """Create or updates an autoscaling Ray cluster from a config json.
 
-    TODO(ekl) document this.
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
+        no_restart (bool): Whether to skip restarting Ray services during the
+            update. This avoids interrupting running jobs and can be used to
+            dynamically adjust autoscaler configuration.
+        restart_only (bool): Whether to skip running setup commands and only
+            restart Ray. This cannot be used with 'no-restart'.
+        no_config_cache (bool): Whether to disable the config cache and fully
+            resolve all environment settings from the Cloud provider again.
     """
     return commands.create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers, no_restart,
-        restart_only, yes, override_cluster_name, no_config_cache,
-        redirect_command_output, use_login_shells)
+        config_file=_as_config_file(cluster_config),
+        override_min_workers=None,
+        override_max_workers=None,
+        no_restart=no_restart,
+        restart_only=restart_only,
+        yes=True,
+        override_cluster_name=None,
+        no_config_cache=no_config_cache,
+        redirect_command_output=None,
+        use_login_shells=True)
 
 
-def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
-                     override_cluster_name: Optional[str],
-                     keep_min_workers: bool) -> None:
+def teardown_cluster(cluster_config: Union[dict, str]) -> None:
     """Destroys all nodes of a Ray cluster described by a config json.
 
-    TODO(ekl) document this.
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
     """
-    return commands.teardown_cluster(config_file, yes, workers_only,
-                                     override_cluster_name, keep_min_workers)
+    return commands.teardown_cluster(
+        config_file=_as_config_file(cluster_config),
+        yes=True,
+        workers_only=False,
+        override_cluster_name=None,
+        keep_min_workers=False)
 
 
-def exec_cluster(config_file: str,
-                 *,
-                 cmd: Any = None,
-                 run_env: str = "auto",
-                 screen: bool = False,
-                 tmux: bool = False,
-                 stop: bool = False,
-                 start: bool = False,
-                 override_cluster_name: Optional[str] = None,
-                 no_config_cache: bool = False,
-                 port_forward: Any = None,
-                 with_output: bool = False) -> str:
+def run_on_cluster(cluster_config: Union[dict, str],
+                   *,
+                   cmd: Optional[str] = None,
+                   run_env: str = "auto",
+                   screen: bool = False,
+                   tmux: bool = False,
+                   stop: bool = False,
+                   start: bool = False,
+                   no_config_cache: bool = False,
+                   port_forward: Union[int, List[int]] = None,
+                   with_output: bool = False) -> str:
     """Runs a command on the specified cluster.
 
-    Arguments:
-        config_file: path to the cluster yaml
-        cmd: command to run
-        run_env: whether to run the command on the host or in a container.
-            Select between "auto", "host" and "docker"
-        screen: whether to run in a screen
-        tmux: whether to run in a tmux session
-        stop: whether to stop the cluster after command run
-        start: whether to start the cluster if it isn't up
-        override_cluster_name: set the name of the cluster
-        port_forward (int or list[int]): port(s) to forward
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
+        cmd (str): the command to run, or None for a no-op command.
+        run_env (str): whether to run the command on the host or in a
+            container. Select between "auto", "host" and "docker".
+        screen (bool): whether to run in a screen session.
+        tmux (bool): whether to run in a tmux session.
+        stop (bool): whether to stop the cluster after the command.
+        start (bool): whether to start the cluster if it isn't up.
+        no_config_cache (bool): Whether to disable the config cache and fully
+            resolve all environment settings from the Cloud provider again.
+        port_forward (int or list[int]): port(s) to forward.
+
+    Returns:
+        The output of the command as a string.
     """
     return commands.exec_cluster(
-        config_file,
+        _as_config_file(cluster_config),
         cmd=cmd,
         run_env=run_env,
-        screen=screen,
-        tmux=tmux,
+        screen=False,
+        tmux=False,
         stop=stop,
         start=start,
-        override_cluster_name=override_cluster_name,
+        override_cluster_name=None,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
         with_output=with_output)
 
 
-def rsync(config_file: str,
-          source: Optional[str],
-          target: Optional[str],
-          override_cluster_name: Optional[str],
+def rsync(cluster_config: Union[dict, str],
+          *,
+          source: str,
+          target: str,
           down: bool,
-          no_config_cache: bool = False,
-          all_nodes: bool = False):
-    """Rsyncs files.
+          no_config_cache: bool = False):
+    """Rsyncs files to or from the cluster.
 
-    Arguments:
-        config_file: path to the cluster yaml
-        source: source dir
-        target: target dir
-        override_cluster_name: set the name of the cluster
-        down: whether we're syncing remote -> local
-        all_nodes: whether to sync worker nodes in addition to the head node
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
+        source (str): rsync source argument.
+        target (str): rsync target argument.
+        down (bool): whether we're syncing remote -> local.
+        no_config_cache (bool): Whether to disable the config cache and fully
+            resolve all environment settings from the Cloud provider again.
+
+    Raises:
+        RuntimeError if the cluster head node is not found.
     """
-    return commands.rsync(config_file, source, target, override_cluster_name,
-                          down, no_config_cache, all_nodes)
+    return commands.rsync(
+        config_file=_as_config_file(cluster_config),
+        source=source,
+        target=target,
+        override_cluster_name=None,
+        down=down,
+        no_config_cache=no_config_cache,
+        all_nodes=False)
 
 
-def get_head_node_ip(config_file: str,
-                     override_cluster_name: Optional[str]) -> str:
-    """Returns head node IP for given configuration file if exists."""
-    return commands.get_head_node_ip(config_file, override_cluster_name)
+def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
+    """Returns head node IP for given configuration file if exists.
+
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
+
+    Returns:
+        The ip address of the cluster head node.
+
+    Raises:
+        RuntimeError if the cluster is not found.
+    """
+    return commands.get_head_node_ip(_as_config_file(cluster_config))
 
 
-def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> List[str]:
-    """Returns worker node IPs for given configuration file."""
-    return commands.get_worker_node_ips(config_file, override_cluster_name)
+def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
+    """Returns worker node IPs for given configuration file.
+
+    Args:
+        cluster_config (Union[str, dict]): Either the config dict of the
+            cluster, or a path pointing to a file containing the config.
+
+    Returns:
+        List of worker node ip addresses.
+
+    Raises:
+        RuntimeError if the cluster is not found.
+    """
+    return commands.get_worker_node_ips(_as_config_file(cluster_config))
 
 
 def request_resources(num_cpus=None, bundles=None):
@@ -124,3 +175,13 @@ def request_resources(num_cpus=None, bundles=None):
             if your cluster config.
     """
     return commands.request_resources(num_cpus, bundles)
+
+
+def _as_config_file(cluster_config):
+    if isinstance(cluster_config, dict):
+        tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
+        tmp.write(json.dumps(cluster_config))
+        tmp.flush()
+        cluster_config = cluster_config
+    if not os.path.exists(cluster_config):
+        raise ValueError("Cluster config not found {}".format(cluster_config))
