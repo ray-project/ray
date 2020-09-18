@@ -20,26 +20,26 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray.services as services
-from ray.autoscaler.util import validate_config, hash_runtime_conf, \
+from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
+from ray.autoscaler._private.node_provider import get_node_provider, NODE_PROVIDERS, \
     PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
     try_reload_log_state
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.command_runner import set_using_login_shells, \
+from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
 
-import ray.autoscaler.subprocess_output_util as cmd_output_util
+import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)
 
@@ -1024,7 +1024,7 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> str:
+                        override_cluster_name: Optional[str]) -> List[str]:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())
