@@ -344,7 +344,9 @@ Status RedisStoreClient::MGetValues(
         }
 
         ++(*finished_count);
-        q if (*finished_count == total_count) { callback(*key_value_map); }
+        if (*finished_count == total_count) {
+          callback(*key_value_map);
+        }
       };
       RAY_CHECK_OK(command_list.first->RunArgvAsync(mget_keys, mget_callback));
     }
