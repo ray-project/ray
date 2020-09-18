@@ -49,23 +49,23 @@ def _load_local_example_config():
         os.path.dirname(ray_local.__file__), "example-full.yaml")
 
 
-def load_kubernetes_example_config():
+def _load_kubernetes_example_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
     return os.path.join(
         os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
 
-def load_aws_example_config():
+def _load_aws_example_config():
     import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(ray_aws.__file__), "example-full.yaml")
 
 
-def load_gcp_example_config():
+def _load_gcp_example_config():
     import ray.autoscaler.gcp as ray_gcp
     return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
 
 
-def load_azure_example_config():
+def _load_azure_example_config():
     import ray.autoscaler.azure as ray_azure
     return os.path.join(
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
@@ -82,7 +82,6 @@ _NODE_PROVIDERS = {
     "gcp": _import_gcp,
     "azure": _import_azure,
     "kubernetes": _import_kubernetes,
-    "docker": None,
     "external": _import_external  # Import an external module
 }
 
@@ -92,17 +91,15 @@ _PROVIDER_PRETTY_NAMES = {
     "gcp": "GCP",
     "azure": "Azure",
     "kubernetes": "Kubernetes",
-    # "docker": "Docker", # not supported
     "external": "External"
 }
 
 _DEFAULT_CONFIGS = {
     "local": _load_local_example_config,
-    "aws": load_aws_example_config,
-    "gcp": load_gcp_example_config,
-    "azure": load_azure_example_config,
-    "kubernetes": load_kubernetes_example_config,
-    "docker": None,
+    "aws": _load_aws_example_config,
+    "gcp": _load_gcp_example_config,
+    "azure": _load_azure_example_config,
+    "kubernetes": _load_kubernetes_example_config,
 }
 
 
