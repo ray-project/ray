@@ -112,9 +112,10 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
 
-  static std::unordered_map<RedisContext *, std::vector<std::string>> GenCommandsByShards(
-      const std::shared_ptr<RedisClient> &redis_client, const std::string &command,
-      const std::vector<std::string> &keys);
+  static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
+  GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
+                      const std::string &command, const std::vector<std::string> &keys,
+                      int *count);
 
   /// The separator is used when building redis key.
   static std::string table_separator_;
