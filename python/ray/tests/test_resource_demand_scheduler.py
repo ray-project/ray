@@ -10,7 +10,7 @@ from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.node_provider import NODE_PROVIDERS
+from ray.autoscaler.private.node_provider import _NODE_PROVIDERS
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, \
@@ -201,14 +201,14 @@ class LoadMetricsTest(unittest.TestCase):
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
-        NODE_PROVIDERS["mock"] = \
+        _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         self.provider = None
-        del NODE_PROVIDERS["mock"]
+        del _NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
