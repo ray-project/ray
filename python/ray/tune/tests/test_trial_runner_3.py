@@ -228,19 +228,18 @@ class TrialRunnerTest3(unittest.TestCase):
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
 
-            def next_trials(self):
+            def next_trial(self):
                 spec = self._experiment.spec
-                trials = []
+                trial = None
                 if self._index < spec["num_samples"]:
                     trial = Trial(
                         spec.get("run"), stopping_criterion=spec.get("stop"))
-                    trials.append(trial)
                 self._index += 1
 
                 if self._index > 4:
                     self.set_finished()
 
-                return trials
+                return trial
 
             def suggest(self, trial_id):
                 return {}
@@ -625,7 +624,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         searcher = TestSuggestion()
         alg = SearchGenerator(searcher)
         alg.add_configurations({"test": {"run": "__fake"}})
-        trial = alg.next_trials()[0]
+        trial = alg.next_trial()
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
 

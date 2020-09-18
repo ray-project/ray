@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -177,7 +178,8 @@ def run(
         num_samples (int): Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated
-            `num_samples` of times.
+            `num_samples` of times. If this is -1, (virtually) infinite
+            samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         search_alg (Searcher): Search algorithm for optimization.
@@ -292,6 +294,9 @@ def run(
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
 
+    if num_samples == -1:
+        num_samples = sys.maxsize
+
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors, queue_trials=queue_trials)
     if isinstance(run_or_experiment, list):
@@ -382,6 +387,8 @@ def run(
             progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
         else:
             progress_reporter = CLIReporter()
+
+    progress_reporter.set_total_samples(search_alg.total_samples)
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
