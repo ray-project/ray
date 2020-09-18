@@ -198,7 +198,7 @@ def test_calculate_node_resources():
     to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
                                               utilizations)
 
-    assert to_launch == [('p2.8xlarge', 1)]
+    assert to_launch == [("p2.8xlarge", 1)]
 
 
 class LoadMetricsTest(unittest.TestCase):
