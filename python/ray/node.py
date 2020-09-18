@@ -634,6 +634,7 @@ class Node:
             self._ray_params.dashboard_host,
             self.redis_address,
             self._temp_dir,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,

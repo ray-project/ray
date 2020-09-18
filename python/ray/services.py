@@ -992,6 +992,7 @@ def start_dashboard(require_dashboard,
                     host,
                     redis_address,
                     temp_dir,
+                    log_dir,
                     port=ray_constants.DEFAULT_DASHBOARD_PORT,
                     stdout_file=None,
                     stderr_file=None,
@@ -1009,6 +1010,7 @@ def start_dashboard(require_dashboard,
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
+        log_dir (str): The log directory used to generate dashboard log.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1036,8 +1038,10 @@ def start_dashboard(require_dashboard,
             raise ValueError(
                 f"The given dashboard port {port} is already in use")
 
+    append_log_dir = None
     if "RAY_USE_NEW_DASHBOARD" in os.environ:
         dashboard_dir = "new_dashboard"
+        append_log_dir = log_dir
     else:
         dashboard_dir = "dashboard"
 
@@ -1053,6 +1057,8 @@ def start_dashboard(require_dashboard,
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
     ]
+    if append_log_dir:
+        command += [f"--log-dir={append_log_dir}"]
     if redis_password:
         command += ["--redis-password", redis_password]
 
