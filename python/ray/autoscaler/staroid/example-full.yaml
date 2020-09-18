@@ -145,6 +145,7 @@ worker_nodes:
         # service is required.
         labels:
             component: ray-worker
+            pod.staroid.com/spot: "true" # use spot instance for workers.
     spec:
         serviceAccountName: default
 

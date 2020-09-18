@@ -8,7 +8,7 @@ from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from .command_runner import StaroidCommandRunner
-from ray.autoscaler.kubernetes import core_api, log_prefix, extensions_beta_api
+from ray.autoscaler.staroid import log_prefix
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
@@ -68,13 +68,32 @@ class StaroidNodeProvider(NodeProvider):
         if ns == None: # instance not exists
             return None
 
+        # check if staroid namespace is not PAUSED (stopped) or INACTIVE (terminated)
+        if ns.status() != "ACTIVE":
+            return None
+
+        # wait for the staroid namespace to be started
+        start_time = time.time()
+        timeout = 300
+        started = False
+        while time.time() - start_time < timeout:
+            if ns.phase() == "RUNNING":
+                started = True
+                break
+            time.sleep(3)
+            ns = ns_api.get(instance_name)
+
+        if started == False:
+            logger.info(log_prefix + "fail to start namespace")
+            return None
+
         # start a shell service to create secure tunnel
         ns_api.shell_start(instance_name)
 
         local_port = find_free_port()
         remote_port = 57683 # fixed port number for kube api access through shell service in staroid
 
-        # start a tunnel
+        # start a secure tunnel
         ns_api.start_tunnel(
             instance_name,
             ["{}:localhost:{}".format(local_port, remote_port)]
@@ -83,7 +102,6 @@ class StaroidNodeProvider(NodeProvider):
         # wait for tunnel to be established by checking /version
         local_kube_api_addr = "http://localhost:{}".format(local_port)
         start_time = time.time()
-        timeout = 300
         established = False
         while time.time() - start_time < timeout:
             try:
@@ -187,15 +205,33 @@ class StaroidNodeProvider(NodeProvider):
 
         # create a namespace
         ns_api = self.__star.namespace(ske)
-        ns = ns_api.create(instance_name, "GITHUB/staroids/namespace:master")
+        ns = ns_api.create(
+            instance_name,
+            # open-datastudio/ray-cluster project will instantiate a new namespace.
+            # based on https://github.com/open-datastudio/ray-cluster/blob/master/.staroid/staroid.yaml
+            "GITHUB/open-datastudio/ray-cluster:master",
+
+            # Configure 'start-head' param to 'false'.
+            # head node will be created using Kubernetes api.
+            params=[{
+                "group": "Misc",
+                "name": "start-head",
+                "value": "false"
+            }]
+        )
         if ns == None:
             raise Exception("Failed to create a cluster '{}' in SKE '{}'".format(instance_name, self.__ske))
+
+        # 'ray down' will change staroid namespace status to "PAUSE"
+        # in this case we need to start namespace again.
+        if ns.status() == "PAUSE":
+            ns = ns_api.start(instance_name)
 
         # kube client
         kube_client = self._connect_kubeapi(instance_name)
         core_api = client.CoreV1Api(kube_client)
 
-        # create head nodoe
+        # create head node
         conf = node_config.copy()
         pod_spec = conf.get("pod", conf)
         service_spec = conf.get("service")
@@ -238,6 +274,21 @@ class StaroidNodeProvider(NodeProvider):
             core_api.delete_namespaced_service(node_id, self.namespace)
         except ApiException:
             pass
+
+        if node_id.startswith("ray-head"):
+            # Stop namespace on staroid after remove ray-head node.
+            instance_name = self.cluster_name
+
+            cluster_api = self.__star.cluster()
+            ske = cluster_api.get(self.__ske)
+
+            ns_api = self.__star.namespace(ske)
+            ns = ns_api.get(instance_name)
+
+            del self.__cached[instance_name]
+
+            ns_api.stop_tunnel(instance_name)
+            ns_api.stop(instance_name)
 
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
