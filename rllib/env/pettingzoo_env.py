@@ -122,7 +122,7 @@ class PettingZooEnv(MultiAgentEnv):
             obs (dict): New observations for each ready agent.
         """
         # 1. Reset environment; agent pointer points to first agent.
-        self.aec_env.reset(observe=False)
+        self.aec_env.reset()
 
         # 2. Copy agents from environment
         self.agents = self.aec_env.agents
@@ -155,53 +155,96 @@ class PettingZooEnv(MultiAgentEnv):
                 "__all__" (required) is used to indicate env termination.
             infos (dict): Optional info values for each agent id.
         """
-        env_done = False
-        # iterate over self.agents
-        for agent in self.agents:
+        stepped_agents = set()
+        while self.aec_env.agent_selection not in stepped_agents:
+            agent = self.aec_env.agent_selection
+            assert agent in action_dict, \
+                "Live environment agent is not in actions dictionary"
+            self.aec_env.step(action_dict[agent])
+            stepped_agents.add(agent)
 
-            # Execute only for agents that have not been done in previous steps
-            if agent in action_dict.keys():
-                if not env_done:
-                    assert agent == self.aec_env.agent_selection, \
-                        f"environment has a nontrivial ordering, and " \
-                        "cannot be used with the POMGameEnv wrapper\"" \
-                        "nCurrent agent: {self.aec_env.agent_selection}" \
-                        "\nExpected agent: {agent}"
-                    # Execute agent action in environment
-                    self.obs[agent] = self.aec_env.step(
-                        action_dict[agent], observe=True)
-                    if all(self.aec_env.dones.values()):
-                        env_done = True
-                        self.dones["__all__"] = True
-                else:
-                    self.obs[agent] = self.aec_env.observe(agent)
-                # Get reward
-                self.rewards[agent] = self.aec_env.rewards[agent]
-                # Update done status
-                self.dones[agent] = self.aec_env.dones[agent]
+        assert all(agent in stepped_agents or self.aec_env.dones[agent]
+                   for agent in action_dict), \
+            "environment has a nontrivial ordering, and cannot be used with"\
+            " the POMGameEnv wrapper"
 
-            # For agents with done = True, remove from dones, rewards and
-            # observations.
-            else:
-                del self.dones[agent]
-                del self.rewards[agent]
-                del self.obs[agent]
-                del self.infos[agent]
+        self.obs = {}
+        self.rewards = {}
+        self.dones = {}
+        self.infos = {}
 
         # update self.agents
         self.agents = list(action_dict.keys())
 
-        # Update infos stepwise
         for agent in self.agents:
+            self.obs[agent] = self.aec_env.observe(agent)
+            self.dones[agent] = self.aec_env.dones[agent]
+            self.rewards[agent] = self.aec_env.rewards[agent]
             self.infos[agent] = self.aec_env.infos[agent]
+
+        self.dones["__all__"] = all(self.aec_env.dones.values())
 
         return self.obs, self.rewards, self.dones, self.infos
 
     def render(self, mode="human"):
-        self.aec_env.render(mode=mode)
+        return self.aec_env.render(mode=mode)
 
     def close(self):
         self.aec_env.close()
 
+    def seed(self, seed=None):
+        self.aec_env.seed(seed)
+
     def with_agent_groups(self, groups, obs_space=None, act_space=None):
         raise NotImplementedError
+
+
+class ParallelPettingZooEnv(MultiAgentEnv):
+    def __init__(self, env):
+        self.par_env = env
+        # agent idx list
+        self.agents = self.par_env.agents
+
+        # Get dictionaries of obs_spaces and act_spaces
+        self.observation_spaces = self.par_env.observation_spaces
+        self.action_spaces = self.par_env.action_spaces
+
+        # Get first observation space, assuming all agents have equal space
+        self.observation_space = self.observation_spaces[self.agents[0]]
+
+        # Get first action space, assuming all agents have equal space
+        self.action_space = self.action_spaces[self.agents[0]]
+
+        assert all(obs_space == self.observation_space
+                   for obs_space
+                   in self.par_env.observation_spaces.values()), \
+            "Observation spaces for all agents must be identical. Perhaps " \
+            "SuperSuit's pad_observations wrapper can help (useage: " \
+            "`supersuit.aec_wrappers.pad_observations(env)`"
+
+        assert all(act_space == self.action_space
+                   for act_space in self.par_env.action_spaces.values()), \
+            "Action spaces for all agents must be identical. Perhaps " \
+            "SuperSuit's pad_action_space wrapper can help (useage: " \
+            "`supersuit.aec_wrappers.pad_action_space(env)`"
+
+        self.reset()
+
+    def reset(self):
+        return self.par_env.reset()
+
+    def step(self, action_dict):
+        for agent in self.agents:
+            action_dict[agent] = self.action_space.sample()
+        obs, rew, dones, info = self.par_env.step(action_dict)
+        dones["__all__"] = all(dones.values())
+        return obs, rew, dones, info
+
+    def close(self):
+        self.par_env.close()
+
+    def seed(self, seed=None):
+        self.par_env.seed(seed)
+
+    def render(self, mode="human"):
+        return self.par_env.render(mode)

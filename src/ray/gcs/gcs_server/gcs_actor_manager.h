@@ -317,8 +317,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// state associated with the actor and marks the actor as dead. For owned
   /// actors, this should be called when all actor handles have gone out of
   /// scope or the owner has died.
-  /// TODO: For detached actors, this should be called when the application
-  /// deregisters the actor.
+  /// NOTE: This method can be called multiple times in out-of-order and should be
+  /// idempotent.
   void DestroyActor(const ActorID &actor_id);
 
   /// Get unresolved actors that were submitted from the specified node.
