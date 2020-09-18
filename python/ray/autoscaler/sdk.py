@@ -175,6 +175,6 @@ def _as_config_file(cluster_config: Union[dict, str]):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
         tmp.write(json.dumps(cluster_config))
         tmp.flush()
-        cluster_config = cluster_config
+        cluster_config = tmp.name
     if not os.path.exists(cluster_config):
         raise ValueError("Cluster config not found {}".format(cluster_config))
