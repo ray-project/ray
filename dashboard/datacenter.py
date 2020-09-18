@@ -118,15 +118,15 @@ class DataOrganizer:
     @classmethod
     async def get_all_node_details(cls):
         node_details = []
-        for hostname in DataSource.hostname_to_ip.keys():
-            node_details.append(await cls.get_node_info(hostname))
+        for node_id in DataSource.nodes.keys():
+            node_details.append(await cls.get_node_info(node_id))
         return node_details
 
     @classmethod
     async def get_all_actors(cls):
         actors = []
-        for hostname in DataSource.hostname_to_ip.keys():
-            actors.append(await cls.get_node_actors(hostname))
+        for node_id in DataSource.nodes.keys():
+            actors.append(await cls.get_node_actors(node_id))
         return actors
 
     @classmethod
