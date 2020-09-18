@@ -71,7 +71,7 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
             return self.env.step(action)
 
     register_env("multienv", lambda config: MultiEnv(config))
-	
+
 .. tip::
 
    When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
@@ -217,11 +217,11 @@ PettingZoo Multi-Agent Environments
 
     from ray.tune.registry import register_env
     # import the pettingzoo environment
-    from pettingzoo.gamma import prison_v0
+    from pettingzoo.butterfly import prison_v1
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
     # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v0.env(num_floors=config.get("num_floors", 4))
+    env_creator = lambda config: prison_v1.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
     # now you can use `prison` as an environment

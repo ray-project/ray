@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Union
 
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial
 
 
 class SearchAlgorithm:
@@ -36,6 +35,11 @@ class SearchAlgorithm:
         """
         return True
 
+    @property
+    def total_samples(self):
+        """Get number of total trials to be generated"""
+        return 0
+
     def add_configurations(
             self,
             experiments: Union[Experiment, List[Experiment], Dict[str, Dict]]):
@@ -46,11 +50,11 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def next_trials(self) -> List[Trial]:
-        """Provides Trial objects to be queued into the TrialRunner.
+    def next_trial(self):
+        """Returns single Trial object to be queued into the TrialRunner.
 
         Returns:
-            trials (list): Returns a list of trials.
+            trial (Trial): Returns a Trial object.
         """
         raise NotImplementedError
 

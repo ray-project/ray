@@ -294,10 +294,16 @@ class NodeUpdater:
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
 
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            # When resuming from a stopped instance the runtime_hash may be the
+            # same, but the container will not be started.
+            self.cmd_runner.run_init(
+                as_head=self.is_head_node, file_mounts=self.file_mounts)
+
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash and (
-                self.file_mounts_contents_hash is None
+                not self.file_mounts_contents_hash
                 or node_tags.get(TAG_RAY_FILE_MOUNTS_CONTENTS) ==
                 self.file_mounts_contents_hash):
             # todo: we lie in the confirmation message since
@@ -309,11 +315,6 @@ class NodeUpdater:
             cli_logger.old_info(logger,
                                 "{}{} already up-to-date, skip to ray start",
                                 self.log_prefix, self.node_id)
-
-            # When resuming from a stopped instance the runtime_hash may be the
-            # same, but the container will not be started.
-            self.cmd_runner.run_init(
-                as_head=self.is_head_node, file_mounts=self.file_mounts)
 
         else:
             cli_logger.print(
