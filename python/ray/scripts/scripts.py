@@ -14,7 +14,7 @@ import yaml
 import ray
 import psutil
 import ray.services as services
-from ray.autoscaler.commands import (
+from ray.autoscaler._commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
