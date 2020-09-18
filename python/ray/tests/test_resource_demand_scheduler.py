@@ -8,9 +8,9 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
+from ray.autoscaler.node_provider import _NODE_PROVIDERS
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler.private.node_provider import _NODE_PROVIDERS
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, \
