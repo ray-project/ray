@@ -263,7 +263,7 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
       key_vector->push_back(key);
       (*count)++;
     } else {
-      // The 0 th element of is command, so size minus 1.
+      // If the last batch is full, add a new batch.
       if (it->second.back().size() - 1 ==
           RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
         it->second.emplace_back(std::vector<std::string>());

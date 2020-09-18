@@ -112,6 +112,8 @@ class RedisStoreClient : public StoreClient {
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);
 
+  /// The return value is a map, whose key is the shard and the value is a list of batch
+  /// operations.
   static std::unordered_map<RedisContext *, std::list<std::vector<std::string>>>
   GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
                       const std::string &command, const std::vector<std::string> &keys,
