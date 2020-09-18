@@ -1,23 +1,6 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional, List
 
 from ray.autoscaler._private import commands
-
-
-def request_resources(num_cpus=None, bundles=None):
-    """Remotely request some CPU or GPU resources from the autoscaler.
-
-    This function is to be called e.g. on a node before submitting a bunch of
-    ray.remote calls to ensure that resources rapidly become available.
-
-    This function is EXPERIMENTAL.
-
-    Args:
-        num_cpus: int -- the number of CPU cores to request
-        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
-            only has an effect if you've configured `available_node_types`
-            if your cluster config.
-    """
-    return commands.request_resources(num_cpus, bundles)
 
 
 def create_or_update_cluster(config_file: str,
@@ -31,10 +14,9 @@ def create_or_update_cluster(config_file: str,
                              redirect_command_output: bool = False,
                              use_login_shells: bool = True) -> None:
     """Create or updates an autoscaling Ray cluster from a config json.
-    
+
     TODO(ekl) document this.
     """
-
     return commands.create_or_update_cluster(
         config_file, override_min_workers, override_max_workers, no_restart,
         restart_only, yes, override_cluster_name, no_config_cache,
@@ -48,7 +30,6 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     TODO(ekl) document this.
     """
-
     return commands.teardown_cluster(config_file, yes, workers_only,
                                      override_cluster_name, keep_min_workers)
 
@@ -110,7 +91,6 @@ def rsync(config_file: str,
         down: whether we're syncing remote -> local
         all_nodes: whether to sync worker nodes in addition to the head node
     """
-
     return commands.rsync(config_file, source, target, override_cluster_name,
                           down, no_config_cache, all_nodes)
 
@@ -118,12 +98,27 @@ def rsync(config_file: str,
 def get_head_node_ip(config_file: str,
                      override_cluster_name: Optional[str]) -> str:
     """Returns head node IP for given configuration file if exists."""
-
     return commands.get_head_node_ip(config_file, override_cluster_name)
 
 
 def get_worker_node_ips(config_file: str,
                         override_cluster_name: Optional[str]) -> List[str]:
     """Returns worker node IPs for given configuration file."""
-
     return commands.get_worker_node_ips(config_file, override_cluster_name)
+
+
+def request_resources(num_cpus=None, bundles=None):
+    """Remotely request some CPU or GPU resources from the autoscaler.
+
+    This function is to be called e.g. on a node before submitting a bunch of
+    ray.remote calls to ensure that resources rapidly become available.
+
+    This function is EXPERIMENTAL.
+
+    Args:
+        num_cpus: int -- the number of CPU cores to request
+        bundles: List[dict] -- list of resource dicts (e.g., {"CPU": 1}). This
+            only has an effect if you've configured `available_node_types`
+            if your cluster config.
+    """
+    return commands.request_resources(num_cpus, bundles)

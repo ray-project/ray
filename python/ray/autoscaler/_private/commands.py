@@ -9,7 +9,7 @@ import sys
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import click
 import yaml
@@ -23,9 +23,9 @@ import ray.services as services
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler._private.node_provider import get_node_provider, NODE_PROVIDERS, \
-    PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
-    try_reload_log_state
+from ray.autoscaler._private.node_provider import get_node_provider, \
+    NODE_PROVIDERS, PROVIDER_PRETTY_NAMES, try_get_log_state, \
+    try_logging_config, try_reload_log_state
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 
