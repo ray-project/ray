@@ -41,4 +41,5 @@ public class ObjectId extends BaseId implements Serializable {
   public int size() {
     return LENGTH;
   }
+
 }
