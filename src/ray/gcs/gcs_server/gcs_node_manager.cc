@@ -460,14 +460,20 @@ void GcsNodeManager::StartNodeFailureDetector() {
 
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
-  if (heartbeat.resources_available_size() > 0) {
-    if (heartbeat.resources_available().count(kResourcesTurningEmpty) == 1) {
-      cluster_realtime_resources_[node_id] = std::make_shared<ResourceSet>();
-    } else {
-      auto resources_available = MapFromProtobuf(heartbeat.resources_available());
-      cluster_realtime_resources_[node_id] =
-          std::make_shared<ResourceSet>(resources_available);
+  if (light_heartbeat_enabled_) {
+    if (heartbeat.resources_available_size() > 0) {
+      if (heartbeat.resources_available().count(kResourcesTurningEmpty) == 1) {
+        cluster_realtime_resources_[node_id] = std::make_shared<ResourceSet>();
+      } else {
+        auto resources_available = MapFromProtobuf(heartbeat.resources_available());
+        cluster_realtime_resources_[node_id] =
+            std::make_shared<ResourceSet>(resources_available);
+      }
     }
+  } else {
+    auto resources_available = MapFromProtobuf(heartbeat.resources_available());
+    cluster_realtime_resources_[node_id] =
+        std::make_shared<ResourceSet>(resources_available);
   }
 }
 
