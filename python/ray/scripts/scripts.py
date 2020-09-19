@@ -14,14 +14,14 @@ import yaml
 import ray
 import psutil
 import ray.services as services
-from ray.autoscaler.commands import (
+from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)
