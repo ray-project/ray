@@ -1,3 +1,14 @@
+"""
+Deep Q-Networks (DQN, Rainbow, Parametric DQN)
+==============================================
+
+This file defines the distributed Trainer class for the Deep Q-Networks
+algorithm. See `dqn_[tf|torch]_policy.py` for the definition of the policies.
+
+Detailed documentation:
+https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
+"""  # noqa: E501
+
 import logging
 from typing import Type
 

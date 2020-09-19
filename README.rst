@@ -16,7 +16,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Ray Serve`_: Scalable and Programmable Serving
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/master/installation.html>`__.
 
 **NOTE:** As of Ray 0.8.1, Python 2 is no longer supported.
 

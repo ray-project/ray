@@ -1,3 +1,17 @@
+"""
+Distributed Prioritized Experience Replay (Ape-X)
+=================================================
+
+This file defines a DQN trainer using the Ape-X architecture.
+
+Ape-X uses a single GPU learner and many CPU workers for experience collection.
+Experience collection can scale to hundreds of CPU workers due to the
+distributed prioritization of experience prior to storage in replay buffers.
+
+Detailed documentation:
+https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
+"""  # noqa: E501
+
 import collections
 import copy
 
