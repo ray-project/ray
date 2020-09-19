@@ -10,12 +10,16 @@ import io.ray.api.id.ActorId;
  */
 public class RayActorException extends RayException {
 
+  public ActorId actorId;
+
   public RayActorException() {
     super("The actor died unexpectedly before finishing this task.");
   }
 
   public RayActorException(ActorId actorId) {
-    super("The actor " + actorId + " died unexpectedly before finishing this task.");
+    super(String.format(
+        "The actor %s died unexpectedly before finishing this task.", actorId));
+    this.actorId = actorId;
   }
 
   public RayActorException(String message) {

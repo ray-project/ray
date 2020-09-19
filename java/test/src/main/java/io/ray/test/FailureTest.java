@@ -9,6 +9,9 @@ import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
+import io.ray.runtime.generated.Common;
+import io.ray.runtime.object.NativeRayObject;
+import io.ray.runtime.object.ObjectSerializer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -168,6 +171,17 @@ public class FailureTest extends BaseTest {
     });
     Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
     Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
+  }
+
+  public void testObjectSerializer() {
+    ObjectId objectId = ObjectId.fromRandom();
+    NativeRayObject nativeRayObject = ObjectSerializer.serialize(objectId);
+    nativeRayObject.metadata = String.valueOf(Common.ErrorType.ACTOR_DIED.getNumber()).getBytes();
+
+    // Check the actor id of RayActorException.
+    RayActorException exception = (RayActorException) ObjectSerializer.deserialize(
+            nativeRayObject, objectId, null);
+    Assert.assertEquals(exception.actorId, objectId.taskId().actorId());
   }
 }
 
