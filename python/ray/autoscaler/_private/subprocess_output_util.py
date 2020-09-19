@@ -5,7 +5,7 @@ import tempfile
 import time
 import sys
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 import colorful as cf
 
 CONN_REFUSED_PATIENCE = 30  # how long to wait for sshd to run

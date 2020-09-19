@@ -211,7 +211,7 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is note directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
 
 .. code-block:: python
 

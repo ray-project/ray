@@ -10,7 +10,7 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 import json
 import socket
 
-from ray.autoscaler.local.node_provider import LocalNodeProvider
+from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

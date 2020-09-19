@@ -2,7 +2,7 @@ import logging
 
 from kubernetes import client
 
-from ray.autoscaler.kubernetes import auth_api, core_api, log_prefix
+from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
 
 logger = logging.getLogger(__name__)
 
