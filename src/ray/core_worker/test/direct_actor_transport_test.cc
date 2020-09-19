@@ -140,6 +140,12 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+
+  // Connect to the actor again.
+  // Because the IP and port of address are not modified, it will skip directly and will
+  // not reset `received_seq_nos`.
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1, 2));
 }
 
 TEST_F(DirectActorSubmitterTest, TestDependencies) {
