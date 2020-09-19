@@ -106,12 +106,17 @@ def build_trainer(
             if validate_config:
                 validate_config(config)
 
+            # No `get_policy_class` function.
             if get_policy_class is None:
+                # Default_policy must be provided (unless in multi-agent mode,
+                # where each policy can have its own default policy class.
                 if not config["multiagent"]["policies"]:
                     assert default_policy is not None
                 self._policy_class = default_policy
+            # Query the function for a class to use.
             else:
                 self._policy_class = get_policy_class(config)
+                # If None returned, use default policy (must be provided).
                 if self._policy_class is None:
                     assert default_policy is not None
                     self._policy_class = default_policy

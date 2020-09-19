@@ -1,6 +1,6 @@
 import logging
-
 import numpy as np
+
 import ray
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
@@ -83,7 +83,8 @@ DEFAULT_CONFIG = with_common_config({
         "normalize_data": True,
     },
     "exploration_config": {
-        "type": MBMPOExploration,
+        "type": StochasticSampling,
+        "random_timesteps": 8000,
     },
     # Workers sample from dynamics models
     "custom_vector_env": custom_model_vector_env,
@@ -362,10 +363,6 @@ def execution_plan(workers, config):
     return train_op
 
 
-def get_policy_class(config):
-    return MBMPOTorchPolicy
-
-
 def validate_config(config):
     config["framework"] = "torch"
     if config["framework"] != "torch":
@@ -386,6 +383,6 @@ MBMPOTrainer = build_trainer(
     name="MBMPO",
     default_config=DEFAULT_CONFIG,
     default_policy=MBMPOTorchPolicy,
-    get_policy_class=get_policy_class,
     execution_plan=execution_plan,
-    validate_config=validate_config)
+    validate_config=validate_config,
+)

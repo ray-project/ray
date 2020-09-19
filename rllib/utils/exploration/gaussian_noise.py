@@ -56,9 +56,12 @@ class GaussianNoise(Exploration):
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
 
+        # Create the Random exploration module (used for the first n
+        # timesteps).
         self.random_timesteps = random_timesteps
         self.random_exploration = Random(
             action_space, model=self.model, framework=self.framework, **kwargs)
+
         self.stddev = stddev
         # The `scale` annealing schedule.
         self.scale_schedule = scale_schedule or PiecewiseSchedule(
