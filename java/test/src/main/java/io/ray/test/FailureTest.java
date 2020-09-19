@@ -124,6 +124,7 @@ public class FailureTest extends BaseTest {
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
+      Assert.assertEquals(e.actorId, actor.getId());
     }
     try {
       actor.task(BadActor::badMethod).remote().get();
@@ -171,17 +172,6 @@ public class FailureTest extends BaseTest {
     });
     Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
     Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
-  }
-
-  public void testObjectSerializer() {
-    ObjectId objectId = ObjectId.fromRandom();
-    NativeRayObject nativeRayObject = ObjectSerializer.serialize(objectId);
-    nativeRayObject.metadata = String.valueOf(Common.ErrorType.ACTOR_DIED.getNumber()).getBytes();
-
-    // Check the actor id of RayActorException.
-    RayActorException exception = (RayActorException) ObjectSerializer.deserialize(
-            nativeRayObject, objectId, null);
-    Assert.assertEquals(exception.actorId, objectId.taskId().actorId());
   }
 }
 
