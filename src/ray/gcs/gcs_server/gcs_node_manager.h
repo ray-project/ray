@@ -231,6 +231,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::unique_ptr<NodeFailureDetector> node_failure_detector_;
   /// The event loop for node failure detector.
   boost::asio::io_service &node_failure_detector_service_;
+  // Only the changed part will be included in heartbeat if this is true.
+  const bool light_heartbeat_enabled_;
   /// Alive nodes.
   absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
   /// Dead nodes.

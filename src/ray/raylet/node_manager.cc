@@ -20,6 +20,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
@@ -392,17 +393,6 @@ void NodeManager::Heartbeat() {
   // TODO(atumanov): implement a ResourceSet const_iterator.
   // If light heartbeat enabled, we only set filed that represent resources changed.
   if (light_heartbeat_enabled_) {
-    if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
-            local_resources.GetAvailableResources())) {
-      for (const auto &resource_pair :
-           local_resources.GetAvailableResources().GetResourceMap()) {
-        (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-            resource_pair.second;
-      }
-      last_heartbeat_resources_.SetAvailableResources(
-          ResourceSet(local_resources.GetAvailableResources()));
-    }
-
     if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
             local_resources.GetTotalResources())) {
       for (const auto &resource_pair :
@@ -414,13 +404,32 @@ void NodeManager::Heartbeat() {
           ResourceSet(local_resources.GetTotalResources()));
     }
 
+    if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+            local_resources.GetAvailableResources())) {
+      if (local_resources.GetAvailableResources().IsEmpty()) {
+        (*heartbeat_data->mutable_resources_available())[kResourcesTurningEmpty] = 0.0;
+      } else {
+        for (const auto &resource_pair :
+             local_resources.GetAvailableResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+              resource_pair.second;
+        }
+      }
+      last_heartbeat_resources_.SetAvailableResources(
+          ResourceSet(local_resources.GetAvailableResources()));
+    }
+
     local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
     if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
             local_resources.GetLoadResources())) {
-      for (const auto &resource_pair :
-           local_resources.GetLoadResources().GetResourceMap()) {
-        (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-            resource_pair.second;
+      if (local_resources.GetLoadResources().IsEmpty()) {
+        (*heartbeat_data->mutable_resource_load())[kResourcesTurningEmpty] = 0.0;
+      } else {
+        for (const auto &resource_pair :
+             local_resources.GetLoadResources().GetResourceMap()) {
+          (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+              resource_pair.second;
+        }
       }
       last_heartbeat_resources_.SetLoadResources(
           ResourceSet(local_resources.GetLoadResources()));
@@ -428,20 +437,16 @@ void NodeManager::Heartbeat() {
   } else {
     // If light heartbeat disabled, we send whole resources information every time.
     for (const auto &resource_pair :
-         local_resources.GetAvailableResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-    last_heartbeat_resources_.SetAvailableResources(
-        ResourceSet(local_resources.GetAvailableResources()));
-
-    for (const auto &resource_pair :
          local_resources.GetTotalResources().GetResourceMap()) {
       (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
           resource_pair.second;
     }
-    last_heartbeat_resources_.SetTotalResources(
-        ResourceSet(local_resources.GetTotalResources()));
+
+    for (const auto &resource_pair :
+         local_resources.GetAvailableResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
 
     local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
     for (const auto &resource_pair :
@@ -449,8 +454,6 @@ void NodeManager::Heartbeat() {
       (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
           resource_pair.second;
     }
-    last_heartbeat_resources_.SetLoadResources(
-        ResourceSet(local_resources.GetLoadResources()));
   }
 
   // Add resource load by shape. This will be used by the new autoscaler.
@@ -955,13 +958,22 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
       remote_resources.SetTotalResources(std::move(remote_total));
     }
     if (heartbeat_data.resources_available_size() > 0) {
-      ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
-      remote_resources.SetAvailableResources(std::move(remote_available));
+      if (heartbeat_data.resources_available().count(kResourcesTurningEmpty) == 1) {
+        remote_resources.SetAvailableResources(ResourceSet());
+      } else {
+        ResourceSet remote_available(
+            MapFromProtobuf(heartbeat_data.resources_available()));
+        remote_resources.SetAvailableResources(std::move(remote_available));
+      }
     }
     if (heartbeat_data.resource_load_size() > 0) {
-      ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
-      // Extract the load information and save it locally.
-      remote_resources.SetLoadResources(std::move(remote_load));
+      if (heartbeat_data.resource_load().count(kResourcesTurningEmpty) == 1) {
+        remote_resources.SetLoadResources(ResourceSet());
+      } else {
+        ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
+        // Extract the load information and save it locally.
+        remote_resources.SetLoadResources(std::move(remote_load));
+      }
     }
   } else {
     // If light heartbeat disabled, we update remote resources every time.
