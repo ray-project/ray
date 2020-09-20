@@ -35,8 +35,7 @@ tfp = try_import_tfp()
 logger = logging.getLogger(__name__)
 
 
-def build_sac_model(policy: Policy,
-                    obs_space: gym.spaces.Space,
+def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> ModelV2:
     """Constructs the necessary ModelV2 for the Policy and returns it.
@@ -142,11 +141,10 @@ def postprocess_trajectory(
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def _get_dist_class(
-        config: TrainerConfigDict,
-        action_space: gym.spaces.Space) -> Type[TFActionDistribution]:
+def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
+                    ) -> Type[TFActionDistribution]:
     """Helper function to return a dist class based on config and action space.
-    
+
     Args:
         config (TrainerConfigDict): The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
@@ -478,9 +476,8 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
 
 
 def apply_gradients(
-    policy: Policy,
-    optimizer: LocalOptimizer,
-    grads_and_vars: ModelGradients) -> Union["tf.Operation", None]:
+        policy: Policy, optimizer: LocalOptimizer,
+        grads_and_vars: ModelGradients) -> Union["tf.Operation", None]:
     """Gradients applying function (from list of "grad_and_var" tuples).
 
     Note: For SAC, optimizer and grads_and_vars are ignored b/c we have 3
@@ -525,8 +522,7 @@ def apply_gradients(
         return tf.group([actor_apply_ops, alpha_apply_ops] + critic_apply_ops)
 
 
-def stats(policy: Policy,
-          train_batch: SampleBatch) -> Dict[str, TensorType]:
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Stats function for SAC. Returns a dict with important loss stats.
 
     Args:
@@ -555,6 +551,7 @@ class ActorCriticOptimizerMixin:
     - Creates global step for counting the number of update operations.
     - Creates separate optimizers for actor, critic, and alpha.
     """
+
     def __init__(self, config):
         # Eager mode.
         if config["framework"] in ["tf2", "tfe"]:
@@ -588,8 +585,7 @@ class ActorCriticOptimizerMixin:
                 learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
-def setup_early_mixins(policy: Policy,
-                       obs_space: gym.spaces.Space,
+def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
                        action_space: gym.spaces.Space,
                        config: TrainerConfigDict) -> None:
     """Call mixin classes' constructors before Policy's initialization.
@@ -605,8 +601,7 @@ def setup_early_mixins(policy: Policy,
     ActorCriticOptimizerMixin.__init__(policy, config)
 
 
-def setup_mid_mixins(policy: Policy,
-                     obs_space: gym.spaces.Space,
+def setup_mid_mixins(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     """Call mixin classes' constructors before Policy's loss initialization.
@@ -626,8 +621,7 @@ def setup_mid_mixins(policy: Policy,
     ComputeTDErrorMixin.__init__(policy, sac_actor_critic_loss)
 
 
-def setup_late_mixins(policy: Policy,
-                      obs_space: gym.spaces.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
                       action_space: gym.spaces.Space,
                       config: TrainerConfigDict) -> None:
     """Call mixin classes' constructors after Policy initialization.
@@ -645,8 +639,7 @@ def setup_late_mixins(policy: Policy,
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(policy: Policy,
-                    observation_space: gym.spaces.Space,
+def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> None:
     """Validates the observation- and action spaces used for the Policy.

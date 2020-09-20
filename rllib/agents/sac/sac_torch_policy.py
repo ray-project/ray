@@ -54,9 +54,8 @@ def build_sac_model_and_action_dist(
     return model, action_dist_class
 
 
-def _get_dist_class(
-    config: TrainerConfigDict,
-    action_space: gym.spaces.Space) -> Type[TorchDistributionWrapper]:
+def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
+                    ) -> Type[TorchDistributionWrapper]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
@@ -138,8 +137,7 @@ def action_distribution_fn(
 
 
 def actor_critic_loss(
-        policy: Policy,
-        model: ModelV2,
+        policy: Policy, model: ModelV2,
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for the Soft Actor Critic.
@@ -314,8 +312,7 @@ def actor_critic_loss(
                  [policy.alpha_loss])
 
 
-def stats(policy: Policy,
-          train_batch: SampleBatch) -> Dict[str, TensorType]:
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Stats function for SAC. Returns a dict with important loss stats.
 
     Args:
@@ -395,6 +392,7 @@ class ComputeTDErrorMixin:
     - Adds `policy.compute_td_error()` method for TD-error calculation from a
       batch of observations/actions/rewards/etc..
     """
+
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
@@ -425,6 +423,7 @@ class TargetNetworkMixin:
       Calling `update_target` updates all target Q-networks' weights from their
       respective "main" Q-metworks, based on tau (smooth, partial updating).
     """
+
     def __init__(self):
         # Hard initial update from Q-net(s) to target Q-net(s).
         self.update_target(tau=1.0)
@@ -445,8 +444,7 @@ class TargetNetworkMixin:
         self.target_model.load_state_dict(model_state_dict)
 
 
-def setup_late_mixins(policy: Policy,
-                      obs_space: gym.spaces.Space,
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
                       action_space: gym.spaces.Space,
                       config: TrainerConfigDict) -> None:
     """Call mixin classes' constructors after Policy initialization.

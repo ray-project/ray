@@ -29,10 +29,9 @@ def build_torch_policy(
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
-                                              Policy, SampleBatch,
-                                              Optional[Dict[Any, SampleBatch]],
-                                              Optional["MultiAgentEpisode"]
-                                          ], SampleBatch]] = None,
+            Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
+                "MultiAgentEpisode"]
+        ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
             TorchDistributionWrapper
