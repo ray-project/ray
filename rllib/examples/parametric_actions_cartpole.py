@@ -56,16 +56,18 @@ if __name__ == "__main__":
     else:
         cfg = {}
 
-    config = dict({
-        "env": "pa_cartpole",
-        "model": {
-            "custom_model": "pa_model",
+    config = dict(
+        {
+            "env": "pa_cartpole",
+            "model": {
+                "custom_model": "pa_model",
+            },
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            "num_workers": 0,
+            "framework": "torch" if args.torch else "tf",
         },
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 0,
-        "framework": "torch" if args.torch else "tf",
-    }, **cfg)
+        **cfg)
 
     stop = {
         "training_iteration": args.stop_iters,

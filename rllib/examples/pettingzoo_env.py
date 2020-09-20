@@ -9,7 +9,6 @@ from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import PettingZooEnv
 from ray.tune.registry import register_env
 
-
 if __name__ == "__main__":
     """For this script, you need:
     1. Algorithm name and according module, e.g.: "PPo" + agents.ppo as agent

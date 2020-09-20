@@ -120,7 +120,8 @@ if __name__ == "__main__":
         args.run,
         stop={"episode_reward_mean": args.stop},
         config=dict(
-            extra_config, **{
+            extra_config,
+            **{
                 "env": "BreakoutNoFrameskip-v4"
                 if args.use_vision_network else "CartPole-v0",
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

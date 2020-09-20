@@ -17,7 +17,6 @@ from ray.rllib.evaluation import MultiAgentEpisode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2000)

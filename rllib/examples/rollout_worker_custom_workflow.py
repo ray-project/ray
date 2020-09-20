@@ -109,8 +109,8 @@ if __name__ == "__main__":
     tune.run(
         training_workflow,
         resources_per_trial={
-            "gpu": 1 if args.gpu or int(
-                os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) else 0,
+            "gpu": 1 if args.gpu
+            or int(os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) else 0,
             "cpu": 1,
             "extra_cpu": args.num_workers,
         },

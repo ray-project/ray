@@ -66,8 +66,8 @@ def build_torch_policy(
         mixins: Optional[List[type]] = None,
         training_view_requirements_fn: Optional[Callable[[], Dict[
             str, ViewRequirement]]] = None,
-        get_batch_divisibility_req: Optional[
-            Callable[[Policy], int]] = None) -> Type[TorchPolicy]:
+        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
+) -> Type[TorchPolicy]:
     """Helper function for creating a torch policy class at runtime.
 
     Args:
