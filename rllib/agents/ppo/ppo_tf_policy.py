@@ -266,10 +266,7 @@ class KLCoeffMixin:
             self.kl_coeff_val *= 0.5
 
         # Update the tf Variable (via session call).
-        if self.framework == "tf":
-            self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
-        else:
-            self.kl_coeff = self.kl_coeff_val
+        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
         # Return the current KL value.
         return self.kl_coeff_val
 
