@@ -51,6 +51,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllNodeInfo()
         return result
 
+    def get_all_available_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllAvailableResources()
+        return result
+
     def get_profile_table(self):
         cdef c_vector[c_string] result
         with nogil:

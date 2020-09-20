@@ -635,6 +635,24 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
   return Status::OK();
 }
 
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllAvailableResources(
+    const MultiItemCallback<rpc::AvailableResources> &callback) {
+  rpc::GetAllAvailableResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllAvailableResources(
+      request,
+      [callback](const Status &status, const rpc::GetAllAvailableResourcesReply &reply) {
+        std::vector<rpc::AvailableResources> result;
+        result.reserve((reply.resources_list_size()));
+        for (int index = 0; index < reply.resources_list_size(); ++index) {
+          result.emplace_back(reply.resources_list(index));
+        }
+        callback(status, result);
+        RAY_LOG(DEBUG) << "Finished getting available resources of all nodes, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
     const ClientID &node_id, const ResourceMap &resources,
     const StatusCallback &callback) {

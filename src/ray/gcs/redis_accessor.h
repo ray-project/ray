@@ -349,6 +349,11 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncGetResources(const ClientID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
+
   Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 

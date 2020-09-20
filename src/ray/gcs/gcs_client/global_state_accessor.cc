@@ -148,6 +148,16 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
   return node_resource_map.SerializeAsString();
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
+  std::vector<std::string> available_resources;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+      TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
+                                                             promise)));
+  promise.get_future().get();
+  return available_resources;
+}
+
 std::string GlobalStateAccessor::GetInternalConfig() {
   rpc::StoredConfig config_proto;
   std::promise<void> promise;

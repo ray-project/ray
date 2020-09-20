@@ -215,6 +215,11 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
                                        GetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllAvailableResources(
+      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.

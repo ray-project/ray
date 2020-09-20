@@ -89,6 +89,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get availabe resources of all nodes.
+  void HandleGetAllAvailableResources(
+      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
