@@ -447,8 +447,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node_ip_address = services.get_node_ip_address()
 
         # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=node_ip_address)
+        ray_params.update_if_absent(node_ip_address=node_ip_address)
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         cli_logger.old_info(logger, "Using IP address {} for this node.",
                             ray_params.node_ip_address)
