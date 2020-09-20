@@ -162,8 +162,9 @@ class CheckpointManager:
 
     def __getstate__(self):
         state = self.__dict__.copy()
+        # Avoid serializing the memory checkpoint.
+        state["_newest_memory_checkpoint"] = Checkpoint(Checkpoint.MEMORY, None)
         # Avoid serializing lambda since it may capture cyclical dependencies.
-        state["_newest_memory_checkpoint"] = None
         state.pop("delete")
         return state
 
