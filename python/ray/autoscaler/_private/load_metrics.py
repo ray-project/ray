@@ -1,9 +1,13 @@
 import logging
 import time
 
+import ray
 import numpy as np
 import ray.services as services
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.ray_constants import (
+    MEMORY_RESOURCE_UNIT_BYTES,
+    NODE_RESOURCES_TURNING_EMPTY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +38,51 @@ class LoadMetrics:
                resource_load,
                waiting_bundles=[],
                infeasible_bundles=[]):
-        self.resource_load_by_ip[ip] = resource_load
-        self.static_resources_by_ip[ip] = static_resources
-
-        # We are not guaranteed to have a corresponding dynamic resource for
-        # every static resource because dynamic resources are based on the
-        # available resources in the heartbeat, which does not exist if it is
-        # zero. Thus, we have to update dynamic resources here.
-        dynamic_resources_update = dynamic_resources.copy()
-        for resource_name, capacity in static_resources.items():
-            if resource_name not in dynamic_resources_update:
-                dynamic_resources_update[resource_name] = 0.0
-        self.dynamic_resources_by_ip[ip] = dynamic_resources_update
+        # If light heartbeat enabled, only resources changed will be received.
+        # We should update the changed part and compare static_resources with
+        # dynamic_resources using those updated.
+        if ray._config.light_heartbeat_enabled():
+            if ip not in self.static_resources_by_ip or \
+                    len(static_resources) > 0:
+                self.static_resources_by_ip[ip] = static_resources
+            if ip not in self.dynamic_resources_by_ip or \
+                    len(dynamic_resources) > 0:
+                if NODE_RESOURCES_TURNING_EMPTY in dynamic_resources:
+                    self.dynamic_resources_by_ip[ip] = {}
+                else:
+                    self.dynamic_resources_by_ip[ip] = dynamic_resources
+            if ip not in self.resource_load_by_ip or len(resource_load) > 0:
+                if NODE_RESOURCES_TURNING_EMPTY in resource_load:
+                    self.resource_load_by_ip[ip] = {}
+                else:
+                    self.resource_load_by_ip[ip] = resource_load
+            # We are not guaranteed to have a corresponding dynamic resource
+            # for every static resource because dynamic resources are based on
+            # the available resources in the heartbeat, which does not exist
+            # if it is zero. Thus, we have to update dynamic resources here.
+            dynamic_resources_update = self.dynamic_resources_by_ip[ip].copy()
+            for resource_name, capacity in \
+                    self.static_resources_by_ip[ip].items():
+                if resource_name not in dynamic_resources_update:
+                    dynamic_resources_update[resource_name] = 0.0
+            self.dynamic_resources_by_ip[ip] = dynamic_resources_update
+        else:
+            self.resource_load_by_ip[ip] = resource_load
+            self.static_resources_by_ip[ip] = static_resources
+            # We are not guaranteed to have a corresponding dynamic resource
+            # for every static resource because dynamic resources are based on
+            # the available resources in the heartbeat, which does not exist
+            # if it is zero. Thus, we have to update dynamic resources here.
+            dynamic_resources_update = dynamic_resources.copy()
+            for resource_name, capacity in static_resources.items():
+                if resource_name not in dynamic_resources_update:
+                    dynamic_resources_update[resource_name] = 0.0
+            self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
         if ip not in self.last_used_time_by_ip or \
-                static_resources != dynamic_resources:
+                self.static_resources_by_ip[ip] != \
+                self.dynamic_resources_by_ip[ip]:
             self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
