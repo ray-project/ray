@@ -207,9 +207,7 @@ class StaroidNodeProvider(NodeProvider):
         ns_api = self.__star.namespace(ske)
         ns = ns_api.create(
             instance_name,
-            # open-datastudio/ray-cluster project will instantiate a new namespace.
-            # based on https://github.com/open-datastudio/ray-cluster/blob/master/.staroid/staroid.yaml
-            "GITHUB/open-datastudio/ray-cluster:master",
+            self.provider_config["project"],
 
             # Configure 'start-head' param to 'false'.
             # head node will be created using Kubernetes api.
@@ -230,6 +228,22 @@ class StaroidNodeProvider(NodeProvider):
         # kube client
         kube_client = self._connect_kubeapi(instance_name)
         core_api = client.CoreV1Api(kube_client)
+        apps_api = client.AppsV1Api(kube_client)
+
+        # retrieve container image
+        image = None
+        if self.provider_config["image_from_project"]:
+            ray_images = apps_api.read_namespaced_deployment(
+                name="ray-images", # https://docs.staroid.com/references/staroid-envs.html
+                namespace=self.namespace
+            )
+            py_ver = self.provider_config["python_version"].replace(".", "-" )
+            containers = ray_images.spec.template.spec.containers
+            for c in containers:
+                if py_ver in c.image:
+                    image = c.image
+                    break
+            logger.info(log_prefix + "use image {}".format(image))
 
         # create head node
         conf = node_config.copy()
@@ -243,6 +257,13 @@ class StaroidNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"].update(tags)
         else:
             pod_spec["metadata"]["labels"] = tags
+
+        if image != None:
+            containers = pod_spec["spec"]["containers"]
+            for c in containers:
+                if c["name"] == "ray-node":
+                    c["image"] = image
+
         logger.info(log_prefix + "calling create_namespaced_pod "
                     "(count={}).".format(count))
         new_nodes = []

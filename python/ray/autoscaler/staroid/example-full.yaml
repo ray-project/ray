@@ -47,10 +47,35 @@ provider:
 
     # Cloud and Region to create an SKE when not exists.
     # If SKE already exists, this value will be ignored.
-    # Supported cloud region
-    #  - "gcp us-west1"
-    #  - "aws us-west2"
+    # Supported cloud region can be found here https://docs.staroid.com/ske/cloudregion.html.
     ske_region: "aws us-west2"
+
+    # To create a namespace in SKE, you need to specify a Github project.
+    # The Github project needs to have a staroid.yaml (https://docs.staroid.com/references/staroid_yaml.html).
+    # staroid.yaml defines various resources for the project, such as
+    #   - Building container images can be accessed from the namespace
+    #   - Kubernetes resources to create (like Persistent volume claim) on namespace creation
+    # You can fork when you need to customize.
+    #   1. Fork github.com/open-datastudio/ray
+    #   2. Change .staroid/ directory to cutomize
+    #   3. Connect forked repository (https://staroid.com/projects/settings)
+    #   4. Release your customized branch
+    #      4-1. Select project from 'My projects' menu
+    #      4-2. Select your branch in 'Release' tab
+    #      4-3. After build success, switch to 'Production'
+    #      4-4. Switch Launch permission to 'Public' if required
+    #   5. Change 'project' field to point your repository and branch in this file
+    project: "GITHUB/open-datastudio/ray:master-staroid"
+
+    # 'spec.containers.image' field for ray-node and ray-worker will be overrided by
+    # the image built from the 'project' field above.
+    # Set this value to 'false' to not override the image.
+    image_from_project: true
+
+    # Python version to use. One of '3.6.9', '3.7.7', '3.8.3'.
+    # 'project' field above provides docker image for each python version.
+    # Fork 'project' if you'd like to support other python versions.
+    python_version: 3.7.7
 
     # Exposing external IP addresses for ray pods isn't currently supported.
     use_internal_ips: true
@@ -93,7 +118,8 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: opendatastudio/ray:latest
+          # Image will be overriden when 'image_from_project' is true.
+          image: rayproject/autoscaler
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -230,7 +256,7 @@ worker_setup_commands: []
 # Note webui-host is set to 0.0.0.0 so that kubernetes can port forward.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --webui-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host 0.0.0.0
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
