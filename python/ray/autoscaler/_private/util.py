@@ -8,8 +8,8 @@ from typing import Any, Dict
 
 import ray
 import ray.services as services
-from ray.autoscaler.node_provider import get_default_config
-from ray.autoscaler.docker import validate_docker_config
+from ray.autoscaler.node_provider import _get_default_config
+from ray.autoscaler._private.docker import validate_docker_config
 
 REQUIRED, OPTIONAL = True, False
 RAY_SCHEMA_PATH = os.path.join(
@@ -95,7 +95,7 @@ def prepare_config(config):
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
-    defaults = get_default_config(config["provider"])
+    defaults = _get_default_config(config["provider"])
     defaults.update(config)
     defaults["auth"] = defaults.get("auth", {})
     return defaults

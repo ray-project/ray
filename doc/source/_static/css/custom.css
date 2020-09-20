@@ -61,5 +61,5 @@ span.rst-current-version > span.fa.fa-book {
 
 /* Adjustment to Version block */
 .rst-versions {
-  z-index: 1200;
+  z-index: 1200 !important;
 }

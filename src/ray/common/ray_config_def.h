@@ -205,8 +205,8 @@ RAY_CONFIG(int, num_workers_per_process_cpp, 1)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
-/// Maximum number of items in one batch to scan from GCS storage.
-RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)

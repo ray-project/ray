@@ -4,9 +4,9 @@ import time
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.gcp.config import bootstrap_gcp
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler.gcp.config import MAX_POLLS, POLL_INTERVAL, \
+from ray.autoscaler._private.gcp.config import bootstrap_gcp
+from ray.autoscaler._private.gcp.config import MAX_POLLS, POLL_INTERVAL, \
         construct_clients_from_provider_config
 
 logger = logging.getLogger(__name__)

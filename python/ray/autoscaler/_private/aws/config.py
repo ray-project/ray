@@ -13,10 +13,11 @@ import botocore
 
 from ray.ray_constants import BOTO_MAX_RETRIES
 from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
-from ray.autoscaler.aws.utils import LazyDefaultDict, handle_boto_error
-from ray.autoscaler.node_provider import PROVIDER_PRETTY_NAMES
+from ray.autoscaler.node_provider import _PROVIDER_PRETTY_NAMES
+from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
+    handle_boto_error
+from ray.autoscaler._private.cli_logger import cli_logger
 
-from ray.autoscaler.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ def _arn_to_name(arn):
 
 
 def log_to_cli(config):
-    provider_name = PROVIDER_PRETTY_NAMES.get("aws", None)
+    provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
                         "Could not find a pretty name for the AWS provider.")

@@ -1,7 +1,7 @@
 import datetime
 import logging
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)
 
