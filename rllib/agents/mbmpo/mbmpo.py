@@ -5,21 +5,19 @@ import ray
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
+from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
+from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
+    get_learner_stats
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
-from ray.util.iter import from_actors
-from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
-from ray.rllib.evaluation.metrics import collect_episodes
-from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
-    MBMPOExploration
+from ray.util.iter import from_actors
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +81,7 @@ DEFAULT_CONFIG = with_common_config({
         "normalize_data": True,
     },
     "exploration_config": {
-        "type": StochasticSampling,
+        "type": "StochasticSampling",
         "random_timesteps": 8000,
     },
     # Workers sample from dynamics models
@@ -102,17 +100,18 @@ METRICS_KEYS = [
 
 class MetaUpdate:
     def __init__(self, workers, num_steps, maml_steps, metric_gen):
-        """Computes the MetaUpdate step in MAML, adapted for MBMPO
-        for multiple MAML Iterations
+        """Computes the MetaUpdate step in MAML.
 
-        Arguments:
+        Adapted for MBMPO for multiple MAML Iterations.
+
+        Args:
             workers (WorkerSet): Set of Workers
             num_steps (int): Number of meta-update steps per MAML Iteration
             maml_steps (int): MAML Iterations per MBMPO Iteration
             metric_gen (Iterator): Generates metrics dictionary
 
         Returns:
-            metrics (dict): MBMPO metrics for logging
+            metrics (dict): MBMPO metrics for logging.
         """
         self.workers = workers
         self.num_steps = num_steps
@@ -122,23 +121,24 @@ class MetaUpdate:
         self.metrics = {}
 
     def __call__(self, data_tuple):
-        """Arguments:
-            data_tuple (tuple): 1st element is samples collected from MAML
-            Inner adaptation steps and 2nd element is accumulated metrics
         """
-        # Metaupdate Step
+        Args:
+            data_tuple (tuple): 1st element is samples collected from MAML.
+            Inner adaptation steps and 2nd element is accumulated metrics.
+        """
+        # Metaupdate Step.
         print("Meta-Update Step")
         samples = data_tuple[0]
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
 
-        # MAML Meta-update
+        # MAML Meta-update.
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
         fetches = get_learner_stats(fetches)
 
-        # Update KLS
+        # Update KLS.
         def update(pi, pi_id):
             assert "inner_kl" not in fetches, (
                 "inner_kl should be nested under policy id key", fetches)
@@ -150,7 +150,7 @@ class MetaUpdate:
 
         self.workers.local_worker().foreach_trainable_policy(update)
 
-        # Modify Reporting Metrics
+        # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
@@ -159,17 +159,17 @@ class MetaUpdate:
             td_metric = self.workers.local_worker().foreach_policy(
                 fit_dynamics)[0]
 
-            # Sync workers with meta policy
+            # Sync workers with meta policy.
             self.workers.sync_weights()
 
-            # Sync TD Models with workers
+            # Sync TD Models with workers.
             sync_ensemble(self.workers)
             sync_stats(self.workers)
 
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
                 STEPS_SAMPLED_COUNTER]
 
-            # Modify to CollectMetrics
+            # Modify to CollectMetrics.
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0
@@ -198,7 +198,7 @@ class MetaUpdate:
 def post_process_metrics(prefix, workers, metrics):
     """Update Current Dataset Metrics and filter out specific keys
 
-    Arguments:
+    Args:
         prefix (str): Prefix string to be appended
         workers (WorkerSet): Set of workers
         metrics (dict): Current metrics dictionary
@@ -222,7 +222,7 @@ def fit_dynamics(policy, pid):
 def sync_ensemble(workers):
     """Syncs dynamics ensemble weights from main to workers
 
-    Arguments:
+    Args:
         workers (WorkerSet): Set of workers, including main
     """
 
@@ -298,7 +298,6 @@ def post_process_samples(samples, config):
     return samples, split_lst
 
 
-# Similar to MAML Execution Plan
 def execution_plan(workers, config):
     # Train TD Models
     workers.local_worker().foreach_policy(fit_dynamics)
