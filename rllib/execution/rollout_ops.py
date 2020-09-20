@@ -25,7 +25,7 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     If there are no remote workers, experiences will be collected serially from
     the local worker instance instead.
 
-    Arguments:
+    Args:
         workers (WorkerSet): set of rollout workers to use.
         mode (str): One of {'async', 'bulk_sync', 'raw'}.
             - In 'async' mode, batches are returned as soon as they are
@@ -94,7 +94,7 @@ def AsyncGradients(
         workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, int]]:
     """Operator to compute gradients in parallel from rollout workers.
 
-    Arguments:
+    Args:
         workers (WorkerSet): set of rollout workers to use.
 
     Returns:

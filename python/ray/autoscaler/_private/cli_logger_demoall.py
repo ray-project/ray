@@ -4,7 +4,7 @@
 # function for demonstration purposes. Primarily useful for tuning color and
 # other formatting.
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 import colorful as cf
 
 cli_logger.old_style = False

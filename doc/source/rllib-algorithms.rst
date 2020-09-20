@@ -320,7 +320,9 @@ SpaceInvaders  650                       1001                           1025    
 Policy Gradients
 ----------------
 |pytorch| |tensorflow|
-`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
+`[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__
+We include a vanilla policy gradients implementation as an example algorithm.
 
 .. figure:: a2c-arch.svg
 
@@ -340,7 +342,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 Proximal Policy Optimization (PPO)
 ----------------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/abs/1707.06347>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
+`[paper] <https://arxiv.org/abs/1707.06347>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. PPO scales out using multiple workers for experience collection, and also to multiple GPUs for SGD.
 
 .. tip::
@@ -399,15 +402,21 @@ HalfCheetah    9664                       ~7700
 Soft Actor Critic (SAC)
 ------------------------
 |pytorch| |tensorflow|
-`[paper] <https://arxiv.org/pdf/1801.01290>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
+`[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/sac/sac.py>`__
 
 .. figure:: dqn-arch.svg
 
     SAC architecture (same as DQN)
 
-RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``.
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs.
+Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, the ``model`` field of the config will be ignored.
 
-Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__, `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__
+Tuned examples (continuous actions):
+`Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
+`HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
+Tuned examples (discrete actions):
+`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
 **MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 

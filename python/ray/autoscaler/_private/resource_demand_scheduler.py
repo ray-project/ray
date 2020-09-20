@@ -56,6 +56,7 @@ class ResourceDemandScheduler:
             nodes: List of existing nodes in the cluster.
             pending_nodes: Summary of node types currently being launched.
             resource_demands: Vector of resource demands from the scheduler.
+            usage_by_ip: Mapping from ip to available resources.
         """
 
         if resource_demands is None:
@@ -113,7 +114,6 @@ class ResourceDemandScheduler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                node_type_counts[node_type] += 1
                 ip = self.provider.internal_ip(node_id)
                 available_resources = usage_by_ip.get(ip)
                 add_node(node_type, available_resources)
