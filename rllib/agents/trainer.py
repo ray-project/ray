@@ -157,9 +157,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
-    # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect if eager is enabled.
-    "no_eager_on_workers": False,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into

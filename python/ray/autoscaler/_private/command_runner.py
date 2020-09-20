@@ -11,18 +11,18 @@ import sys
 import time
 import warnings
 
-from ray.autoscaler.docker import check_bind_mounts_cmd, \
+from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
                                   docker_start_cmds, \
                                   DOCKER_MOUNT_PREFIX, \
                                   with_docker_exec
-from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler._private.log_timer import LogTimer
 
-from ray.autoscaler.subprocess_output_util import (
+from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
-from ray.autoscaler.cli_logger import cli_logger
+from ray.autoscaler._private.cli_logger import cli_logger
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -381,7 +381,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         else:
             return self.provider.external_ip(self.node_id)
 
-    def wait_for_ip(self, deadline):
+    def _wait_for_ip(self, deadline):
         # if we have IP do not print waiting info
         ip = self._get_node_ip()
         if ip is not None:
@@ -413,7 +413,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
-            ip = self.wait_for_ip(deadline)
+            ip = self._wait_for_ip(deadline)
 
             cli_logger.doassert(ip is not None,
                                 "Could not get node IP.")  # todo: msg

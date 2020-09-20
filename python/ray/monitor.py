@@ -6,13 +6,13 @@ import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.load_metrics import LoadMetrics
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.commands import teardown_cluster
+from ray.autoscaler._private.load_metrics import LoadMetrics
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import binary_to_hex, setup_logger
-from ray.autoscaler.commands import teardown_cluster
 import redis
 
 logger = logging.getLogger(__name__)
@@ -160,9 +160,10 @@ class Monitor:
                             binary_to_hex(job_id)))
 
     def autoscaler_resource_request_handler(self, _, data):
-        """Handle a notification of a resource request for the autoscaler. This channel
-        and method are only used by the manual
-        `ray.autoscaler.commands.request_resources` api.
+        """Handle a notification of a resource request for the autoscaler.
+
+        This channel and method are only used by the manual
+        `ray.autoscaler.sdk.request_resources` api.
 
         Args:
             channel: unused

@@ -242,4 +242,4 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `:ref:launching clusters <cluster-index>`.
+Read more about :ref:`launching clusters <cluster-index>`.

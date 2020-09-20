@@ -6,7 +6,7 @@ This file defines the distributed Trainer class for proximal policy
 optimization.
 See `ppo_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#ppo
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging

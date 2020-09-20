@@ -144,7 +144,14 @@ def scheduler_creator(optimizer, config):
 
 # __torch_scheduler_end__
 
-# __backwards_compat__start
+# __torch_ray_start__
+import ray
+
+ray.init()
+# or ray.init(address="auto") to connect to a running cluster.
+# __torch_ray_end__
+
+# __backwards_compat_start__
 from ray.util.sgd import TorchTrainer
 
 MyTrainingOperator = TrainingOperator.from_creators(
@@ -157,14 +164,9 @@ trainer = TorchTrainer(
     scheduler_step_freq="epoch",  # if scheduler_creator is passed in
     config={"lr": 0.001, "batch_size": 64})
 
-# __backwards_compat_end
+# __backwards_compat_end__
 
-# __torch_ray_start__
-import ray
-
-ray.init()
-# or ray.init(address="auto") to connect to a running cluster.
-# __torch_ray_end__
+trainer.shutdown()
 
 # __torch_trainer_start__
 from ray.util.sgd import TorchTrainer
@@ -175,3 +177,5 @@ trainer = TorchTrainer(
     config={"lr": 0.001, "batch_size": 64})
 
 # __torch_trainer_end__
+
+trainer.shutdown()
