@@ -34,7 +34,7 @@ from click.testing import CliRunner
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
-import ray.autoscaler.aws.config as aws_config
+import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
 
 

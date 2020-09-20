@@ -402,7 +402,7 @@ def test_memory_dashboard(shutdown_only):
     """Test Memory table.
 
     These tests verify examples in this document.
-    https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory
+    https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory
     """
     addresses = ray.init(num_cpus=2)
     webui_url = addresses["webui_url"].replace("127.0.0.1", "http://127.0.0.1")

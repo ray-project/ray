@@ -48,6 +48,8 @@ END_TO_END_COMMAND = """
 import ray
 from ray import tune
 
+reporter = tune.progress_reporter.CLIReporter(metric_columns=["done"])
+
 def f(config):
     return {"done": True}
 
@@ -71,72 +73,52 @@ tune.run_experiments({
             "c": tune.grid_search(list(range(10))),
         },
     },
-}, verbose=1)"""
+}, verbose=1, progress_reporter=reporter)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 30 (29 PENDING, 1 RUNNING)
-+---------------+----------+-------+-----+-----+
-| Trial name    | status   | loc   |   a |   b |
-|---------------+----------+-------+-----+-----|
-| f_xxxxx_00001 | PENDING  |       |   1 |     |
-| f_xxxxx_00002 | PENDING  |       |   2 |     |
-| f_xxxxx_00003 | PENDING  |       |   3 |     |
-| f_xxxxx_00004 | PENDING  |       |   4 |     |
-| f_xxxxx_00005 | PENDING  |       |   5 |     |
-| f_xxxxx_00006 | PENDING  |       |   6 |     |
-| f_xxxxx_00007 | PENDING  |       |   7 |     |
-| f_xxxxx_00008 | PENDING  |       |   8 |     |
-| f_xxxxx_00009 | PENDING  |       |   9 |     |
-| f_xxxxx_00010 | PENDING  |       |     |   0 |
-| f_xxxxx_00011 | PENDING  |       |     |   1 |
-| f_xxxxx_00012 | PENDING  |       |     |   2 |
-| f_xxxxx_00013 | PENDING  |       |     |   3 |
-| f_xxxxx_00014 | PENDING  |       |     |   4 |
-| f_xxxxx_00015 | PENDING  |       |     |   5 |
-| f_xxxxx_00016 | PENDING  |       |     |   6 |
-| f_xxxxx_00017 | PENDING  |       |     |   7 |
-| f_xxxxx_00018 | PENDING  |       |     |   8 |
-| f_xxxxx_00019 | PENDING  |       |     |   9 |
-| f_xxxxx_00000 | RUNNING  |       |   0 |     |
-+---------------+----------+-------+-----+-----+
-... 10 more trials not shown (10 PENDING)"""
+EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
++---------------+----------+-------+-----+
+| Trial name    | status   | loc   |   a |
+|---------------+----------+-------+-----|
+| f_xxxxx_00000 | RUNNING  |       |   0 |
++---------------+----------+-------+-----+"""
 
-EXPECTED_END_TO_END_END = """Number of trials: 30 (30 TERMINATED)
-+---------------+------------+-------+-----+-----+-----+
-| Trial name    | status     | loc   |   a |   b |   c |
-|---------------+------------+-------+-----+-----+-----|
-| f_xxxxx_00000 | TERMINATED |       |   0 |     |     |
-| f_xxxxx_00001 | TERMINATED |       |   1 |     |     |
-| f_xxxxx_00002 | TERMINATED |       |   2 |     |     |
-| f_xxxxx_00003 | TERMINATED |       |   3 |     |     |
-| f_xxxxx_00004 | TERMINATED |       |   4 |     |     |
-| f_xxxxx_00005 | TERMINATED |       |   5 |     |     |
-| f_xxxxx_00006 | TERMINATED |       |   6 |     |     |
-| f_xxxxx_00007 | TERMINATED |       |   7 |     |     |
-| f_xxxxx_00008 | TERMINATED |       |   8 |     |     |
-| f_xxxxx_00009 | TERMINATED |       |   9 |     |     |
-| f_xxxxx_00010 | TERMINATED |       |     |   0 |     |
-| f_xxxxx_00011 | TERMINATED |       |     |   1 |     |
-| f_xxxxx_00012 | TERMINATED |       |     |   2 |     |
-| f_xxxxx_00013 | TERMINATED |       |     |   3 |     |
-| f_xxxxx_00014 | TERMINATED |       |     |   4 |     |
-| f_xxxxx_00015 | TERMINATED |       |     |   5 |     |
-| f_xxxxx_00016 | TERMINATED |       |     |   6 |     |
-| f_xxxxx_00017 | TERMINATED |       |     |   7 |     |
-| f_xxxxx_00018 | TERMINATED |       |     |   8 |     |
-| f_xxxxx_00019 | TERMINATED |       |     |   9 |     |
-| f_xxxxx_00020 | TERMINATED |       |     |     |   0 |
-| f_xxxxx_00021 | TERMINATED |       |     |     |   1 |
-| f_xxxxx_00022 | TERMINATED |       |     |     |   2 |
-| f_xxxxx_00023 | TERMINATED |       |     |     |   3 |
-| f_xxxxx_00024 | TERMINATED |       |     |     |   4 |
-| f_xxxxx_00025 | TERMINATED |       |     |     |   5 |
-| f_xxxxx_00026 | TERMINATED |       |     |     |   6 |
-| f_xxxxx_00027 | TERMINATED |       |     |     |   7 |
-| f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
-| f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
-+---------------+------------+-------+-----+-----+-----+"""
+EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
++---------------+------------+-------+-----+-----+-----+--------+
+| Trial name    | status     | loc   |   a |   b |   c | done   |
+|---------------+------------+-------+-----+-----+-----+--------|
+| f_xxxxx_00000 | TERMINATED |       |   0 |     |     | True   |
+| f_xxxxx_00001 | TERMINATED |       |   1 |     |     | True   |
+| f_xxxxx_00002 | TERMINATED |       |   2 |     |     | True   |
+| f_xxxxx_00003 | TERMINATED |       |   3 |     |     | True   |
+| f_xxxxx_00004 | TERMINATED |       |   4 |     |     | True   |
+| f_xxxxx_00005 | TERMINATED |       |   5 |     |     | True   |
+| f_xxxxx_00006 | TERMINATED |       |   6 |     |     | True   |
+| f_xxxxx_00007 | TERMINATED |       |   7 |     |     | True   |
+| f_xxxxx_00008 | TERMINATED |       |   8 |     |     | True   |
+| f_xxxxx_00009 | TERMINATED |       |   9 |     |     | True   |
+| f_xxxxx_00010 | TERMINATED |       |     |   0 |     | True   |
+| f_xxxxx_00011 | TERMINATED |       |     |   1 |     | True   |
+| f_xxxxx_00012 | TERMINATED |       |     |   2 |     | True   |
+| f_xxxxx_00013 | TERMINATED |       |     |   3 |     | True   |
+| f_xxxxx_00014 | TERMINATED |       |     |   4 |     | True   |
+| f_xxxxx_00015 | TERMINATED |       |     |   5 |     | True   |
+| f_xxxxx_00016 | TERMINATED |       |     |   6 |     | True   |
+| f_xxxxx_00017 | TERMINATED |       |     |   7 |     | True   |
+| f_xxxxx_00018 | TERMINATED |       |     |   8 |     | True   |
+| f_xxxxx_00019 | TERMINATED |       |     |   9 |     | True   |
+| f_xxxxx_00020 | TERMINATED |       |     |     |   0 | True   |
+| f_xxxxx_00021 | TERMINATED |       |     |     |   1 | True   |
+| f_xxxxx_00022 | TERMINATED |       |     |     |   2 | True   |
+| f_xxxxx_00023 | TERMINATED |       |     |     |   3 | True   |
+| f_xxxxx_00024 | TERMINATED |       |     |     |   4 | True   |
+| f_xxxxx_00025 | TERMINATED |       |     |     |   5 | True   |
+| f_xxxxx_00026 | TERMINATED |       |     |     |   6 | True   |
+| f_xxxxx_00027 | TERMINATED |       |     |     |   7 | True   |
+| f_xxxxx_00028 | TERMINATED |       |     |     |   8 | True   |
+| f_xxxxx_00029 | TERMINATED |       |     |     |   9 | True   |
++---------------+------------+-------+-----+-----+-----+--------+"""
 
-EXPECTED_END_TO_END_AC = """Number of trials: 30 (30 TERMINATED)
+EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+
 | Trial name    | status     | loc   |   a |   b |   c |
 |---------------+------------+-------+-----+-----+-----|

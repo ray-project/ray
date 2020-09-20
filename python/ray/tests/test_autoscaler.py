@@ -10,14 +10,14 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
-from ray.autoscaler.util import prepare_config, validate_config
-from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
-from ray.autoscaler.load_metrics import LoadMetrics
-from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
+from ray.autoscaler.node_provider import _NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
@@ -319,14 +319,14 @@ class LoadMetricsTest(unittest.TestCase):
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
-        NODE_PROVIDERS["mock"] = \
+        _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         self.provider = None
-        del NODE_PROVIDERS["mock"]
+        del _NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
@@ -1110,7 +1110,10 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "start_ray_worker")
 
     def testSetupCommandsWithStoppedNodeCaching(self):
+        file_mount_dir = tempfile.mkdtemp()
         config = SMALL_CLUSTER.copy()
+        config["file_mounts"] = {"/root/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
         config["min_workers"] = 1
         config["max_workers"] = 1
         config_path = self.write_config(config)
@@ -1133,6 +1136,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.0", "setup_cmd")
         runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
 
         # Check the node was indeed reused
         self.provider.terminate_node(0)
@@ -1147,6 +1151,25 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call("172.0.0.0", "setup_cmd")
         runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
+
+        with open(f"{file_mount_dir}/new_file", "w") as f:
+            f.write("abcdefgh")
+
+        # Check that run_init happens when file_mounts have updated
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+        runner.assert_has_call("172.0.0.0", "docker run")
 
         runner.clear_history()
         autoscaler.update()
@@ -1304,7 +1327,7 @@ class AutoscalingTest(unittest.TestCase):
                 f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         # Simulate a second `ray up` call
-        from ray.autoscaler import util
+        from ray.autoscaler._private import util
         util._hash_cache = {}
         runner = MockProcessRunner()
         lm = LoadMetrics()
