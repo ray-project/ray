@@ -135,6 +135,13 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     return;
   }
 
+  if (queue->second.rpc_client &&
+      queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
+      queue->second.rpc_client->Addr().port() == address.port()) {
+    RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id=" << actor_id;
+    return;
+  }
+
   if (queue->second.state == rpc::ActorTableData::DEAD) {
     // This message is about an old version of the actor and the actor has
     // already died since then. Skip the connection.
