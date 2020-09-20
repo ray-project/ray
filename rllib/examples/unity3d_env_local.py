@@ -74,8 +74,8 @@ if __name__ == "__main__":
         "unity3d",
         lambda c: Unity3DEnv(
             file_name=c["file_name"],
-            no_graphics=args.env != "VisualHallway" and
-                        c["file_name"] is not None,
+            no_graphics=(args.env != "VisualHallway" and
+                         c["file_name"] is not None),
             episode_horizon=c["episode_horizon"],
         ))
 
