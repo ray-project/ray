@@ -80,6 +80,7 @@ def test_monotonically_improving_algorithms_can_converge_with_different_framewor
     for i in range(n_iter):
         results = trainer.train()
         episode_reward_mean = results["episode_reward_mean"]
+        print(f"{i}: {episode_reward_mean}")
         if episode_reward_mean >= threshold:
             learnt = True
             break
