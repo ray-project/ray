@@ -281,9 +281,10 @@ test_monotonic_convergence_params: List[
         TestAgentParams.for_pendulum(
             algorithm=ContinuousActionSpaceAlgorithm.APEX_SAC,
             config_updates={
-                "num_workers": 3,
-                "num_envs_per_worker": 2,
+                "num_workers": 8,
+                # "num_envs_per_worker": 2,
                 "exploration_config": {"type": "StochasticSampling"},
+                "prioritized_replay": False,
             },
             # TODO: Delete next line before landing PR
             frameworks=[Framework.TensorFlow],

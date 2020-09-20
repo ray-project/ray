@@ -15,7 +15,7 @@ from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import (
     LocalReplayBuffer,
-    ReplayBuffer,
+    ReplayActor, ReplayBuffer,
 )
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
@@ -166,14 +166,15 @@ class LocalAsyncReplayBuffer(LocalReplayBuffer):
         return stat
 
 
-ReplayActor = ray.remote(num_cpus=0)(LocalAsyncReplayBuffer)
+AsyncReplayActor = ray.remote(num_cpus=0)(LocalAsyncReplayBuffer)
 
 
 def async_execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
+    replay_actor_cls = ReplayActor if config["prioritized_replay"] else AsyncReplayActor
     replay_actors = create_colocated(
-        ReplayActor,
+        replay_actor_cls,
         [
             num_replay_buffer_shards,
             config["learning_starts"],
@@ -193,7 +194,8 @@ def async_execution_plan(workers: WorkerSet, config: dict):
     # Update experience priorities post learning.
     def update_prio_and_stats(item: ("ActorHandle", dict, int)):
         actor, prio_dict, count = item
-        # actor.update_priorities.remote(prio_dict)
+        if config["prioritized_replay"]:
+            actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
