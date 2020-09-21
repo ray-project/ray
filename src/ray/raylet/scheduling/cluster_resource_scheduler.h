@@ -73,10 +73,6 @@ class ClusterResourceScheduler {
   bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
                              std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  /// The previous heartbeat. Necessary for the implementation of light
-  /// heartbeats.
-  /* HeartbeatTableData prev_heartbeat_; */
-
  public:
   ClusterResourceScheduler(void){};
 
@@ -372,11 +368,5 @@ class ClusterResourceScheduler {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
-  /// Fill out the HeartbeatTableData. This is primarily used for raylet <->
-  /// GCS heartbeats. Specifically, this fills out the resources_available and
-  /// resources_total fields.
-  /* void Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data); */
-
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
-};
