@@ -213,7 +213,7 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
     assert len(get_workers()) == 2
 
 
-def test_worker_capping_fifo():
+def test_worker_capping_fifo(shutdown_only):
     # Start 2 initial workers by setting num_cpus to 2.
     info = ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
     wait_for_condition(lambda: len(get_workers()) == 2)
@@ -272,7 +272,6 @@ def foo():
 ray.shutdown()
     """.format(info["redis_address"])
 
-    wait_for_condition(lambda: len(get_workers()) == 2)
     before = len(get_workers())
     assert before == 1
 
