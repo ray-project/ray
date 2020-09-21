@@ -36,19 +36,16 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     std::string node_id_string =
         cluster_resource_scheduler_->GetBestSchedulableNode(request_resources, &_unused);
     if (node_id_string.empty()) {
-      RAY_LOG(ERROR) << "Infeasible";
       /// There is no node that has available resources to run the request.
       tasks_to_schedule_.push_back(work);
       continue;
     } else {
       if (node_id_string == self_node_id_.Binary()) {
-        RAY_LOG(ERROR) << "Wait or Dispatch";
         // Warning: WaitForTaskArgsRequests must execute (do not let it short
         // circuit if did_schedule is true).
         bool task_scheduled = WaitForTaskArgsRequests(work);
         did_schedule = task_scheduled || did_schedule;
       } else {
-        RAY_LOG(ERROR) << "Spillback";
         // Should spill over to a different node.
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
@@ -76,16 +73,13 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
-      RAY_LOG(ERROR) << "dispatching";
       tasks_to_dispatch_.push_back(work);
     } else {
-      RAY_LOG(ERROR) << "waiting";
       can_dispatch = false;
       TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
     }
   } else {
-    RAY_LOG(ERROR) << "no args";
     tasks_to_dispatch_.push_back(work);
   }
   return can_dispatch;
@@ -146,7 +140,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> callback) {
-  RAY_LOG(ERROR) << "Task queued";
   Work work = std::make_tuple(task, reply, callback);
   tasks_to_schedule_.push_back(work);
 }

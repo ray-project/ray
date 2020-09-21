@@ -1186,7 +1186,3 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   FreeTaskResourceInstances(task_allocation);
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
-
-// void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data) {
-
-// }
