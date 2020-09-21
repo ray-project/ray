@@ -61,11 +61,12 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             self._stubs[node_id] = stub
 
     @routes.get("/nodes")
+    @dashboard_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
         view = req.query.get("view")
         if view == "summary":
             all_node_summary = await DataOrganizer.get_all_node_summary()
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=True,
                 message="Node summary fetched.",
                 summary=all_node_summary)
@@ -74,19 +75,20 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             for node in DataSource.nodes.values():
                 if node["state"] == "ALIVE":
                     alive_hostnames.add(node["nodeManagerHostname"])
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=True,
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames))
         else:
-            return await dashboard_utils.rest_response(
+            return dashboard_utils.rest_response(
                 success=False, message=f"Unknown view {view}")
 
     @routes.get("/nodes/{node_id}")
+    @dashboard_utils.aiohttp_cache
     async def get_node(self, req) -> aiohttp.web.Response:
         node_id = req.match_info.get("node_id")
         node_info = await DataOrganizer.get_node_info(node_id)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True, message="Node detail fetched.", detail=node_info)
 
     async def _update_actors(self):

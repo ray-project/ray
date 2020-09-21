@@ -1,5 +1,6 @@
 import abc
 import socket
+import time
 import asyncio
 import collections
 import copy
@@ -18,6 +19,7 @@ from typing import Any
 
 import aioredis
 import aiohttp.web
+import ray.new_dashboard.consts as dashboard_consts
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
 from aiohttp.typedefs import PathLike
@@ -25,6 +27,12 @@ from aiohttp.web import RouteDef
 import aiohttp.signals
 from google.protobuf.json_format import MessageToDict
 from ray.utils import binary_to_hex
+from ray.ray_constants import env_bool
+
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
 
@@ -113,12 +121,10 @@ class ClassMethodRouteTable:
 
             @functools.wraps(handler)
             async def _handler_route(*args, **kwargs):
-                if len(args) and args[0] == bind_info.instance:
-                    args = args[1:]
                 try:
                     return await handler(bind_info.instance, *args, **kwargs)
                 except Exception:
-                    return await rest_response(
+                    return rest_response(
                         success=False, message=traceback.format_exc())
 
             cls._bind_map[method][path] = bind_info
@@ -217,7 +223,7 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-async def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
+def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
     return aiohttp.web.json_response(
         {
             "result": success,
@@ -281,6 +287,81 @@ def message_to_dict(message, decode_keys=None, **kwargs):
             MessageToDict(message, use_integers_for_enums=False, **kwargs))
     else:
         return MessageToDict(message, use_integers_for_enums=False, **kwargs)
+
+
+# The cache value type used by aiohttp_cache.
+_AiohttpCacheValue = namedtuple("AiohttpCacheValue",
+                                ["data", "expiration", "task"])
+# The methods with no request body used by aiohttp_cache.
+_AIOHTTP_CACHE_NOBODY_METHODS = {hdrs.METH_GET, hdrs.METH_DELETE}
+
+
+def aiohttp_cache(
+        ttl_seconds=dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS,
+        maxsize=dashboard_consts.AIOHTTP_CACHE_MAX_SIZE,
+        enable=not env_bool(
+            dashboard_consts.AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY, False)):
+    assert maxsize > 0
+    cache = collections.OrderedDict()
+
+    def _wrapper(handler):
+        if enable:
+
+            @functools.wraps(handler)
+            async def _cache_handler(self, req) -> aiohttp.web.Response:
+                # Make key.
+                if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
+                    key = req.path_qs
+                else:
+                    key = (req.path_qs, await req.read())
+                # Query cache.
+                value = cache.get(key)
+                if value is not None:
+                    cache.move_to_end(key)
+                    if (not value.task.done()
+                            or value.expiration >= time.time()):
+                        # Update task not done or the data is not expired.
+                        return aiohttp.web.Response(**value.data)
+
+                def _update_cache(task):
+                    try:
+                        response = task.result()
+                    except Exception:
+                        response = rest_response(
+                            success=False, message=traceback.format_exc())
+                    data = {
+                        "status": response.status,
+                        "headers": dict(response.headers),
+                        "body": response.body,
+                    }
+                    cache[key] = _AiohttpCacheValue(data,
+                                                    time.time() + ttl_seconds,
+                                                    task)
+                    cache.move_to_end(key)
+                    if len(cache) > maxsize:
+                        cache.popitem(last=False)
+                    return response
+
+                task = create_task(handler(self, req))
+                task.add_done_callback(_update_cache)
+                if value is None:
+                    return await task
+                else:
+                    return aiohttp.web.Response(**value.data)
+
+            suffix = f"[cache ttl={ttl_seconds}, max_size={maxsize}]"
+            _cache_handler.__name__ += suffix
+            _cache_handler.__qualname__ += suffix
+            return _cache_handler
+        else:
+            return handler
+
+    if inspect.iscoroutinefunction(ttl_seconds):
+        target_func = ttl_seconds
+        ttl_seconds = dashboard_consts.AIOHTTP_CACHE_TTL_SECONDS
+        return _wrapper(target_func)
+    else:
+        return _wrapper
 
 
 class SignalManager:

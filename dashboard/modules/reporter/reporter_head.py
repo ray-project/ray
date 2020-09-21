@@ -47,7 +47,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         profiling_info = (json.loads(reply.profiling_stats)
                           if reply.profiling_stats else reply.std_out)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
