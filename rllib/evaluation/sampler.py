@@ -9,13 +9,13 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
+from ray.rllib.evaluation.collectors.simple_list_collector import _SimpleListCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.evaluation.multi_agent_sample_collector import \
-    _MultiAgentSampleCollector
+#from ray.rllib.evaluation.multi_agent_sample_collector import \
+#    _MultiAgentSampleCollector
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.evaluation.sample_collector import _SampleCollector
 from ray.rllib.policy.policy import clip_action, Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.preprocessors import Preprocessor
@@ -188,7 +188,7 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
-            self.sample_collector = _MultiAgentSampleCollector(
+            self.sample_collector = _SimpleListCollector(
                 policies, callbacks)
         else:
             self.sample_collector = None
@@ -333,7 +333,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
-            self.sample_collector = _MultiAgentSampleCollector(
+            self.sample_collector = _SimpleListCollector(
                 policies, callbacks)
         else:
             self.sample_collector = None
