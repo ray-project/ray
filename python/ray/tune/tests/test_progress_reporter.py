@@ -8,7 +8,7 @@ from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        trial_progress_str)
+                                        best_trial_str, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -153,6 +153,9 @@ EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 | f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
 | f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
 +---------------+------------+-------+-----+-----+-----+"""
+
+EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
+                  "parameters = {'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 
 
 class ProgressReporterTest(unittest.TestCase):
@@ -307,6 +310,10 @@ class ProgressReporterTest(unittest.TestCase):
             max_rows=3)
         print(prog3)
         assert prog3 == EXPECTED_RESULT_3
+
+        # Current best trial
+        best1 = best_trial_str(trials[1], "metric_1")
+        assert best1 == EXPECTED_BEST_1
 
     def testEndToEndReporting(self):
         try:
