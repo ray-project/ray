@@ -22,7 +22,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/fixed_point.h"
-#include "ray/raylet/scheduling/cluster_resource_helpers.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
