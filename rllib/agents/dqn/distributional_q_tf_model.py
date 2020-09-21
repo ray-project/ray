@@ -176,7 +176,7 @@ class DistributionalQTFModel(TFModelV2):
 
         Override this in your custom model to customize the Q output head.
 
-        Arguments:
+        Args:
             model_out (Tensor): embedding from the model layers
 
         Returns:

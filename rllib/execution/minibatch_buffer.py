@@ -7,7 +7,7 @@ class MinibatchBuffer:
     def __init__(self, inqueue, size, timeout, num_passes, init_num_passes=1):
         """Initialize a minibatch buffer.
 
-        Arguments:
+        Args:
            inqueue: Queue to populate the internal ring buffer from.
            size: Max number of data items to buffer.
            timeout: Queue timeout

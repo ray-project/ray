@@ -1477,7 +1477,7 @@ def _get_or_raise(mapping: Dict[PolicyID, Union[Policy, Preprocessor, Filter]],
     Returns:
         Union[Policy, Preprocessor, Filter]: The found object.
 
-    Throws:
+    Raises:
         ValueError: If `policy_id` cannot be found in `mapping`.
     """
     if policy_id not in mapping:

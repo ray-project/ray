@@ -37,7 +37,7 @@ class InputReader:
         This method creates a queue runner thread that will call next() on this
         reader repeatedly to feed the TensorFlow queue.
 
-        Arguments:
+        Args:
             queue_size (int): Max elements to allow in the TF queue.
 
         Example:
