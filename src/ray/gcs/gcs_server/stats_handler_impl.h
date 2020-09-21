@@ -44,6 +44,7 @@ class DefaultStatsHandler : public rpc::StatsHandler {
  private:
   int cursor_ = 0;
   std::vector<UniqueID> ids_;
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 
