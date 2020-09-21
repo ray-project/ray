@@ -89,7 +89,7 @@ class GlobalStateAccessor {
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
-  /// each HeartbeatTableData and return the serialized string. Where used, it needs to be
+  /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources();
 

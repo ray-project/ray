@@ -770,14 +770,15 @@ class GlobalState:
 
         available_resources_by_id = {}
 
-        all_available_resources = self.global_state_accessor.get_all_available_resources()
+        all_available_resources = \
+            self.global_state_accessor.get_all_available_resources()
         for i in range(len(all_available_resources)):
             message = ray.gcs_utils.AvailableResources.FromString(
                 all_available_resources[i])
             # Calculate available resources for this client
             dynamic_resources = {}
             for resource_id, capacity in \
-                message.resources_available.items():
+                    message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this client
             client_id = ray.utils.binary_to_hex(message.client_id)

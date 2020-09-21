@@ -247,6 +247,7 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
     NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
   }
 
  private:
