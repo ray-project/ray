@@ -70,7 +70,7 @@ APEX_SAC_DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
 # yapf: enable
 
 
-class LocalAsyncReplayBuffer(LocalReplayBuffer):
+class LocalVanillaReplayBuffer(LocalReplayBuffer):
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
@@ -166,13 +166,13 @@ class LocalAsyncReplayBuffer(LocalReplayBuffer):
         return stat
 
 
-AsyncReplayActor = ray.remote(num_cpus=0)(LocalAsyncReplayBuffer)
+VanillaReplayActor = ray.remote(num_cpus=0)(LocalVanillaReplayBuffer)
 
 
 def async_execution_plan(workers: WorkerSet, config: dict):
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-    replay_actor_cls = ReplayActor if config["prioritized_replay"] else AsyncReplayActor
+    replay_actor_cls = ReplayActor if config["prioritized_replay"] else VanillaReplayActor
     replay_actors = create_colocated(
         replay_actor_cls,
         [
