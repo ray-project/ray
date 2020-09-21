@@ -6,12 +6,12 @@ import socket
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.local.config import bootstrap_local
 from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     NODE_KIND_WORKER,
     NODE_KIND_HEAD,
 )
+from ray.autoscaler._private.local.config import bootstrap_local
 
 logger = logging.getLogger(__name__)
 

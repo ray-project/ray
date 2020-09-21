@@ -273,7 +273,7 @@ class ApplyGradients:
                  update_all=True):
         """Creates an ApplyGradients instance.
 
-        Arguments:
+        Args:
             workers (WorkerSet): workers to apply gradients to.
             update_all (bool): If true, updates all workers. Otherwise, only
                 update the worker that produced the sample batch we are

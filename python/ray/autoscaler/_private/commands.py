@@ -9,7 +9,7 @@ import sys
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import click
 import yaml
@@ -20,26 +20,23 @@ except ImportError:  # py2
 
 from ray.experimental.internal_kv import _internal_kv_get
 import ray.services as services
-from ray.autoscaler.util import validate_config, hash_runtime_conf, \
+from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
-from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS, \
-    PROVIDER_PRETTY_NAMES, try_get_log_state, try_logging_config, \
-    try_reload_log_state
+from ray.autoscaler.node_provider import _get_node_provider, \
+    _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
-
-from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
-from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.command_runner import set_using_login_shells, \
+from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
-from ray.autoscaler.log_timer import LogTimer
+from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker
 from ray.util.debug import log_once
 
-import ray.autoscaler.subprocess_output_util as cmd_output_util
-
-from ray.autoscaler.cli_logger import cli_logger
+import ray.autoscaler._private.subprocess_output_util as cmd_output_util
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +54,26 @@ def _redis():
             global_worker.node.redis_address,
             password=global_worker.node.redis_password)
     return redis_client
+
+
+def try_logging_config(config):
+    if config["provider"]["type"] == "aws":
+        from ray.autoscaler._private.aws.config import log_to_cli
+        log_to_cli(config)
+
+
+def try_get_log_state(provider_config):
+    if provider_config["type"] == "aws":
+        from ray.autoscaler._private.aws.config import get_log_state
+        return get_log_state()
+
+
+def try_reload_log_state(provider_config, log_state):
+    if not log_state:
+        return
+    if provider_config["type"] == "aws":
+        from ray.autoscaler._private.aws.config import reload_log_state
+        return reload_log_state(log_state)
 
 
 def debug_status():
@@ -143,14 +160,14 @@ def create_or_update_cluster(config_file: str,
 
     # todo: validate file_mounts, ssh keys, etc.
 
-    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         cli_logger.abort(
             "Unknown provider type " + cf.bold("{}") + "\n"
             "Available providers are: {}", config["provider"]["type"],
             cli_logger.render_list([
-                k for k in NODE_PROVIDERS.keys()
-                if NODE_PROVIDERS[k] is not None
+                k for k in _NODE_PROVIDERS.keys()
+                if _NODE_PROVIDERS[k] is not None
             ]))
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
@@ -236,7 +253,7 @@ def _bootstrap_config(config: Dict[str, Any],
                 config_cache.get("_version", "none"), CONFIG_CACHE_VERSION)
     validate_config(config)
 
-    importer = NODE_PROVIDERS.get(config["provider"]["type"])
+    importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         raise NotImplementedError("Unsupported provider {}".format(
             config["provider"]))
@@ -245,7 +262,7 @@ def _bootstrap_config(config: Dict[str, Any],
 
     with cli_logger.timed(
             "Checking {} environment settings",
-            PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
+            _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"])):
         resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
@@ -298,7 +315,7 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
             cli_logger.old_exception(
                 logger, "Ignoring error attempting a clean shutdown.")
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
 
         def remaining_nodes():
@@ -402,7 +419,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     cli_logger.confirm(yes, "A random node will be killed.")
     cli_logger.old_confirm("This will kill a node in your cluster", yes)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -491,8 +508,8 @@ def get_or_create_head_node(config,
                             _provider=None,
                             _runner=subprocess):
     """Create the cluster head node, which in turn creates the workers."""
-    provider = (_provider or get_node_provider(config["provider"],
-                                               config["cluster_name"]))
+    provider = (_provider or _get_node_provider(config["provider"],
+                                                config["cluster_name"]))
 
     config = copy.deepcopy(config)
     config_file = os.path.abspath(config_file)
@@ -793,7 +810,7 @@ def attach_cluster(config_file: str,
 
 def exec_cluster(config_file: str,
                  *,
-                 cmd: Any = None,
+                 cmd: str = None,
                  run_env: str = "auto",
                  screen: bool = False,
                  tmux: bool = False,
@@ -833,7 +850,7 @@ def exec_cluster(config_file: str,
     head_node = _get_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -955,7 +972,7 @@ def rsync(config_file: str,
                 is_file_mount = True
                 break
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = []
         if all_nodes:
@@ -1010,7 +1027,7 @@ def get_head_node_ip(config_file: str,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node = _get_head_node(config, config_file, override_cluster_name)
         if config.get("provider", {}).get("use_internal_ips", False) is True:
@@ -1024,14 +1041,14 @@ def get_head_node_ip(config_file: str,
 
 
 def get_worker_node_ips(config_file: str,
-                        override_cluster_name: Optional[str]) -> str:
+                        override_cluster_name: Optional[str]) -> List[str]:
     """Returns worker node IPs for given configuration file."""
 
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -1051,7 +1068,7 @@ def _get_worker_nodes(config, override_cluster_name):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
 
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         return provider.non_terminated_nodes({
             TAG_RAY_NODE_KIND: NODE_KIND_WORKER
@@ -1064,7 +1081,7 @@ def _get_head_node(config: Dict[str, Any],
                    config_file: str,
                    override_cluster_name: Optional[str],
                    create_if_needed: bool = False) -> str:
-    provider = get_node_provider(config["provider"], config["cluster_name"])
+    provider = _get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,

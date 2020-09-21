@@ -12,16 +12,17 @@ import yaml
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.node_provider import get_node_provider
+from ray.autoscaler.node_provider import _get_node_provider
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
-from ray.autoscaler.updater import NodeUpdaterThread
-from ray.autoscaler.node_launcher import NodeLauncher
-from ray.autoscaler.resource_demand_scheduler import ResourceDemandScheduler
-from ray.autoscaler.util import ConcurrentCounter, validate_config, \
+from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.resource_demand_scheduler import \
+    ResourceDemandScheduler
+from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
@@ -305,8 +306,8 @@ class StandardAutoscaler:
             self.runtime_hash = new_runtime_hash
             self.file_mounts_contents_hash = new_file_mounts_contents_hash
             if not self.provider:
-                self.provider = get_node_provider(self.config["provider"],
-                                                  self.config["cluster_name"])
+                self.provider = _get_node_provider(self.config["provider"],
+                                                   self.config["cluster_name"])
             # Check whether we can enable the resource demand scheduler.
             if "available_node_types" in self.config:
                 self.available_node_types = self.config["available_node_types"]
@@ -579,8 +580,3 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
-
-
-def request_resources(num_cpus=None, num_gpus=None):
-    raise DeprecationWarning(
-        "Please use ray.autoscaler.commands.request_resources instead.")
