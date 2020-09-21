@@ -1905,6 +1905,7 @@ void NodeManager::HandleCancelResourceReserve(
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Return Worker";
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
@@ -1960,6 +1961,7 @@ void NodeManager::HandleReleaseUnusedWorkers(
 void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                           rpc::CancelWorkerLeaseReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Cancel worker lease";
   const TaskID task_id = TaskID::FromBinary(request.task_id());
   Task removed_task;
   TaskState removed_task_state;
