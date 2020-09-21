@@ -29,6 +29,10 @@ class DataSource:
     node_id_to_ip = Dict()
     # {node id hex(str): hostname(str)}
     node_id_to_hostname = Dict()
+    # {node ip (str): log entries by pid(dict from pid to list of latest log entries)}
+    ip_and_pid_to_logs = Dict()
+    # {node ip (str): error entries by pid(dict from pid to list of latest err entries)}
+    ip_and_pid_to_errors = Dict()
 
 
 class DataOrganizer:
@@ -71,6 +75,17 @@ class DataOrganizer:
         node_stats = DataSource.node_stats.get(node_id, {})
         node = DataSource.nodes.get(node_id, {})
 
+        # Merge node log count information into the payload
+        log_info = DataSource.ip_and_pid_to_logs.get(node_stats["ip"], {})
+        node_log_count = 0
+        for pid, entries in log_info.values():
+            node_log_count+= len(entries)
+
+        error_info = DataSource.ip_and_pid_to_errors.get(node_stats["ip"], {})
+        node_err_count = 0
+        for pid, entries in log_info.values():
+            node_err_count += len(entries)
+
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         workers_stats = node_stats.pop("workersStats", {})
         pid_to_worker_stats = {}
@@ -90,6 +105,8 @@ class DataOrganizer:
             worker["coreWorkerStats"] = list(worker_stats.values())
             worker["language"] = pid_to_language.get(worker["pid"], "")
             worker["jobId"] = pid_to_job_id.get(worker["pid"], "ffff")
+            worker["logCount"] = log_info.get(worker["pid"], 0)
+            worker["errorCount"] = error_info.get(worker["pid"], 0)
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats
@@ -98,7 +115,8 @@ class DataOrganizer:
         node_info["raylet"].update(node)
         # Merge actors to node physical stats
         node_info["actors"] = await cls.get_node_actors(node_id)
-
+        node_info["logCount"] = node_log_count
+        node_info["errorCount"] = node_err_count
         await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
