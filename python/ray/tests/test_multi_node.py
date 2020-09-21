@@ -382,7 +382,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     with socket() as s:
         s.bind(('',0))
         port = s.getsockname()[1]
-        check_call_ray(["start", "--head", "--port", port])
+        check_call_ray(["start", "--head", "--port", str(port)])
         check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
