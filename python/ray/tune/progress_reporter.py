@@ -9,6 +9,7 @@ import time
 from ray.tune.result import (EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                              AUTO_RESULT_KEYS)
+from ray.tune.trial import Trial
 from ray.tune.utils import unflattened_lookup
 
 try:
@@ -376,13 +377,20 @@ def trial_progress_str(trials,
         for state in sorted(trials_by_state)
     ]
 
+    state_tbl_oder = [
+        Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
+        Trial.ERROR
+    ]
+
     max_rows = max_rows or float("inf")
     if num_trials > max_rows:
         # TODO(ujvl): suggestion for users to view more rows.
         trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows)
         trials = []
         overflow_strs = []
-        for state in sorted(trials_by_state):
+        for state in state_tbl_oder:
+            if state not in trials_by_state:
+                continue
             trials += trials_by_state_trunc[state]
             num = len(trials_by_state[state]) - len(
                 trials_by_state_trunc[state])
