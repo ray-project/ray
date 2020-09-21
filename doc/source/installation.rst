@@ -1,3 +1,5 @@
+.. _installation:
+
 Installing Ray
 ==============
 
@@ -77,6 +79,7 @@ For example, here are the Ray 1.1.0.dev0 wheels for Python 3.5, MacOS for commit
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-1.1.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
+.. _ray-install-java:
 
 Install Ray With Maven
 ----------------------
@@ -113,7 +116,7 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
       </snapshots>
     </repository>
   </repositories>
-  
+
   <dependencies>
     <dependency>
       <groupId>io.ray</groupId>
@@ -127,6 +130,11 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
     </dependency>
   </dependencies>
 
+.. note::
+
+  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local or single machine mode.
+
+  If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
 .. _windows-support:
 
