@@ -3,6 +3,7 @@ import pytest
 import subprocess
 import sys
 import time
+from socket import socket
 
 import ray
 from ray.test_utils import (
@@ -378,8 +379,11 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with a redis port specified.
-    check_call_ray(["start", "--head"])
-    check_call_ray(["stop"])
+    with socket() as s:
+        s.bind(('',0))
+        port = s.getsockname()[1]
+        check_call_ray(["start", "--head", "--port", port])
+        check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
     check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1"])
