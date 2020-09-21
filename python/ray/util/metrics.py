@@ -1,3 +1,5 @@
+import logging
+
 from typing import Dict, Any, List, Optional, Tuple
 
 from ray._raylet import (
@@ -5,6 +7,8 @@ from ray._raylet import (
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 class Metric:
@@ -48,10 +52,13 @@ class Metric:
             tags(dict): Dictionary of tags that overlap the default.
         """
         if len(self._tag_cache) > 0:
-            raise ValueError(
-                "Chaining multile with_tags method is not allowed. "
-                "Please use record method after with_tags method. "
-                "For example, Metrics.with_tags({'a': 1}).record(value)")
+            logger.warning(
+                "Chaining multiple with_tags method is not recommended. EX) "
+                "metrics.with_chain(tags1).with_chains(tags2). The first "
+                f"tag {self._tag_cache} will be overwritten by the second "
+                f"chained method. {tags}")
+            self._tag_cache = {}
+
         self._tag_cache = tags
         return self
 
@@ -63,8 +70,8 @@ class Metric:
         """
         assert self._metric is not None
         default_tag_copy = self._default_tags.copy()
-        tags = default_tag_copy.update(self._tag_cache)
-        self._metric.record(value, tags=tags)
+        default_tag_copy.update(self._tag_cache)
+        self._metric.record(value, tags=default_tag_copy)
         # We should reset tag cache. Otherwise, with_tags will be corrupted.
         self._tag_cache = {}
 

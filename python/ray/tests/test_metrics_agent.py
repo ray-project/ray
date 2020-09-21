@@ -1,5 +1,6 @@
 import json
 from pprint import pformat
+from unittest.mock import MagicMock
 
 import requests
 import pytest
@@ -7,7 +8,7 @@ from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Count, Histogram
+from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor
 
 
@@ -179,6 +180,93 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         print(
             f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+@pytest.fixture
+def metric_mock():
+    mock = MagicMock()
+    mock.record.return_value = "haha"
+    yield mock
+
+
+"""
+Unit test custom metrics.
+"""
+
+
+def test_basic_custom_metrics(metric_mock):
+    # Make sure each of metric works as expected.
+    # -- Count --
+    count = Count("count", tag_keys=("a"))
+    count._metric = metric_mock
+    count.record(1)
+    metric_mock.record.assert_called_with(1, tags={})
+
+    # -- Gauge --
+    gauge = Gauge("gauge", description="gauge")
+    gauge._metric = metric_mock
+    gauge.record(4)
+    metric_mock.record.assert_called_with(4, tags={})
+
+    # -- Histogram
+    histogram = Histogram("hist", description="hist", tag_keys=("a", "b"))
+    histogram._metric = metric_mock
+    histogram.record(4)
+    metric_mock.record.assert_called_with(4, tags={})
+    tags = {"a": "3"}
+    histogram.with_tags(tags).record(10)
+    metric_mock.record.assert_called_with(10, tags=tags)
+    tags = {"a": "10", "b": "b"}
+    histogram.with_tags(tags).record(8)
+    metric_mock.record.assert_called_with(8, tags=tags)
+
+
+def test_custom_metrics_info(metric_mock):
+    # Make sure .info public method works.
+    histogram = Histogram(
+        "hist",
+        description="hist",
+        boundaries=[1.0, 2.0],
+        tag_keys=("a", "b"),
+        default_tags={"a": "a"})
+    assert histogram.info["name"] == "hist"
+    assert histogram.info["description"] == "hist"
+    assert histogram.info["boundaries"] == [1.0, 2.0]
+    assert histogram.info["tag_keys"] == ("a", "b")
+    assert histogram.info["default_tags"] == {"a": "a"}
+
+
+def test_custom_metrics_default_tags(metric_mock):
+    histogram = Histogram(
+        "hist",
+        description="hist",
+        boundaries=[1.0, 2.0],
+        tag_keys=("a", "b"),
+        default_tags={"b": "b"})
+    histogram._metric = metric_mock
+
+    # Check default tags.
+    histogram.record(4)
+    metric_mock.record.assert_called_with(4, tags={"b": "b"})
+
+    # Check specifying non-default tags.
+    histogram.with_tags({"a": "a"}).record(10)
+    metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
+
+    # Check overriding default tags.
+    tags = {"a": "10", "b": "b"}
+    histogram.with_tags(tags).record(8)
+    metric_mock.record.assert_called_with(8, tags=tags)
+
+
+def test_custom_metrics_edge_cases(metric_mock):
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b"))
+    histogram._metric = metric_mock
+
+    # Make sure double chained tags will be overwritten.
+    histogram.with_tags({"a": "a"}).with_tags({"a": "b"}).record(10)
+    metric_mock.record.assert_called_with(10, tags={"a": "b"})
 
 
 if __name__ == "__main__":
