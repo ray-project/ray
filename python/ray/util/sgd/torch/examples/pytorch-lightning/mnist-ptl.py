@@ -76,9 +76,9 @@ from torchvision import datasets, transforms
 
 # transforms
 # prepare transforms standard to MNIST
-transform = transforms.Compose([transforms.ToTensor(),
-                                transforms.Normalize((0.1307,),
-                                                     (0.3081,))])
+# transform = transforms.Compose([transforms.ToTensor(),
+#                                 transforms.Normalize((0.1307,),
+#                                                      (0.3081,))])
 
 # data
 # mnist_train = MNIST(os.getcwd(), train=True, download=False,
@@ -92,14 +92,14 @@ transform = transforms.Compose([transforms.ToTensor(),
 Operator = TrainingOperator.from_ptl(LitMNIST)
 trainer = TorchTrainer(
         training_operator_cls=Operator,
-        num_workers=2,
+        num_workers=1,
         config={
             # this will be split across workers.
             BATCH_SIZE: 128 * 2
         },
         use_gpu=False,
-        scheduler_step_freq="epoch",
         use_fp16=False,
+        use_local=True,
 )
 train_stats = trainer.train()
 print(train_stats)

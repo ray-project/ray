@@ -90,7 +90,7 @@ class DistributedTorchRunner(TorchRunner):
             use_tqdm=self.use_tqdm,
             apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
-            wrap_distributed_sampler=True,
+            use_ddp=True,
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)
 

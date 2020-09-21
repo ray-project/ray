@@ -1,6 +1,7 @@
 import inspect
 import logging
-
+from copy import copy
+import numpy as np
 import pytorch_lightning as ptl
 import torch
 import torch.nn as nn
@@ -10,11 +11,16 @@ import tempfile
 import torch
 import torch.nn as nn
 from filelock import FileLock
+from pytorch_lightning import EvalResult
+from pytorch_lightning.core.step_result import Result
 from pytorch_lightning.trainer.model_hooks import TrainerModelHooksMixin
 from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
+from pytorch_lightning.trainer.training_loop import TrainerTrainLoopMixin
+from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from pytorch_lightning.utilities.memory import recursive_detach
 
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
-                                NUM_SAMPLES)
+                                NUM_SAMPLES, AverageMeter)
 from ray.util.sgd.torch.constants import (
     SCHEDULER_STEP_EPOCH,
     NUM_STEPS,
@@ -131,7 +137,7 @@ class TrainingOperator:
                  use_tqdm=False,
                  apex_args=None,
                  wrap_ddp=False,
-                 wrap_distributed_sampler=False,
+                 use_ddp=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
         # You are not expected to override this method.
@@ -148,7 +154,7 @@ class TrainingOperator:
         self.global_step = 0
         self._apex_args = apex_args if apex_args else {}
         self._wrap_ddp = wrap_ddp
-        self._wrap_distributed_sampler = wrap_distributed_sampler
+        self._use_ddp = use_ddp
         self._add_dist_sampler = add_dist_sampler
         self._scheduler_step_freq = scheduler_step_freq
 
@@ -158,6 +164,17 @@ class TrainingOperator:
     def _set_timers(self, timers):
         """Passes in the timers from the Runner."""
         self.timers = timers
+
+    def _configure_amp(self, amp, models, optimizers):
+        models, optimizers = self._amp.initialize(
+            models, optimizers, **self._apex_args)
+        return models, optimizers
+
+    def _configure_ddp(self, models, device_ids):
+        return [
+            DistributedDataParallel(model, device_ids=device_ids)
+            for model in models
+        ]
 
     def setup(self, config):
         """Override this method to implement operator setup.
@@ -263,16 +280,14 @@ class TrainingOperator:
 
         if self.use_fp16 and amp:
             logger.debug("Setting up Apex.")
-            self._models, self._optimizers = amp.initialize(
-                self._models, self._optimizers, **self._apex_args)
             self._amp = amp
+            self._original_models, self._optimizers = self._configure_amp(
+                self._amp, self._original_models, self._optimizers)
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
-            self._models = [
-                DistributedDataParallel(model, device_ids=self.device_ids)
-                for model in self._original_models
-            ]
+            self._models = self._configure_ddp(models=self._original_models,
+                                               device_ids=self.device_ids)
         else:
             self._models = self._original_models
 
@@ -354,7 +369,7 @@ class TrainingOperator:
         self._train_loader = train_loader
         self._validation_loader = validation_loader
 
-        if self._wrap_distributed_sampler:
+        if self._use_ddp:
             logging.debug("Wrapping data loaders with DistributedSampler.")
 
             def with_sampler(loader):
@@ -674,14 +689,21 @@ class TrainingOperator:
     @classmethod
     def from_ptl(cls, lightning_module_cls, train_dataloader=None,
                  val_dataloader=None):
-        """Creates a TrainingOperator from a Pytorch Lightning Module."""
-        if not isinstance(lightning_module_cls,
-                          ptl.LightningModule):
-            raise TypeError("Argument must be instance of "
-                             "pytorch_lightning.LightningModule. Got object "
-                             "of type {} instead.".format(type(
-                lightning_module_cls)))
+        """Creates a TrainingOperator from a Pytorch Lightning Module.
 
+        Args:
+            lightning_module_cls: Your LightningModule class. An object of
+                this class will get instantiated on each worker.
+            train_dataloader: The data loader to use for training. If None
+                is provided, LightningModule.train_dataloader will be used
+                instead.
+            val_dataloader: The data loader to use for validation. If None
+                is provided, LightningModule.val_dataloader will be used instead.
+
+        Returns:
+            A TrainingOperator class properly configured given the
+            LightningModule.
+        """
         class CustomPTLOperator(PTLOperator):
             _lightning_module_cls = lightning_module_cls
             _train_dataloader = train_dataloader
@@ -813,74 +835,116 @@ class TrainingOperator:
 
 class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
                   TrainerOptimizersMixin):
-    def setup(self, config):
-        ptl_module = self.__class___._lightning_module_cls()
-        self.ptl_module = ptl_module
-        model = ptl_module
 
-        if self.is_function_implemented("on_fit_start", model):
-            model.on_fit_start()
+    def _configure_amp(self, amp, models, optimizers):
+        assert len(models) == 1
+        model = models[0]
+        assert isinstance(model, ptl.LightningModule)
+        amp_level = self._apex_args.get("opt_level", "O2")
+        model, optimizers = model.configure_apex(amp, model, optimizers,
+                                                 amp_level=amp_level)
+        return [model], optimizers
+
+    def _configure_ddp(self, models, device_ids):
+        assert len(models) == 1
+        model = models[0]
+        assert isinstance(model, ptl.LightningModule)
+        # This will default to LightningDistributedDataParallel.
+        model = model.configure_ddp(model=model, device_ids=device_ids)
+        return [model]
+
+    def get_model(self):
+        return self.model
+
+    def setup(self, config):
+        ptl_module = self.__class__._lightning_module_cls()
+        if not isinstance(ptl_module, ptl.LightningModule):
+            raise TypeError("Argument must be instance of "
+                             "pytorch_lightning.LightningModule. Got object "
+                             "of type {} instead.".format(type(
+                ptl_module)))
+        self.model = ptl_module
+
+        # Call on_fit_start on instantiation.
+        if self.is_function_implemented("on_fit_start", self.model):
+            self.model.on_fit_start()
 
         # Only run data preparation once per node.
         if self.local_rank == 0 and self.is_function_implemented(
-            "prepare_data", model):
-            model.prepare_data()
+            "prepare_data", self.model):
+            self.model.prepare_data()
 
+        # Call model.setup.
+        self.model.setup("fit")
 
-        model.setup("fit")
+        if not self.is_overridden("configure_optimizers", self.model):
+            raise MisconfigurationException(
+                "No `configure_optimizers()` method defined."
+            )
 
-        optimizers, schedulers, frequencies = self.init_optimizers(model=model)
-        if len(frequencies) > 0:
-            logger.warning("Optimizer frequencies will be ignored. When "
-                           "passing in multiple optimizers, you should "
-                           "implement your own custom training loop.")
-        for i in range(len(schedulers)):
-            scheduler = schedulers[i]
+        optimizers, self.schedulers, self.optimizer_frequencies = \
+            self.init_optimizers(
+            model=self.model)
+        lr_schedulers = []
+        # if len(frequencies) > 0:
+        #     logger.warning("Optimizer frequencies will be ignored. When "
+        #                    "passing in multiple optimizers, you should "
+        #                    "implement your own custom training loop.")
+        for i in range(len(self.schedulers)):
+            scheduler = self.schedulers[i]
             if isinstance(scheduler, dict):
-                logger.info("lr_dict will be ignored. To set the scheduler "
-                            "update interval, pass `scheduler_step_freq` to "
-                            "TorchTrainer. To manually update the scheduler "
-                            "(for ReduceLROnPlateau), "
-                            "call TorchTrainer.update_scheduler.")
-                schedulers[i] = scheduler["scheduler"]
-        if len(schedulers) == 0:
-            self.model, self.optimizers = self.register(models=model,
-                                                        optimizers=optimizers)
+                # A scheduler dictionary is passed in.
+                if "reduce_on_plateau" in scheduler or "monitor" in scheduler:
+                    logger.info("reduce_on_plateau and/or monitor will be "
+                                "ignored "
+                                "from the scheduler dict {}. To update a "
+                                "ReduceLROnPlateau scheduler, you should use TorchTrainer.update_schedulers.".format(scheduler))
+                lr_schedulers[i] = scheduler["scheduler"]
+            else:
+                lr_schedulers.append(scheduler)
+
+        if self.schedulers:
+            # No new schedulers are returned.
+            self.ddp_model, self.optimizers, _ = self.register(
+                models=[
+                self.model], optimizers=optimizers, schedulers=lr_schedulers)
         else:
-            self.model, self.optimizers, self.schedulers = self.register(
-                models=model, optimizers=optimizers, schedulers=schedulers)
-            self.scheduler = self.schedulers[0]
-        self.optimizer = self.optimizer[0]
+            self.ddp_model, self.optimizers = self.register(
+                models=[
+                self.model], optimizers=optimizers)
+        if not type(self.optimizers) == list:
+            self.optimizers = [self.optimizers]
 
         if self.is_function_implemented("on_pretrain_routine_start",
-                                        model):
-            model.on_pretrain_routine_start()
-        if self.is_function_implemented("on_pretrain_routine_end", model):
-            model.on_pretrain_routine_end()
+                                        self.model):
+            self.model.on_pretrain_routine_start()
 
         train_data_loader = None
-        if self.__class__._train_loader:
-            train_data_loader = self.__class__._train_loader
-        elif self.is_function_implemented("train_dataloader", model):
-            train_data_loader = model.train_dataloader()
+        if self.__class__._train_dataloader:
+            train_data_loader = self.__class__._train_dataloader
+        elif self.is_function_implemented("train_dataloader", self.model):
+            train_data_loader = self.model.train_dataloader()
 
         val_data_loader = None
-        if self.__class__._validation_loader:
-            val_data_loader = self.__class__._validation_loader
-        elif self.is_function_implemented("val_dataloader", model):
-            val_data_loader = model.val_dataloader()
+        if self.__class__._val_dataloader:
+            val_data_loader = self.__class__._val_dataloader
+        elif self.is_function_implemented("val_dataloader", self.model):
+            val_data_loader = self.model.val_dataloader()
 
         self.register_data(train_loader=train_data_loader,
                            validation_loader=val_data_loader)
 
     def train_epoch(self, iterator, info):
         model = self.model
-        module = model.module
-        scheduler = None
-        if hasattr(self, "scheduler"):
-            scheduler = self.scheduler
 
-        module.on_train_epoch_start()
+        # Enable train mode.
+        model.train()
+
+        # Enable gradients.
+        torch.set_grad_enabled(True)
+
+        if self.is_function_implemented("on_train_epoch_start", model):
+            model.on_train_epoch_start()
 
         if self.use_tqdm and self.world_rank == 0:
             desc = ""
@@ -900,40 +964,242 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
                 total=total, desc=desc, unit="batch", leave=False)
 
         metric_meters = AverageMeterCollection()
+        epoch_output = [[] for _ in range(len(self.optimizers))]
 
-        model.train()
         for batch_idx, batch in enumerate(iterator):
             batch_info = {
                 "batch_idx": batch_idx,
                 "global_step": self.global_step
             }
             batch_info.update(info)
-            metrics = self.train_batch(batch, batch_info=batch_info)
+            batch_output = self.train_batch(batch, batch_info=batch_info)
+            # batch output for each optimizer.
+            epoch_end_outputs = batch_output[
+                "training_step_output_for_epoch_end"]
+            for opt_idx, opt_output in enumerate(epoch_end_outputs):
+                if isinstance(opt_output, list) and len(
+                    opt_output) == 1 and not isinstance(opt_output[0],
+                                                         Result):
+                    opt_output = opt_output[0]
+                epoch_output[opt_idx].append(opt_output)
+
+
+            should_stop = batch_output["signal"] == -1
 
             if self.use_tqdm and self.world_rank == 0:
                 _progress_bar.n = batch_idx + 1
                 postfix = {}
-                if "train_loss" in metrics:
-                    postfix.update(loss=metrics["train_loss"])
+                if "train_loss" in batch_output:
+                    postfix.update(loss=batch_output["train_loss"])
                 _progress_bar.set_postfix(postfix)
 
-            if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_BATCH:
-                scheduler.step()
+            for scheduler_dict in self.schedulers:
+                if scheduler_dict["interval"] == SCHEDULER_STEP_BATCH:
+                    scheduler_dict["scheduler"].step()
 
-            metric_meters.update(metrics, n=metrics.pop(NUM_SAMPLES, 1))
             self.global_step += 1
 
-        if scheduler and self.scheduler_step_freq == SCHEDULER_STEP_EPOCH:
-            scheduler.step()
+            if should_stop:
+                break
 
-        return metric_meters.summary()
+        is_result_obj = isinstance(epoch_output[0][0], Result)
+        if self.is_overridden("training_epoch_end", model):
+            if is_result_obj:
+                # with result object gather across time and training steps so each opt idx has a single result obj
+                epoch_output = self.__gather_result_across_time_and_optimizers(epoch_output)
 
+            if len(self.optimizers) == 1:
+                epoch_output = epoch_output[0]
+
+            # run training_epoch_end
+            # a list with a result per optimizer index
+            epoch_output = model.training_epoch_end(epoch_output)
+
+            if isinstance(epoch_output, Result):
+                epoch_log_metrics = epoch_output.epoch_log_metrics
+                epoch_progress_bar_metrics = epoch_output.epoch_pbar_metrics
+            else:
+                _processed_outputs = self.process_output(epoch_output)
+                epoch_progress_bar_metrics = _processed_outputs[1]
+                epoch_log_metrics = _processed_outputs[2]
+                epoch_callback_metrics = _processed_outputs[3]
+        elif is_result_obj:
+            epoch_log_metrics, epoch_progress_bar_metrics = self.__auto_reduce_results_on_epoch_end(
+                epoch_output)
+
+        if self.is_function_implemented("on_train_epoch_end", model):
+            model.on_train_epoch_end()
+
+        for scheduler_dict in self.schedulers:
+            if scheduler_dict["interval"] == SCHEDULER_STEP_EPOCH:
+                scheduler_dict["scheduler"].step()
+
+        #return metric_meters.summary()
+        return epoch_output
+
+    def _get_optimizers_iterable(self):
+        """Returns an iterable of optimizers to train with.
+
+        If multiple optimizers are passed in but no frequencies are passed in,
+        all optimizers are trained on every batch.
+
+        If optimizer frequencies are passed in, training cycles through each optimizer.
+        opt_i trains for freq_i subsequent batches.
+        """
+        if not self.optimizer_frequencies:
+            # call training_step once per optimizer
+            return list(enumerate(self.optimizers))
+
+        optimizer_freq_cumsum = np.cumsum(self.optimizer_frequencies)
+        optimizers_loop_length = optimizer_freq_cumsum[-1]
+        current_place_in_loop = self.global_step % optimizers_loop_length
+
+        # find optimzier index by looking for the first {item > current_place} in the cumsum list
+        opt_idx = np.argmax(optimizer_freq_cumsum > current_place_in_loop)
+        return [(opt_idx, self.optimizers[opt_idx])]
 
 
     def train_batch(self, batch, batch_info):
+        model = self.model
         batch_idx = batch_info["batch_idx"]
-        result = self.ptl_module.training_step(batch, batch_idx)
-        return
+        opt_iterable = self._get_optimizers_iterable()
+
+        # Keep track of result for each optimizer.
+        batch_outputs = [None] * len(self.optimizers)
+        epoch = batch_info["epoch_idx"]
+
+        if self.is_function_implemented("on_train_batch_start", model):
+            response = model.on_train_batch_start(batch=batch,
+                                                  batch_idx=batch_idx,
+                                                  dataloader_idx=0)
+            # Skip remainder of epoch if response is -1.
+            if response == -1:
+                return {"signal": -1}
+
+        loss_meter = AverageMeter()
+
+        for opt_idx, optimizer in opt_iterable:
+            # make sure only the gradients of the current optimizer's parameters are calculated
+            # in the training step to prevent dangling gradients in multiple-optimizer setup.
+            if len(self.optimizers) > 1:
+                for param in model.parameters():
+                    param.requires_grad = False
+                for group in optimizer.param_groups:
+                    for param in group['params']:
+                        param.requires_grad = True
+
+            args = [batch, batch_idx]
+            if len(self.optimizers) > 1:
+                if self.has_arg('training_step', 'optimizer_idx'):
+                    args.append(opt_idx)
+                else:
+                    num_opts = len(self.optimizers)
+                    raise ValueError(
+                        f'Your LightningModule defines {num_opts} optimizers but '
+                        f'training_step is missing the "optimizer_idx" argument.'
+                    )
+
+            # If training on multiple optimizers for a single batch, we need
+            # to differentiate timing for each optimizer.
+            timer_str = "" if len(opt_iterable) == 1 else "optimizer-{" \
+                                                          "}-".format(opt_idx)
+
+            with self.timers.record(timer_str+"fwd".format(opt_idx)):
+                if self._use_ddp:
+                    output = self.ddp_model(*args)
+                elif self.use_gpu:
+                    # Using single GPU.
+                    # Don't copy the batch since there is a single gpu that the batch could
+                    # be referenced from and if there are multiple optimizers the batch will
+                    # wind up copying it to the same device repeatedly.
+                    device = self.device
+                    batch = model.transfer_batch_to_device(batch, device=device)
+                    args[0] = batch
+                    output = model.training_step(*args)
+                else:
+                    # Using CPU.
+                    output = model.training_step(*args)
+
+            # allow any mode to define training_step_end
+            # do something will all the dp outputs (like softmax)
+            if self.is_overridden("training_step_end", model):
+                output = model.training_step_end(output)
+
+            # ----------------------------
+            # PROCESS THE RESULT
+            # ----------------------------
+            # format and reduce outputs accordingly
+            is_result_obj = isinstance(output, Result)
+
+            # don't allow EvalResult in the training_step
+            if isinstance(output, EvalResult):
+                raise MisconfigurationException(
+                    'training_step cannot return EvalResult, '
+                    'use a dict or TrainResult instead')
+
+            # handle regular dicts
+            if not is_result_obj:
+                # if output dict doesn't have the keyword loss
+                # then assume the output=loss if scalar
+                try:
+                    loss = output["loss"]
+                except Exception:
+                    if isinstance(output, torch.Tensor):
+                        loss = output
+                    else:
+                        raise RuntimeError(
+                            'No `loss` value in the dictionary returned from `model.training_step()`.'
+                        )
+            else:
+                loss = output.minimize
+
+            # if the user decides to finally reduce things in epoch_end, save raw output without graphs
+            if isinstance(output, torch.Tensor):
+                output = output.detach()
+            elif is_result_obj:
+                output = copy(output)
+                output.detach()
+            else:
+                output = recursive_detach(
+                    output)
+
+            loss_meter.update(loss.detach().clone())
+
+            with self.timers.record(timer_str+"grad".format(opt_idx)):
+                if self.use_fp16:
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        model.backward(self, scaled_loss, optimizer, opt_idx)
+                else:
+                    model.backward(self, loss, optimizer, opt_idx)
+
+            # insert after step hook
+            if self.is_function_implemented('on_after_backward'):
+                    model.on_after_backward()
+
+            # track all the outputs across all steps
+            batch_outputs[opt_idx] = output
+
+            with self.timers.record("optimizer-{}-apply".format(opt_idx)):
+                model.optimizer_step(epoch=epoch, batch_idx=batch_idx,
+                                     optimizer=optimizer,
+                                     optimizer_idx=opt_idx)
+
+            # Model hook.
+            model.on_before_zero_grad(optimizer)
+
+            # Clear gradients.
+            model.optimizer_zero_grad(epoch=epoch, batch_idx=batch_idx,
+                                      optimizer=optimizer, optimizer_idx=opt_idx)
+
+        if self.is_function_implemented("on_train_batch_end", model):
+            model.on_train_batch_end(batch=batch, batch_idx=batch_idx,
+                                     dataloader_idx=0)
+
+        return {
+            "signal": 0,
+            "training_loss": loss_meter.avg,
+            "training_step_output_for_epoch_end": batch_outputs
+        }
 
 class CreatorOperator(TrainingOperator):
     """A subclass of TrainingOperator specifically for defining training
@@ -1002,38 +1268,65 @@ class CreatorOperator(TrainingOperator):
             kwargs["criterion"] = criterion
 
         state = self.register(**kwargs)
-        self.models, self.optimizers = state[:2]
+        self._models, self._optimizers = state[:2]
         if isinstance(self.models, (list, tuple)):
             logger.info("Multiple models have been registered. If custom "
                         "training methods are not provided, only the first "
                         "model will be used.")
-            self.model = self.models[0]
+            self._model = self.models[0]
         else:
-            self.model = self.models
+            self._model = self.models
 
         if isinstance(self.optimizers, (list, tuple)):
             logger.info("Multiple optimizers have been registered. If custom "
                         "training methods are not provided, only the first "
                         "optimizer will be used.")
-            self.optimizer = self.optimizers[0]
+            self._optimizer = self.optimizers[0]
         else:
-            self.optimizer = self.optimizers
+            self._optimizer = self.optimizers
 
         if len(state) >= 3:
-            self.criterion = state[2]
+            self._criterion = state[2]
         if len(state) == 4:
-            self.schedulers = state[3]
+            self._schedulers = state[3]
             if isinstance(self.schedulers, (list, tuple)):
                 logger.info("Multiple schedulers have been registered. If "
                             "custom training methods are not provided, "
                             "only the first scheduler will be used.")
-                self.scheduler = self.schedulers[0]
+                self._scheduler = self.schedulers[0]
             else:
-                self.scheduler = self.schedulers
+                self._scheduler = self.schedulers
 
         self.register_data(
             train_loader=train_loader, validation_loader=validation_loader)
 
+    @property
+    def model(self):
+        return self._model
+
+    @property
+    def optimizer(self):
+        return self._optimizer
+
+    @property
+    def scheduler(self):
+        return self._scheduler
+
+    @property
+    def criterion(self):
+        return self._criterion
+
+    @property
+    def models(self):
+        return self._models
+
+    @property
+    def optimizers(self):
+        return self._optimizers
+
+    @property
+    def schedulers(self):
+        return self._schedulers
 
 def get_test_operator(operator_cls):
     class _TestingOperator(operator_cls):

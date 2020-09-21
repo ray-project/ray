@@ -197,12 +197,12 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         node_ips = ray.get([w.get_node_ip.remote() for w in
                             self.remote_workers])
         futures = []
-        for i in range(self.remote_workers):
+        for i in range(len(self.remote_workers)):
             ip = node_ips[i]
             rank = rank_counter_dict[ip]
             worker = self.remote_workers[i]
             futures.append(worker.set_local_rank.remote(rank))
-            rank_counter_dict[i] += 1
+            rank_counter_dict[ip] += 1
         return futures
 
 

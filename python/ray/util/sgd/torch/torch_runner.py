@@ -72,6 +72,7 @@ class TorchRunner:
         info.update({
             NUM_STEPS: num_steps,
             USE_FP16: self.use_fp16,
+            "epoch_idx": self.epochs,
         })
         with self.timers.record("train_epoch"):
             if iterator is None:
@@ -97,10 +98,6 @@ class TorchRunner:
 
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
-        if self.validation_loader is None:
-            raise ValueError("No validation dataloader provided. Make sure"
-                             "you pass in a validation_loader to "
-                             "TrainingOperator.register_data.")
         info = info or {}
         self._toggle_profiling(profile=profile)
         validation_loader = self.validation_loader
@@ -239,24 +236,39 @@ class TorchRunner:
 
     @property
     def train_loader(self):
-        if not hasattr(self.training_operator, "_train_loader"):
-            logger.warning("Training Operator does not have any "
-                           "registered train loader. If this is "
-                           "unexepected, make sure to call "
-                           "self.register_data(...) inside the setup method "
-                           "of your Training Operator.")
-            return None
+        if not hasattr(self.training_operator, "_train_loader") or \
+                self.training_operator._train_loader is None:
+            if isinstance(self.training_operator, PTLOperator):
+                raise RuntimeError("Training Operator does not have any "
+                                   "registered training loader. Make sure "
+                                   "to pass in a training loader to "
+                                   "TrainingOperator.from_ptl or implement "
+                                   "train_dataloader in your LightningModule.")
+            else:
+                raise RuntimeError("Training Operator does not have any "
+                               "registered train loader. If this is "
+                               "unexepected, make sure to call "
+                               "self.register_data(...) inside the setup method "
+                               "of your Training Operator.")
+
         return self.training_operator._train_loader
 
     @property
     def validation_loader(self):
-        if not hasattr(self.training_operator, "_validation_loader"):
-            logger.warning("Training Operator does not have any "
-                           "registered validation loader. If this is "
-                           "unexepected, make sure to call "
-                           "self.register_data(...) inside the setup method "
-                           "of your Training Operator.")
-            return None
+        if not hasattr(self.training_operator, "_validation_loader") or \
+                self.training_operator._validation_loader is None:
+            if isinstance(self.training_operator, PTLOperator):
+                raise RuntimeError("Training Operator does not have any "
+                                   "registered validation loader. Make sure "
+                                   "to pass in a validation loader to "
+                                   "TrainingOperator.from_ptl or implement "
+                                   "val_dataloader in your LightningModule.")
+            else:
+                raise RuntimeError("Training Operator does not have any "
+                               "registered validation loader. If this is "
+                               "unexepected, make sure to call "
+                               "self.register_data(...) inside the setup method "
+                               "of your Training Operator.")
         return self.training_operator._validation_loader
 
     @property
