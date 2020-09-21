@@ -977,11 +977,10 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
             epoch_end_outputs = batch_output[
                 "training_step_output_for_epoch_end"]
             for opt_idx, opt_output in enumerate(epoch_end_outputs):
-                if isinstance(opt_output, list) and len(
-                    opt_output) == 1 and not isinstance(opt_output[0],
-                                                         Result):
-                    opt_output = opt_output[0]
-                epoch_output[opt_idx].append(opt_output)
+                if opt_output is not None:
+                    epoch_output[opt_idx].append(opt_output)
+
+            # epoch_output contains list of batch results for each optimizer.
 
 
             should_stop = batch_output["signal"] == -1
@@ -1002,6 +1001,7 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
             if should_stop:
                 break
 
+        import pdb; pdb.set_trace()
         is_result_obj = isinstance(epoch_output[0][0], Result)
         if self.is_overridden("training_epoch_end", model):
             if is_result_obj:

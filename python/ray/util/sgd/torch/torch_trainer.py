@@ -439,7 +439,7 @@ class TorchTrainer:
         }
 
         for stat_key in worker_stats[0]:
-            if isinstance(worker_stats[0], numbers.Number):
+            if isinstance(worker_stats[0][stat_key], numbers.Number):
                 stats[stat_key] = np.nanmean(
                     [s.get(stat_key, np.nan) for s in worker_stats])
             else:
