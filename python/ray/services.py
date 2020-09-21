@@ -992,7 +992,7 @@ def start_dashboard(require_dashboard,
                     host,
                     redis_address,
                     temp_dir,
-                    log_dir,
+                    logdir,
                     port=ray_constants.DEFAULT_DASHBOARD_PORT,
                     stdout_file=None,
                     stderr_file=None,
@@ -1010,7 +1010,7 @@ def start_dashboard(require_dashboard,
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
-        log_dir (str): The log directory used to generate dashboard log.
+        logdir (str): The log directory used to generate dashboard log.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1042,7 +1042,7 @@ def start_dashboard(require_dashboard,
         dashboard_dir = "new_dashboard"
     else:
         dashboard_dir = "dashboard"
-        log_dir = None
+        logdir = None
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
@@ -1056,8 +1056,8 @@ def start_dashboard(require_dashboard,
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
     ]
-    if log_dir:
-        command += [f"--log-dir={log_dir}"]
+    if logdir:
+        command += [f"--log-dir={logdir}"]
     if redis_password:
         command += ["--redis-password", redis_password]
 
