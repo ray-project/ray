@@ -466,8 +466,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             redis_addresses = services.find_redis_address(default_address)
             if len(redis_addresses) > 0:
                 raise ConnectionError(
-                    f"There is already a Ray head running "
-                    f"at: {default_address}."
+                    f"Ray is already running at {default_address}. "
                     f" Please specify a different address to start.")
 
         node = ray.node.Node(
