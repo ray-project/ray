@@ -1,8 +1,22 @@
+"""
+Soft Actor Critic (SAC)
+=======================
+
+This file defines the distributed Trainer class for the soft actor critic
+algorithm.
+See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
+
+Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#sac
+"""
+
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -14,16 +28,24 @@ OPTIMIZER_SHARED_CONFIGS = [
 
 # yapf: disable
 # __sphinx_doc_begin__
+
+# Adds the following updates to the (base) `Trainer` config in
+# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
+    # Use two Q-networks (instead of one) for action-value estimation.
+    # Note: Each Q-network will have its own target network.
     "twin_q": True,
+    # Use a e.g. conv2D state preprocessing network before concatenating the
+    # resulting (feature) vector with the action input for the input to
+    # the Q-networks.
     "use_state_preprocessor": False,
-    # RLlib model options for the Q function(s).
+    # Model options for the Q network(s).
     "Q_model": {
         "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
     },
-    # RLlib model options for the policy function.
+    # Model options for the policy function.
     "policy_model": {
         "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
@@ -43,10 +65,10 @@ DEFAULT_CONFIG = with_common_config({
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
-    "target_entropy": "auto",
-    # N-step target updates.
+    "target_entropy": None,
+    # N-step target updates. If >1, sars' tuples in trajectories will be
+    # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
-
     # Number of env steps to optimize for before returning.
     "timesteps_per_iteration": 100,
 
@@ -117,15 +139,15 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
-        from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
-        return SACTorchPolicy
-    else:
-        return SACTFPolicy
+def validate_config(config: TrainerConfigDict) -> None:
+    """Validates the Trainer's config dict.
 
+    Args:
+        config (TrainerConfigDict): The Trainer's config to check.
 
-def validate_config(config):
+    Raises:
+        ValueError: In case something is wrong with the config.
+    """
     if config["model"].get("custom_model"):
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
@@ -136,10 +158,28 @@ def validate_config(config):
         raise ValueError("`grad_clip` value must be > 0.0!")
 
 
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
+    if config["framework"] == "torch":
+        from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
+        return SACTorchPolicy
+
+
+# Build a child class of `Trainer` (based on the kwargs used to create the
+# GenericOffPolicyTrainer class and the kwargs used in the call below), which
+# uses the framework specific Policy determined in `get_policy_class()` above.
 SACTrainer = GenericOffPolicyTrainer.with_updates(
     name="SAC",
     default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
-    validate_config=validate_config,
 )

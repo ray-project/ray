@@ -1,9 +1,9 @@
 import pytest
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import CommandRunnerInterface, \
+from ray.autoscaler._private.command_runner import CommandRunnerInterface, \
     SSHCommandRunner, _with_environment_variables, DockerCommandRunner, \
     KubernetesCommandRunner
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
 

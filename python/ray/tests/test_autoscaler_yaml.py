@@ -6,7 +6,7 @@ import unittest
 import urllib
 import yaml
 
-from ray.autoscaler.util import prepare_config, validate_config
+from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.test_utils import recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))

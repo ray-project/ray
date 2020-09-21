@@ -1797,6 +1797,7 @@ filegroup(
     srcs = glob([
         "python/ray/*.py",
         "python/ray/autoscaler/*.py",
+        "python/ray/autoscaler/_private/*.py",
         "python/ray/autoscaler/aws/example-full.yaml",
         "python/ray/autoscaler/azure/example-full.yaml",
         "python/ray/autoscaler/gcp/example-full.yaml",

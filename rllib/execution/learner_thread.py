@@ -25,7 +25,7 @@ class LearnerThread(threading.Thread):
                  learner_queue_size, learner_queue_timeout):
         """Initialize the learner thread.
 
-        Arguments:
+        Args:
             local_worker (RolloutWorker): process local rollout worker holding
                 policies this thread will call learn_on_batch() on
             minibatch_buffer_size (int): max number of train batches to store
