@@ -15,13 +15,15 @@ provider:
 
     # Access token for Staroid from https://staroid.com/settings/accesstokens.
     # Alternatively, you can set STAROID_ACCESS_TOKEN environment variable.
-    # https://github.com/staroids/staroid-python#configuration for more information.
+    # https://github.com/staroids/staroid-python#configuration
+    # for more information.
     access_token:
 
     # Staroid account to use. e.g. GITHUB/staroids
     # Alternatively, you can set STAROID_ACCOUNT environment variable.
     # Leave empty to select default account for given access token.
-    # https://github.com/staroids/staroid-python#configuration for more information.
+    # https://github.com/staroids/staroid-python#configuration
+    # for more information.
     account:
 
     # Name of a Staroid Kubernetes Engine (SKE) instance.
@@ -32,14 +34,17 @@ provider:
 
     # Cloud and Region to create an SKE when not exists.
     # If SKE already exists, this value will be ignored.
-    # Supported cloud region can be found here https://docs.staroid.com/ske/cloudregion.html.
+    # Supported cloud region can be found
+    # https://docs.staroid.com/ske/cloudregion.html.
     ske_region: "aws us-west2"
 
     # To create a namespace in SKE, you need to specify a Github project.
-    # The Github project needs to have a staroid.yaml (https://docs.staroid.com/references/staroid_yaml.html).
+    # The Github project needs to have a staroid.yaml
+    # (https://docs.staroid.com/references/staroid_yaml.html).
     # staroid.yaml defines various resources for the project, such as
     #   - Building container images can be accessed from the namespace
-    #   - Kubernetes resources to create (like Persistent volume claim) on namespace creation
+    #   - Kubernetes resources to create (like Persistent volume claim)
+    #     on namespace creation
     # You can fork when you need to customize.
     #   1. Fork github.com/open-datastudio/ray
     #   2. Change .staroid/ directory to cutomize
@@ -49,18 +54,19 @@ provider:
     #      4-2. Select your branch in 'Release' tab
     #      4-3. After build success, switch to 'Production'
     #      4-4. Switch Launch permission to 'Public' if required
-    #   5. Change 'project' field to point your repository and branch in this file
-    project: "GITHUB/open-datastudio/ray:master-staroid"
+    #   5. Change 'project' field to point your 
+    #      repository and branch in this file
+    project: "GITHUB/open-datastudio/ray:master-staroid-with-provider"
 
-    # 'spec.containers.image' field for ray-node and ray-worker will be overrided by
-    # the image built from the 'project' field above.
+    # 'spec.containers.image' field for ray-node and ray-worker will be
+    # overrided by the image built from the 'project' field above.
     # Set this value to 'false' to not override the image.
     image_from_project: true
 
     # Python version to use. One of '3.6.9', '3.7.7', '3.8.3'.
     # 'project' field above provides docker image for each python version.
     # Fork 'project' if you'd like to support other python versions.
-    python_version: 3.7.7
+    python_version: 3.6.9
 
     # Exposing external IP addresses for ray pods isn't currently supported.
     use_internal_ips: true
