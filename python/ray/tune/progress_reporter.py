@@ -435,7 +435,7 @@ def trial_progress_str(trials,
         for state in sorted(trials_by_state)
     ]
 
-    state_tbl_oder = [
+    state_tbl_order = [
         Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
         Trial.ERROR
     ]
