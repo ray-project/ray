@@ -343,7 +343,7 @@ class ProgressReporterTest(unittest.TestCase):
                 progress_str = self._progress_str(*args, **kwargs)
                 self._output.append(progress_str)
 
-        reporter = TestReporter()
+        reporter = TestReporter(mode="max")
         reporter.report(trials, done=False)
 
         assert EXPECTED_BEST_2 in reporter._output[0]

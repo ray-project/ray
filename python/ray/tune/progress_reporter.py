@@ -217,6 +217,13 @@ class TuneReporterBase(ProgressReporter):
         else:
             max_progress = self._max_progress_rows
             max_error = self._max_error_rows
+
+        current_best_trial, metric = self._current_best_trial(trials)
+        if current_best_trial:
+            messages.append(
+                best_trial_str(current_best_trial, metric,
+                               self._parameter_columns))
+
         messages.append(
             trial_progress_str(
                 trials,
@@ -226,11 +233,7 @@ class TuneReporterBase(ProgressReporter):
                 fmt=fmt,
                 max_rows=max_progress))
         messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
-        current_best_trial, metric = self._current_best_trial(trials)
-        if current_best_trial:
-            messages.append(
-                best_trial_str(current_best_trial, metric,
-                               self._parameter_columns))
+
         return delim.join(messages) + delim
 
     def _infer_user_metrics(self, trials, limit=4):
@@ -256,13 +259,11 @@ class TuneReporterBase(ProgressReporter):
             return None, None
 
         metric, mode = self._metric, self._mode
-        # If not metric has been set, see if exactly one has been reported
+        # If no metric has been set, see if exactly one has been reported
+        # and use that one. `mode` must still be set.
         if not metric:
             if len(self._inferred_metrics) == 1:
                 metric = list(self._inferred_metrics.keys())[0]
-
-            if not mode:
-                mode = "max"
 
         if not metric or not mode:
             return None, metric
@@ -313,10 +314,14 @@ class JupyterNotebookReporter(TuneReporterBase):
                  total_samples=None,
                  max_progress_rows=20,
                  max_error_rows=20,
-                 max_report_frequency=5):
-        super(JupyterNotebookReporter, self).__init__(
-            metric_columns, parameter_columns, total_samples,
-            max_progress_rows, max_error_rows, max_report_frequency)
+                 max_report_frequency=5,
+                 infer_limit=3,
+                 metric=None,
+                 mode=None):
+        super(JupyterNotebookReporter,
+              self).__init__(metric_columns, parameter_columns, total_samples,
+                             max_progress_rows, max_error_rows,
+                             max_report_frequency, infer_limit, metric, mode)
         self._overwrite = overwrite
 
     def report(self, trials, done, *sys_info):
@@ -358,11 +363,15 @@ class CLIReporter(TuneReporterBase):
                  total_samples=None,
                  max_progress_rows=20,
                  max_error_rows=20,
-                 max_report_frequency=5):
+                 max_report_frequency=5,
+                 infer_limit=3,
+                 metric=None,
+                 mode=None):
 
-        super(CLIReporter, self).__init__(metric_columns, parameter_columns,
-                                          total_samples, max_progress_rows,
-                                          max_error_rows, max_report_frequency)
+        super(CLIReporter,
+              self).__init__(metric_columns, parameter_columns, total_samples,
+                             max_progress_rows, max_error_rows,
+                             max_report_frequency, infer_limit, metric, mode)
 
     def report(self, trials, done, *sys_info):
         print(self._progress_str(trials, done, *sys_info))
@@ -446,7 +455,7 @@ def trial_progress_str(trials,
         trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows)
         trials = []
         overflow_strs = []
-        for state in state_tbl_oder:
+        for state in state_tbl_order:
             if state not in trials_by_state:
                 continue
             trials += trials_by_state_trunc[state]
@@ -460,7 +469,7 @@ def trial_progress_str(trials,
     else:
         overflow = False
         trials = []
-        for state in state_tbl_oder:
+        for state in state_tbl_order:
             if state not in trials_by_state:
                 continue
             trials += trials_by_state[state]
