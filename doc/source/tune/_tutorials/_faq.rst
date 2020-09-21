@@ -183,6 +183,8 @@ additional outputs:
   called
 * ``trial_id``: Unique trial ID
 
+.. _tune-set-resources:
+
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
