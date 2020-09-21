@@ -142,7 +142,7 @@ def train_cifar(config, checkpoint_dir=None, data_dir=None):
                 val_steps += 1
 
         # Here we save a checkpoint. It is automatically registered with
-        # Ray Tune and wil potentially be passed as the `checkpoint_dir`
+        # Ray Tune and will potentially be passed as the `checkpoint_dir`
         # parameter in future iterations.
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             path = os.path.join(checkpoint_dir, "checkpoint")
