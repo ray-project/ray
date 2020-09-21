@@ -15,8 +15,8 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+------------+
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
-|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00000 | TERMINATED | here  |   0 |   0 |        0   |
 +--------------+------------+-------+-----+-----+------------+
 ... 2 more trials not shown (2 RUNNING)"""
@@ -26,11 +26,11 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+---------+---------+
 |   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
 |--------------+------------+-------+-----+-----+---------+---------|
-|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
-|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
 |        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
 |        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
 |        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
 +--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
@@ -38,8 +38,8 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+------------+------------+
 |   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
 |--------------+------------+-------+-----+------------+------------|
-|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
 |        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
 |        00000 | TERMINATED | here  |   0 |        0   |       0    |
 +--------------+------------+-------+-----+------------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
@@ -305,6 +305,7 @@ class ProgressReporterTest(unittest.TestCase):
             }, {"a": "A"},
             fmt="psql",
             max_rows=3)
+        print(prog3)
         assert prog3 == EXPECTED_RESULT_3
 
     def testEndToEndReporting(self):

@@ -459,6 +459,11 @@ def trial_progress_str(trials,
         overflow_str = ", ".join(overflow_strs)
     else:
         overflow = False
+        trials = []
+        for state in state_tbl_oder:
+            if state not in trials_by_state:
+                continue
+            trials += trials_by_state[state]
 
     if total_samples >= sys.maxsize:
         total_samples = "infinite"
