@@ -157,6 +157,9 @@ EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
                   "parameters = {'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
+                  "parameters = {'a': 4}"
+
 
 class ProgressReporterTest(unittest.TestCase):
     def mock_trial(self, status, i):
@@ -314,6 +317,36 @@ class ProgressReporterTest(unittest.TestCase):
         # Current best trial
         best1 = best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
+
+    def testCurrentBestTrial(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        class TestReporter(CLIReporter):
+            _output = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output.append(progress_str)
+
+        reporter = TestReporter()
+        reporter.report(trials, done=False)
+
+        assert EXPECTED_BEST_2 in reporter._output[0]
 
     def testEndToEndReporting(self):
         try:
