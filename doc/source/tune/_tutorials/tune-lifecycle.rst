@@ -27,19 +27,19 @@ When the function terminates (or is stopped), the actor is also terminated.
 Lifecycle of a trial
 --------------------
 
-There are a couple explicit stages for a trial's life cycle.
+A trial's life cycle consists.
 
--> Initialization (generation): A trial is first generated as a hyperparameter sample, and its parameters are configured according to what was provided in tune.run. Trials are then placed into a queue to be executed (with status PENDING)
+* **Initialization** (generation): A trial is first generated as a hyperparameter sample, and its parameters are configured according to what was provided in tune.run. Trials are then placed into a queue to be executed (with status PENDING)
 
--> PENDING: A pending trial is a trial to be executed on the machine. Every trial is configured with resource values. Whenever the trial’s resource values are available, tune will run the trial (by starting a ray actor holding the config and the training function.
+* **PENDING**: A pending trial is a trial to be executed on the machine. Every trial is configured with resource values. Whenever the trial’s resource values are available, tune will run the trial (by starting a ray actor holding the config and the training function.
 
--> RUNNING: A running trial is backed by a Ray Actor <link>. There can be multiple running trials in parallel. See "How does the Ray actor execute the function?"
+* **RUNNING**: A running trial is backed by a Ray Actor <link>. There can be multiple running trials in parallel. See "How does the Ray actor execute the function?"
 
--> ERRORED: If a running trial throws an exception, Tune will catch that exception and mark the trial as errored. Note that exceptions can be propagated from an actor to the main Tune driver process. If max_retries is set, Tune will set the trial back into "PENDING" and later start it from the last checkpoint.
+* **ERRORED**: If a running trial throws an exception, Tune will catch that exception and mark the trial as errored. Note that exceptions can be propagated from an actor to the main Tune driver process. If max_retries is set, Tune will set the trial back into "PENDING" and later start it from the last checkpoint.
 
--> TERMINATED: A trial is terminated if it is stopped by a Stopper/Scheduler. If using the Function API, the trial is terminated when the function stops.
+* **TERMINATED**: A trial is terminated if it is stopped by a Stopper/Scheduler. If using the Function API, the trial is terminated when the function stops.
 
--> PAUSED: A trial can be paused by a Scheduler. This means that the trial’s actor will be stopped. A paused trial can later be resumed from the most recent checkpoint.
+* **PAUSED**: A trial can be paused by a Scheduler. This means that the trial’s actor will be stopped. A paused trial can later be resumed from the most recent checkpoint.
 
 How does the Ray actor execute the function?
 --------------------------------------------
@@ -52,19 +52,6 @@ What is a Ray cluster? What is a head node?
 -------------------------------------------
 
 A ray cluster can be a laptop, a single server, or multiple servers.
-
-There are three ways of starting a "ray cluster".
-* Implicitly via ray.init() (or tune.run).
-  - ray.init() starts a 1 node ray cluster on your laptop/machine, and it becomes the "head node".
-  - You are automatically connected to the ray cluster.
-  - When the process calling ray.init terminates, the ray cluster will also terminate.
-* Explicitly via CLI (ray start).
-  - This command also starts a 1 node ray cluster on your laptop/machine, and it becomes the "head node". You can expand the number of nodes in the cluster by calling {...}.
-  - Any process that runs ‘ray.init(address=...)’ on any of the cluster machines will connect to the ray cluster.
-* Explicitly via the cluster launcher (ray up).
-  - This command starts a cluster on the cloud, and there is a designated separate "head node" and designated worker nodes.
-  - Any process that runs ‘ray.init(address=...)’ on any of the cluster nodes will connect to the ray cluster.
-  - Note that calling ray.init on your laptop will not work.
 
 The driver process is the process that calls "ray.init(...)" or "tune.run" (which calls ray.init() underneath the hood). It is typical to call ray.init(...) on the head node of the cluster.
 
