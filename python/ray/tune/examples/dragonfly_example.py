@@ -11,6 +11,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.dragonfly import DragonflySearch
 
@@ -31,9 +32,6 @@ def objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from dragonfly.opt.gp_bandit import EuclideanGPBandit
-    from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-    from dragonfly import load_config
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -41,40 +39,47 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    config = {
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "iterations": 100,
+            "LiNO3_vol": tune.uniform(0, 7),
+            "Li2SO4_vol": tune.uniform(0, 7),
+            "NaClO4_vol": tune.uniform(0, 7)
         },
     }
 
-    domain_vars = [{
-        "name": "LiNO3_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }, {
-        "name": "Li2SO4_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }, {
-        "name": "NaClO4_vol",
-        "type": "float",
-        "min": 0,
-        "max": 7
-    }]
+    # Optional: Pass the parameter space yourself
+    # space = [{
+    #     "name": "LiNO3_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }, {
+    #     "name": "Li2SO4_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }, {
+    #     "name": "NaClO4_vol",
+    #     "type": "float",
+    #     "min": 0,
+    #     "max": 7
+    # }]
 
-    domain_config = load_config({"domain": domain_vars})
+    df_search = DragonflySearch(
+        optimizer="bandit",
+        domain="euclidean",
+        # space=space,  # If you want to set the space manually
+    )
+    df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
-    func_caller = EuclideanFunctionCaller(
-        None, domain_config.domain.list_of_domains[0])
-    optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-    algo = DragonflySearch(optimizer, metric="objective", mode="max")
-    scheduler = AsyncHyperBandScheduler(metric="objective", mode="max")
+    scheduler = AsyncHyperBandScheduler()
     tune.run(
         objective,
+        metric="objective",
+        mode="max",
         name="dragonfly_search",
-        search_alg=algo,
+        search_alg=df_search,
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

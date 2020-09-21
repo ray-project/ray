@@ -122,7 +122,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
-                        std::function<void(int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback);
 
   /// Register a new driver.
   ///
@@ -134,7 +134,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return If the registration is successful.
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
                         const JobID &job_id, const rpc::JobConfig &job_config,
-                        std::function<void(int)> send_reply_callback);
+                        std::function<void(Status, int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
   ///

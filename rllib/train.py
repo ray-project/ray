@@ -208,8 +208,8 @@ def run(args, parser):
     run_experiments(
         experiments,
         scheduler=_make_scheduler(args),
-        queue_trials=args.queue_trials,
         resume=args.resume,
+        queue_trials=args.queue_trials,
         verbose=verbose,
         concurrent=True)
 

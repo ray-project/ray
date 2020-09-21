@@ -25,6 +25,10 @@ ray.remote
 
 .. autofunction:: ray.remote
 
+.. autofunction:: ray.remote_function.RemoteFunction.options
+
+.. autofunction:: ray.actor.ActorClass.options
+
 .. _ray-get-ref:
 
 ray.get
@@ -87,6 +91,14 @@ ray.util.ActorPool
 .. autoclass:: ray.util.ActorPool
    :members:
 
+ray.util.queue.Queue
+~~~~~~~~~~~~~~~~~~~~
+
+.. _ray-queue-ref:
+
+.. autoclass:: ray.util.queue.Queue
+   :members:
+
 .. _ray-nodes-ref:
 
 ray.nodes
@@ -114,6 +126,41 @@ ray.available_resources
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.available_resources
+
+ray.cross_language
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.java_function
+
+.. autofunction:: ray.java_actor_class
+
+.. _ray-placement-group-ref:
+
+Placement Group APIs
+--------------------
+
+placement_group
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.placement_group
+
+
+PlacementGroup (class)
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.util.placement_group.PlacementGroup
+   :members:
+
+placement_group_table
+~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.placement_group_table
+
+
+remove_placement_group
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.remove_placement_group
 
 Experimental APIs
 -----------------

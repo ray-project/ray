@@ -197,7 +197,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 RAY_CONFIG(int, num_workers_per_process_python, 1)
 
 /// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
+RAY_CONFIG(int, num_workers_per_process_java, 1)
 
 /// Number of workers per CPP worker process
 RAY_CONFIG(int, num_workers_per_process_cpp, 1)
@@ -205,8 +205,8 @@ RAY_CONFIG(int, num_workers_per_process_cpp, 1)
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
-/// Maximum number of items in one batch to scan from GCS storage.
-RAY_CONFIG(uint32_t, maximum_gcs_scan_batch_size, 1000)
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
@@ -247,7 +247,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)

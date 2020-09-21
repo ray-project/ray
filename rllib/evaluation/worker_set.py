@@ -39,7 +39,7 @@ class WorkerSet:
                  _setup: bool = True):
         """Create a new WorkerSet and initialize its workers.
 
-        Arguments:
+        Args:
             env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
                 that returns env given env config.
             policy (Optional[Type[Policy]]): A rllib.policy.Policy class.
@@ -98,9 +98,10 @@ class WorkerSet:
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
-            "memory": self._remote_config["memory_per_worker"],
-            "object_store_memory": self._remote_config[
-                "object_store_memory_per_worker"],
+            # memory=0 is an error, but memory=None means no limits.
+            "memory": self._remote_config["memory_per_worker"] or None,
+            "object_store_memory": self.
+            _remote_config["object_store_memory_per_worker"] or None,
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote

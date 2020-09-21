@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Optional
 
 from ax.service.ax_client import AxClient
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
@@ -56,9 +56,34 @@ class AxSearch(Searcher):
         use_early_stopped_trials: Deprecated.
         max_concurrent (int): Deprecated.
 
+    Tune automatically converts search spaces to Ax's format:
+
     .. code-block:: python
 
-        from ax.service.ax_client import AxClient
+        from ray import tune
+        from ray.tune.suggest.ax import AxSearch
+
+        config = {
+            "x1": tune.uniform(0.0, 1.0),
+            "x2": tune.uniform(0.0, 1.0)
+        }
+
+        def easy_objective(config):
+            for i in range(100):
+                intermediate_result = config["x1"] + config["x2"] * i
+                tune.report(score=intermediate_result)
+
+        ax_search = AxSearch(objective_name="score")
+        tune.run(
+            config=config,
+            easy_objective,
+            search_alg=ax_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
+    .. code-block:: python
+
         from ray import tune
         from ray.tune.suggest.ax import AxSearch
 
@@ -72,23 +97,23 @@ class AxSearch(Searcher):
                 intermediate_result = config["x1"] + config["x2"] * i
                 tune.report(score=intermediate_result)
 
-        client = AxClient()
-        algo = AxSearch(space=parameters, objective_name="score")
-        tune.run(easy_objective, search_alg=algo)
+        ax_search = AxSearch(space=parameters, objective_name="score")
+        tune.run(easy_objective, search_alg=ax_search)
 
     """
 
     def __init__(self,
-                 space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
-                 parameter_constraints=None,
-                 outcome_constraints=None,
-                 ax_client=None,
-                 use_early_stopped_trials=None,
-                 max_concurrent=None):
+                 space: Optional[List[Dict]] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 parameter_constraints: Optional[List] = None,
+                 outcome_constraints: Optional[List] = None,
+                 ax_client: Optional[AxClient] = None,
+                 use_early_stopped_trials: Optional[bool] = None,
+                 max_concurrent: Optional[int] = None):
         assert ax is not None, "Ax must be installed!"
-        assert mode in ["min", "max"], "`mode` must be one of ['min', 'max']"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
         super(AxSearch, self).__init__(
             metric=metric,
@@ -152,7 +177,8 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
-    def set_search_properties(self, metric, mode, config):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -164,7 +190,7 @@ class AxSearch(Searcher):
         self.setup_experiment()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._ax:
             raise RuntimeError(
                 "Trying to sample a configuration from {}, but no search "

@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import socket
+import tempfile
 import time
 
 import numpy as np
@@ -12,6 +13,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
@@ -255,9 +257,6 @@ def test_not_logging_to_driver(shutdown_only):
     assert len(err_lines) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
@@ -685,6 +684,104 @@ Blacklisted:     No
     assert constraints_dict == expected_dict
 
     assert resource_spec._constraints_from_gpu_info(None) == {}
+
+
+def test_accelerator_type_api(shutdown_only):
+    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+    ray.init(num_cpus=4, resources={resource_name: 1})
+
+    quantity = 1
+
+    @ray.remote(accelerator_type=v100)
+    def decorated_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(decorated_func.remote(quantity))
+
+    def via_options_func(quantity):
+        return ray.available_resources()[resource_name] < quantity
+
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
+
+    @ray.remote(accelerator_type=v100)
+    class DecoratedActor:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    class ActorWithOptions:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    decorated_actor = DecoratedActor.remote()
+    # Avoid a race condition where the actor hasn't been initialized and
+    # claimed the resources yet.
+    ray.get(decorated_actor.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
+
+    quantity = ray.available_resources()[resource_name]
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
+    ray.get(with_options.initialized.remote())
+    assert ray.available_resources()[resource_name] < quantity
+
+
+def test_detect_docker_cpus():
+    # No limits set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 64
+
+    # No cpuset used
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-10,20,50-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 26
+
+    # Quota set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("42")
+        period_file.write("100")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 0.42
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ namespace api {
 NativeRayRuntime::NativeRayRuntime(std::shared_ptr<RayConfig> config) {
   config_ = config;
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore(*this));
-  task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter(*this));
+  task_submitter_ = std::unique_ptr<TaskSubmitter>(new NativeTaskSubmitter());
   task_executor_ = std::unique_ptr<TaskExecutor>(new TaskExecutor(*this));
 }
 

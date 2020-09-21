@@ -127,7 +127,7 @@ tune_search = TuneSearchCV(
     clf,
     parameter_grid,
     search_optimization="bayesian",
-    n_iter=3,
+    n_trials=3,
     early_stopping=True,
     max_iters=10,
 )

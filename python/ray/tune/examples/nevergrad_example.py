@@ -6,6 +6,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.nevergrad import NevergradSearch
 
@@ -28,7 +29,7 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from nevergrad.optimization import optimizerlib
+    import nevergrad as ng
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -36,27 +37,37 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
     ray.init()
 
-    config = {
+    # The config will be automatically converted to Nevergrad's search space
+    tune_kwargs = {
         "num_samples": 10 if args.smoke_test else 50,
         "config": {
             "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
         }
     }
-    instrumentation = 2
-    parameter_names = ["height", "width"]
-    # With nevergrad v0.2.0+ the following is also possible:
-    # from nevergrad import instrumentation as inst
-    # instrumentation = inst.Instrumentation(
-    #     height=inst.var.Array(1).bounded(0, 200).asfloat(),
-    #     width=inst.var.OrderedDiscrete([0, 10, 20, 30, 40, 50]))
-    # parameter_names = None  # names are provided by the instrumentation
-    optimizer = optimizerlib.OnePlusOne(instrumentation)
+
+    # Optional: Pass the parameter space yourself
+    # space = ng.p.Dict(
+    #     width=ng.p.Scalar(lower=0, upper=20),
+    #     height=ng.p.Scalar(lower=-100, upper=100),
+    #     activation=ng.p.Choice(choices=["relu", "tanh"])
+    # )
+
     algo = NevergradSearch(
-        optimizer, parameter_names, metric="mean_loss", mode="min")
-    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
+        optimizer=ng.optimizers.OnePlusOne,
+        # space=space,  # If you want to set the space manually
+    )
+    algo = ConcurrencyLimiter(algo, max_concurrent=4)
+
+    scheduler = AsyncHyperBandScheduler()
+
     tune.run(
         easy_objective,
+        metric="mean_loss",
+        mode="min",
         name="nevergrad",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        **tune_kwargs)

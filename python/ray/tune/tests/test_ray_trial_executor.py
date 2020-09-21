@@ -16,7 +16,7 @@ from ray.cluster_utils import Cluster
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
         self.trial_executor = RayTrialExecutor(queue_trials=False)
-        ray.init()
+        ray.init(num_cpus=2, ignore_reinit_error=True)
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):
@@ -170,7 +170,14 @@ class RayTrialExecutorTest(unittest.TestCase):
     def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
-        return suggester.next_trials()
+        trials = []
+        while not suggester.is_finished():
+            trial = suggester.next_trial()
+            if trial:
+                trials.append(trial)
+            else:
+                break
+        return trials
 
     def process_trial_save(self, trial):
         """Simulates trial runner save."""
@@ -182,8 +189,6 @@ class RayTrialExecutorTest(unittest.TestCase):
 
 class RayExecutorQueueTest(unittest.TestCase):
     def setUp(self):
-        self.trial_executor = RayTrialExecutor(
-            queue_trials=True, refresh_period=0)
         self.cluster = Cluster(
             initialize_head=True,
             connect=True,
@@ -193,6 +198,8 @@ class RayExecutorQueueTest(unittest.TestCase):
                     "num_heartbeats_timeout": 10
                 }
             })
+        self.trial_executor = RayTrialExecutor(
+            queue_trials=True, refresh_period=0)
         # Pytest doesn't play nicely with imports
         _register_all()
 
@@ -247,8 +254,8 @@ class RayExecutorQueueTest(unittest.TestCase):
 
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):
-        self.trial_executor = RayTrialExecutor(queue_trials=False)
         ray.init(local_mode=True)
+        self.trial_executor = RayTrialExecutor(queue_trials=False)
 
     def tearDown(self):
         ray.shutdown()

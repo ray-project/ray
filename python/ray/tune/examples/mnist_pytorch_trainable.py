@@ -65,9 +65,11 @@ class TrainMNIST(tune.Trainable):
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(address=args.ray_address, num_cpus=6 if args.smoke_test else None)
-    sched = ASHAScheduler(metric="mean_accuracy")
+    sched = ASHAScheduler()
     analysis = tune.run(
         TrainMNIST,
+        metric="mean_accuracy",
+        mode="max",
         scheduler=sched,
         stop={
             "mean_accuracy": 0.95,

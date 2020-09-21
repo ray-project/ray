@@ -253,5 +253,35 @@ ray.shutdown()
     assert worker2.pid == get_workers()[0].pid
 
 
+def test_worker_registration_failure_after_driver_exit(shutdown_only):
+    info = ray.init(num_cpus=1, _system_config={"enable_multi_tenancy": True})
+
+    driver_code = """
+import ray
+import time
+
+
+ray.init(address="{}")
+
+@ray.remote
+def foo():
+    pass
+
+[foo.remote() for _ in range(100)]
+
+ray.shutdown()
+    """.format(info["redis_address"])
+
+    wait_for_condition(lambda: len(get_workers()) == 2)
+    before = len(get_workers())
+    assert before == 1
+
+    run_string_as_driver(driver_code)
+
+    # wait for a while to let workers register
+    time.sleep(2)
+    wait_for_condition(lambda: len(get_workers()) == before)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

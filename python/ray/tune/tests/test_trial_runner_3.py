@@ -228,19 +228,18 @@ class TrialRunnerTest3(unittest.TestCase):
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
 
-            def next_trials(self):
+            def next_trial(self):
                 spec = self._experiment.spec
-                trials = []
+                trial = None
                 if self._index < spec["num_samples"]:
                     trial = Trial(
                         spec.get("run"), stopping_criterion=spec.get("stop"))
-                    trials.append(trial)
                 self._index += 1
 
                 if self._index > 4:
                     self.set_finished()
 
-                return trials
+                return trial
 
             def suggest(self, trial_id):
                 return {}
@@ -385,10 +384,7 @@ class TrialRunnerTest3(unittest.TestCase):
         assert trials[0].status == Trial.ERROR
         del runner
 
-        new_runner = TrialRunner(
-            run_errored_only=False,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+        new_runner = TrialRunner(resume=True, local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR in (t.status for t in new_runner.get_trials())
 
@@ -418,9 +414,7 @@ class TrialRunnerTest3(unittest.TestCase):
         del runner
 
         new_runner = TrialRunner(
-            run_errored_only=True,
-            resume=True,
-            local_checkpoint_dir=self.tmpdir)
+            resume="ERRORED_ONLY", local_checkpoint_dir=self.tmpdir)
         assert len(new_runner.get_trials()) == 3
         assert Trial.ERROR not in (t.status for t in new_runner.get_trials())
         # The below is just a check for standard behavior.
@@ -545,7 +539,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()
 
     def testCheckpointWithFunction(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial(
             "__fake",
             config={"callbacks": {
@@ -570,7 +565,8 @@ class TrialRunnerTest3(unittest.TestCase):
                         and fname.endswith(".json"))
                        for fname in os.listdir(cdir))
 
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
@@ -628,7 +624,7 @@ class SearchAlgorithmTest(unittest.TestCase):
         searcher = TestSuggestion()
         alg = SearchGenerator(searcher)
         alg.add_configurations({"test": {"run": "__fake"}})
-        trial = alg.next_trials()[0]
+        trial = alg.next_trial()
         self.assertTrue("e=5" in trial.experiment_tag)
         self.assertTrue("d=4" in trial.experiment_tag)
 

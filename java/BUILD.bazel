@@ -13,7 +13,6 @@ all_modules = [
     "api",
     "runtime",
     "test",
-    "tutorial",
 ]
 
 java_import(
@@ -86,15 +85,6 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:org_testng_testng",
         "@maven//:redis_clients_jedis",
-    ],
-)
-
-define_java_module(
-    name = "tutorial",
-    deps = [
-        ":io_ray_ray_api",
-        ":io_ray_ray_runtime",
-        "@maven//:com_google_guava_guava",
     ],
 )
 
@@ -231,7 +221,6 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@
     """,
@@ -264,6 +253,13 @@ genrule(
         WORK_DIR="$$(pwd)"
         rm -rf "$$WORK_DIR/python/ray/jars" && mkdir -p "$$WORK_DIR/python/ray/jars"
         cp -f $(location //java:ray_dist_deploy.jar) "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        chmod +w "$$WORK_DIR/python/ray/jars/ray_dist.jar"
+        zip -d "$$WORK_DIR/python/ray/jars/ray_dist.jar" \
+            native/*/gcs_server \
+            native/*/libray_redis_module.so \
+            native/*/plasma_store_server \
+            native/*/raylet \
+            native/*/redis-server
         date > $@
     """,
     local = 1,

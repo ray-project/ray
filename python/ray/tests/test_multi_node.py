@@ -8,8 +8,22 @@ import ray
 from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
-    wait_for_children_of_pid_to_exit, kill_process_by_name, Semaphore,
-    init_error_pubsub, get_error_message)
+    wait_for_children_of_pid_to_exit, wait_for_condition, kill_process_by_name,
+    Semaphore, init_error_pubsub, get_error_message)
+
+
+def test_remote_raylet_cleanup(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    def remote_raylets_dead():
+        return not cluster.remaining_processes_alive()
+
+    cluster.remove_node(cluster.head_node, allow_graceful=False)
+    wait_for_condition(remote_raylets_dead)
 
 
 def test_error_isolation(call_ray_start):
@@ -401,23 +415,18 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["start", "--head", "--num-gpus", "100"])
     check_call_ray(["stop"])
 
-    # Test starting Ray with the max redis clients specified.
-    check_call_ray(["start", "--head", "--redis-max-clients", "100"])
+    # Test starting Ray with redis shard ports specified.
+    check_call_ray(
+        ["start", "--head", "--redis-shard-ports", "6380,6381,6382"])
     check_call_ray(["stop"])
 
-    if "RAY_USE_NEW_GCS" not in os.environ:
-        # Test starting Ray with redis shard ports specified.
-        check_call_ray(
-            ["start", "--head", "--redis-shard-ports", "6380,6381,6382"])
-        check_call_ray(["stop"])
-
-        # Test starting Ray with all arguments specified.
-        check_call_ray([
-            "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-            "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus",
-            "0", "--redis-max-clients", "100", "--resources", "{\"Custom\": 1}"
-        ])
-        check_call_ray(["stop"])
+    # Test starting Ray with all arguments specified.
+    check_call_ray([
+        "start", "--head", "--redis-shard-ports", "6380,6381,6382",
+        "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus", "0",
+        "--resources", "{\"Custom\": 1}"
+    ])
+    check_call_ray(["stop"])
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):

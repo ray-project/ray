@@ -63,6 +63,7 @@ def test_basic(ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     address_info = ray_start_with_dashboard
+    node_id = address_info["node_id"]
     address = address_info["redis_address"]
     address = address.split(":")
     assert len(address) == 2
@@ -78,7 +79,9 @@ def test_basic(ray_start_with_dashboard):
     dashboard_proc_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][
         0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
-    assert dashboard_proc.status() == psutil.STATUS_RUNNING
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING
+    ]
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
 
@@ -137,8 +140,7 @@ def test_basic(ray_start_with_dashboard):
     dashboard_rpc_address = client.get(
         dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
     assert dashboard_rpc_address is not None
-    key = "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                        address[0])
+    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
     agent_ports = client.get(key)
     assert agent_ports is not None
 
@@ -165,10 +167,10 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             dump_data = dump_info["data"]
             assert len(dump_data["nodes"]) == 1
             assert len(dump_data["agents"]) == 1
-            assert len(dump_data["hostnameToIp"]) == 1
-            assert len(dump_data["ipToHostname"]) == 1
+            assert len(dump_data["nodeIdToIp"]) == 1
+            assert len(dump_data["nodeIdToHostname"]) == 1
             assert dump_data["nodes"].keys() == dump_data[
-                "ipToHostname"].keys()
+                "nodeIdToHostname"].keys()
 
             response = requests.get(webui_url + "/test/notified_agents")
             response.raise_for_status()
@@ -213,7 +215,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             dump_data = dump_info["data"]
             assert len(dump_data["agents"]) == 1
-            ip, ports = next(iter(dump_data["agents"].items()))
+            node_id, ports = next(iter(dump_data["agents"].items()))
+            ip = ray_start_with_dashboard["node_ip_address"]
             http_port, grpc_port = ports
 
             response = requests.get(

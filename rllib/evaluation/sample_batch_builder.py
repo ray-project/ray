@@ -141,7 +141,7 @@ class MultiAgentSampleBatchBuilder:
                    **values: Any) -> None:
         """Add the given dictionary (row) of values to this batch.
 
-        Arguments:
+        Args:
             agent_id (obj): Unique id for the agent we are adding values for.
             policy_id (obj): Unique id for policy controlling the agent.
             values (dict): Row of values to add for this agent.

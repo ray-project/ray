@@ -6,6 +6,7 @@ from gym.spaces import Discrete, Box
 import numpy as np
 import random
 
+import ray
 from ray import tune
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -40,6 +41,7 @@ class SimpleContextualBandit(gym.Env):
 
 
 if __name__ == "__main__":
+    ray.init(num_cpus=3)
     args = parser.parse_args()
 
     stop = {

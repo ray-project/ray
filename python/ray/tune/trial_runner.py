@@ -19,7 +19,7 @@ from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.utils import warn_if_slow, flatten_dict
+from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
 from ray.tune.web_server import TuneServer
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.util.debug import log_once
@@ -95,7 +95,6 @@ class TrialRunner:
         search_alg (SearchAlgorithm): SearchAlgorithm for generating
             Trial objects.
         scheduler (TrialScheduler): Defaults to FIFOScheduler.
-        launch_web_server (bool): Flag for starting TuneServer
         local_checkpoint_dir (str): Path where
             global checkpoints are stored and restored from.
         remote_checkpoint_dir (str): Remote path where
@@ -110,10 +109,6 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
-        run_errored_only (bool): Resets and reruns failed trials, assuming
-            the provided Trainable is the same. Previous trial artifacts
-            will be left untouched. Only to be used with
-            `resume` enabled. Raises ValueError otherwise.
         verbose (bool): Flag for verbosity. If False, trial results
             will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
@@ -122,23 +117,21 @@ class TrialRunner:
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
-    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT"]
+    VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"]
     RAISE = "RAISE"
 
     def __init__(self,
                  search_alg=None,
                  scheduler=None,
-                 launch_web_server=False,
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
                  sync_to_cloud=None,
                  stopper=None,
                  resume=False,
-                 server_port=TuneServer.DEFAULT_PORT,
+                 server_port=None,
                  fail_fast=False,
-                 run_errored_only=False,
                  verbose=True,
-                 checkpoint_period=10,
+                 checkpoint_period=None,
                  trial_executor=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -168,7 +161,7 @@ class TrialRunner:
 
         self._server = None
         self._server_port = server_port
-        if launch_web_server:
+        if server_port is not None:
             self._server = TuneServer(self, self._server_port)
 
         self._trials = []
@@ -187,8 +180,11 @@ class TrialRunner:
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
+            errored_only = False
+            if isinstance(resume, str):
+                errored_only = resume.upper() == "ERRORED_ONLY"
             try:
-                self.resume(run_errored_only=run_errored_only)
+                self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
                 if self._verbose:
@@ -198,15 +194,12 @@ class TrialRunner:
                     raise
                 logger.info("Restarting experiment.")
         else:
-            if run_errored_only:
-                raise ValueError(
-                    "'run_errored_only' should only be used with 'resume'. "
-                    f"Got: resume={resume}, "
-                    f"run_errored_only={run_errored_only}")
             logger.debug("Starting a new experiment.")
 
         self._start_time = time.time()
         self._last_checkpoint_time = -float("inf")
+        if checkpoint_period is None:
+            checkpoint_period = env_integer("TUNE_GLOBAL_CHECKPOINT_S", 10)
         self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
             self._start_time).strftime("%Y-%m-%d_%H-%M-%S")
@@ -228,8 +221,10 @@ class TrialRunner:
         """Checks whether to resume experiment.
 
         Args:
-            resume_type: One of True, "REMOTE", "LOCAL", "PROMPT".
+            resume_type: One of True, "REMOTE", "LOCAL",
+                "PROMPT", "ERRORED_ONLY".
         """
+        # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
             return False
         assert resume_type in self.VALID_RESUME_TYPES, (
@@ -238,7 +233,7 @@ class TrialRunner:
         # Not clear if we need this assertion, since we should always have a
         # local checkpoint dir.
         assert self._local_checkpoint_dir or self._remote_checkpoint_dir
-        if resume_type in [True, "LOCAL", "PROMPT"]:
+        if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError("Called resume when no checkpoint exists "
                                  "in local directory.")
@@ -739,19 +734,19 @@ class TrialRunner:
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
-        trials = self._search_alg.next_trials()
-        if blocking and not trials:
+        trial = self._search_alg.next_trial()
+        if blocking and not trial:
             start = time.time()
             # Checking `is_finished` instead of _search_alg.is_finished
             # is fine because blocking only occurs if all trials are
             # finished and search_algorithm is not yet finished
-            while (not trials and not self.is_finished()
+            while (not trial and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")
-                trials = self._search_alg.next_trials()
+                trial = self._search_alg.next_trial()
                 time.sleep(1)
 
-        for trial in trials:
+        if trial:
             self.add_trial(trial)
 
     def request_stop_trial(self, trial):

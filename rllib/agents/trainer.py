@@ -23,7 +23,6 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -69,8 +68,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Deprecated; renamed to `rollout_fragment_length` in 0.8.4.
-    "sample_batch_size": DEPRECATED_VALUE,
     # Whether to rollout "complete_episodes" or "truncate_episodes" to
     # `rollout_fragment_length` length unrolls. Episode truncation guarantees
     # evenly sized batches, but increases variance as the reward-to-go will
@@ -160,9 +157,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # makes it slightly harder to debug since Python code won't be evaluated
     # after the initial eager pass. Only possible if framework=tfe.
     "eager_tracing": False,
-    # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect if eager is enabled.
-    "no_eager_on_workers": False,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into
@@ -379,10 +373,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
-
-    # Deprecated keys:
-    "use_pytorch": DEPRECATED_VALUE,  # Replaced by `framework=torch`.
-    "eager": DEPRECATED_VALUE,  # Replaced by `framework=tfe`.
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -585,18 +575,6 @@ class Trainer(Trainable):
                                                     config)
 
         # Check and resolve DL framework settings.
-        if "use_pytorch" in self.config and \
-                self.config["use_pytorch"] != DEPRECATED_VALUE:
-            deprecation_warning("use_pytorch", "framework=torch", error=False)
-            if self.config["use_pytorch"]:
-                self.config["framework"] = "torch"
-            self.config.pop("use_pytorch")
-        if "eager" in self.config and self.config["eager"] != DEPRECATED_VALUE:
-            deprecation_warning("eager", "framework=tfe", error=False)
-            if self.config["eager"]:
-                self.config["framework"] = "tfe"
-            self.config.pop("eager")
-
         # Enable eager/tracing support.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
@@ -792,7 +770,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (TensorStructType): observation from the environment.
             state (List[TensorStructType]): RNN hidden state, if any. If state
                 is not None, then all of compute_single_action(...) is returned
@@ -853,7 +831,7 @@ class Trainer(Trainable):
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
 
-        Arguments:
+        Args:
             observation (obj): observation from the environment.
             state (dict): RNN hidden state, if any. If state is not None,
                 then all of compute_single_action(...) is returned
@@ -942,7 +920,7 @@ class Trainer(Trainable):
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
         return self.workers.local_worker().get_policy(policy_id)
@@ -951,7 +929,7 @@ class Trainer(Trainable):
     def get_weights(self, policies: List[PolicyID] = None) -> dict:
         """Return a dictionary of policy ids to weights.
 
-        Arguments:
+        Args:
             policies (list): Optional list of policies to return weights for,
                 or None for all policies.
         """
@@ -961,7 +939,7 @@ class Trainer(Trainable):
     def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
 
-        Arguments:
+        Args:
             weights (dict): Map of policy ids to weights to set.
         """
         self.workers.local_worker().set_weights(weights)
@@ -972,7 +950,7 @@ class Trainer(Trainable):
                             policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export policy model with given policy_id to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             policy_id (string): Optional policy id to export.
 
@@ -991,7 +969,7 @@ class Trainer(Trainable):
                                  policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Export tensorflow policy model checkpoint to local directory.
 
-        Arguments:
+        Args:
             export_dir (string): Writable local directory.
             filename_prefix (string): file name prefix of checkpoint files.
             policy_id (string): Optional policy id to export.
@@ -1011,7 +989,7 @@ class Trainer(Trainable):
                                     policy_id: PolicyID = DEFAULT_POLICY_ID):
         """Imports a policy's model with given policy_id from a local h5 file.
 
-        Arguments:
+        Args:
             import_file (str): The h5 file to import from.
             policy_id (string): Optional policy id to import into.
 
@@ -1050,17 +1028,6 @@ class Trainer(Trainable):
                               _allow_unknown_configs: Optional[bool] = None
                               ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
-        # Error if trainer default has deprecated value.
-        if config1["sample_batch_size"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length", error=True)
-        # Warning if user override config has deprecated value.
-        if ("sample_batch_size" in config2
-                and config2["sample_batch_size"] != DEPRECATED_VALUE):
-            deprecation_warning(
-                "sample_batch_size", new="rollout_fragment_length")
-            config2["rollout_fragment_length"] = config2["sample_batch_size"]
-            del config2["sample_batch_size"]
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]
 
@@ -1088,19 +1055,6 @@ class Trainer(Trainable):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if "policy_graphs" in config["multiagent"]:
-            deprecation_warning("policy_graphs", "policies")
-            # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop(
-                "policy_graphs")
-        if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=0|1", error=True)
-        if "gpu_fraction" in config:
-            deprecation_warning(
-                "gpu_fraction", "num_gpus=<fraction>", error=True)
-        if "use_gpu_for_workers" in config:
-            deprecation_warning(
-                "use_gpu_for_workers", "num_gpus_per_worker=1", error=True)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
@@ -1202,6 +1156,13 @@ class Trainer(Trainable):
                 r.restore.remote(remote_state)
         if "optimizer" in state:
             self.optimizer.restore(state["optimizer"])
+
+    @staticmethod
+    def with_updates(**overrides) -> Type["Trainer"]:
+        raise NotImplementedError(
+            "`with_updates` may only be called on Trainer sub-classes "
+            "that were generated via the `ray.rllib.agents.trainer_template."
+            "build_trainer()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType]):
         if isinstance(env_object, str):

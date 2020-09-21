@@ -69,19 +69,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
     JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     LOGGER.debug("Native libraries loaded.");
-    // Reset library path at runtime.
-    resetLibraryPath(rayConfig);
     try {
       FileUtils.forceMkdir(new File(rayConfig.logDir));
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
-  }
-
-  private static void resetLibraryPath(RayConfig rayConfig) {
-    String separator = System.getProperty("path.separator");
-    String libraryPath = String.join(separator, rayConfig.libraryPath);
-    JniUtils.resetLibraryPath(libraryPath);
   }
 
   public RayNativeRuntime(RayConfig rayConfig) {
@@ -157,7 +149,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           JobConfig.newBuilder()
               .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
               .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-              .putAllWorkerEnv(rayConfig.workerEnv);
+              .putAllWorkerEnv(rayConfig.workerEnv)
+              .addAllCodeSearchPath(rayConfig.codeSearchPath);
       serializedJobConfig = jobConfigBuilder.build().toByteArray();
     }
 
