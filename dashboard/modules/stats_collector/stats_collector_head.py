@@ -1,6 +1,6 @@
 import asyncio
 import logging
-
+import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
@@ -189,6 +189,52 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
+    @async_loop_forever(LOG_INFO_UPDATE_INTERVAL_SECONDS)
+    async def _update_log_info(self):
+        aioredis_client = self._dashboard_head.aioredis_client
+        receiver = Receiver()
+
+        key = f"{ray.gcs_utils.LOG_FILE_CHANNEL}:*"
+        pattern = receiver.pattern(key)
+        await aioredis_client.psubscribe(pattern)
+        logger.info("Subscribed to %s", key)
+
+        async for sender, msg in receiver.iter():
+            try:
+                data = json.loads(ray.utils.decode(msg[1]))
+                ip = data["ip"]
+                pid = str(data["pid"])
+                if not ip in DataSource.ip_and_pid_to_logs:
+                    DataSource.ip_and_pid_to_logs[ip] = {}
+                if not pid in DataSource.ip_and_pid_to_logs[ip]:
+                    DataSource.ip_and_pid_to_logs[ip][pid] = []
+                DataSource.ip_and_pid_to_logs[ip][pid].extend(data["lines"])
+            except Exception:
+                logger.exception("Error receiving actor info.")
+
+
+    @async_loop_forever(ERROR_INFO_UPDATE_INTERVAL_SECONDS)
+    async def _update_error_info(self):
+        aioredis_client = self._dashboard_head.aioredis_client
+        receiver = Receiver()
+
+        key = f"{ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN}:*"
+        pattern = receiver.pattern(key)
+        await aioredis_client.psubscribe(pattern)
+        logger.info("Subscribed to %s", key)
+
+        async for sender, msg in receiver.iter():
+            try:
+                _, data = msg
+                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
+                actor_info = ray.gcs_utils.ActorTableData.FromString(
+                    pubsub_message.data)
+                DataSource.actors[binary_to_hex(actor_info.actor_id)] = \
+                    actor_table_data_to_dict(actor_info)
+            except Exception:
+                logger.exception("Error receiving actor info.")
+
+        
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_job_info_stub = \
