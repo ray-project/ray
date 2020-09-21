@@ -357,6 +357,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// started.
   void TryStartIOWorkers(const Language &language, State &state);
 
+  /// Get all workers of the given process.
+  ///
+  /// \param process The process of workers.
+  /// \return The workers of the given process.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> GetWorkersByProcess(
+      const Process &process);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The soft limit of the number of registered workers.
@@ -396,11 +403,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order.
   std::list<std::shared_ptr<WorkerInterface>> idle_of_all_languages;
-
-  /// All workers that have been killed but been unregistered yet.
-  /// This field is used to calculate the size of running workers when trying to kill an
-  /// idle worker.
-  std::unordered_set<std::shared_ptr<WorkerInterface>> pending_unregistration_workers;
 };
 
 }  // namespace raylet
