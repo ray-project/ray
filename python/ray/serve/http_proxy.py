@@ -34,7 +34,7 @@ class HTTPProxy:
         self.request_counter = metrics.Count(
             "num_http_requests",
             description="The number of HTTP requests processed",
-            tags={"route": None})
+            tag_keys=("route"))
 
         self.router = Router()
         await self.router.setup(name, controller_name)
@@ -81,7 +81,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.record(1, {"route": current_path})
+        self.request_counter.with_tags({"route": current_path}).record(1)
 
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)

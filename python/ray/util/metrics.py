@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from ray._raylet import (
     Count as CythonCount,
@@ -20,14 +20,15 @@ class Metric:
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tags: Dict[str, Optional[str]] = None):
+                 tag_keys: Tuple[str] = None,
+                 default_tags: Dict[str, Optional[str]] = None):
         self._name = name
         self._description = description
         self._unit = ""
         # The default tags key-value pair.
-        self._tags = tags if tags else {}
+        self._default_tags = default_tags if default_tags else {}
         # Keys of tags.
-        self._tag_keys = self._tags.keys()
+        self._tag_keys = tag_keys if tag_keys else tuple()
         # The Cython metric class. This should be set in the child class.
         self._metric = None
         # This field is used to temporarily store tags for record method.
@@ -54,19 +55,14 @@ class Metric:
         self._tag_cache = tags
         return self
 
-    def record(self, value: float,
-               tags: Dict[str, Optional[str]] = None) -> None:
+    def record(self, value: float) -> None:
         """Record the metric point of the metric.
 
         Args:
             value(float): The value to be recorded as a metric point.
         """
-        if tags is not None:
-            self.with_tags(tags).record(value)
-            return
-
         assert self._metric is not None
-        default_tag_copy = self._tags.copy()
+        default_tag_copy = self._default_tags.copy()
         tags = default_tag_copy.update(self._tag_cache)
         self._metric.record(value, tags=tags)
         # We should reset tag cache. Otherwise, with_tags will be corrupted.
@@ -83,14 +79,16 @@ class Metric:
                 {
                     "name": "name",
                     "description": "desc"
-                    "tags": {}
+                    "tag_keys": ("ray.key")
+                    "default_tags": {"ray.key": "abc"}
                 }
                 \"""
         """
         return {
             "name": self._name,
             "description": self._description,
-            "tags": self._tags
+            "tag_keys": self._tag_keys,
+            "default_tags": self._default_tags
         }
 
 
@@ -102,17 +100,16 @@ class Count(Metric):
     Args:
         name(str): Name of the metric.
         description(str): Description of the metric.
-        tags(dict): Dictionary of tags of this metric.
-            {"key": "value"}, Key is the tag key of the metric and
-            Value is the default value of the tag. None indicates
-            that there's no default value.
+        tag_keys(tuple): Tag keys of the metric.
+        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tags: Dict[str, Optional[str]] = None):
-        super().__init__(name, description, tags)
+                 tag_keys: Tuple[str] = None,
+                 default_tags: Dict[str, Optional[str]] = None):
+        super().__init__(name, description, tag_keys, default_tags)
         self._metric = CythonCount(self._name, self._description, self._unit,
                                    self._tag_keys)
 
@@ -128,18 +125,17 @@ class Histogram(Metric):
         name(str): Name of the metric.
         description(str): Description of the metric.
         boundaries(list): Boundaries of histogram buckets.
-        tags(dict): Dictionary of tags of this metric.
-            {"key": "value"}, Key is the tag key of the metric and
-            Value is the default value of the tag. None indicates
-            that there's no default value.
+        tag_keys(tuple): Tag keys of the metric.
+        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
                  boundaries: List[float] = None,
-                 tags: Dict[str, Optional[str]] = None):
-        super().__init__(name, description, tags)
+                 tag_keys: Tuple[str] = None,
+                 default_tags: Dict[str, Optional[str]] = None):
+        super().__init__(name, description, tag_keys, default_tags)
         self.boundaries = boundaries if boundaries else []
         self._metric = CythonHistogram(self._name, self._description,
                                        self._unit, self.boundaries,
@@ -160,17 +156,16 @@ class Gauge(Metric):
     Args:
         name(str): Name of the metric.
         description(str): Description of the metric.
-        tags(dict): Dictionary of tags of this metric.
-            {"key": "value"}, Key is the tag key of the metric and
-            Value is the default value of the tag. None indicates
-            that there's no default value.
+        tag_keys(tuple): Tag keys of the metric.
+        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tags: Dict[str, Optional[str]] = None):
-        super().__init__(name, description, tags)
+                 tag_keys: Tuple[str] = None,
+                 default_tags: Dict[str, Optional[str]] = None):
+        super().__init__(name, description, tag_keys, default_tags)
         self._metric = CythonGauge(self._name, self._description, self._unit,
                                    self._tag_keys)
 
