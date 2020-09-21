@@ -10,14 +10,16 @@ Key Concepts
 
 * **Ray Nodes**: A Ray cluster consists of a **head node** and a set of **worker nodes**. The head node needs to be started first, and the worker nodes are given the address of the head node to form the cluster. The Ray cluster itself can also "auto-scale," meaning that it can interact with a Cloud Provider to request or release instances according to application workload.
 
-* **Ports**: Ray processes communicate via TCP ports. When starting a Ray cluster, either on prem or on the cloud, it is important to open the right ports so that Ray functions correctly.
+* **Ports**: Ray processes communicate via TCP ports. When starting a Ray cluster, either on prem or on the cloud, it is important to open the right ports so that Ray functions correctly. See :ref:`the Ray Ports documentation <ray-ports>` for more details.
 
 * **Ray Cluster Launcher**: The :ref:`Ray Cluster Launcher <ref-automatic-cluster>` is a simple tool that automatically provisions machines and launches a multi-node Ray cluster. You can use the cluster launcher on GCP, Amazon EC2, Azure, or even Kubernetes.
 
-Starting a Ray cluster
-----------------------
+Summary
+-------
 
-Clusters can be started with the :ref:`Cluster Launcher <ref-automatic-cluster>` or :ref:`manually <manual-cluster>`. You can also create a Ray cluster using a standard cluster manager such as :ref:`Kubernetes <ray-k8s-deploy>`, :ref:`YARN <ray-yarn-deploy>`, or :ref:`SLURM <ray-slurm-deploy>`.
+Clusters are started with the :ref:`Ray Cluster Launcher <ref-automatic-cluster>` or :ref:`manually <manual-cluster>`.
+
+You can also create a Ray cluster using a standard cluster manager such as :ref:`Kubernetes <ray-k8s-deploy>`, :ref:`YARN <ray-yarn-deploy>`, or :ref:`SLURM <ray-slurm-deploy>`.
 
 After a cluster is started, you need to connect your program to the Ray cluster.
 

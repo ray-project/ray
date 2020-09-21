@@ -183,7 +183,6 @@ additional outputs:
   called
 * ``trial_id``: Unique trial ID
 
-.. _tune-set-resources:
 
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~

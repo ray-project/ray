@@ -248,10 +248,10 @@ What's Next?
 
 Now that you have a working understanding of Tune, check out:
 
- * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
- * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
- * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
- * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
+* :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
+* :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
+* :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
+* :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
 
 
 Further Questions or Issues?

@@ -27,7 +27,7 @@ Take a look at any of the below tutorials to get started with Tune.
 .. customgalleryitem::
    :tooltip: A deep dive into Tune's workings.
    :figure: /images/tune.png
-   :description: :doc:`What happens when you call tune.run? <tune-lifecycle>`
+   :description: :doc:`How does Tune work? <tune-lifecycle>`
 
 .. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
