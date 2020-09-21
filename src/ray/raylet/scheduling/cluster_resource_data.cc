@@ -1,4 +1,4 @@
-#include "ray/raylet/scheduling/cluster_resource_helpers.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
