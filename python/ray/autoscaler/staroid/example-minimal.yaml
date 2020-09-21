@@ -56,7 +56,7 @@ provider:
     #      4-4. Switch Launch permission to 'Public' if required
     #   5. Change 'project' field to point your 
     #      repository and branch in this file
-    project: "GITHUB/open-datastudio/ray:master-staroid-with-provider"
+    project: "GITHUB/open-datastudio/ray:master-staroid"
 
     # 'spec.containers.image' field for ray-node and ray-worker will be
     # overrided by the image built from the 'project' field above.
@@ -66,7 +66,7 @@ provider:
     # Python version to use. One of '3.6.9', '3.7.7', '3.8.3'.
     # 'project' field above provides docker image for each python version.
     # Fork 'project' if you'd like to support other python versions.
-    python_version: 3.6.9
+    python_version: 3.7.7
 
     # Exposing external IP addresses for ray pods isn't currently supported.
     use_internal_ips: true
