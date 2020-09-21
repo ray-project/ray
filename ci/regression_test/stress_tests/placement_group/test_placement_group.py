@@ -1,4 +1,5 @@
-# This is stress test to run placement group. Please don't run it in the cluster
+# This is stress test to run placement group.
+# Please don't run it in the cluster
 # setup yet. This test uses the cluster util to simulate the
 # cluster environment.
 
@@ -10,11 +11,7 @@ from random import random
 import ray
 
 from ray.cluster_utils import Cluster
-from ray.util.placement_group import (
-    placement_group,
-    placement_group_table,
-    remove_placement_group
-)
+from ray.util.placement_group import (placement_group, remove_placement_group)
 
 # TODO(sang): Increase the number in the actual stress test.
 # This number should be divisible by 3.
@@ -28,8 +25,10 @@ num_pg = resource_quantity
 cluster = Cluster()
 nodes = []
 for _ in range(num_nodes):
-    nodes.append(cluster.add_node(
-        num_cpus=3, num_gpus=resource_quantity, resources=custom_resources))
+    nodes.append(
+        cluster.add_node(
+            num_cpus=3, num_gpus=resource_quantity,
+            resources=custom_resources))
 cluster.wait_for_nodes()
 
 ray.init(address=cluster.address)
@@ -79,18 +78,20 @@ def mock_task():
     time.sleep(0.1)
     return True
 
+
 @ray.remote
 class MockActor:
     def __init__(self):
         pass
+
 
 @ray.remote
 def pg_launcher(pre_created_pgs, num_pgs_to_create):
     pgs = []
     pgs += pre_created_pgs
     for i in range(num_pgs_to_create):
-        pgs.append(placement_group(
-            bundles, strategy="STRICT_SPREAD", name=str(i)))
+        pgs.append(
+            placement_group(bundles, strategy="STRICT_SPREAD", name=str(i)))
 
     pgs_removed = []
     pgs_unremoved = []
@@ -110,15 +111,16 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
         mock_task.options(placement_group=pg).remote()
         # else:
         #     MockActor.options(placement_group=pg).remote()
-    
+
     # Remove the rest of placement groups.
     for pg in pgs_removed:
         remove_placement_group(pg)
-    
+
     ray.get([pg.ready() for pg in pgs_unremoved], timeout=10)
     # Since placement groups are scheduled, remove them.
     for pg in pgs_unremoved:
         remove_placement_group(pg)
+
 
 pre_created_num_pgs = round(num_pg * 0.3)
 num_pgs_to_create = num_pg - pre_created_num_pgs
@@ -129,7 +131,8 @@ for i in range(3):
         placement_group(bundles, strategy="STRICT_SPREAD")
         for _ in range(pre_created_num_pgs // 3)
     ]
-    pg_launchers.append(pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
+    pg_launchers.append(
+        pg_launcher.remote(pre_created_pgs, num_pgs_to_create // 3))
 
 ray.get(pg_launchers)
 assert ray.cluster_resources()["GPU"] == num_nodes * resource_quantity
