@@ -747,6 +747,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
   EXPECT_EQ(resources.size(), 1);
   EXPECT_EQ(resources[0].resources_available_size(), 1);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
