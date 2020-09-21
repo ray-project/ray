@@ -145,6 +145,37 @@ Test that it works by running the following commands from your local machine:
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
+Staroid
+-------
+
+First, install the staroid client package (``pip install staroid``) then get `access token <https://staroid.com/settings/accesstokens>`_.
+Once you have an access token, you should be ready to launch your cluster.
+
+The provided `ray/python/ray/autoscaler/staroid/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/staroid/example-full.yaml>`__ cluster config file will create a cluster with
+
+- a Jupyter notebook running on head node.
+  (Staroid management console -> Kubernetes -> ``<your_ske_name>`` -> ``<ray_cluster_name>`` -> Click "notebook")
+- a shared nfs volume across all ray nodes mounted under ``/nfs`` directory.
+
+Test that it works by running the following commands from your local machine:
+
+.. code-block:: bash
+
+    # Configure access token through environment variable.
+    $ export STAROID_ACCESS_TOKEN=<your access token>
+
+    # Create or update the cluster. When the command finishes,
+    # you can attach a screen to the head node.
+    $ ray up ray/python/ray/autoscaler/staroid/example-full.yaml
+
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/staroid/example-full.yaml
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+    # Tear down the cluster
+    $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+
+
 .. _ray-launch-k8s:
 
 Kubernetes
