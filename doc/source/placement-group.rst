@@ -115,6 +115,18 @@ Let's see an example of using placement group. Note that this example is done wi
 
 Let's create a placement group. Recall that each bundle is a collection of resources, and tasks or actors can be scheduled on each bundle.
 
+.. note::
+
+  When specifying bundles,
+
+  - "CPU": is corresponding to num_cpus
+  - "GPU": is corresponding to num_gpus
+  - "MEM": is corresponding to memory
+  - Other resources are corresponding to custom resources.
+
+  Once placement group reserves resources, original resources are unavilable until placement group is removed. For example,
+  if you create {"CPU": 2} bundle on node A of 2 `num_cpus`, node A will not be able to non-placement group tasks and actors that require 2 `num_cpus`.
+
 .. code-block:: python
 
   gpu_bundle = {"GPU": 2}
@@ -162,7 +174,12 @@ Now, you can guarantee all gpu actors and extra_resource tasks are located on th
 because they are scheduled on a placement group with the STRICT_PACK strategy.
 
 Note that you must remove the placement group once you are finished with your application.
-Workers of actors and tasks that are scheduled on placement group will be all killed:
+Workers of actors and tasks that are scheduled on placement group will be all killed
+
+.. note::
+
+  Currently, if you lose placement group handle, there's no way to remove placement group. 
+  This will be fixed in the upcoming version.
 
 .. code-block:: python
 
@@ -194,7 +211,7 @@ Placement groups are pending creation if there are no nodes that can satisfy res
 
 If nodes that contain some bundles of a placement group die, bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
 
-Unlike actors and tasks, placement group is currently not fault tolerant yet. It is in progress.
+Unlike actors and tasks, placement group is currently not fault tolerant to GCS failures (head node failure) yet. But, it is fault tolerant to worker nodes failures (bundles on dead nodes are rescheduled).
 
 API Reference
 -------------
