@@ -467,7 +467,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if len(redis_addresses) > 0:
                 raise ConnectionError(
                     f"Ray is already running at {default_address}. "
-                    f" Please specify a different port using the `--port` command to `ray start`."
+                    f" Please specify a different port using the `--port`"
+                    f" command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
