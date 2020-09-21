@@ -13,7 +13,7 @@ max_workers: 2
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray:1.0.0" # e.g., rayproject/ray:0.8.7
+    image: "rayproject/ray:1.0.0" # e.g., rayproject/ray:1.0.0
     container_name: "ray_docker" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -21,12 +21,22 @@ docker:
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:0.8.7-gpu"
+    # head_image: "rayproject/ray:1.0.0-gpu"
     # head_run_options:
     #     - --runtime=nvidia
 
-    # worker_image: "rayproject/ray:0.8.7"
+    # worker_image: "rayproject/ray:1.0.0"
     # worker_run_options: []
+
+# The autoscaler will scale up the cluster to this target fraction of resource
+# usage. For example, if a cluster of 10 nodes is 100% busy and
+# target_utilization is 0.8, it would resize the cluster to 13. This fraction
+# can be decreased to increase the aggressiveness of upscaling.
+# This value must be less than 1.0 for scaling to happen.
+target_utilization_fraction: 0.8
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
 
 # Cloud-provider specific configuration.
 provider:
@@ -96,10 +106,11 @@ initialization_commands: []
 # List of common shell commands to run to set up containers.
 setup_commands: []
 
-# Custom commands that will be run on the head node container after common setup.
-head_setup_commands: []
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+    - pip install boto3>=1.4.8  # 1.4.8 adds InstanceMarketOptions
 
-# Custom commands that will be run on worker node containers after common setup.
+# Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
 
 # Command to start ray on the head node container. You don't need to change this.
