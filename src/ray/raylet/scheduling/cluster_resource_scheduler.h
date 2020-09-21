@@ -369,3 +369,4 @@ class ClusterResourceScheduler {
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+};
