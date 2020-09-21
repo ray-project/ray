@@ -554,7 +554,7 @@ def best_trial_str(trial, metric, parameter_columns=None):
         parameter_columns = parameter_columns.keys()
     params = {p: config.get(p) for p in parameter_columns}
     return f"Current best trial: {trial.trial_id} with {metric}={val} and " \
-           f"parameters = {params}"
+           f"parameters={params}"
 
 
 def _fair_filter_trials(trials_by_state, max_trials):

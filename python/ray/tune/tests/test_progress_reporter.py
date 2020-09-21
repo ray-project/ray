@@ -155,10 +155,10 @@ EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+"""
 
 EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
-                  "parameters = {'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
+                  "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
 
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
-                  "parameters = {'a': 4}"
+                  "parameters={'a': 4}"
 
 
 class ProgressReporterTest(unittest.TestCase):
