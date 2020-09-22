@@ -499,7 +499,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
 void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto process = worker->GetProcess();
+  const auto &process = worker->GetProcess();
   RAY_CHECK(process.IsValid());
 
   auto it = state.starting_worker_processes.find(process);
