@@ -154,7 +154,7 @@ DEFAULT_TEST_CONFIG_PATH = str(
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 def test_ray_start(configure_lang):
     runner = CliRunner()
@@ -167,7 +167,7 @@ def test_ray_start(configure_lang):
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -196,7 +196,7 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -225,7 +225,7 @@ def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -253,7 +253,7 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
@@ -285,7 +285,7 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
 # Unfortunately it will not be nice if your username is travis
 # and you're running on a Mac.
 @pytest.mark.skipif(
-    sys.platform != "linux" and "travis" in os.environ.get("USER", ""),
+    sys.platform != "linux",
     reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
