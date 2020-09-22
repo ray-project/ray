@@ -49,8 +49,6 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         self._enable_tensor_board = False
         self._errors = {}
 
-        super().__init__()
-
     @routes.get("/tune/info")
     async def tune_info(self, req) -> aiohttp.web.Response:
         stats = self.get_stats()
@@ -138,7 +136,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
                             self._trial_records[str(trial_id)][
                                 "status"] = "ERROR"
 
-    @async_loop_forever(tune_consts.reload_interval)
+    @async_loop_forever(tune_consts.TUNE_STATS_UPDATE_INTERVAL_SECONDS)
     def collect(self):
         """
         Collects and cleans data on the running Tune experiment from the
