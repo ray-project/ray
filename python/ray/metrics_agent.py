@@ -62,24 +62,14 @@ class MetricsAgent:
             columns = [label_key.key for label_key in descriptor.label_keys]
             start_time = timeseries[0].start_timestamp.seconds
 
-            if len(timeseries) == 0:
-                return
-
-            # Create a name with a pattern ray.[component].metric_name.
-            assert columns[0] == "Component"
-            # label values length should be more than 0 because
-            # we should always have components tag value.
-            component_name = timeseries[0].label_values[0].value
-            metric_name = f"{component_name}_{descriptor.name}"
-
             # Create the view and view_data
             measure = measure_module.BaseMeasure(
-                metric_name, descriptor.description, descriptor.unit)
+                descriptor.name, descriptor.description, descriptor.unit)
             view = self.view_manager.measure_to_view_map.get_view(
-                metric_name, None)
+                descriptor.name, None)
             if not view:
                 view = View(
-                    metric_name,
+                    descriptor.name,
                     descriptor.description,
                     columns,
                     measure,
