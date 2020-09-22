@@ -48,9 +48,7 @@ class TestSAC(unittest.TestCase):
     def test_sac_compilation(self):
         """Tests whether an SACTrainer can be built with all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
-        config["soft_horizon"] = True
         config["clip_actions"] = False
         config["normalize_actions"] = True
         config["learning_starts"] = 0
@@ -75,7 +73,6 @@ class TestSAC(unittest.TestCase):
         """Tests SAC loss function results across all frameworks."""
         config = sac.DEFAULT_CONFIG.copy()
         # Run locally.
-        config["num_workers"] = 0
         config["learning_starts"] = 0
         config["twin_q"] = False
         config["gamma"] = 0.99

@@ -209,9 +209,15 @@ class SACTFModel(TFModelV2):
         return self.action_model(model_out)
 
     def policy_variables(self):
-        """Return the list of variables for the policy net."""
+        """Return the list of variables for the policy net.
 
-        return list(self.action_model.variables)
+        This may include any variables present in the wrapping ModelV2 (e.g.
+        a Conv2D image preprocessor).
+        """
+
+        all_vars = set(self.trainable_variables()) - set(self.q_variables()) \
+                   - {self.log_alpha}
+        return list(all_vars)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
