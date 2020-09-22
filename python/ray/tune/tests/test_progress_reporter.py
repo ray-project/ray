@@ -8,15 +8,15 @@ from ray.test_utils import run_string_as_driver
 from ray.tune.trial import Trial
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (CLIReporter, _fair_filter_trials,
-                                        trial_progress_str)
+                                        best_trial_str, trial_progress_str)
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+------------+
 |   Trial name | status     | loc   |   a |   b |   metric_1 |
 |--------------+------------+-------+-----+-----+------------|
-|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00002 | RUNNING    | here  |   2 |   4 |        1   |
+|        00001 | PENDING    | here  |   1 |   2 |        0.5 |
 |        00000 | TERMINATED | here  |   0 |   0 |        0   |
 +--------------+------------+-------+-----+-----+------------+
 ... 2 more trials not shown (2 RUNNING)"""
@@ -26,11 +26,11 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+-----+---------+---------+
 |   Trial name | status     | loc   |   a |   b |   n/k/0 |   n/k/1 |
 |--------------+------------+-------+-----+-----+---------+---------|
-|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
-|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
 |        00002 | RUNNING    | here  |   2 |   4 |       2 |       4 |
 |        00003 | RUNNING    | here  |   3 |   6 |       3 |       6 |
 |        00004 | RUNNING    | here  |   4 |   8 |       4 |       8 |
+|        00001 | PENDING    | here  |   1 |   2 |       1 |       2 |
+|        00000 | TERMINATED | here  |   0 |   0 |       0 |       0 |
 +--------------+------------+-------+-----+-----+---------+---------+"""
 
 EXPECTED_RESULT_3 = """Result logdir: /foo
@@ -38,8 +38,8 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 +--------------+------------+-------+-----+------------+------------+
 |   Trial name | status     | loc   |   A |   Metric 1 |   Metric 2 |
 |--------------+------------+-------+-----+------------+------------|
-|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
 |        00002 | RUNNING    | here  |   2 |        1   |       0.5  |
+|        00001 | PENDING    | here  |   1 |        0.5 |       0.25 |
 |        00000 | TERMINATED | here  |   0 |        0   |       0    |
 +--------------+------------+-------+-----+------------+------------+
 ... 2 more trials not shown (2 RUNNING)"""
@@ -153,6 +153,12 @@ EXPECTED_END_TO_END_AC = """Number of trials: 30/30 (30 TERMINATED)
 | f_xxxxx_00028 | TERMINATED |       |     |     |   8 |
 | f_xxxxx_00029 | TERMINATED |       |     |     |   9 |
 +---------------+------------+-------+-----+-----+-----+"""
+
+EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
+                  "parameters={'a': 1, 'b': 2, 'n': {'k': [1, 2]}}"
+
+EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
+                  "parameters={'a': 4}"
 
 
 class ProgressReporterTest(unittest.TestCase):
@@ -305,7 +311,42 @@ class ProgressReporterTest(unittest.TestCase):
             }, {"a": "A"},
             fmt="psql",
             max_rows=3)
+        print(prog3)
         assert prog3 == EXPECTED_RESULT_3
+
+        # Current best trial
+        best1 = best_trial_str(trials[1], "metric_1")
+        assert best1 == EXPECTED_BEST_1
+
+    def testCurrentBestTrial(self):
+        trials = []
+        for i in range(5):
+            t = Mock()
+            t.status = "RUNNING"
+            t.trial_id = "%05d" % i
+            t.local_dir = "/foo"
+            t.location = "here"
+            t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
+            t.evaluated_params = {"a": i}
+            t.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.__str__ = lambda self: self.trial_id
+            trials.append(t)
+
+        class TestReporter(CLIReporter):
+            _output = []
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self._max_report_freqency = 0
+
+            def report(self, *args, **kwargs):
+                progress_str = self._progress_str(*args, **kwargs)
+                self._output.append(progress_str)
+
+        reporter = TestReporter(mode="max")
+        reporter.report(trials, done=False)
+
+        assert EXPECTED_BEST_2 in reporter._output[0]
 
     def testEndToEndReporting(self):
         try:

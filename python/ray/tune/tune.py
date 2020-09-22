@@ -388,6 +388,12 @@ def run(
         else:
             progress_reporter = CLIReporter()
 
+    if not progress_reporter.set_search_properties(metric, mode):
+        raise ValueError(
+            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "the reporter you are using was already instantiated with their "
+            "own `metric` and `mode` parameters. Either remove the arguments "
+            "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
 
     # User Warning for GPUs
