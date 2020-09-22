@@ -115,7 +115,7 @@ class CheckpointManager:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            del self._newest_memory_checkpoint
+            #del self._newest_memory_checkpoint
             self._newest_memory_checkpoint = checkpoint
             return
 
@@ -163,8 +163,8 @@ class CheckpointManager:
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = Checkpoint(
-            Checkpoint.MEMORY, None)
+        # state["_newest_memory_checkpoint"] = Checkpoint(
+        #     Checkpoint.MEMORY, None)
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
         return state

@@ -21,6 +21,56 @@ class MockParam(object):
         self._index += 1
         return val
 
+class PopulationBasedTrainingMemoryTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=1)
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testMemoryCheckpointFree(self):
+        # Tests to make sure in-memory checkpoint is freed after new ckpt.
+        def MockTrainingFunc(config, checkpoint_dir=None):
+            a = config["a"]
+            b = config["b"]
+            iter = 0
+
+            print(ray.objects())
+
+            if checkpoint_dir:
+                checkpoint_path = os.path.join(checkpoint_dir, "model.mock")
+                with open(checkpoint_path, "rb") as fp:
+                    a, iter = pickle.load(fp)
+
+            while True:
+                iter += 1
+                with tune.checkpoint_dir(step=iter) as checkpoint_dir:
+                    checkpoint_path = os.path.join(checkpoint_dir,
+                                                   "model.mock")
+                    with open(checkpoint_path, "wb") as fp:
+                        pickle.dump((a, iter), fp)
+                tune.report(mean_accuracy=a+iter)
+
+        param_a = MockParam([10, 20])
+
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="mean_accuracy",
+            mode="max",
+            perturbation_interval=1,
+            hyperparam_mutations={
+                "b": [1, 2, 3]
+            }
+        )
+
+        tune.run(
+            MockTrainingFunc,
+            fail_fast=True,
+            num_samples=2,
+            scheduler=scheduler,
+            name="testMemoryFree",
+            config={"a": tune.sample_from(lambda _: param_a()), "b": 1},
+            stop={"training_iteration": 4})
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
