@@ -656,7 +656,6 @@ void WorkerPool::TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker) {
     RemoveWorker(worker_state.idle, *worker_it);
     worker_state.pending_unregistration_workers.insert(*worker_it);
   }
-  worker->GetProcess().Kill();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
