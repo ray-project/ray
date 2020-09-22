@@ -313,7 +313,7 @@ class SampleBatch:
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.data)
+        return sum(sys.getsizeof(d) for d in self.data.values())
 
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
