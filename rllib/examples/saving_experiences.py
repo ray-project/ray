@@ -42,6 +42,7 @@ if __name__ == "__main__":
                 obs=prep.transform(obs),
                 actions=action,
                 action_prob=1.0,  # put the true action probability here
+                action_logp=0.0,
                 rewards=rew,
                 prev_actions=prev_action,
                 prev_rewards=prev_reward,
