@@ -749,7 +749,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Try to pop the most recently pushed worker.
       for (auto it = idle_of_all_languages.rbegin(); it != idle_of_all_languages.rend();
            it++) {
-        if (task_spec.GetLanguage() == (*it)->GetLanguage() &&
+        if (task_spec.GetLanguage() != (*it)->GetLanguage() ||
             (*it)->GetAssignedJobId() != task_spec.JobId()) {
           continue;
         }
