@@ -103,8 +103,6 @@ class _AgentCollector:
             if self.shift_before > 0:
                 for k, data in self.buffers.items():
                     self.buffers[k] = data[-self.shift_before:]
-                    #self.buffers[k][0:self.shift_before] = data[-self.shift_before:]
-                    #del self.buffers[k][self.shift_before:]
             self.count = 0
 
         return batch
@@ -145,8 +143,6 @@ class _PolicyCollector:
             if view_col in view_requirements and \
                     not view_requirements[view_col].used_for_training:
                 continue
-            #if view_col not in self.buffers:
-            #    self._build_buffers(single_row={view_col: data[0]})
             self.buffers[view_col].extend(data)
         self.count += batch.count
 
@@ -186,6 +182,9 @@ class _SimpleListCollector(_SampleCollector):
         self.callbacks = callbacks
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.rollout_fragment_length = rollout_fragment_length
+        self.large_batch_threshold: int = \
+            max(1000, rollout_fragment_length * 10) if \
+                rollout_fragment_length != float("inf") else 5000
 
         # Build each Policies' single collector.
         self.policy_collectors = {
@@ -214,40 +213,25 @@ class _SimpleListCollector(_SampleCollector):
     @override(_SampleCollector)
     def episode_step(self, episode_id):
         self.episode_steps[episode_id] += 1
-        #episode_rec = self.episode_registry[episode_id]
-        #episode_rec.env_steps += 1
-        #episode_rec.episode_obj.length += 1
 
-        #large_batch_threshold: int = max(1000, rollout_fragment_length * 10) if \
-        #    rollout_fragment_length != float("inf") else 5000
-    
-        # For each environment.
-        # xtype: EnvID, Dict[AgentID, EnvObsType]
-        #for env_id, all_agents_obs in unfiltered_obs.items():
-        #    is_new_episode: bool = env_id not in active_episodes
-        #    episode: MultiAgentEpisode = active_episodes[env_id]
-
-        #    if not is_new_episode:
-        #        _sample_collector.episode_step(episode.episode_id)
-        #        episode._add_agent_rewards(rewards[env_id])
-        
-        #    if (_sample_collector.total_env_steps() > large_batch_threshold
-        #            and log_once("large_batch_warning")):
-        #        logger.warning(
-        #            "More than {} observations for {} env steps ".format(
-        #                _sample_collector.total_env_steps(),
-        #                _sample_collector.count) +
-        #            "are buffered in the sampler. If this is more than you "
-        #            "expected, check that that you set a horizon on your "
-        #            "environment correctly and that it terminates at some point. "
-        #            "Note: In multi-agent environments, `rollout_fragment_length` "
-        #            "sets the batch size based on (across-agents) environment "
-        #            "steps, not the steps of individual agents, which can result "
-        #            "in unexpectedly large batches." +
-        #            ("Also, you may be in evaluation waiting for your Env to "
-        #             "terminate (batch_mode=`complete_episodes`). Make sure it "
-        #             "does at some point."
-        #             if not multiple_episodes_in_batch else ""))
+        env_steps = self.policy_collectors_env_steps + self.episode_steps[
+                    episode_id]
+        if (env_steps > self.large_batch_threshold and
+                log_once("large_batch_warning")):
+            logger.warning(
+                "More than {} observations for {} env steps ".format(
+                    env_steps, env_steps) +
+                "are buffered in the sampler. If this is more than you "
+                "expected, check that that you set a horizon on your "
+                "environment correctly and that it terminates at some point. "
+                "Note: In multi-agent environments, `rollout_fragment_length` "
+                "sets the batch size based on (across-agents) environment "
+                "steps, not the steps of individual agents, which can result "
+                "in unexpectedly large batches." +
+                ("Also, you may be in evaluation waiting for your Env to "
+                 "terminate (batch_mode=`complete_episodes`). Make sure it "
+                 "does at some point."
+                 if not self.multiple_episodes_in_batch else ""))
 
     @override(_SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
@@ -308,7 +292,9 @@ class _SimpleListCollector(_SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             time_indices = view_req.shift - 1
-            input_dict[view_col] = np.array([self.agent_collectors[k].buffers[data_col][time_indices] for k in keys])
+            input_dict[view_col] = np.array(
+                [self.agent_collectors[k].buffers[data_col][time_indices]
+                 for k in keys])
 
         self._reset_inference_calls(policy_id)
 
@@ -324,7 +310,7 @@ class _SimpleListCollector(_SampleCollector):
                             is_done: bool = False,
                             check_dones: bool = False,
                             perf_stats = None  #TEST
-                            ) -> Optional[MultiAgentBatch]:
+                            ):
                             #cut_at_env_step: Optional[int] = None) -> Optional[MultiAgentBatch]:
         # TODO: (sven) Once we implement multi-agent communication channels,
         #  we have to resolve the restriction of only sending other agent
@@ -400,14 +386,14 @@ class _SimpleListCollector(_SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            #self.callbacks.on_postprocess_trajectory(
-            #    worker=get_global_worker(),
-            #    episode=episode,
-            #    agent_id=agent_id,
-            #    policy_id=self.agent_to_policy[agent_id],
-            #    policies=self.policy_map,
-            #    postprocessed_batch=post_batch,
-            #    original_batches=pre_batches)
+            self.callbacks.on_postprocess_trajectory(
+                worker=get_global_worker(),
+                episode=episode,
+                agent_id=agent_id,
+                policy_id=self.agent_to_policy[agent_id],
+                policies=self.policy_map,
+                postprocessed_batch=post_batch,
+                original_batches=pre_batches)
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
             t0 = time.time()
@@ -430,14 +416,8 @@ class _SimpleListCollector(_SampleCollector):
         else:
             self.episode_steps[episode.episode_id] = 0
 
-        #return ma_batch
-
     def build_ma_batch(self, env_steps, perf_stats):
         t1 = time.time()
-        #ma_batch = None
-        #if (is_done and not self.multiple_episodes_in_batch) or \
-        #        self.policy_collectors_env_steps >= \
-        #        self.rollout_fragment_length:
         ma_batch = MultiAgentBatch.wrap_as_needed(
             {pid: collector.build()
              for pid, collector in self.policy_collectors.items() if collector.count > 0},
@@ -457,20 +437,16 @@ class _SimpleListCollector(_SampleCollector):
             if env_steps >= self.rollout_fragment_length:
                 t = time.time()
                 if self.policy_collectors_env_steps < self.rollout_fragment_length:
-                    self.postprocess_episode(self.episodes[episode_id], is_done=False, perf_stats=perf_stats)
+                    self.postprocess_episode(
+                        self.episodes[episode_id],
+                        is_done=False,
+                        perf_stats=perf_stats)
                 else:
                     env_steps = self.policy_collectors_env_steps
                 t1 = time.time()
                 perf_stats._postprocess_and_move_to_policy += t1 - t
-
-                ma_batch = self.build_ma_batch(env_steps=env_steps, perf_stats=perf_stats)
-                #assert ma_batch is not None
-                #policy_batches = {}
-                #for policy_id, collector in self.policy_collectors.items():
-                #    if collector.count > 0:
-                #        policy_batches[policy_id] = collector.build()
-                #ma_batch = MultiAgentBatch.wrap_as_needed(policy_batches, env_steps=env_steps)
-                #self.policy_collectors_env_steps = 0
+                ma_batch = self.build_ma_batch(
+                    env_steps=env_steps, perf_stats=perf_stats)
                 perf_stats._build_batches += time.time() - t1
                 return ma_batch
         return None
