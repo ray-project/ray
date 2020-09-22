@@ -176,11 +176,11 @@ class NodeResourceInstances {
 
 /// \request Conversion result to a TaskRequest data structure.
 NodeResources ResourceMapToNodeResources(
-                                         StringIdMap &string_to_int_map,
-                                         const std::unordered_map<std::string, double> &resource_map_total,
-                                         const std::unordered_map<std::string, double> &resource_map_available);
+    StringIdMap &string_to_int_map,
+    const std::unordered_map<std::string, double> &resource_map_total,
+    const std::unordered_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a TaskRequest data structure.
 TaskRequest ResourceMapToTaskRequest(
-                                     StringIdMap &string_to_int_map,
-                                     const std::unordered_map<std::string, double> &resource_map);
+    StringIdMap &string_to_int_map,
+    const std::unordered_map<std::string, double> &resource_map);
