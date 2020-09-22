@@ -42,10 +42,12 @@ def _import_kubernetes(provider_config):
         KubernetesNodeProvider
     return KubernetesNodeProvider
 
+
 def _import_staroid(provider_config):
     from ray.autoscaler._private.staroid.node_provider import \
         StaroidNodeProvider
     return StaroidNodeProvider
+
 
 def _load_local_example_config():
     import ray.autoscaler.local as ray_local
@@ -74,10 +76,12 @@ def _load_azure_example_config():
     return os.path.join(
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
+
 def _load_staroid_example_config():
     import ray.autoscaler.staroid as ray_staroid
     return os.path.join(
         os.path.dirname(ray_staroid.__file__), "example-full.yaml")
+
 
 def _import_external(provider_config):
     provider_cls = _load_class(path=provider_config["module"])
