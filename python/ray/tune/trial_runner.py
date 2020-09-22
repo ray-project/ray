@@ -139,6 +139,11 @@ class TrialRunner:
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
+        if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
+            logger.warning(
+                "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
+                "deprecated and will be removed in the future. "
+                "Use `tune.run(time_budget_s=limit)` instead.")
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
         self._total_time = 0
