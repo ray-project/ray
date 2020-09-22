@@ -139,6 +139,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
+      -python/ray/tests:test_basic_2  # hangs on shared cluster tests
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
