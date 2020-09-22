@@ -159,9 +159,12 @@ public class RayConfig {
 
     // Job code search path.
     if (config.hasPath("ray.job.code-search-path")) {
-      codeSearchPath = Arrays.asList(
-        config.getString("ray.job.code-search-path").split(":"));
-    } else {
+      String str = config.getString("ray.job.code-search-path");
+      if (!StringUtils.isEmpty(str)) {
+        codeSearchPath = Arrays.asList(str.split(":"));
+      }
+    }
+    if (codeSearchPath == null) {
       codeSearchPath = Collections.emptyList();
     }
 
