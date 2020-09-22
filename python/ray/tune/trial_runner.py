@@ -734,19 +734,19 @@ class TrialRunner:
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
         """
-        trials = self._search_alg.next_trials()
-        if blocking and not trials:
+        trial = self._search_alg.next_trial()
+        if blocking and not trial:
             start = time.time()
             # Checking `is_finished` instead of _search_alg.is_finished
             # is fine because blocking only occurs if all trials are
             # finished and search_algorithm is not yet finished
-            while (not trials and not self.is_finished()
+            while (not trial and not self.is_finished()
                    and time.time() - start < timeout):
                 logger.info("Blocking for next trial...")
-                trials = self._search_alg.next_trials()
+                trial = self._search_alg.next_trial()
                 time.sleep(1)
 
-        for trial in trials:
+        if trial:
             self.add_trial(trial)
 
     def request_stop_trial(self, trial):

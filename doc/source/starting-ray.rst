@@ -3,45 +3,29 @@ Starting Ray
 
 This page covers how to start Ray on your single machine or cluster of machines.
 
-.. contents:: :local:
+.. tip:: Be sure to have :ref:`installed Ray <installation>` before following the instructions on this page.
 
-Installation
-------------
 
-Install Ray with ``pip install -U ray``. For the latest wheels (a snapshot of the ``master`` branch), you can use the instructions at :ref:`install-nightlies`.
+What is the Ray runtime?
+------------------------
 
-.. note:: This step is not required if you are writing a Ray application in Java and you don't have the need of running your Java application in a multi-node Ray cluster at the development stage. See `Local mode`_ for more details.
+Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*.
+The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
 
-Build your Java code
---------------------
+There are three ways of starting the Ray runtime:
 
-If your application is written in Java, you need to add Ray dependencies to your project in order to build it.
+* Implicitly via ``ray.init()`` (:ref:`start-ray-init`)
+* Explicitly via CLI (:ref:`start-ray-cli`)
+* Explicitly via the cluster launcher (:ref:`start-ray-up`)
 
-.. code-block:: xml
-
-  <dependencies>
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-api</artifactId>
-      <version>...</version>
-    </dependency>
-    <dependency>
-      <groupId>io.ray</groupId>
-      <artifactId>ray-runtime</artifactId>
-      <version>...</version>
-    </dependency>
-  </dependencies>
-
-.. note::
-
-  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local or single machine mode.
-
-  If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
+.. _start-ray-init:
 
 Starting Ray on a single machine
 --------------------------------
 
-You can start Ray with the ``init`` API (see the code snippet below). It will start the local services that Ray uses to schedule remote tasks and actors and then connect to them. Note that you must initialize Ray before any tasks or actors are called.
+Calling ``ray.init()`` (without any ``address`` args) starts a Ray runtime on your laptop/machine. This laptop/machine becomes the  "head node".
+
+You must initialize Ray before any tasks or actors are called.
 
 .. tabs::
   .. code-tab:: python
@@ -63,7 +47,7 @@ You can start Ray with the ``init`` API (see the code snippet below). It will st
       }
     }
 
-To stop or restart Ray, use the shutdown API.
+When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
 
 .. tabs::
   .. code-tab:: python
@@ -120,75 +104,69 @@ To stop or restart Ray, use the shutdown API.
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
 
-.. _using-ray-on-a-cluster:
+.. _start-ray-cli:
 
-Using Ray on a cluster
-----------------------
+Starting Ray via the CLI (``ray start``)
+----------------------------------------
 
-There are two steps needed to use Ray in a distributed setting:
-
-    1. You must first start the Ray cluster.
-
-      If you have a Ray cluster specification (:ref:`ref-automatic-cluster`), you can launch a multi-node cluster with Ray initialized on each node with ``ray up``. **From your local machine/laptop**:
-
-      .. code-block:: bash
-
-          ray up cluster.yaml
-
-      You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh into the head node with ``ray attach cluster.yaml``.
-
-    2. Specify the address of the Ray cluster when initializing Ray in your code. This causes Ray to connect to the existing cluster instead of starting a new one on the local node.
-
-      .. tabs::
-        .. group-tab:: Python
-
-          You need to add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). To connect your program to the Ray cluster, add the following to your Python script:
-
-          .. code-block:: python
-
-              ray.init(address="auto")
-
-        .. group-tab:: Java
-
-          You need to add the ``ray.redis.address`` parameter to your command line (like ``-Dray.redis.address=...``).
-
-          You need to add the ``ray.job.resource-path`` parameter as well. Your jar files must be distributed to all the nodes of the Ray cluster before running your code. You also need to make sure the paths of jar files are the same among nodes. Let's say your jar files are located in ``/path/to/jars/``, all files under this path will be loaded by worker processes.
-
-          To connect your program to the Ray cluster, run it like this:
-
-              .. code-block:: bash
-
-                  java -classpath /path/to/jars/ \
-                    -Dray.job.resource-path=/path/to/jars/ \
-                    -Dray.redis.address=<address> \
-                    <classname> <args>
-
-          .. note:: Specifying ``auto`` as the Redis address hasn't been implemented in Java yet. You need to provide the actual Redis address. You can find the address of the Redis server from the output of the ``ray up`` command.
-
-      Your driver code **only** needs to execute on one machine in the cluster (usually the head node).
-
-      .. note:: Without the address parameter, your Ray program will only be parallelized across a single machine!
-
-Manual cluster setup
-~~~~~~~~~~~~~~~~~~~~
-
-You can also use the manual cluster setup (:ref:`ref-cluster-setup`) by running initialization commands on each node.
-
-**On the head node**:
+Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This machine becomes the "head node".
 
 .. code-block:: bash
 
-    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
-    $ ray start --head --redis-port=6379
+  $ ray start --head --port=6379
 
-The command will print out the address of the Redis server that was started (and some other address information).
+  Local node IP: 192.123.1.123
+  2020-09-20 10:38:54,193 INFO services.py:1166 -- View the Ray dashboard at http://localhost:8265
 
-**Then on all of the other nodes**, run the following. Make sure to replace ``<address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
+  --------------------
+  Ray runtime started.
+  --------------------
 
-.. code-block:: bash
+  ...
 
-    $ ray start --address=<address>
 
+.. tabs::
+  .. group-tab:: python
+
+    You can connect to this Ray runtime by starting a Python process that calls the following on the same node as where you ran ``ray start``:
+
+    .. code-block:: python
+
+      # This must
+      import ray
+      ray.init(address='auto')
+
+  .. group-tab:: java
+
+
+    If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
+
+    .. code-block:: bash
+
+      $ ray start ... --code-search-path=/path/to/jars
+
+
+You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init(address="auto")`` on any of the cluster machines will connect to the ray cluster.
+
+.. _start-ray-up:
+
+Launching a Ray cluster (``ray up``)
+------------------------------------
+
+Ray clusters can be launched with the :ref:`Cluster Launcher <ref-automatic-cluster>`.
+The ``ray up`` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls ``ray start`` to create a Ray cluster.
+
+Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.
+
+To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows Ray to connect to the cluster.
+
+.. code-block:: python
+
+    ray.init(address="auto")
+
+Note that the machine calling ``ray up`` will not be considered as part of the Ray cluster, and therefore calling ``ray.init`` on that same machine will not attach to the cluster.
+
+.. _local_mode:
 
 Local mode
 ----------
@@ -211,9 +189,10 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
         -Dray.local-mode=true \
         <classname> <args>
 
-Note that some behavior such as setting global process variables may not work as expected.
+    .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
-.. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
+Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
+
 
 What's next?
 ------------

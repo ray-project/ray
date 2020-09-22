@@ -276,10 +276,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   } else {
     actor_id = ray::ActorID::Nil();
   }
-  jbyteArray bytes = env->NewByteArray(actor_id.Size());
-  env->SetByteArrayRegion(bytes, 0, actor_id.Size(),
-                          reinterpret_cast<const jbyte *>(actor_id.Data()));
-  return bytes;
+  return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(

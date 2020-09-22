@@ -1,13 +1,17 @@
 import os
-
+import pickle
 from multiprocessing import Process, Queue
 from numbers import Number
+from typing import Callable, Dict, List, Tuple
+import numpy as np
 
 from ray import logger
 from ray.tune import Trainable
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import Logger
 from ray.tune.utils import flatten_dict
+
+import yaml
 
 try:
     import wandb
@@ -19,7 +23,55 @@ WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
 
 
-def wandb_mixin(func):
+def _is_allowed_type(obj):
+    """Return True if type is allowed for logging to wandb"""
+    if isinstance(obj, np.ndarray) and obj.size == 1:
+        return isinstance(obj.item(), Number)
+    return isinstance(obj, Number)
+
+
+def _clean_log(obj):
+    # Fixes https://github.com/ray-project/ray/issues/10631
+    if isinstance(obj, dict):
+        return {k: _clean_log(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_log(v) for v in obj]
+    elif _is_allowed_type(obj):
+        return obj
+
+    # Else
+    try:
+        pickle.dumps(obj)
+        yaml.dump(
+            obj,
+            Dumper=yaml.SafeDumper,
+            default_flow_style=False,
+            allow_unicode=True,
+            encoding="utf-8")
+        return obj
+    except Exception:
+        # give up, similar to _SafeFallBackEncoder
+        fallback = str(obj)
+
+        # Try to convert to int
+        try:
+            fallback = int(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Try to convert to float
+        try:
+            fallback = float(fallback)
+            return fallback
+        except ValueError:
+            pass
+
+        # Else, return string
+        return fallback
+
+
+def wandb_mixin(func: Callable):
     """wandb_mixin
 
     Weights and biases (https://www.wandb.com/) is a tool for experiment
@@ -91,7 +143,7 @@ def wandb_mixin(func):
     return func
 
 
-def _set_api_key(wandb_config):
+def _set_api_key(wandb_config: Dict):
     """Set WandB API key from `wandb_config`. Will pop the
     `api_key_file` and `api_key` keys from `wandb_config` parameter"""
     api_key_file = os.path.expanduser(wandb_config.pop("api_key_file", ""))
@@ -125,7 +177,8 @@ class _WandbLoggingProcess(Process):
     wandb logging instances locally.
     """
 
-    def __init__(self, queue, exclude, to_config, *args, **kwargs):
+    def __init__(self, queue: Queue, exclude: List[str], to_config: List[str],
+                 *args, **kwargs):
         super(_WandbLoggingProcess, self).__init__()
         self.queue = queue
         self._exclude = set(exclude)
@@ -144,7 +197,7 @@ class _WandbLoggingProcess(Process):
             wandb.log(log)
         wandb.join()
 
-    def _handle_result(self, result):
+    def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
         log = {}
         flat_result = flatten_dict(result, delimiter="/")
@@ -158,7 +211,7 @@ class _WandbLoggingProcess(Process):
                     k.startswith(item + "/") or k == item
                     for item in self._exclude):
                 continue
-            elif not isinstance(v, Number):
+            elif not _is_allowed_type(v):
                 continue
             else:
                 log[k] = v
@@ -304,6 +357,9 @@ class WandbLogger(Logger):
         # Grouping
         wandb_group = wandb_config.pop("group", self.trial.trainable_name)
 
+        # remove unpickleable items!
+        config = _clean_log(config)
+
         wandb_init_kwargs = dict(
             id=trial_id,
             name=trial_name,
@@ -323,7 +379,8 @@ class WandbLogger(Logger):
             **wandb_init_kwargs)
         self._wandb.start()
 
-    def on_result(self, result):
+    def on_result(self, result: Dict):
+        result = _clean_log(result)
         self._queue.put(result)
 
     def close(self):
@@ -334,7 +391,7 @@ class WandbLogger(Logger):
 class WandbTrainableMixin:
     _wandb = wandb
 
-    def __init__(self, config, *args, **kwargs):
+    def __init__(self, config: Dict, *args, **kwargs):
         if not isinstance(self, Trainable):
             raise ValueError(
                 "The `WandbTrainableMixin` can only be used as a mixin "
@@ -373,6 +430,9 @@ class WandbTrainableMixin:
         else:
             default_group = type(self).__name__
         wandb_group = wandb_config.pop("group", default_group)
+
+        # remove unpickleable items!
+        _config = _clean_log(_config)
 
         wandb_init_kwargs = dict(
             id=trial_id,

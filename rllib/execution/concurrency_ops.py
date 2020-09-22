@@ -12,7 +12,7 @@ def Concurrently(ops: List[LocalIterator],
                  round_robin_weights=None):
     """Operator that runs the given parent iterators concurrently.
 
-    Arguments:
+    Args:
         mode (str): One of {'round_robin', 'async'}.
             - In 'round_robin' mode, we alternate between pulling items from
               each parent iterator in order deterministically.
@@ -105,7 +105,7 @@ def Dequeue(input_queue: queue.Queue, check=lambda: True):
     The dequeue is non-blocking, so Dequeue operations can executed with
     Enqueue via the Concurrently() operator.
 
-    Arguments:
+    Args:
         input_queue (Queue): queue to pull items from.
         check (fn): liveness check. When this function returns false,
             Dequeue() will raise an error to halt execution.

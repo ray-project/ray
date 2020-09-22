@@ -1,4 +1,3 @@
-import re
 import subprocess
 import sys
 import pytest
@@ -40,10 +39,7 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 8, lines
-    assert re.match(r".*Workers: .*GiB", lines[1])
-    assert re.match(r".*Objects: .*GiB", lines[2])
-    assert re.match(r".*Dashboard URL: http:.*", lines[6])
+    assert len(lines) == 2, lines
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ def Replay(*,
     This should be combined with the StoreToReplayActors operation using the
     Concurrently() operator.
 
-    Arguments:
+    Args:
         local_buffer (LocalReplayBuffer): Local buffer to use. Only one of this
             and replay_actors can be specified.
         actors (list): List of replay actors. Only one of this and

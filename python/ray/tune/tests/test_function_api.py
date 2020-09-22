@@ -10,7 +10,8 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune.logger import NoopLogger
 from ray.tune.trainable import TrainableUtil
-from ray.tune.function_runner import wrap_function, FuncCheckpointUtil
+from ray.tune.function_runner import with_parameters, wrap_function, \
+    FuncCheckpointUtil
 from ray.tune.result import TRAINING_ITERATION
 
 
@@ -399,6 +400,18 @@ class FunctionApiTest(unittest.TestCase):
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
 
+    def testEnabled(self):
+        def train(config, checkpoint_dir=None):
+            is_active = tune.is_session_enabled()
+            if is_active:
+                tune.report(active=is_active)
+            return is_active
+
+        assert train({}) is False
+        analysis = tune.run(train)
+        t = analysis.trials[0]
+        assert t.last_result["active"]
+
     def testBlankCheckpoint(self):
         def train(config, checkpoint_dir=None):
             restored = bool(checkpoint_dir)
@@ -419,3 +432,88 @@ class FunctionApiTest(unittest.TestCase):
         analysis = tune.run(train, max_failures=3)
         trial_dfs = list(analysis.trial_dataframes.values())
         assert len(trial_dfs[0]["training_iteration"]) == 10
+
+    def testWithParameters(self):
+        class Data:
+            def __init__(self):
+                self.data = [0] * 500_000
+
+        data = Data()
+        data.data[100] = 1
+
+        def train(config, data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), hundred=data.data[100])
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEquals(data.data[101], 0)
+        self.assertEquals(trial_1.last_result["metric"], 500_000)
+        self.assertEquals(trial_1.last_result["hundred"], 1)
+        self.assertEquals(trial_2.last_result["metric"], 500_000)
+        self.assertEquals(trial_2.last_result["hundred"], 1)
+
+        # With checkpoint dir parameter
+        def train(config, checkpoint_dir="DIR", data=None):
+            data.data[101] = 2  # Changes are local
+            tune.report(metric=len(data.data), cp=checkpoint_dir)
+
+        trial_1, trial_2 = tune.run(
+            with_parameters(train, data=data), num_samples=2).trials
+
+        self.assertEquals(data.data[101], 0)
+        self.assertEquals(trial_1.last_result["metric"], 500_000)
+        self.assertEquals(trial_1.last_result["cp"], "DIR")
+        self.assertEquals(trial_2.last_result["metric"], 500_000)
+        self.assertEquals(trial_2.last_result["cp"], "DIR")
+
+    def test_return_anonymous(self):
+        def train(config):
+            return config["a"]
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["_metric"], 4)
+        self.assertEquals(trial_2.last_result["_metric"], 8)
+
+    def test_return_specific(self):
+        def train(config):
+            return {"m": config["a"]}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["m"], 4)
+        self.assertEquals(trial_2.last_result["m"], 8)
+
+    def test_yield_anonymous(self):
+        def train(config):
+            for i in range(10):
+                yield config["a"] + i
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["_metric"], 4 + 9)
+        self.assertEquals(trial_2.last_result["_metric"], 8 + 9)
+
+    def test_yield_specific(self):
+        def train(config):
+            for i in range(10):
+                yield {"m": config["a"] + i}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["m"], 4 + 9)
+        self.assertEquals(trial_2.last_result["m"], 8 + 9)

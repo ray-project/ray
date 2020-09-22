@@ -1,8 +1,9 @@
 import pytest
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import SSHCommandRunner, \
-    _with_environment_variables, DockerCommandRunner, KubernetesCommandRunner
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler._private.command_runner import CommandRunnerInterface, \
+    SSHCommandRunner, _with_environment_variables, DockerCommandRunner, \
+    KubernetesCommandRunner
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
 
@@ -25,6 +26,33 @@ def test_environment_variable_encoder_dict():
 
     expected = """export value1='"string1"';export value2='{"a":"b","c":2}';echo hello"""  # noqa: E501
     assert res == expected
+
+
+def test_command_runner_interface_abstraction_violation():
+    """Enforces the CommandRunnerInterface functions on the subclasses.
+
+    This is important to make sure the subclasses do not violate the
+    function abstractions. If you need to add a new function to one of
+    the CommandRunnerInterface subclasses, you have to add it to
+    CommandRunnerInterface and all of its subclasses.
+    """
+
+    cmd_runner_interface_public_functions = dir(CommandRunnerInterface)
+    allowed_public_interface_functions = {
+        func
+        for func in cmd_runner_interface_public_functions
+        if not func.startswith("_")
+    }
+    for subcls in [
+            SSHCommandRunner, DockerCommandRunner, KubernetesCommandRunner
+    ]:
+        subclass_available_functions = dir(subcls)
+        subclass_public_functions = {
+            func
+            for func in subclass_available_functions
+            if not func.startswith("_")
+        }
+        assert allowed_public_interface_functions == subclass_public_functions
 
 
 def test_ssh_command_runner():
@@ -125,10 +153,7 @@ def test_kubernetes_command_runner():
         """\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1=\'"\'"\'"quote between this \\" and this"\'"\'"\';export var2=\'"\'"\'"123"\'"\'"\';echo helloo)\'"""  # noqa: E501
     ]
 
-    # Much easier to debug this loop than the function call.
-    for x, y in zip(process_runner.calls[0], expected):
-        assert x == y
-    process_runner.assert_has_call("1.2.3.4", exact=expected)
+    assert process_runner.calls[0] == " ".join(expected)
 
 
 def test_docker_command_runner():
@@ -205,7 +230,7 @@ def test_docker_rsync():
     remote_file = "/root/protected-file"
     remote_host_file = f"{DOCKER_MOUNT_PREFIX}{remote_file}"
 
-    process_runner.respond_to_call("docker inspect -f", "true")
+    process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
         local_mount, remote_mount, options={"file_mount": True})
 
@@ -222,7 +247,7 @@ def test_docker_rsync():
     process_runner.clear_history()
     ##############################
 
-    process_runner.respond_to_call("docker inspect -f", "true")
+    process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
         local_file, remote_file, options={"file_mount": False})
 

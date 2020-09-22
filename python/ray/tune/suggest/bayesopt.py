@@ -2,9 +2,10 @@ from collections import defaultdict
 import logging
 import pickle
 import json
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
-from ray.tune.sample import Float, Quantized
+from ray.tune import ExperimentAnalysis
+from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
 
@@ -100,18 +101,18 @@ class BayesOptSearch(Searcher):
     optimizer = None
 
     def __init__(self,
-                 space=None,
-                 metric="episode_reward_mean",
-                 mode="max",
-                 utility_kwargs=None,
-                 random_state=42,
-                 random_search_steps=10,
-                 verbose=0,
-                 patience=5,
-                 skip_duplicate=True,
-                 analysis=None,
-                 max_concurrent=None,
-                 use_early_stopped_trials=None):
+                 space: Optional[Dict] = None,
+                 metric: Optional[str] = None,
+                 mode: Optional[str] = None,
+                 utility_kwargs: Optional[Dict] = None,
+                 random_state: int = 42,
+                 random_search_steps: int = 10,
+                 verbose: int = 0,
+                 patience: int = 5,
+                 skip_duplicate: bool = True,
+                 analysis: Optional[ExperimentAnalysis] = None,
+                 max_concurrent: Optional[int] = None,
+                 use_early_stopped_trials: Optional[bool] = None):
         """Instantiate new BayesOptSearch object.
 
         Args:
@@ -144,7 +145,8 @@ class BayesOptSearch(Searcher):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self.max_concurrent = max_concurrent
         self._config_counter = defaultdict(int)
         self._patience = patience
@@ -199,7 +201,8 @@ class BayesOptSearch(Searcher):
             verbose=self._verbose,
             random_state=self._random_state)
 
-    def set_search_properties(self, metric, mode, config):
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)
@@ -217,7 +220,7 @@ class BayesOptSearch(Searcher):
         self.setup_optimizer()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         """Return new point to be explored by black box function.
 
         Args:
@@ -277,20 +280,25 @@ class BayesOptSearch(Searcher):
         # Return a deep copy of the mapping
         return unflatten_dict(config)
 
-    def register_analysis(self, analysis):
+    def register_analysis(self, analysis: ExperimentAnalysis):
         """Integrate the given analysis into the gaussian process.
 
         Args:
             analysis (ExperimentAnalysis): Optionally, the previous analysis
                 to integrate.
         """
-        for (_, report), params in zip(analysis.dataframe().iterrows(),
-                                       analysis.get_all_configs().values()):
+        for (_, report), params in zip(
+                analysis.dataframe(metric=self._metric,
+                                   mode=self._mode).iterrows(),
+                analysis.get_all_configs().values()):
             # We add the obtained results to the
             # gaussian process optimizer
             self._register_result(params, report)
 
-    def on_trial_complete(self, trial_id, result=None, error=False):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
         """Notification for the completion of trial.
 
         Args:
@@ -327,18 +335,18 @@ class BayesOptSearch(Searcher):
             for params, result in self._buffered_trial_results:
                 self._register_result(params, result)
 
-    def _register_result(self, params, result):
+    def _register_result(self, params: Tuple[str], result: Dict):
         """Register given tuple of params and results."""
         self.optimizer.register(params, self._metric_op * result[self.metric])
 
-    def save(self, checkpoint_path):
+    def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
         with open(checkpoint_path, "wb") as f:
             pickle.dump(
                 (self.optimizer, self._buffered_trial_results,
                  self._total_random_search_trials, self._config_counter), f)
 
-    def restore(self, checkpoint_path):
+    def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
             (self.optimizer, self._buffered_trial_results,
@@ -346,7 +354,7 @@ class BayesOptSearch(Searcher):
              self._config_counter) = pickle.load(f)
 
     @staticmethod
-    def convert_search_space(spec: Dict):
+    def convert_search_space(spec: Dict) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -355,7 +363,7 @@ class BayesOptSearch(Searcher):
                 "Grid search parameters cannot be automatically converted "
                 "to a BayesOpt search space.")
 
-        def resolve_value(domain):
+        def resolve_value(domain: Domain) -> Tuple[float, float]:
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(

@@ -206,13 +206,10 @@ def test_raylet_info_endpoint(shutdown_only):
             except Exception as ex:
                 print("failed response: {}".format(response.text))
                 raise ex
-            actors_info = raylet_info["result"]["actors"]
+            actor_groups = raylet_info["result"]["actorGroups"]
             try:
-                assert len(actors_info) == 3
-                c_actor_info = [
-                    actor for actor in actors_info.values()
-                    if "ActorC" in actor["actorTitle"]
-                ][0]
+                assert len(actor_groups.keys()) == 3
+                c_actor_info = actor_groups["ActorC"]["entries"][0]
                 assert c_actor_info["numObjectRefsInScope"] == 13
                 assert c_actor_info["numLocalObjects"] == 10
                 break
@@ -279,12 +276,11 @@ def test_raylet_infeasible_tasks(shutdown_only):
         webui_url = ray_addresses["webui_url"].replace("127.0.0.1",
                                                        "http://127.0.0.1")
         raylet_info = requests.get(webui_url + "/api/raylet_info").json()
-        actor_info = raylet_info["result"]["actors"]
+        actor_info = raylet_info["result"]["actorGroups"]
         assert len(actor_info) == 1
 
         _, infeasible_actor_info = actor_info.popitem()
-        assert infeasible_actor_info["state"] == -1
-        assert infeasible_actor_info["invalidStateType"] == "infeasibleActor"
+        assert infeasible_actor_info["entries"][0]["state"] == -2
 
     assert (wait_until_succeeded_without_exception(
         test_infeasible_actor,
@@ -406,7 +402,7 @@ def test_memory_dashboard(shutdown_only):
     """Test Memory table.
 
     These tests verify examples in this document.
-    https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory
+    https://docs.ray.io/en/master/memory-management.html#debugging-using-ray-memory
     """
     addresses = ray.init(num_cpus=2)
     webui_url = addresses["webui_url"].replace("127.0.0.1", "http://127.0.0.1")
