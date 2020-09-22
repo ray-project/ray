@@ -681,7 +681,7 @@ class Node:
             fate_share=self.kernel_fate_share,
             gcs_server_port=self._ray_params.gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
-            node_ip_address=self._ray_params.node_ip_address)
+            node_ip_address=self._node_ip_address)
         assert (
             ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
