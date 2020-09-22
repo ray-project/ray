@@ -20,8 +20,8 @@ public abstract class BaseTaskOptions {
         throw new IllegalArgumentException(String.format("Resource capacity should be "
             + "positive, but got resource %s = %s.", entry.getKey(), entry.getValue()));
       }
-      // Note: resource value should be an integer if it is greater than 1.0, like 3.0 is legal,
-      // but 3.5 is illegal.
+      // Note: A resource value should be an integer if it is greater than 1.0. e.g. 3.0 is a valid resource value,
+      // but 3.5 is not.
       if (entry.getValue().compareTo(1.0) >= 0
           && entry.getValue().compareTo(Math.floor(entry.getValue())) != 0) {
         throw new IllegalArgumentException(String.format("Resource capacity should be "
