@@ -30,7 +30,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 SampleBatch.REWARDS, shift=-1),
         }
-        self.training_view_requirements = dict(
+        self.view_requirements = dict(
             **{
                 SampleBatch.NEXT_OBS: ViewRequirement(
                     SampleBatch.OBS, shift=1),

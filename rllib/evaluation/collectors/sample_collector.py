@@ -1,8 +1,9 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EpisodeID, PolicyID, \
     TensorType
 
@@ -90,6 +91,16 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
+    def episode_step(self, episode_id: EpisodeID) -> None:
+        """Increases the episode step counter (across all agents) by one.
+
+        Args:
+            episode_id (EpisodeID): Unique id for the episode we are stepping
+                through (across all agents in that episode).
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def total_env_steps(self) -> int:
         """Returns total number of steps taken in the env (sum of all agents).
 
@@ -136,9 +147,11 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def postprocess_trajectories_so_far(
-            self, episode: Optional[MultiAgentEpisode] = None) -> None:
-        """Apply postprocessing to unprocessed data (in one or all episodes).
+    def postprocess_episode(self,
+                            episode: MultiAgentEpisode,
+                            check_dones: bool = False,
+                            cut_at_env_step: Optional[int] = None) -> None:
+        """TODO: returns MultiAgentBatch if Apply postprocessing to unprocessed data (in one or all episodes).
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
         calls Policy.postprocess_trajectory on each of these. Postprocessing
@@ -148,38 +161,31 @@ class _SampleCollector(metaclass=ABCMeta):
         correctly added to the buffers.
 
         Args:
-            episode (Optional[MultiAgentEpisode]): The Episode object for which
-                to post-process data. If not provided, postprocess data for all
-                episodes.
+            episode (MultiAgentEpisode): The Episode object for which
+                to post-process data.
+            check_dones (bool): Whether the given episode is actually
+                completely terminated (all agents are done) and we need to
+                check that all agents' trajectories have dones=True at the end.
+            cut_at_env_step (Optional[int]): Whether to only postprocess the
+                episode up until this env-step.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def check_missing_dones(self, episode_id: EpisodeID) -> None:
-        """Checks whether given episode is properly terminated with done=True.
+    def try_build_truncated_episode_multi_agent_batch(self) -> \
+            Union[MultiAgentBatch, SampleBatch, None]:
+        """Tries to build an MA-batch, if `rollout_fragment_length` is reached.
 
-        This applies to all agents in the episode.
-
-        Args:
-            episode_id (EpisodeID): The episode ID to check for proper
-                termination.
-
-        Raises:
-            ValueError: If `episode` has no done=True at the end.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_multi_agent_batch_and_reset(self):
-        """Returns the accumulated sample batches for each policy.
-
-        Any unprocessed rows will be first postprocessed with a policy
-        postprocessor. The internal state of this builder will be reset to
-        start the next batch.
+        Any unprocessed data will be first postprocessed with a policy
+        postprocessor.
         This is usually called to collect samples for policy training.
+        If not enough data has been collected yet (`rollout_fragment_length`),
+        returns None.
 
         Returns:
-            MultiAgentBatch: Returns the accumulated sample batches for each
-                policy inside one MultiAgentBatch object.
+            Union[MultiAgentBatch, SampleBatch, None]: Returns the accumulated
+                sample batches for each policy inside one MultiAgentBatch
+                object (or a simple SampleBatch if only one policy) or None
+                if `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError

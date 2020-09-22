@@ -172,6 +172,7 @@ class ConcatBatches:
             timer = _get_shared_metrics().timers[SAMPLE_TIMER]
             timer.push(time.perf_counter() - self.batch_start_time)
             timer.push_units_processed(self.count)
+            #print("Created batch of {} with actual samples={}".format(self.count, out.policy_batches["pol0"]["obs"].shape[0]))
             self.batch_start_time = None
             self.buffer = []
             self.count = 0

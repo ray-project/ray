@@ -114,12 +114,13 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.training_view_requirements = dict(
+        self.view_requirements = dict(
             **{
                 SampleBatch.ACTIONS: ViewRequirement(
                     space=self.action_space, shift=0),
                 SampleBatch.REWARDS: ViewRequirement(shift=0),
                 SampleBatch.DONES: ViewRequirement(shift=0),
+                SampleBatch.EPS_ID: ViewRequirement(shift=0),
             },
             **self.model.inference_view_requirements)
 
@@ -217,7 +218,9 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
-            return actions, state_out, extra_fetches
+            #return actions, state_out, extra_fetches
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_fetches))
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):

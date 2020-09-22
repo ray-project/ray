@@ -255,12 +255,11 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def training_view_requirements_fn(
-        policy: Policy) -> Dict[str, ViewRequirement]:
-    """Function defining the view requirements for training the policy.
+def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
+    """Function defining the view requirements for training/postprocessing.
 
     These go on top of the Policy's Model's own view requirements used for
-    action computing forward passes.
+    the action computing forward passes.
 
     Args:
         policy (Policy): The Policy that requires the returned
@@ -271,7 +270,8 @@ def training_view_requirements_fn(
     """
     return {
         # Next obs are needed for PPO postprocessing.
-        SampleBatch.NEXT_OBS: ViewRequirement(SampleBatch.OBS, shift=1),
+        SampleBatch.NEXT_OBS: ViewRequirement(
+            SampleBatch.OBS, shift=1, used_for_training=False),
         # VF preds are needed for the loss.
         SampleBatch.VF_PREDS: ViewRequirement(shift=0),
         # Needed for postprocessing.
@@ -299,5 +299,5 @@ PPOTorchPolicy = build_torch_policy(
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    training_view_requirements_fn=training_view_requirements_fn,
+    view_requirements_fn=view_requirements_fn,
 )
