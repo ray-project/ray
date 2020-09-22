@@ -683,6 +683,13 @@ void WorkerPool::TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker) {
     }
   }
 
+  if (running_size - workers_in_the_same_process.size() <
+      static_cast<size_t>(num_workers_soft_limit_)) {
+    // A Java worker process may contain multiple workers. Killing more workers than we
+    // expect may slow the job.
+    return;
+  }
+
   for (auto worker_it = workers_in_the_same_process.begin();
        worker_it != workers_in_the_same_process.end(); worker_it++) {
     RAY_LOG(INFO) << "The worker pool has " << running_size
