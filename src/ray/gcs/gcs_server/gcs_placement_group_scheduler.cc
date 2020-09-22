@@ -386,27 +386,22 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const auto &node = gcs_node_manager_.GetNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
-    if (node != nullptr) {
-      CommitResources(
-          bundle, node,
-          [this, lease_status_tracker, bundle, node_id, schedule_failure_handler,
-           schedule_success_handler](const Status &status) {
-            lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-            if (lease_status_tracker->AllCommitRequestReturned()) {
-              OnAllBundleCommitRequestReturned(lease_status_tracker,
-                                               schedule_failure_handler,
-                                               schedule_success_handler);
-            }
-          });
-    } else {
-      RAY_LOG(WARNING)
-          << "Failed to commit resources because the node is dead, node id = " << node_id;
-      lease_status_tracker->MarkCommitRequestReturned(
-          node_id, bundle, Status::Interrupted("Node is dead"));
+    auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
+                                      schedule_failure_handler,
+                                      schedule_success_handler](const Status &status) {
+      lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
       if (lease_status_tracker->AllCommitRequestReturned()) {
         OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
                                          schedule_success_handler);
       }
+    };
+
+    if (node != nullptr) {
+      CommitResources(bundle, node, commit_resources_callback);
+    } else {
+      RAY_LOG(WARNING)
+          << "Failed to commit resources because the node is dead, node id = " << node_id;
+      commit_resources_callback(Status::Interrupted("Node is dead"));
     }
   }
 }
