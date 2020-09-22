@@ -25,6 +25,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
 
 .. customgalleryitem::
+   :tooltip: A deep dive into Tune's workings.
+   :figure: /images/tune.png
+   :description: :doc:`How does Tune work? <tune-lifecycle>`
+
+.. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
    :figure: /images/tune-pbt-small.png
    :description: :doc:`A simple guide to Population-based Training <tune-advanced-tutorial>`
@@ -76,6 +81,7 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-tutorial.rst
    tune-advanced-tutorial.rst
+   tune-lifecycle.rst
    tune-distributed.rst
    tune-sklearn.rst
    tune-pytorch-cifar.rst

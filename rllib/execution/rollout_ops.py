@@ -27,14 +27,13 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
 
     Args:
         workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of {'async', 'bulk_sync', 'raw'}.
-            - In 'async' mode, batches are returned as soon as they are
-              computed by rollout workers with no order guarantees.
-            - In 'bulk_sync' mode, we collect one batch from each worker
-              and concatenate them together into a large batch to return.
-            - In 'raw' mode, the ParallelIterator object is returned directly
-              and the caller is responsible for implementing gather and
-              updating the timesteps counter.
+        mode (str): One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
+            batches are returned as soon as they are computed by rollout
+            workers with no order guarantees. In 'bulk_sync' mode, we collect
+            one batch from each worker and concatenate them together into a
+            large batch to return. In 'raw' mode, the ParallelIterator object
+            is returned directly and the caller is responsible for implementing
+            gather and updating the timesteps counter.
         num_async (int): In async mode, the max number of async
             requests in flight per actor.
 

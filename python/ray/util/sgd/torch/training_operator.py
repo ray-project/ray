@@ -257,8 +257,8 @@ class TrainingOperator:
 
         if self.use_fp16 and amp:
             logger.debug("Setting up Apex.")
-            self._models, self._optimizers = amp.initialize(
-                self._models, self._optimizers, **self._apex_args)
+            self._original_models, self._optimizers = amp.initialize(
+                self._original_models, self._optimizers, **self._apex_args)
             self._amp = amp
 
         if self._wrap_ddp:
