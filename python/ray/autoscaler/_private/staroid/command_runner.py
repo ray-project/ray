@@ -1,5 +1,5 @@
 import os
-from ray.autoscaler.command_runner import KubernetesCommandRunner
+from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 
 
 class StaroidCommandRunner(KubernetesCommandRunner):
