@@ -14,6 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+namespace ray {
+
+namespace raylet {
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
@@ -780,3 +783,18 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   FreeTaskResourceInstances(task_allocation);
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
+
+void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> data) {
+  NodeResources resources;
+
+  RAY_CHECK(GetNodeResources(local_node_id_, &resources)) << "Error: Populating heartbeat failed. Please file a bug report: https://github.com/ray-project/ray/issues/new.";
+
+
+
+
+
+}
+
+}  // namespace raylet
+
+}  // namespace ray
