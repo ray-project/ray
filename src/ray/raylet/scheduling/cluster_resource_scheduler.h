@@ -20,15 +20,14 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
-
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available

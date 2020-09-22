@@ -14,7 +14,6 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
-
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
