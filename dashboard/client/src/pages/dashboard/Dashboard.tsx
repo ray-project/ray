@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { getNodeInfo, getTuneAvailability } from "../../api";
+import { getNodeInfo, getTuneAvailability, getActorGroups } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -18,7 +18,7 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
-const { setNodeInfo, setTuneAvailability, setError, setTab } = dashboardActions;
+const { setNodeInfo, setTuneAvailability, setActorGroups, setError, setTab } = dashboardActions;
 const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
@@ -57,12 +57,14 @@ const Dashboard: React.FC = () => {
   // Polling Function
   const refreshInfo = useCallback(async () => {
     try {
-      const [nodeInfo, tuneAvailability] = await Promise.all([
+      const [nodeInfo, tuneAvailability, actorGroups] = await Promise.all([
         getNodeInfo(),
         getTuneAvailability(),
+        getActorGroups(),
       ]);
       dispatch(setNodeInfo({ nodeInfo }));
       dispatch(setTuneAvailability(tuneAvailability));
+      dispatch(setActorGroups(actorGroups));
       dispatch(setError(null));
     } catch (error) {
       dispatch(setError(error.toString()));
@@ -82,7 +84,7 @@ const Dashboard: React.FC = () => {
     return cleanup;
   }, [refreshInfo]);
 
-  const handleTabChange = (_: any, value: number) => setTab(value);
+  const handleTabChange = (_: any, value: number) => dispatch(setTab(value));
 
   const tabs = allTabs.slice();
 

@@ -5,7 +5,7 @@ import LabeledDatum from "../../../common/LabeledDatum";
 import ActorStateRepr from "./ActorStateRepr";
 
 type ActorDetailsPaneProps = {
-  actorTitle: string;
+  actorClass: string;
   actorState: ActorState;
   actorDetails: {
     label: string;
@@ -31,15 +31,15 @@ const useStyles = makeStyles((theme: Theme) => ({
 }));
 
 const ActorDetailsPane: React.FC<ActorDetailsPaneProps> = ({
-  actorTitle,
   actorDetails,
+  actorClass,
   actorState,
 }) => {
   const classes = useStyles();
   return (
     <React.Fragment>
       <div className={classes.actorTitleWrapper}>
-        <div>{actorTitle}</div>
+        <div>{actorClass}</div>
         <ActorStateRepr state={actorState} />
       </div>
       <Divider className={classes.divider} />

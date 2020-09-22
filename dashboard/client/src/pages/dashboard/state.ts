@@ -14,7 +14,7 @@ type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
-  actors: ActorsResponse | null;
+  actorGroups: ActorsResponse | null;
   tuneInfo: TuneJobResponse | null;
   tuneAvailability: TuneAvailabilityResponse | null;
   lastUpdatedAt: number | null;
@@ -24,7 +24,7 @@ type State = {
 };
 
 const initialState: State = {
-  actors: null,
+  actorGroups: null,
   tab: 0,
   rayConfig: null,
   nodeInfo: null,
@@ -55,13 +55,11 @@ const slice = createSlice({
       state.nodeInfo = action.payload.nodeInfo;
       state.lastUpdatedAt = Date.now();
     },
-    setActorInfo: (
+    setActorGroups: (
       state,
-      action: PayloadAction<{
-        actorsResponse: ActorsResponse;
-      }>,
+      action: PayloadAction<ActorsResponse>,
     ) => {
-      state.actors = action.payload.actorsResponse;
+      state.actorGroups = action.payload;
     },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
       state.tuneInfo = action.payload;

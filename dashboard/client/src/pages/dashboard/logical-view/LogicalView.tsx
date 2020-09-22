@@ -32,7 +32,7 @@ const actorClassMatchesSearch = (
 };
 
 const actorGroupsSelector = (state: StoreState) =>
-  state.dashboard.actors?.groups;
+  state.dashboard.actorGroups;
 
 const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");

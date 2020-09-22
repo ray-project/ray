@@ -191,7 +191,7 @@ export type NodeInfoResponse = {
   clients: NodeDetails[];
 };
 
-export const getNodeInfo = () => get<NodeInfoResponse>("/all_node_details", {});
+export const getNodeInfo = () => get<NodeInfoResponse>("/nodes", {view: "details"});
 
 export type ResourceSlot = {
   slot: number;
@@ -201,6 +201,8 @@ export type ResourceSlot = {
 export type ResourceAllocations = {
   resourceSlots: ResourceSlot[];
 };
+
+export const getActorGroups = () => get<ActorsResponse>("logical/actor_groups", {});
 
 export enum ActorState {
   // These two are virtual states that we air because there is
@@ -219,7 +221,8 @@ export type ActorInfo = FullActorInfo | ActorTaskInfo;
 
 export type FullActorInfo = {
   actorId: string;
-  actorTitle: string;
+  actorConstructor: string;
+  actorClass: string;
   averageTaskExecutionSpeed: number;
   children?: ActorInfo[];
   ipAddress: string;
@@ -246,8 +249,8 @@ export type FullActorInfo = {
 };
 
 export type ActorTaskInfo = {
-  actorId?: string;
-  actorTitle?: string;
+  actorId: string;
+  actorClass: string;
   requiredResources?: { [key: string]: number };
   state: ActorState.Infeasible | ActorState.PendingResources;
 };
@@ -278,7 +281,7 @@ export type ActorGroup = {
 };
 
 export type ActorsResponse = {
-  groups: { [key: string]: ActorGroup };
+  [key: string]: ActorGroup;
 };
 
 export type ErrorsResponse = {

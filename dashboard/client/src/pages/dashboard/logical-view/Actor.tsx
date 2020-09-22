@@ -263,18 +263,18 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
           </React.Fragment>
         ) : actor.state === ActorState.Infeasible ? (
           <span className={classes.infeasible}>
-            {actor.actorTitle} cannot be created because the Ray cluster cannot
+            {actor.actorClass} cannot be created because the Ray cluster cannot
             satisfy its resource requirements.
           </span>
         ) : (
           <span className={classes.pendingResources}>
-            {actor.actorTitle} is pending until resources are available.
+            {actor.actorClass} is pending until resources are available.
           </span>
         )}
       </Typography>
       <ActorDetailsPane
         actorDetails={information}
-        actorTitle={actor.actorTitle ?? ""}
+        actorClass={actor.actorClass}
         actorState={actor.state}
       />
       {isFullActorInfo(actor) && (
