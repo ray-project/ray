@@ -42,7 +42,7 @@ repeat = 1
 total_trial = repeat * num_pg
 bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
 
-# Create and remove placement groups
+# Create and remove placement groups.
 for _ in range(repeat):
     pgs = []
     for i in range(num_pg):
