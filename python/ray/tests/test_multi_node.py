@@ -381,7 +381,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with a redis port specified.
     port = 0
     with socket() as s:
-        s.bind(('',0))
+        s.bind(("", 0))
         port = s.getsockname()[1]
     check_call_ray(["start", "--head", "--port", str(port)])
     check_call_ray(["stop"])
