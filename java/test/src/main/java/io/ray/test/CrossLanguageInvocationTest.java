@@ -49,14 +49,14 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
-    System.setProperty("ray.head.args.0",
-        "--code-search-path=" + System.getProperty("java.class.path")
-        + File.pathSeparator + tempDir.getAbsolutePath());
+    System.setProperty("ray.job.code-search-path",
+        System.getProperty("java.class.path") + File.pathSeparator
+            + tempDir.getAbsolutePath());
   }
 
   @AfterClass
   public void afterClass() {
-    System.clearProperty("ray.head.args.0");
+    System.clearProperty("ray.job.code-search-path");
   }
 
   @Test

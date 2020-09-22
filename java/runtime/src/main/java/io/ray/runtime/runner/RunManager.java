@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.ray.runtime.config.RayConfig;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -29,13 +30,20 @@ public class RunManager {
    * Start the head node.
    */
   public static void startRayHead(RayConfig rayConfig) {
+    String codeSearchPath;
+    if (!rayConfig.codeSearchPath.isEmpty()) {
+      codeSearchPath = Joiner.on(File.pathSeparator).join(rayConfig.codeSearchPath);
+    } else {
+      codeSearchPath = System.getProperty("java.class.path");
+    }
     List<String> command = Arrays.asList(
         "ray",
         "start",
         "--head",
         "--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters),
-        "--code-search-path=" + System.getProperty("java.class.path")
+        "--code-search-path=" + codeSearchPath
     );
+    command.addAll(rayConfig.headArgs);
     String output;
     try {
       output = runCommand(command);
