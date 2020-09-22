@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite errors="0" failures="0" hostname="Maxs-MBP.attlocal.net" name="pytest" skipped="0" tests="1" time="3.965" timestamp="2020-09-22T10:38:46.654458"><testcase classname="test_logical_view_head" file="test_logical_view_head.py" line="22" name="test_actor_groups" time="3.939"><system-out>======== Running on http://127.0.0.1:8265 ========
+(Press CTRL+C to quit)
+</system-out><system-err>2020-09-22 10:38:47,037	INFO services.py:1086 -- View the Ray dashboard at #x1B[1m#x1B[32mhttp://127.0.0.1:8265#x1B[39m#x1B[22m
+2020-09-22 10:38:48,087	WARNING worker.py:1073 -- The actor or task with ID ffffffffffffffff7bbd902801000000 is infeasible and cannot currently be scheduled. It requires {CPU: 1.000000}, {GPU: 1.000000} for execution and {GPU: 1.000000}, {CPU: 1.000000} for placement, however there are no nodes in the cluster that can provide the requested resources. To resolve this issue, consider reducing the resource requests of this task or add nodes that can fit the task.
+</system-err></testcase></testsuite></testsuites>

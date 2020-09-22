@@ -1,7 +1,7 @@
 import logging
-
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.memory as memory
+from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
 import asyncio
 from ray.new_dashboard.utils import Dict, Signal
 
@@ -60,12 +60,24 @@ class DataOrganizer:
     @classmethod
     async def get_node_actors(cls, node_id):
         node_stats = DataSource.node_stats.get(node_id, {})
-        node_worker_id_set = set()
+        worker_id_to_info = {}
         for worker_stats in node_stats.get("workersStats", []):
-            node_worker_id_set.add(worker_stats["workerId"])
+            worker_id_to_info[worker_stats["workerId"]] = worker_stats
+
         node_actors = {}
         for actor_id, actor_table_data in DataSource.actors.items():
-            if actor_table_data["address"]["workerId"] in node_worker_id_set:
+            if actor_table_data["address"]["workerId"] in worker_id_to_info:
+                worker_stats = worker_id_to_info[actor_table_data["address"]["workerId"]]
+
+                actor_constructor = worker_stats.get("coreWorkerStats", {})\
+                    .get("actorTitle", "Unknown actor constructor")
+
+                actor_table_data["actorConstructor"] = actor_constructor
+
+                actor_class = actor_classname_from_task_spec(actor_table_data.get("taskSpec", {}))
+
+                actor_table_data["actorClass"] = actor_class
+                actor_table_data.update(worker_stats["coreWorkerStats"])
                 node_actors[actor_id] = actor_table_data
         return node_actors
 
@@ -76,12 +88,12 @@ class DataOrganizer:
         node = DataSource.nodes.get(node_id, {})
 
         # Merge node log count information into the payload
-        log_info = DataSource.ip_and_pid_to_logs.get(node_stats["ip"], {})
+        log_info = DataSource.ip_and_pid_to_logs.get(node_physical_stats["ip"], {})
         node_log_count = 0
         for pid, entries in log_info.values():
-            node_log_count+= len(entries)
+            node_log_count += len(entries)
 
-        error_info = DataSource.ip_and_pid_to_errors.get(node_stats["ip"], {})
+        error_info = DataSource.ip_and_pid_to_errors.get(node_physical_stats["ip"], {})
         node_err_count = 0
         for pid, entries in log_info.values():
             node_err_count += len(entries)
@@ -142,10 +154,25 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_actors(cls):
-        actors = []
+        all_actors = {}
         for node_id in DataSource.nodes.keys():
-            actors.append(await cls.get_node_actors(node_id))
-        return actors
+            all_actors.update(await cls.get_node_actors(node_id))
+        return all_actors
+
+    @classmethod
+    async def get_actor_creation_tasks(cls):
+        infeasible_tasks = sum((node_stats.get("infeasibleTasks", []) for node_stats in DataSource.node_stats.values()), [])
+        for task in infeasible_tasks:
+            task["actorClass"] = actor_classname_from_task_spec(task)
+            task["state"] = "INFEASIBLE"
+
+        resource_pending_tasks = sum((data.get("readyTasks", []) for data in DataSource.node_stats.values()), [])
+        for task in resource_pending_tasks:
+            task["actorClass"] = actor_classname_from_task_spec(task)
+            task["state"] = "PENDING_RESOURCES"
+
+        results = {task["actorCreationTaskSpec"]["actorId"]: task for task in resource_pending_tasks + infeasible_tasks}
+        return results
 
     @classmethod
     async def get_memory_table(cls, sort_by=memory.SortingType.OBJECT_SIZE, group_by=memory.GroupByType.STACK_TRACE):
