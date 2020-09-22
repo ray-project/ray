@@ -693,7 +693,8 @@ bool LeaseStatusTracker::AllCommitRequestsSuccessful() const {
   // We don't check cancel state here because we shouldn't destroy bundles when
   // commit requests failed. Cancel state should be treated separately.
   return AllCommitRequestReturned() &&
-         preparing_bundle_locations_->size() == bundles_to_schedule_.size();
+         preparing_bundle_locations_->size() == bundles_to_schedule_.size() &&
+         uncommitted_bundle_locations_->empty();
 }
 
 const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup() const {
