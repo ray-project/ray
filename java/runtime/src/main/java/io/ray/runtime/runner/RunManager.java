@@ -37,13 +37,12 @@ public class RunManager {
     } else {
       codeSearchPath = System.getProperty("java.class.path");
     }
-    List<String> command = Arrays.asList(
-        "ray",
-        "start",
-        "--head",
-        "--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters),
-        "--code-search-path=" + codeSearchPath
-    );
+    List<String> command = new ArrayList<>();
+    command.add("ray");
+    command.add("start");
+    command.add("--head");
+    command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
+    command.add("--code-search-path=" + codeSearchPath);
     command.addAll(rayConfig.headArgs);
     String output;
     try {
