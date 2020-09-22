@@ -162,6 +162,35 @@ remove_placement_group
 
 .. autofunction:: ray.util.placement_group.remove_placement_group
 
+.. _custom-metric-api-ref:
+
+Custom Metrics APIs
+-------------------
+
+Metric
+~~~~~~
+
+.. autoclass:: ray.util.metrics.Metric
+   :members:
+
+Count
+~~~~~
+
+.. autoclass:: ray.util.metrics.Count
+   :members:
+
+Gauge
+~~~~~
+
+.. autoclass:: ray.util.metrics.Gauge
+   :members:
+
+Histogram
+~~~~~~~~~
+
+.. autoclass:: ray.util.metrics.Histogram
+   :members:
+
 Experimental APIs
 -----------------
 

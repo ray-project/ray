@@ -17,7 +17,7 @@ class Metric:
     Ray's custom metrics APIs are rooted from this class and sharing
     the same public methods.
 
-    Recommended metric name pattern : ray.{component_name}.{module_name}, and
+    Metric name pattern : ray_{component_name}_{metric_name}, and
     name format must be in [0-9a-zA-Z].
     """
 
@@ -150,6 +150,7 @@ class Histogram(Metric):
 
     @property
     def info(self):
+        """Return information about histogram metric."""
         info = super().info
         info.update({"boundaries": self.boundaries})
         return info
