@@ -16,7 +16,7 @@ from ray.cluster_utils import Cluster
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
         self.trial_executor = RayTrialExecutor(queue_trials=False)
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=2, ignore_reinit_error=True)
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):
@@ -170,7 +170,14 @@ class RayTrialExecutorTest(unittest.TestCase):
     def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
-        return suggester.next_trials()
+        trials = []
+        while not suggester.is_finished():
+            trial = suggester.next_trial()
+            if trial:
+                trials.append(trial)
+            else:
+                break
+        return trials
 
     def process_trial_save(self, trial):
         """Simulates trial runner save."""

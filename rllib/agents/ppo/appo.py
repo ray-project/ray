@@ -7,7 +7,7 @@ of proximal policy optimization (APPO).
 See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 
 Detailed documentation:
-https://docs.ray.io/en/latest/rllib-algorithms.html#appo
+https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
 from typing import Optional, Type
 

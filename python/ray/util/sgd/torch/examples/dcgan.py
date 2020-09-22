@@ -289,7 +289,10 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     args = parser.parse_args()
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
 
     trainer = train_example(
         num_workers=args.num_workers,

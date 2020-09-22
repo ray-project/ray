@@ -97,6 +97,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import ray
 from ray import tune, serve
 from ray.serve.exceptions import RayServeException
 from ray.tune import CLIReporter
@@ -612,6 +613,9 @@ if __name__ == "__main__":
         default=False)
 
     args = parser.parse_args()
+
+    if args.smoke_test:
+        ray.init(num_cpus=2)
 
     model_dir = os.path.expanduser(args.model_dir)
 

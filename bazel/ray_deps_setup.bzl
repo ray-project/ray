@@ -97,6 +97,13 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
+        name = "com_github_spdlog",
+        build_file = "//bazel:BUILD.spdlog",
+        urls = ["https://github.com/gabime/spdlog/archive/v1.7.0.zip"],
+        sha256 = "c8f1e1103e0b148eb8832275d8e68036f2fdd3975a1199af0e844908c56f6ea5",
+    )
+    
+    auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
         build_file = "//bazel:BUILD.redis",
         strip_prefix = None,

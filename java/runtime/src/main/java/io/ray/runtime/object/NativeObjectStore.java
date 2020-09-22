@@ -1,9 +1,11 @@
 package io.ray.runtime.object;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,6 +94,15 @@ public class NativeObjectStore extends ObjectStore {
     return referenceCounts;
   }
 
+  @Override
+  public Address getOwnerAddress(ObjectId id) {
+    try {
+      return Address.parseFrom(nativeGetOwnerAddress(id.getBytes()));
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   private static List<byte[]> toBinaryList(List<ObjectId> ids) {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
@@ -113,6 +124,8 @@ public class NativeObjectStore extends ObjectStore {
   private static native void nativeRemoveLocalReference(byte[] workerId, byte[] objectId);
 
   private static native Map<byte[], long[]> nativeGetAllReferenceCounts();
+
+  private static native byte[] nativeGetOwnerAddress(byte[] objectId);
 
   private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
 

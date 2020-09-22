@@ -25,7 +25,7 @@ class OffPolicyEstimator:
     def __init__(self, policy: Policy, gamma: float):
         """Creates an off-policy estimator.
 
-        Arguments:
+        Args:
             policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
         """

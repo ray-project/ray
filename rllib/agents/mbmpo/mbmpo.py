@@ -104,7 +104,7 @@ class MetaUpdate:
         """Computes the MetaUpdate step in MAML, adapted for MBMPO
         for multiple MAML Iterations
 
-        Arguments:
+        Args:
             workers (WorkerSet): Set of Workers
             num_steps (int): Number of meta-update steps per MAML Iteration
             maml_steps (int): MAML Iterations per MBMPO Iteration
@@ -121,7 +121,7 @@ class MetaUpdate:
         self.metrics = {}
 
     def __call__(self, data_tuple):
-        """Arguments:
+        """Args:
             data_tuple (tuple): 1st element is samples collected from MAML
             Inner adaptation steps and 2nd element is accumulated metrics
         """
@@ -186,7 +186,7 @@ class MetaUpdate:
     def postprocess_metrics(self, metrics, prefix=""):
         """Appends prefix to current metrics
 
-        Arguments:
+        Args:
             metrics (dict): Dictionary of current metrics
             prefix (str): Prefix string to be appended
         """
@@ -197,7 +197,7 @@ class MetaUpdate:
 def post_process_metrics(prefix, workers, metrics):
     """Update Current Dataset Metrics and filter out specific keys
 
-    Arguments:
+    Args:
         prefix (str): Prefix string to be appended
         workers (WorkerSet): Set of workers
         metrics (dict): Current metrics dictionary
@@ -221,7 +221,7 @@ def fit_dynamics(policy, pid):
 def sync_ensemble(workers):
     """Syncs dynamics ensemble weights from main to workers
 
-    Arguments:
+    Args:
         workers (WorkerSet): Set of workers, including main
     """
 
