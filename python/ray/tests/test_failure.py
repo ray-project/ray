@@ -756,7 +756,7 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         ray.get(remote_waits)
         ray.get(h.remote(nested_waits))
 
-    num_root_tasks = num_cpus * 6
+    num_root_tasks = num_cpus * 4
     # Lock remote task until everything is scheduled.
     remote_waits = []
     nested_waits = []
