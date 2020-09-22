@@ -16,8 +16,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
@@ -784,17 +782,18 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> data) {
+void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources)) << "Error: Populating heartbeat failed. Please file a bug report: https://github.com/ray-project/ray/issues/new.";
 
-
-
-
+  for (int i = 0; i < PredefinedResources_MAX; i++) {
+    std::string label = ResourceEnumToString((PredefinedResources)i);
+    struct ResourceCapacity capacity = resources.predefined_resources[i];
+    (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+    (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+  }
 
 }
-
-}  // namespace raylet
 
 }  // namespace ray

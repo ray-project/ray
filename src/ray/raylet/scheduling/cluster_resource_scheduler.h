@@ -30,8 +30,6 @@
 
 namespace ray {
 
-namespace raylet {
-
 using rpc::HeartbeatTableData;
 
 // Specify resources that consists of unit-size instances.
@@ -377,13 +375,11 @@ class ClusterResourceScheduler {
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
-  /// resources_available, resources_total, and resource_load.
+  /// resources_available and resources_total.
   void Heartbeat(std::shared_ptr<HeartbeatTableData> data);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 };
-
-}  // namespace raylet
 
 }  // end namespace ray

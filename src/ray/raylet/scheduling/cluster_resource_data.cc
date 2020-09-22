@@ -1,5 +1,26 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
+std::string ResourceEnumToString(PredefinedResources resource) {
+  std::string label;
+  switch (resource) {
+  case CPU:
+    label = ray::kCPU_ResourceLabel;
+    break;
+  case MEM:
+    label = ray::kMemory_ResourceLabel;
+    break;
+  case GPU:
+    label = ray::kGPU_ResourceLabel;
+    break;
+  case TPU:
+    label = ray::kTPU_ResourceLabel;
+    break;
+  default:
+    RAY_CHECK(false) << "Error: Populating heartbeat failed. Please file a bug report: https://github.com/ray-project/ray/issues/new.";
+  }
+  return label;
+}
+
 std::string VectorToString(const std::vector<FixedPoint> &vector) {
   std::stringstream buffer;
 
