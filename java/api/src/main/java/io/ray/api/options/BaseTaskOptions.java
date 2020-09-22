@@ -17,15 +17,15 @@ public abstract class BaseTaskOptions {
   public BaseTaskOptions(Map<String, Double> resources) {
     for (Map.Entry<String, Double> entry : resources.entrySet()) {
       if (entry.getValue() == null || entry.getValue().compareTo(0.0) <= 0) {
-        throw new IllegalArgumentException(String.format("Resource capacity should be "
-            + "positive, but got resource %s = %s.", entry.getKey(), entry.getValue()));
+        throw new IllegalArgumentException(String.format("Resource values should be "
+            + "positive. Specified resource: %s = %s.", entry.getKey(), entry.getValue()));
       }
       // Note: A resource value should be an integer if it is greater than 1.0. e.g. 3.0 is a valid resource value,
       // but 3.5 is not.
       if (entry.getValue().compareTo(1.0) >= 0
           && entry.getValue().compareTo(Math.floor(entry.getValue())) != 0) {
-        throw new IllegalArgumentException(String.format("Resource capacity should be "
-                + "a positive integer if it is greater than 1.0, but got resource %s = %s.",
+        throw new IllegalArgumentException(String.format("A resource value should be "
+                + "an integer if it is greater than 1.0. Specified resource: %s = %s.",
             entry.getKey(), entry.getValue()));
       }
     }
