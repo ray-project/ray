@@ -791,5 +791,15 @@ def test_mini_integration(ray_start_cluster):
     assert all(ray.get([a.ping.remote() for a in actors]))
 
 
+def test_capture_child_tasks(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    # Creating a placement group that cannot be satisfied yet.
+    placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
