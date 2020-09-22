@@ -1098,7 +1098,7 @@ def start_gcs_server(redis_address,
                      fate_share=None,
                      gcs_server_port=None,
                      metrics_agent_port=None,
-                     node_ip_address="127.0.0.1"):
+                     node_ip_address=None):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.

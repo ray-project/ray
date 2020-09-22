@@ -253,7 +253,7 @@ std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
 
 void GcsServer::StoreGcsServerAddressInRedis() {
   std::string address = config_.node_ip_address;
-  if (address == "127.0.0.1") {
+  if (address == "") {
     address =
         GetValidLocalIp(
             GetPort(),
