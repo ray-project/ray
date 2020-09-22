@@ -120,9 +120,14 @@ class ClassMethodRouteTable:
                                       handler.__code__.co_firstlineno, None)
 
             @functools.wraps(handler)
-            async def _handler_route(*args, **kwargs):
+            async def _handler_route(*args) -> aiohttp.web.Response:
                 try:
-                    return await handler(bind_info.instance, *args, **kwargs)
+                    # Make the route handler as a bound method.
+                    # The args may be:
+                    #   * (Request, )
+                    #   * (self, Request)
+                    req = args[-1]
+                    return await handler(bind_info.instance, req)
                 except Exception:
                     return rest_response(
                         success=False, message=traceback.format_exc())
@@ -308,7 +313,12 @@ def aiohttp_cache(
         if enable:
 
             @functools.wraps(handler)
-            async def _cache_handler(self, req) -> aiohttp.web.Response:
+            async def _cache_handler(*args) -> aiohttp.web.Response:
+                # Make the route handler as a bound method.
+                # The args may be:
+                #   * (Request, )
+                #   * (self, Request)
+                req = args[-1]
                 # Make key.
                 if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
                     key = req.path_qs
@@ -342,7 +352,7 @@ def aiohttp_cache(
                         cache.popitem(last=False)
                     return response
 
-                task = create_task(handler(self, req))
+                task = create_task(handler(*args))
                 task.add_done_callback(_update_cache)
                 if value is None:
                     return await task

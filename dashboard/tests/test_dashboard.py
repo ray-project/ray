@@ -109,6 +109,8 @@ def test_basic(ray_start_with_dashboard):
             agent_proc = _search_agent(raylet_proc.children())
             if agent_proc:
                 agent_pids.add(agent_proc.pid)
+            # The agent should be restarted,
+            # so we can break if the len(agent_pid) > 1
             if len(agent_pids) > 1:
                 break
             time.sleep(0.1)
