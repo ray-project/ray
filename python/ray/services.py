@@ -39,18 +39,6 @@ REDIS_MODULE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
     "core/src/ray/gcs/redis_module/libray_redis_module.so")
 
-# Location of the credis server and modules.
-# credis will be enabled if the environment variable RAY_USE_NEW_GCS is set.
-CREDIS_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/redis/src/redis-server" + EXE_SUFFIX)
-CREDIS_MASTER_MODULE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/build/src/libmaster.so")
-CREDIS_MEMBER_MODULE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
-    "core/src/credis/build/src/libmember.so")
-
 # Location of the plasma object store executable.
 PLASMA_STORE_EXECUTABLE = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
@@ -663,7 +651,6 @@ def start_redis(node_ip_address,
                 redis_max_clients=None,
                 redirect_worker_output=False,
                 password=None,
-                use_credis=None,
                 fate_share=None):
     """Start the Redis global state store.
 
@@ -686,9 +673,6 @@ def start_redis(node_ip_address,
             to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        use_credis: If True, additionally load the chain-replicated libraries
-            into the redis servers.  Defaults to None, which means its value is
-            set by the presence of "RAY_USE_NEW_GCS" in os.environ.
 
     Returns:
         A tuple of the address for the primary Redis shard, a list of
@@ -708,31 +692,8 @@ def start_redis(node_ip_address,
 
     processes = []
 
-    if use_credis is None:
-        use_credis = ("RAY_USE_NEW_GCS" in os.environ)
-    if use_credis:
-        if password is not None:
-            # TODO(pschafhalter) remove this once credis supports
-            # authenticating Redis ports
-            raise ValueError("Setting the `redis_password` argument is not "
-                             "supported in credis. To run Ray with "
-                             "password-protected Redis ports, ensure that "
-                             "the environment variable `RAY_USE_NEW_GCS=off`.")
-        assert num_redis_shards == 1, (
-            "For now, RAY_USE_NEW_GCS supports 1 shard, and credis "
-            "supports 1-node chain for that shard only.")
-
-    if use_credis:
-        redis_executable = CREDIS_EXECUTABLE
-        # TODO(suquark): We need credis here because some symbols need to be
-        # imported from credis dynamically through dlopen when Ray is built
-        # with RAY_USE_NEW_GCS=on. We should remove them later for the primary
-        # shard.
-        # See src/ray/gcs/redis_module/ray_redis_module.cc
-        redis_modules = [CREDIS_MASTER_MODULE, REDIS_MODULE]
-    else:
-        redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
+    redis_executable = REDIS_EXECUTABLE
+    redis_modules = [REDIS_MODULE]
 
     redis_stdout_file, redis_stderr_file = redirect_files[0]
     # Start the primary Redis shard.
@@ -777,15 +738,8 @@ def start_redis(node_ip_address,
     redis_shards = []
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
-        if use_credis:
-            redis_executable = CREDIS_EXECUTABLE
-            # It is important to load the credis module BEFORE the ray module,
-            # as the latter contains an extern declaration that the former
-            # supplies.
-            redis_modules = [CREDIS_MEMBER_MODULE, REDIS_MODULE]
-        else:
-            redis_executable = REDIS_EXECUTABLE
-            redis_modules = [REDIS_MODULE]
+        redis_executable = REDIS_EXECUTABLE
+        redis_modules = [REDIS_MODULE]
 
         redis_shard_port, p = _start_redis_instance(
             redis_executable,
@@ -803,40 +757,6 @@ def start_redis(node_ip_address,
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)
-
-    if use_credis:
-        # Configure the chain state. The way it is intended to work is
-        # the following:
-        #
-        # PRIMARY_SHARD
-        #
-        # SHARD_1 (master replica) -> SHARD_1 (member replica)
-        #                                        -> SHARD_1 (member replica)
-        #
-        # SHARD_2 (master replica) -> SHARD_2 (member replica)
-        #                                        -> SHARD_2 (member replica)
-        # ...
-        #
-        #
-        # If we have credis members in future, their modules should be:
-        # [CREDIS_MEMBER_MODULE, REDIS_MODULE], and they will be initialized by
-        # execute_command("MEMBER.CONNECT_TO_MASTER", node_ip_address, port)
-        #
-        # Currently we have num_redis_shards == 1, so only one chain will be
-        # created, and the chain only contains master.
-
-        # TODO(suquark): Currently, this is not correct because we are
-        # using the master replica as the primary shard. This should be
-        # fixed later. I had tried to fix it but failed because of heartbeat
-        # issues.
-        primary_client = redis.StrictRedis(
-            host=node_ip_address, port=port, password=password)
-        shard_client = redis.StrictRedis(
-            host=node_ip_address, port=redis_shard_port, password=password)
-        primary_client.execute_command("MASTER.ADD", node_ip_address,
-                                       redis_shard_port)
-        shard_client.execute_command("MEMBER.CONNECT_TO_MASTER",
-                                     node_ip_address, port)
 
     return redis_address, redis_shards, processes
 
@@ -1495,7 +1415,7 @@ def build_java_worker_command(java_worker_options, redis_address,
     """
     pairs = []
     if redis_address is not None:
-        pairs.append(("ray.redis.address", redis_address))
+        pairs.append(("ray.address", redis_address))
     pairs.append(("ray.raylet.node-manager-port", node_manager_port))
 
     if plasma_store_name is not None:
@@ -1564,9 +1484,14 @@ def build_cpp_worker_command(
     Returns:
         The command string for starting CPP worker.
     """
+
+    # TODO(Guyang Song): Remove the arg is_default_worker.
+    # See `cluster_mode_test.cc` for why this workaround is currently needed
+    # for C++ workers.
     command = [
         DEFAULT_WORKER_EXECUTABLE, plasma_store_name, raylet_name,
-        str(node_manager_port), redis_password, session_dir
+        str(node_manager_port), redis_address, redis_password, session_dir,
+        "is_default_worker"
     ]
 
     return command

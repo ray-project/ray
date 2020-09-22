@@ -23,7 +23,8 @@ class TrialRunnerTest(unittest.TestCase):
         ray.shutdown()
 
     def testTrialStatus(self):
-        ray.init()
+        ray.init(num_cpus=2)
+
         trial = Trial("__fake")
         trial_executor = RayTrialExecutor()
         self.assertEqual(trial.status, Trial.PENDING)
@@ -35,7 +36,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.ERROR)
 
     def testExperimentTagTruncation(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
         def train(config, reporter):
             reporter(timesteps_total=1)
@@ -56,7 +57,10 @@ class TrialRunnerTest(unittest.TestCase):
         for name, spec in experiments.items():
             trial_generator = BasicVariantGenerator()
             trial_generator.add_configurations({name: spec})
-            for trial in trial_generator.next_trials():
+            while not trial_generator.is_finished():
+                trial = trial_generator.next_trial()
+                if not trial:
+                    break
                 trial_executor.start_trial(trial)
                 self.assertLessEqual(len(os.path.basename(trial.logdir)), 200)
                 trial_executor.stop_trial(trial)

@@ -109,7 +109,10 @@ class Training(TrainingOperator):
 
 
 if __name__ == "__main__":
-    ray.init(address=None if args.local else "auto")
+    if args.local:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address="auto")
     num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
     from ray.util.sgd.torch.examples.train_example import LinearDataset
 

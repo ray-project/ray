@@ -8,3 +8,4 @@ commonmark==0.8.1
 recommonmark==0.5.0
 sphinx<2
 readthedocs-sphinx-ext<1.1
+sphinx-book-theme

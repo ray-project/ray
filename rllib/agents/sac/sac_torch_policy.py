@@ -1,5 +1,11 @@
+"""
+PyTorch policy class used for SAC.
+"""
+
+import gym
 from gym.spaces import Discrete
 import logging
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
@@ -7,11 +13,16 @@ from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
+    TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -19,13 +30,41 @@ F = nn.functional
 logger = logging.getLogger(__name__)
 
 
-def build_sac_model_and_action_dist(policy, obs_space, action_space, config):
+def build_sac_model_and_action_dist(
+        policy: Policy,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        config: TrainerConfigDict) -> \
+        Tuple[ModelV2, Type[TorchDistributionWrapper]]:
+    """Constructs the necessary ModelV2 and action dist class for the Policy.
+
+    Args:
+        policy (Policy): The TFPolicy that will use the models.
+        obs_space (gym.spaces.Space): The observation space.
+        action_space (gym.spaces.Space): The action space.
+        config (TrainerConfigDict): The SAC trainer's config dict.
+
+    Returns:
+        ModelV2: The ModelV2 to be used by the Policy. Note: An additional
+            target model will be created in this function and assigned to
+            `policy.target_model`.
+    """
     model = build_sac_model(policy, obs_space, action_space, config)
-    action_dist_class = get_dist_class(config, action_space)
+    action_dist_class = _get_dist_class(config, action_space)
     return model, action_dist_class
 
 
-def get_dist_class(config, action_space):
+def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
+                    ) -> Type[TorchDistributionWrapper]:
+    """Helper function to return a dist class based on config and action space.
+
+    Args:
+        config (TrainerConfigDict): The Trainer's config dict.
+        action_space (gym.spaces.Space): The action space used.
+
+    Returns:
+        Type[TFActionDistribution]: A TF distribution class.
+    """
     if isinstance(action_space, Discrete):
         return TorchCategorical
     else:
@@ -36,28 +75,83 @@ def get_dist_class(config, action_space):
             return TorchDiagGaussian
 
 
-def action_distribution_fn(policy,
-                           model,
-                           obs_batch,
-                           *,
-                           state_batches=None,
-                           seq_lens=None,
-                           prev_action_batch=None,
-                           prev_reward_batch=None,
-                           explore=None,
-                           timestep=None,
-                           is_training=None):
+def action_distribution_fn(
+        policy: Policy,
+        model: ModelV2,
+        obs_batch: TensorType,
+        *,
+        state_batches: Optional[List[TensorType]] = None,
+        seq_lens: Optional[TensorType] = None,
+        prev_action_batch: Optional[TensorType] = None,
+        prev_reward_batch=None,
+        explore: Optional[bool] = None,
+        timestep: Optional[int] = None,
+        is_training: Optional[bool] = None) -> \
+        Tuple[TensorType, Type[TorchDistributionWrapper], List[TensorType]]:
+    """The action distribution function to be used the algorithm.
+
+    An action distribution function is used to customize the choice of action
+    distribution class and the resulting action distribution inputs (to
+    parameterize the distribution object).
+    After parameterizing the distribution, a `sample()` call
+    will be made on it to generate actions.
+
+    Args:
+        policy (Policy): The Policy being queried for actions and calling this
+            function.
+        model (TorchModelV2): The SAC specific Model to use to generate the
+            distribution inputs (see sac_tf|torch_model.py). Must support the
+            `get_policy_output` method.
+        obs_batch (TensorType): The observations to be used as inputs to the
+            model.
+        state_batches (Optional[List[TensorType]]): The list of internal state
+            tensor batches.
+        seq_lens (Optional[TensorType]): The tensor of sequence lengths used
+            in RNNs.
+        prev_action_batch (Optional[TensorType]): Optional batch of prev
+            actions used by the model.
+        prev_reward_batch (Optional[TensorType]): Optional batch of prev
+            rewards used by the model.
+        explore (Optional[bool]): Whether to activate exploration or not. If
+            None, use value of `config.explore`.
+        timestep (Optional[int]): An optional timestep.
+        is_training (Optional[bool]): An optional is-training flag.
+
+    Returns:
+        Tuple[TensorType, Type[TorchDistributionWrapper], List[TensorType]]:
+            The dist inputs, dist class, and a list of internal state outputs
+            (in the RNN case).
+    """
+    # Get base-model output (w/o the SAC specific parts of the network).
     model_out, _ = model({
         "obs": obs_batch,
         "is_training": is_training,
     }, [], None)
+    # Use the base output to get the policy outputs from the SAC model's
+    # policy components.
     distribution_inputs = model.get_policy_output(model_out)
-    action_dist_class = get_dist_class(policy.config, policy.action_space)
+    # Get a distribution class to be used with the just calculated dist-inputs.
+    action_dist_class = _get_dist_class(policy.config, policy.action_space)
 
     return distribution_inputs, action_dist_class, []
 
 
-def actor_critic_loss(policy, model, _, train_batch):
+def actor_critic_loss(
+        policy: Policy, model: ModelV2,
+        dist_class: Type[TorchDistributionWrapper],
+        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    """Constructs the loss for the Soft Actor Critic.
+
+    Args:
+        policy (Policy): The Policy to calculate the loss for.
+        model (ModelV2): The Model to calculate the loss for.
+        dist_class (Type[TorchDistributionWrapper]: The action distr. class.
+        train_batch (SampleBatch): The training data.
+
+    Returns:
+        Union[TensorType, List[TensorType]]: A single loss tensor or a list
+            of loss tensors.
+    """
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
@@ -110,7 +204,7 @@ def actor_critic_loss(policy, model, _, train_batch):
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
-        action_dist_class = get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy.config, policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
@@ -218,7 +312,16 @@ def actor_critic_loss(policy, model, _, train_batch):
                  [policy.alpha_loss])
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+    """Stats function for SAC. Returns a dict with important loss stats.
+
+    Args:
+        policy (Policy): The Policy to generate stats for.
+        train_batch (SampleBatch): The SampleBatch (already) used for training.
+
+    Returns:
+        Dict[str, TensorType]: The stats dict.
+    """
     return {
         "td_error": policy.td_error,
         "mean_td_error": torch.mean(policy.td_error),
@@ -235,11 +338,19 @@ def stats(policy, train_batch):
     }
 
 
-def optimizer_fn(policy, config):
+def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
+        Tuple[LocalOptimizer]:
     """Creates all necessary optimizers for SAC learning.
 
     The 3 or 4 (twin_q=True) optimizers returned here correspond to the
     number of loss terms returned by the loss function.
+
+    Args:
+        policy (Policy): The policy object to be trained.
+        config (TrainerConfigDict): The Trainer's config dict.
+
+    Returns:
+        Tuple[LocalOptimizer]: The local optimizers to use for policy training.
     """
     policy.actor_optim = torch.optim.Adam(
         params=policy.model.policy_variables(),
@@ -276,6 +387,12 @@ def optimizer_fn(policy, config):
 
 
 class ComputeTDErrorMixin:
+    """Mixin class calculating TD-error (part of critic loss) per batch item.
+
+    - Adds `policy.compute_td_error()` method for TD-error calculation from a
+      batch of observations/actions/rewards/etc..
+    """
+
     def __init__(self):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
@@ -291,13 +408,22 @@ class ComputeTDErrorMixin:
             # (one TD-error value per item in batch to update PR weights).
             actor_critic_loss(self, self.model, None, input_dict)
 
-            # Self.td_error is set within actor_critic_loss call.
+            # `self.td_error` is set within actor_critic_loss call. Return
+            # its updated value here.
             return self.td_error
 
+        # Assign the method to policy (self) for later usage.
         self.compute_td_error = compute_td_error
 
 
 class TargetNetworkMixin:
+    """Mixin class adding a method for (soft) target net(s) synchronizations.
+
+    - Adds the `update_target` method to the policy.
+      Calling `update_target` updates all target Q-networks' weights from their
+      respective "main" Q-metworks, based on tau (smooth, partial updating).
+    """
+
     def __init__(self):
         # Hard initial update from Q-net(s) to target Q-net(s).
         self.update_target(tau=1.0)
@@ -318,7 +444,27 @@ class TargetNetworkMixin:
         self.target_model.load_state_dict(model_state_dict)
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors after Policy initialization.
+
+    - Moves the target model(s) to the GPU, if necessary.
+    - Adds the `compute_td_error` method to the given policy.
+    Calling `compute_td_error` with batch data will re-calculate the loss
+    on that batch AND return the per-batch-item TD-error for prioritized
+    replay buffer record weight updating (in case a prioritized replay buffer
+    is used).
+    - Also adds the `update_target` method to the given policy.
+    Calling `update_target` updates all target Q-networks' weights from their
+    respective "main" Q-metworks, based on tau (smooth, partial updating).
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     policy.target_model = policy.target_model.to(policy.device)
     policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
     policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
@@ -326,6 +472,8 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy)
 
 
+# Build a child class of `DynamicTFPolicy`, given the custom functions defined
+# above.
 SACTorchPolicy = build_torch_policy(
     name="SACTorchPolicy",
     loss_fn=actor_critic_loss,

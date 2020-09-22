@@ -68,7 +68,7 @@ class VectorEnv:
     ) -> Tuple[List[EnvObsType], List[float], List[bool], List[EnvInfoDict]]:
         """Performs a vectorized step on all sub environments using `actions`.
 
-        Arguments:
+        Args:
             actions (List[any]): List of actions (one for each sub-env).
 
         Returns:

@@ -3,6 +3,8 @@
 Configuring Ray
 ===============
 
+.. note:: For running Java applications, please see `Java Applications`_.
+
 This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
@@ -113,6 +115,8 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+.. _ray-ports:
+
 Ports configurations
 --------------------
 Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
@@ -128,7 +132,7 @@ The following options specify the range of ports used by worker processes across
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
 
 Head Node
-~~~~~~~~~~~
+~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
 - ``--port``: Port of GCS. Default: 6379.
@@ -181,5 +185,59 @@ to localhost when the ray is started using ``ray.init``.
 
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
+
+Java Applications
+-----------------
+
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``Ray.init()`` in Java to connect to the cluster services. On a single machine, you can run ``Ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
+
+.. _code_search_path:
+
+Code Search Path
+~~~~~~~~~~~~~~~~
+
+If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to all nodes of the Ray cluster before running your code, and this parameter must be set on both the head node and non-head nodes.
+
+.. code-block:: bash
+
+  $ ray start ... --code-search-path=/path/to/jars
+
+The ``/path/to/jars`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
+
+.. code-block:: bash
+
+  $ ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
+
+Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+
+You don't need to configure code search path if you run a Java application in single machine mode.
+
+.. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+
+Driver Options
+~~~~~~~~~~~~~~
+
+There is a limited set of options for Java drivers. They are not for configuring the Ray cluster, but only for configuring the driver.
+
+Ray uses `Typesafe Config <https://lightbend.github.io/config/>`__ to read options. There are several ways to set options:
+
+- System properties. You can configure system properties either by adding options in the format of ``-Dkey=value`` in the driver command line, or by invoking ``System.setProperty("key", "value");`` before ``Ray.init()``.
+- A `HOCON format <https://github.com/lightbend/config/blob/master/HOCON.md>`__ configuration file. By default, Ray will try to read the file named ``ray.conf`` in the root of the classpath. You can customize the location of the file by setting system property ``ray.config-file`` to the path of the file.
+
+.. note:: Options configured by system properties have higher priority than options configured in the configuration file.
+
+The list of available driver options:
+
+- ``ray.address``
+
+  - The cluster address if the driver connects to an existing Ray cluster. If it is empty, a new Ray cluster will be created.
+  - Type: ``String``
+  - Default: empty string.
+
+- ``ray.local-mode``
+
+  - If it's set to ``true``, the driver will run in :ref:`local_mode`.
+  - Type: ``Boolean``
+  - Default: ``false``
 
 .. _`Apache Arrow`: https://arrow.apache.org/

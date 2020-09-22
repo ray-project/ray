@@ -42,6 +42,7 @@ def test_basic(ray_start_with_dashboard):
 
     assert len(client_stats) == 1
     client = client_stats[0]
+    print(client)
     assert len(client["workers"]) == 1
 
 

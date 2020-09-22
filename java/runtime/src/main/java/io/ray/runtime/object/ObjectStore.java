@@ -7,6 +7,7 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.exception.RayException;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -186,6 +187,8 @@ public abstract class ObjectStore {
    * @param objectId The object ID to decrease the reference count for.
    */
   public abstract void removeLocalReference(UniqueId workerId, ObjectId objectId);
+
+  public abstract Address getOwnerAddress(ObjectId id);
 
   /**
    * Promote the given object to the underlying object store, and get the ownership info.

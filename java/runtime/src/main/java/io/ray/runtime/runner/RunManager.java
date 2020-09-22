@@ -30,6 +30,7 @@ public class RunManager {
    * Start the head node.
    */
   public static void startRayHead(RayConfig rayConfig) {
+    LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
     String codeSearchPath;
     if (!rayConfig.codeSearchPath.isEmpty()) {
       codeSearchPath = Joiner.on(File.pathSeparator).join(rayConfig.codeSearchPath);
@@ -48,7 +49,7 @@ public class RunManager {
     try {
       output = runCommand(command);
     } catch (Exception e) {
-      throw new RuntimeException("Failed to start ray.", e);
+      throw new RuntimeException("Failed to start Ray runtime.", e);
     }
     Matcher matcher = pattern.matcher(output);
     if (matcher.find()) {
@@ -57,6 +58,7 @@ public class RunManager {
     } else {
       throw new RuntimeException("Redis address is not found. output: " + output);
     }
+    LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
   }
 
   /**

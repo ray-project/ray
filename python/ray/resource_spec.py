@@ -1,7 +1,6 @@
 import math
 from collections import namedtuple
 import logging
-import multiprocessing
 import os
 import re
 import subprocess
@@ -105,7 +104,9 @@ class ResourceSpec(
         # Check types.
         for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
-                    or isinstance(resource_quantity, float))
+                    or isinstance(resource_quantity, float)), (
+                        f"{resource_label} ({type(resource_quantity)}): "
+                        f"{resource_quantity}")
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(
@@ -148,7 +149,7 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = multiprocessing.cpu_count()
+            num_cpus = ray.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
         gpu_ids = ray.utils.get_cuda_visible_devices()

@@ -52,13 +52,15 @@ def tune_example(operator_cls, num_workers=1, use_gpu=False):
         stop={"training_iteration": 2},
         verbose=1)
 
-    return analysis.get_best_config(metric="validation_loss", mode="min")
+    return analysis.get_best_config(metric="val_loss", mode="min")
 # __end_torch_tune_example__
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
         "--address",
         type=str,
@@ -77,7 +79,10 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    if args.smoke_test:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address=args.address)
     CustomTrainingOperator = TrainingOperator.from_creators(
         model_creator=model_creator, optimizer_creator=optimizer_creator,
         data_creator=data_creator, loss_creator=nn.MSELoss)
