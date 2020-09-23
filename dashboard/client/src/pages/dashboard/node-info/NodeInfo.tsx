@@ -142,7 +142,7 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
 const nodesSelector = (state: StoreState) => state.dashboard?.nodeInfo?.clients;
 
 type DialogState = {
-  hostname: string;
+  nodeIp: string;
   pid: number | null;
 } | null;
 
@@ -187,8 +187,8 @@ const NodeInfo: React.FC<{}> = () => {
     diskFeature,
     sentFeature,
     receivedFeature,
-    makeLogsFeature((hostname, pid) => setLogDialog({ hostname, pid })),
-    makeErrorsFeature((hostname, pid) => setErrorDialog({ hostname, pid })),
+    makeLogsFeature((nodeIp, pid) => setLogDialog({ nodeIp, pid })),
+    makeErrorsFeature((nodeIp, pid) => setErrorDialog({ nodeIp, pid })),
   ];
   const sortNodeAccessor = nodeInfoFeatures.find(
     (feature) => feature.id === orderBy,
@@ -249,14 +249,14 @@ const NodeInfo: React.FC<{}> = () => {
       {logDialog !== null && (
         <Logs
           clearLogDialog={() => setLogDialog(null)}
-          hostname={logDialog.hostname}
+          nodeIp={logDialog.nodeIp}
           pid={logDialog.pid}
         />
       )}
       {errorDialog !== null && (
         <Errors
           clearErrorDialog={() => setErrorDialog(null)}
-          hostname={errorDialog.hostname}
+          nodeIp={errorDialog.nodeIp}
           pid={errorDialog.pid}
         />
       )}

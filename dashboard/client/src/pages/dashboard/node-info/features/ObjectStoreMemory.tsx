@@ -1,6 +1,5 @@
 import { Typography } from "@material-ui/core";
 import React from "react";
-import { ViewData } from "../../../../api";
 import { formatUsage } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
@@ -14,15 +13,12 @@ import {
   WorkerFeatureRenderFn,
 } from "./types";
 
-const getDouble = (view: ViewData | undefined) =>
-  view?.measures[0]?.doubleValue ?? 0;
-
 export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
   const totalAvailable = sum(
-    nodes.map((n) => getDouble(n.raylet.viewData?.objectStoreAvailableMemory)),
+    nodes.map(n => n.raylet.objectStoreAvailableMemory),
   );
   const totalUsed = sum(
-    nodes.map((n) => getDouble(n.raylet.viewData.objectStoreUsedMemory)),
+    nodes.map(n => n.raylet.objectStoreUsedMemory),
   );
   return (
     <div style={{ minWidth: 60 }}>
@@ -35,8 +31,8 @@ export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
 };
 
 export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
-  const total = getDouble(node.raylet.viewData?.objectStoreAvailableMemory);
-  const used = getDouble(node.raylet.viewData?.objectStoreUsedMemory);
+  const total = node.raylet.objectStoreAvailableMemory;
+  const used = node.raylet.objectStoreUsedMemory;
   if (!used || !total) {
     return (
       <Typography color="textSecondary" component="span" variant="inherit">
@@ -57,7 +53,7 @@ export const NodeObjectStoreMemory: NodeFeatureRenderFn = ({ node }) => {
 
 export const nodeObjectStoreMemoryAccessor: Accessor<NodeFeatureData> = ({
   node,
-}) => getDouble(node.raylet.viewData?.objectStoreUsedMemory);
+}) => node.raylet.objectStoreUsedMemory;
 
 export const WorkerObjectStoreMemory: WorkerFeatureRenderFn = () => (
   <Typography color="textSecondary" component="span" variant="inherit">

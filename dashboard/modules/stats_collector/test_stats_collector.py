@@ -141,6 +141,7 @@ def test_get_all_node_details(ray_start_with_dashboard):
     class ActorWithObjs:
         def __init__(self):
             self.obj_ref = ray.put([1,2,3])
+            raise Exception("Uh oh it's an error")
 
         def get_obj(self):
             return ray.get(self.obj_ref)
@@ -150,24 +151,32 @@ def test_get_all_node_details(ray_start_with_dashboard):
 
     threshhold = datetime.now() + timedelta(seconds=5)
     done_in_time = False
-    while datetime.now() < threshhold:
+    while True:
         resp = requests.get(f"{webui_url}/nodes?view=details")
         if not resp or "data" not in resp.json():
             time.sleep(.5)
             continue
-        resp_data = resp.json()["data"]
-        clients = resp_data["clients"]
+        resp_json = resp.json()
+        resp_data = resp_json["data"]
         try:
+            clients = resp_data["clients"]
+            node = clients[0]
             assert len(clients) == 1
-            assert len(clients[0].get('actors')) == 2
+            assert len(node.get('actors')) == 2
             # Workers information should be in the detailed payload
-            assert "workers" in clients[0]
-        except AssertionError as e:
+            assert "workers" in node
+            assert "logCount" in node
+            worker = node["workers"][0]
+            assert "logCount" in worker
+            # assert worker["logCount"] == 1
+            # assert node["logCount"] == 2
+            assert "errorCount" in worker
+            assert worker["errorCount"] == 1
+        except (AssertionError, KeyError) as e:
             time.sleep(.5)
-            continue
-        done_in_time = True
-        break
-    assert done_in_time
+            if datetime.now() < threshhold:
+                continue
+            raise(e)
 
 
 @pytest.mark.parametrize(

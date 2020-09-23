@@ -132,7 +132,8 @@ export type RayletData = {
   // Merger of GCSNodeStats and GetNodeStatsReply
   // GetNodeStatsReply fields.
   // Note workers are in an array in NodeDetails
-  viewData: { [viewName: string]: ViewData };
+  objectStoreUsedMemory: number;
+  objectStoreAvailableMemory: number;
   numWorkers: number;
 
   // GCSNodeStats fields
@@ -287,27 +288,34 @@ export type ActorsResponse = {
 };
 
 export type ErrorsResponse = {
-  [pid: string]: Array<{
-    message: string;
-    timestamp: number;
-    type: string;
-  }>;
+  errors: ErrorsByPid;
 };
 
-export const getErrors = (hostname: string, pid: number | null) =>
-  get<ErrorsResponse>("/api/errors", {
-    hostname,
-    pid: pid === null ? "" : pid,
+export type ErrorsByPid = {
+  [pid: string]: {
+      message: string;
+      timestamp: number;
+      type: string;
+    }[];
+}
+export const getErrors = (nodeIp: string, pid: number | null) =>
+  get<ErrorsResponse>("/node_errors", {
+    nodeIp,
+    pid: pid ?? "",
   });
 
 export type LogsResponse = {
+  logs: LogsByPid;
+};
+
+export type LogsByPid = {
   [pid: string]: string[];
 };
 
-export const getLogs = (hostname: string, pid: number | null) =>
-  get<LogsResponse>("/api/logs", {
-    hostname,
-    pid: pid === null ? "" : pid,
+export const getLogs = (nodeIp: string, pid: number | null) =>
+  get<LogsResponse>("/node_logs", {
+    ip: nodeIp,
+    pid: pid ?? "",
   });
 
 export type LaunchProfilingResponse = string;

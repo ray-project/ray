@@ -90,12 +90,12 @@ class DataOrganizer:
         # Merge node log count information into the payload
         log_info = DataSource.ip_and_pid_to_logs.get(node_physical_stats["ip"], {})
         node_log_count = 0
-        for pid, entries in log_info.values():
+        logger.error(f"log_info={log_info}")
+        for entries in log_info.values():
             node_log_count += len(entries)
-
         error_info = DataSource.ip_and_pid_to_errors.get(node_physical_stats["ip"], {})
         node_err_count = 0
-        for pid, entries in log_info.values():
+        for entries in error_info.values():
             node_err_count += len(entries)
 
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
@@ -117,12 +117,18 @@ class DataOrganizer:
             worker["coreWorkerStats"] = list(worker_stats.values())
             worker["language"] = pid_to_language.get(worker["pid"], "")
             worker["jobId"] = pid_to_job_id.get(worker["pid"], "ffff")
-            worker["logCount"] = log_info.get(worker["pid"], 0)
-            worker["errorCount"] = error_info.get(worker["pid"], 0)
+            worker["logCount"] = len(log_info.get(str(worker["pid"]), []))
+            worker["errorCount"] = len(error_info.get(str(worker["pid"]), []))
+        
+        views = node_stats.pop("viewData")
+        view_data = _extract_view_data(views, {"object_store_used_memory", "object_store_available_memory"})
+
 
         node_info = node_physical_stats
-        # Merge node stats to node physical stats
+        # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
+        node_info["raylet"].update(view_data)
+
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Merge actors to node physical stats
@@ -181,3 +187,24 @@ class DataOrganizer:
             all_worker_stats.extend(node_stats.get("workersStats", []))
         memory_information = memory.construct_memory_table(all_worker_stats, group_by=group_by, sort_by=sort_by)
         return memory_information
+
+
+def _extract_view_data(views, data_keys):
+    view_data = {}
+    for view in views:
+        view_name = view["viewName"]
+        if view["viewName"] in data_keys:
+            if not view.get("measures"):
+                view_data[view_name] = 0
+                continue
+            measure = view["measures"][0]
+            if "doubleValue" in measure:
+                measure_value = measure["doubleValue"]
+            elif "intValue" in measure:
+                measure_value = measure["intValue"]
+            else:
+                measure_value = 0
+            view_data[view_name] = measure_value
+
+    return view_data
+            

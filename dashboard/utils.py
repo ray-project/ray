@@ -396,6 +396,9 @@ class Dict(MutableMapping):
 
     def __iter__(self):
         return iter(copy.deepcopy(self._data))
+    
+    def __str__(self):
+        return str(self._data)
 
     def reset(self, d):
         assert isinstance(d, Mapping)
