@@ -79,33 +79,46 @@ async def trial(actors, session, data_size):
 async def main():
     ray.init(log_to_driver=False)
     client = serve.start()
-
     client.create_backend("backend", backend)
     client.create_endpoint("endpoint", backend="backend", route="/api")
+    for intermediate_handles in [False, True]:
+        if(intermediate_handles):
+            class forwardActor:
+                def __init__(self):
+                    self.handle = client.get_handle("backend")
 
-    actors = [Client.remote() for _ in range(NUM_CLIENTS)]
-    for num_replicas in [1, 8]:
-        for backend_config in [
-            {
-                "max_batch_size": 1,
-                "max_concurrent_queries": 1
-            },
-            {
-                "max_batch_size": 1,
-                "max_concurrent_queries": 10000
-            },
-            {
-                "max_batch_size": 10000,
-                "max_concurrent_queries": 10000
-            },
-        ]:
-            backend_config["num_replicas"] = num_replicas
-            client.update_backend_config("backend", backend_config)
-            print(repr(backend_config) + ":")
-            async with aiohttp.ClientSession() as session:
-                # TODO(edoakes): large data causes broken pipe errors.
-                for data_size in ["small"]:
-                    await trial(actors, session, data_size)
+                def __call__(self, _):
+                    return ray.get(handle.remote())
+            client.create_backend("forwardActor", forwardActor)
+            client.set_traffic("endpoint", {
+                "backend": 0,
+                "forwardActor": 1
+            })
+        actors = [Client.remote() for _ in range(NUM_CLIENTS)]
+        for num_replicas in [1, 8]:
+            for backend_config in [
+                {
+                    "max_batch_size": 1,
+                    "max_concurrent_queries": 1
+                },
+                {
+                    "max_batch_size": 1,
+                    "max_concurrent_queries": 10000
+                },
+                {
+                    "max_batch_size": 10000,
+                    "max_concurrent_queries": 10000
+                },
+            ]:
+                backend_config["num_replicas"] = num_replicas
+                client.update_backend_config("backend", backend_config)
+                print(
+                    repr(backend_config) + ", intermediate_handles=" +
+                    str(intermediate_handles) + ":")
+                async with aiohttp.ClientSession() as session:
+                    # TODO(edoakes): large data causes broken pipe errors.
+                    for data_size in ["small"]:
+                        await trial(actors, session, data_size)
 
 
 if __name__ == "__main__":
