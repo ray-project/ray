@@ -1,5 +1,6 @@
 import json
 import random
+import sys
 import time
 
 import numpy as np
@@ -80,6 +81,7 @@ def test_spill_objects_manually_from_workers(shutdown_only):
     ray.get([_worker.remote() for _ in range(50)])
 
 
+@pytest.mark.skip(reason="Not implemented yet.")
 def test_spill_objects_manually_with_workers(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
@@ -111,23 +113,23 @@ def test_spill_objects_manually_with_workers(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 0,
         "object_store_memory": 75 * 1024 * 1024,
-        "_object_spilling_config": {
+        "object_spilling_config": {
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
             }
         },
-        "_system_config": json.dumps({
+        "_system_config": {
             "object_store_full_max_retries": 0,
             "max_io_workers": 4,
-        }),
+        },
     }],
     indirect=True)
 def test_spill_remote_object(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(
         object_store_memory=75 * 1024 * 1024,
-        _object_spilling_config={
+        object_spilling_config={
             "type": "filesystem",
             "params": {
                 "directory_path": "/tmp"
@@ -154,7 +156,7 @@ def test_spill_remote_object(ray_start_cluster_head):
     # assert np.array_equal(sample, copy)
 
 
-@pytest.mark.skip(reason="have not been fully implemented")
+@pytest.mark.skip(reason="Not implemented yet.")
 def test_spill_objects_automatically(shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
@@ -185,3 +187,7 @@ def test_spill_objects_automatically(shutdown_only):
         ref = random.choice(replay_buffer)
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, arr)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
