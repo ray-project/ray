@@ -115,16 +115,16 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             **kwargs)
         return await dashboard_utils.rest_response(success=True, message="Fetched memory table",memory_table=memory_table.as_dict())
 
-    @routes.post("/memory/set_fetch")
+    @routes.get("/memory/set_fetch")
     async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
-        should_fetch = (await req.json()).get("shouldFetch")
+        should_fetch = req.query["shouldFetch"]
         if should_fetch == "true":
             self._collect_memory_info = True
         elif should_fetch == "false":
             self._collect_memory_info = False
         else:
             return await dashboard_utils.rest_response(success=False, message=f"Unknown argument to set_fetch {should_fetch}")
-        return await dashboard_utils.rest_response(success=True)
+        return await dashboard_utils.rest_response(success=True, message=f"Successfully set fetching to {should_fetch}")
 
     async def _update_actors(self):
         # Subscribe actor channel.
@@ -189,7 +189,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error updating node stats of {node_id}.")
 
-    @async_loop_forever(LOG_INFO_UPDATE_INTERVAL_SECONDS)
+    @async_loop_forever(
+        stats_collector_consts.LOG_INFO_UPDATE_INTERVAL_SECONDS)
     async def _update_log_info(self):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
@@ -213,7 +214,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 logger.exception("Error receiving actor info.")
 
 
-    @async_loop_forever(ERROR_INFO_UPDATE_INTERVAL_SECONDS)
+    @async_loop_forever(
+        stats_collector_consts.ERROR_INFO_UPDATE_INTERVAL_SECONDS)
     async def _update_error_info(self):
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
