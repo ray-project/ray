@@ -471,7 +471,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             autoscaling_config=autoscaling_config,
         )
 
-        print(f"port {port}")
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{node_ip_address}:{port}"
