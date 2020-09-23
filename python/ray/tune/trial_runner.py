@@ -143,7 +143,7 @@ class TrialRunner:
         if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
             raise ValueError(
                 "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
-                "deprecated and will be removed in the future. "
+                "deprecated. "
                 "Use `tune.run(time_budget_s=limit)` instead.")
 
         self._total_time = 0
