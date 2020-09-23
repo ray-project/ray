@@ -5,7 +5,7 @@ import time
 import sys
 
 
-def test_was_current_actor_reconstructed():
+def test_was_current_actor_reconstructed(shutdown_only):
     ray.init()
 
     @ray.remote(max_restarts=10)
@@ -51,12 +51,6 @@ def test_was_current_actor_reconstructed():
     assert ray.get(a.get_was_reconstructed.remote()) is True
     assert ray.get(a.update_was_reconstructed.remote()) is True
 
-    ray.shutdown()
-
-
-def test_runtime_context_interface():
-    ray.init()
-
     @ray.remote(max_restarts=10)
     class A(object):
         def current_job_id(self):
@@ -65,10 +59,17 @@ def test_runtime_context_interface():
         def current_actor_id(self):
             return ray.get_runtime_context().current_actor_id
 
+    @ray.remote
+    def f():
+        assert ray.get_runtime_context().current_actor_id is None
+        assert ray.get_runtime_context().current_task_id is not None
+        assert ray.get_runtime_context().current_node_id is not None
+        assert ray.get_runtime_context().current_job_id is not None
+
     a = A.remote()
     assert ray.get(a.current_job_id.remote()) is not None
     assert ray.get(a.current_actor_id.remote()) is not None
-    ray.shutdown()
+    ray.get(f.remote())
 
 
 if __name__ == "__main__":
