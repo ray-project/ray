@@ -3,7 +3,6 @@ import pytest
 import subprocess
 import sys
 import time
-from socket import socket
 
 import ray
 from ray.test_utils import (
@@ -380,7 +379,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
-    check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
+    check_call_ray(
+        ["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a system config parameter set.
@@ -414,8 +414,10 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with redis shard ports specified.
-    check_call_ray(
-        ["start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port", "0"])
+    check_call_ray([
+        "start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port",
+        "0"
+    ])
     check_call_ray(["stop"])
 
     # Test starting Ray with all arguments specified.
@@ -428,11 +430,13 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
-        check_call_ray(["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
+        check_call_ray(
+            ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"])
 
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
@@ -445,7 +449,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
+    blocked = subprocess.Popen(
+        ["ray", "start", "--head", "--block", "--port", "0"])
     blocked.poll()
     assert blocked.returncode is None
 

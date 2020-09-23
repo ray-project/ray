@@ -163,7 +163,6 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--port",
     type=int,
     required=False,
-
     help=f"the port of the head ray process. If not provided, defaults to "
     f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
     f" allocate an available port.")
