@@ -296,7 +296,7 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(
 }
 
 bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
-                                                NodeResources *ret_resources) {
+                                                NodeResources *ret_resources) const {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     *ret_resources = it->second;
@@ -782,18 +782,29 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data) {
+void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data, bool light_heartbeat_enabled) const {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources)) << "Error: Populating heartbeat failed. Please file a bug report: https://github.com/ray-project/ray/issues/new.";
 
-  for (int i = 0; i < PredefinedResources_MAX; i++) {
-    std::string label = ResourceEnumToString((PredefinedResources)i);
-    struct ResourceCapacity capacity = resources.predefined_resources[i];
-    (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
-    (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+  if (light_heartbeat_enabled) {
+    //TODO
+    RAY_CHECK(false) << "TODO";
+  } else {
+    for (int i = 0; i < PredefinedResources_MAX; i++) {
+      std::string label = ResourceEnumToString((PredefinedResources)i);
+      struct ResourceCapacity capacity = resources.predefined_resources[i];
+      (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+      (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+    }
+    for (auto it = resources.custom_resources.begin(); it != resources.custom_resources.end(); it++) {
+      uint64_t custom_id = it->first;
+      struct ResourceCapacity capacity = it->second;
+      std::string label = string_to_int_map_.Get(custom_id);
+      (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+      (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+    }
   }
-
 }
 
-}  // namespace ray
+} // namespace ray

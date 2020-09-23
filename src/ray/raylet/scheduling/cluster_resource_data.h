@@ -28,7 +28,7 @@
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 
-std::string ResourceEnumToString(PredefinedResources resource);
+const std::string ResourceEnumToString(PredefinedResources resource);
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);

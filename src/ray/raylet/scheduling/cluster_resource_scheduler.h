@@ -191,7 +191,7 @@ class ClusterResourceScheduler {
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
@@ -375,7 +375,7 @@ class ClusterResourceScheduler {
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resources_available and resources_total.
-  void Heartbeat(std::shared_ptr<HeartbeatTableData> data);
+  void Heartbeat(std::shared_ptr<HeartbeatTableData> data, bool light_heartbeat_enabled) const;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

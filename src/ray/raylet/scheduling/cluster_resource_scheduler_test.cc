@@ -18,6 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -28,6 +29,7 @@
 
 using namespace std;
 
+namespace ray {
 // Used to path empty vector argiuments.
 vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
@@ -172,7 +174,6 @@ bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
   return true;
 }
 
-namespace ray {
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
@@ -968,6 +969,49 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   vector<FixedPoint> expect_cpu_instance{1., 0.5, 0., 0.};
 
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
+}
+
+
+TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
+  vector<int64_t> cust_ids{1, 2, 3, 4, 5};
+
+  NodeResources node_resources;
+
+  std::unordered_map<std::string, double> initial_resources = {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2 }, {"3", 3}};
+  // initNodeResources(node_resources, pred_capacities, cust_ids,
+  //                   cust_capacities);
+  ClusterResourceScheduler cluster_resources(0, initial_resources);
+
+  // NodeResources other_node_resources;
+  // vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
+  // vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
+  // initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
+  //                   other_cust_capacities);
+
+  // auto data = std::make_shared<rpc::HeartbeatTableData>();
+  // cluster_resources.Heartbeat(data, false);
+
+  // auto available = data->resources_available();
+  // auto total = data->resources_total();
+
+  // ASSERT_EQ(available[kCPU_ResourceLabel], 4);
+  // ASSERT_EQ(available[kMemory_ResourceLabel], 2);
+  // ASSERT_EQ(available[kGPU_ResourceLabel], 4);
+
+  // ASSERT_EQ(total[kCPU_ResourceLabel], 4);
+  // ASSERT_EQ(total[kMemory_ResourceLabel], 2);
+  // ASSERT_EQ(total[kGPU_ResourceLabel], 4);
+  // for (auto it = available.begin(); it != available.end(); it++) {
+  //   RAY_LOG(ERROR) << it->first << ": " << it->second;
+  // }
+  // ASSERT_EQ(total["1"], 4);
+
+
+
+
+
+
+
 }
 
 }  // namespace ray
