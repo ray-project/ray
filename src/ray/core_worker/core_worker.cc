@@ -1168,7 +1168,12 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
 
   // Find the raylet that hosts the primary copy of the object.
   ClientID pinned_at;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
+  bool spilled;
+  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
+  if (spilled) {
+    // The object has already been spilled.
+    return;
+  }
   auto node = gcs_client_->Nodes().Get(pinned_at);
   if (pinned_at.IsNil() || !node) {
     RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
@@ -1235,6 +1240,10 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   }
 
   ready_promise->get_future().wait();
+
+  for (const auto &object_id : object_ids) {
+    reference_counter_->HandleObjectSpilled(object_id);
+  }
   return final_status;
 }
 

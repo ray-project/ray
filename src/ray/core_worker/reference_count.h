@@ -324,15 +324,18 @@ class ReferenceCounter : public ReferenceCounterInterface {
   void UpdateObjectPinnedAtRaylet(const ObjectID &object_id, const ClientID &raylet_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Check whether the object is pinned at a remote plasma store node.
+  /// Check whether the object is pinned at a remote plasma store node or
+  /// spilled to external storage. In either case, a copy of the object is
+  /// available to fetch.
   ///
   /// \param[in] object_id The object to check.
   /// \param[out] pinned_at The node ID of the raylet at which this object is
+  /// \param[out] spilled Whether this object has been spilled.
   /// pinned. Set to nil if the object is not pinned.
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinned(const ObjectID &object_id, ClientID *pinned_at) const
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, ClientID *pinned_at, bool *spilled) const
       LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
@@ -377,6 +380,12 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return The nodes that have the object.
   std::unordered_set<ClientID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
+
+  /// Handle an object has been spilled to external storage.
+  ///
+  /// This notifies the primary raylet that the object is safe to release and
+  /// records that the object has been spilled to suppress reconstruction.
+  void HandleObjectSpilled(const ObjectID &object_id);
 
  private:
   struct Reference {
@@ -526,6 +535,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
+    /// Whether this object has been spilled to external storage.
+    bool spilled = false;
 
     /// Callback that will be called when this ObjectID no longer has
     /// references.

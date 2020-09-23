@@ -491,6 +491,9 @@ bool ReferenceCounter::SetDeleteCallback(
     // The object has been freed by the language frontend, so it
     // should be deleted immediately.
     return false;
+  } else if (it->second.spilled) {
+    // The object has been spilled, so it can be released immediately.
+    return false;
   }
 
   // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
@@ -538,12 +541,14 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::IsPlasmaObjectPinned(const ObjectID &object_id,
-                                            ClientID *pinned_at) const {
+bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
+                                            ClientID *pinned_at,
+                                            bool *spilled) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (it->second.owned_by_us) {
+      *spilled = it->second.spilled;
       *pinned_at = it->second.pinned_at_raylet_id.value_or(ClientID::Nil());
       return true;
     }
@@ -917,6 +922,19 @@ std::unordered_set<ClientID> ReferenceCounter::GetObjectLocations(
     locations.insert(location);
   }
   return locations;
+}
+
+void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Spilled object " << object_id << " already out of scope";
+    return;
+  }
+
+  it->second.spilled = true;
+  // Release the primary plasma copy, if any.
+  ReleasePlasmaObject(it);
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

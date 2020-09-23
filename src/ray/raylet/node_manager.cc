@@ -570,15 +570,17 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
               const ObjectID &object_id = objects_ids[i];
               const std::string &object_url = r.spilled_objects_url(i);
               RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              // TODO(suquark): write to object directory.
+              // TODO(suquark): write to object directory. Call the callback
+              // once the write is finished to make sure that the spilled
+              // object can be retrieved by the time the owner learns that we
+              // have spilled.
               spilled_objects_[object_id] = object_url;
-              auto search = pinned_objects_.find(object_id);
-              if (search != pinned_objects_.end()) {
-                pinned_objects_.erase(search);
-              } else {
-                RAY_LOG(ERROR) << "The spilled object " << object_id.Hex()
-                               << " is not pinned.";
-              }
+              // Unpin the object.
+              // NOTE(swang): Due to a race condition, the object may not be in
+              // the map yet. In that case, the owner will respond to the
+              // WaitForObjectEvictionRequest and we will unpin the object
+              // then.
+              pinned_objects_.erase(object_id);
             }
           }
           if (callback) {
