@@ -230,7 +230,7 @@ def run(
         max_failures (int): Try to recover a trial at least this many times.
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
-            Setting to 0 will disable retries. Defaults to 3.
+            Setting to 0 will disable retries. Defaults to 0.
         fail_fast (bool | str): Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
