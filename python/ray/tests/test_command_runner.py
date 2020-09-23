@@ -160,7 +160,7 @@ def test_kubernetes_command_runner():
 
     logger = logging.getLogger("ray.autoscaler._private.command_runner")
     with pytest.raises(SystemExit) as pytest_wrapped_e, patch.object(
-            logger, 'error') as mock_logger_error:
+            logger, "error") as mock_logger_error:
         cmd_runner.run(fail_cmd, exit_on_fail=True)
 
     failed_cmd_expected = f'prefixCommand failed: \n\n  kubectl -n namespace exec -it 0 --\'bash --login -c -i \'"\'"\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({fail_cmd})\'"\'"\'\'\n'  # noqa: E501
