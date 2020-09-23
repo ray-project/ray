@@ -10,6 +10,7 @@ import time
 import urllib
 import urllib.parse
 import yaml
+from socket import socket
 
 import ray
 import psutil
@@ -161,9 +162,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @click.option(
     "--port",
     type=int,
-    default=ray_constants.DEFAULT_PORT,
-    help="the port of the head ray process. If not provided, defaults to "
-    "{0}".format(ray_constants.DEFAULT_PORT))
+    required=False,
+
+    help=f"the port of the head ray process. If not provided, defaults to "
+    f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
+    f" allocate an available port.")
 @click.option(
     "--redis-password",
     required=False,
@@ -459,6 +462,15 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             redis_max_clients=None,
             autoscaling_config=autoscaling_config,
         )
+
+        # Use default if port is none, allocate an available port if port is 0
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
+
+        if port == 0:
+            with socket() as s:
+                s.bind(("", 0))
+                port = s.getsockname()[1]
 
         # Fail early when starting a new cluster when one is already running
         if address is None:

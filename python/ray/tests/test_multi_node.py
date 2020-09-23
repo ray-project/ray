@@ -302,7 +302,7 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start", [
         "ray start --head --num-cpus=1 --num-gpus=1 " +
-        "--min-worker-port=0 --max-worker-port=0"
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
@@ -371,90 +371,68 @@ print("success")
 
 def test_calling_start_ray_head(call_ray_stop_only):
 
-    def get_available_port():
-        port = 0
-        with socket() as s:
-            s.bind(("", 0))
-            port = s.getsockname()[1]
-        return port
-
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
 
-    # Test starting Ray with no arguments.
-    check_call_ray(["start", "--head"])
-    check_call_ray(["stop"])
-
     # Test starting Ray with a redis port specified.
-    port = get_available_port()
-    check_call_ray(["start", "--head", "--port", str(port)])
+    check_call_ray(["start", "--head", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a node IP address specified.
-    port = get_available_port()
-    check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1", "--port", str(port)])
+    check_call_ray(["start", "--head", "--node-ip-address", "127.0.0.1", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a system config parameter set.
-    port = get_available_port()
     check_call_ray([
         "start", "--head", "--system-config",
-        "{\"metrics_report_interval_ms\":100}", "--port", str(port)
+        "{\"metrics_report_interval_ms\":100}", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the object manager and node manager ports
     # specified.
-    port = get_available_port()
     check_call_ray([
         "start", "--head", "--object-manager-port", "12345",
-        "--node-manager-port", "54321", "--port", str(port)
+        "--node-manager-port", "54321", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the worker port range specified.
-    port = get_available_port()
     check_call_ray([
         "start", "--head", "--min-worker-port", "50000", "--max-worker-port",
-        "51000", "--port", str(port)
+        "51000", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the number of CPUs specified.
-    port = get_available_port()
-    check_call_ray(["start", "--head", "--num-cpus", "2", "--port", str(port)])
+    check_call_ray(["start", "--head", "--num-cpus", "2", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with the number of GPUs specified.
-    port = get_available_port()
-    check_call_ray(["start", "--head", "--num-gpus", "100", "--port", str(port)])
+    check_call_ray(["start", "--head", "--num-gpus", "100", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with redis shard ports specified.
-    port = get_available_port()
     check_call_ray(
-        ["start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port", str(port)])
+        ["start", "--head", "--redis-shard-ports", "6380,6381,6382", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with all arguments specified.
-    port = get_available_port()
     check_call_ray([
         "start", "--head", "--redis-shard-ports", "6380,6381,6382",
         "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus", "0",
-        "--resources", "{\"Custom\": 1}", "--port", str(port)
+        "--resources", "{\"Custom\": 1}", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
-        port = get_available_port()
-        check_call_ray(["start", "--head", "--address", "127.0.0.1:6379", "--port", str(port)])
+        check_call_ray(["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
-    port = get_available_port()
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", str(port)])
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
 
     wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
@@ -467,8 +445,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
-    port = get_available_port()
-    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", str(port)])
+    blocked = subprocess.Popen(["ray", "start", "--head", "--block", "--port", "0"])
     blocked.poll()
     assert blocked.returncode is None
 
@@ -482,7 +459,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost"],
+    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost" + " --port 0"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
     ray.init(_node_ip_address="localhost", address="localhost:6379")
