@@ -797,8 +797,17 @@ def test_capture_child_tasks(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    # Creating a placement group that cannot be satisfied yet.
-    placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+    pg = ray.util.placement_group(
+        [{"CPU": 2} * 2],
+        strategy="STRICT_PACK")
+    ray.get(pg.ready(), timeout=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ready(self):
+            return True
+    
+    a = Actor.options(placement_group=pg).remote()
 
 
 if __name__ == "__main__":
