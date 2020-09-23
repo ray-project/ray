@@ -145,7 +145,6 @@ test_python() {
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_basic_2  # hangs on shared cluster tests
       -python/ray/tests:test_cli
-      -python/ray/tests:test_cython
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
