@@ -977,7 +977,7 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
 
   NodeResources node_resources;
 
-  std::unordered_map<std::string, double> initial_resources = {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2 }, {"3", 3}};
+  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2 }, {"3", 3}});
   // initNodeResources(node_resources, pred_capacities, cust_ids,
   //                   cust_capacities);
   ClusterResourceScheduler cluster_resources(0, initial_resources);
