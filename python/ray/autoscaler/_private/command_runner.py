@@ -241,6 +241,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             # side-effects.
             final_cmd = " ".join(final_cmd)
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
+
             try:
                 if with_output:
                     return self.process_runner.check_output(
