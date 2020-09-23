@@ -805,7 +805,7 @@ def test_capture_child_tasks(ray_start_cluster):
         }, {
             "CPU": 2
         }], strategy="STRICT_PACK")
-    ray.get(pg.ready(), timeout=1)
+    ray.get(pg.ready(), timeout=5)
 
     # If get_current_placement_group is used when the current worker/driver
     # doesn't belong to any of placement group, it should return None.
