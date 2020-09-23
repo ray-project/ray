@@ -462,7 +462,10 @@ class TrialRunner:
         """
         trials_done = all(trial.is_finished() for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
-        self._update_trial_queue(blocking=wait_for_trial)
+        # Only fetch a new trial if we have no pending trial
+        if not any(trial.status == Trial.PENDING for trial in self._trials) \
+           or wait_for_trial:
+            self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
             logger.debug("Running trial {}".format(trial))
