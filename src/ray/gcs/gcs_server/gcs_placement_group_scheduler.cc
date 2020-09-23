@@ -386,17 +386,23 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const auto &node = gcs_node_manager_.GetNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
-    // TODO(sang) Handle the case nodes are dead.
-    CommitResources(
-        bundle, node,
-        [this, lease_status_tracker, bundle, node_id, schedule_failure_handler,
-         schedule_success_handler](const Status &status) {
-          lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
-          if (lease_status_tracker->AllCommitRequestReturned()) {
-            OnAllBundleCommitRequestReturned(
-                lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-          }
-        });
+    auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
+                                      schedule_failure_handler,
+                                      schedule_success_handler](const Status &status) {
+      lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
+      if (lease_status_tracker->AllCommitRequestReturned()) {
+        OnAllBundleCommitRequestReturned(lease_status_tracker, schedule_failure_handler,
+                                         schedule_success_handler);
+      }
+    };
+
+    if (node != nullptr) {
+      CommitResources(bundle, node, commit_resources_callback);
+    } else {
+      RAY_LOG(INFO) << "Failed to commit resources because the node is dead, node id = "
+                    << node_id;
+      commit_resources_callback(Status::Interrupted("Node is dead"));
+    }
   }
 }
 
@@ -682,7 +688,8 @@ bool LeaseStatusTracker::AllCommitRequestsSuccessful() const {
   // We don't check cancel state here because we shouldn't destroy bundles when
   // commit requests failed. Cancel state should be treated separately.
   return AllCommitRequestReturned() &&
-         preparing_bundle_locations_->size() == bundles_to_schedule_.size();
+         preparing_bundle_locations_->size() == bundles_to_schedule_.size() &&
+         uncommitted_bundle_locations_->empty();
 }
 
 const std::shared_ptr<GcsPlacementGroup> &LeaseStatusTracker::GetPlacementGroup() const {
