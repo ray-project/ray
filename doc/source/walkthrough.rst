@@ -179,6 +179,7 @@ Note the following behaviors:
      first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
      network to the machine where the second task is scheduled.
 
+.. _resource-requirements:
 
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
