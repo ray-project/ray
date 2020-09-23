@@ -253,7 +253,7 @@ std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
 
 void GcsServer::StoreGcsServerAddressInRedis() {
   std::string ip = config_.node_ip_address;
-  if (ip == "") {
+  if (ip.empty()) {
     ip = GetValidLocalIp(
         GetPort(),
         RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
