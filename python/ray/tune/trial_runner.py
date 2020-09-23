@@ -535,10 +535,13 @@ class TrialRunner:
                 result = trial.last_result
                 result.update(done=True)
 
-            # Check if any of the requried metrics was not reported
-            # in the last result
+            # Check if any of the required metrics was not reported
+            # in the last result. If the only item is `done=True`, this
+            # means that no result was ever received and the trial just
+            # returned. This is also okay and will not raise an error.
             if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
-                                  0)) != 1:
+                                  0)) != 1 and (len(result) > 1
+                                                or "done" not in result):
                 base_metric = self._metric
                 scheduler_metric = self._scheduler_alg.metric
                 search_metric = self._search_alg.metric

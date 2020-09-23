@@ -1152,6 +1152,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def train(config):
             tune.report(val=4, second=8)
 
+        def train2(config):
+            return
+
         os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "0"
         # `acc` is not reported, should raise
         with self.assertRaises(TuneError):
@@ -1161,6 +1164,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # `val` is reported, should not raise
         tune.run(train, metric="val")
+
+        # Run does not report anything, should not raise
+        tune.run(train2, metric="val")
 
         # Only the scheduler requires a metric
         with self.assertRaises(TuneError):
