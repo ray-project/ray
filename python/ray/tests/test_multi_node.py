@@ -459,7 +459,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost" + " --port 0"],
+    ["ray start --head --num-cpus=1 " + "--node-ip-address=localhost " + "--port 0"],
     indirect=True)
 def test_using_hostnames(call_ray_start):
     ray.init(_node_ip_address="localhost", address="localhost:6379")
