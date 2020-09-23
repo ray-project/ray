@@ -140,15 +140,12 @@ class TrialRunner:
 
         self._metric = metric
 
-        # For debugging, it may be useful to halt trials after some time has
-        # elapsed. TODO(ekl) consider exposing this in the API.
         if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
-            logger.warning(
+            raise ValueError(
                 "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
                 "deprecated and will be removed in the future. "
                 "Use `tune.run(time_budget_s=limit)` instead.")
-        self._global_time_limit = float(
-            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
+
         self._total_time = 0
         self._iteration = 0
         self._has_errored = False
@@ -357,11 +354,6 @@ class TrialRunner:
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
-        if self._total_time > self._global_time_limit:
-            logger.warning("Exceeded global time limit {} / {}".format(
-                self._total_time, self._global_time_limit))
-            return True
-
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
