@@ -41,6 +41,17 @@ Horovod is a distributed deep learning training framework for TensorFlow, Keras,
 
 [`Link to integration <https://horovod.readthedocs.io/en/stable/ray_include.html>`__]
 
+John Snow Labs' NLU |NLU|
+-----------------------------------
+
+
+The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
+
+[`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
+
+
+
+
 Hugging Face Transformers |hugging|
 -----------------------------------
 
@@ -94,6 +105,9 @@ Spacy |spacy|
 -------------
 spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
 
+
+
+
 [`Link to integration <https://pypi.org/project/spacy-ray/>`__]
 
 .. |classyvision| image:: images/classyvision.png
@@ -141,5 +155,9 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+    
+.. |nlu| image:: images/nlu.png
     :class: inline-figure
     :height: 30
