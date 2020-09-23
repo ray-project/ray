@@ -209,7 +209,8 @@ def test_basic_custom_metrics(metric_mock):
     metric_mock.record.assert_called_with(4, tags={})
 
     # -- Histogram
-    histogram = Histogram("hist", description="hist", tag_keys=("a", "b"))
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
     histogram.record(4)
     metric_mock.record.assert_called_with(4, tags={})
@@ -254,7 +255,7 @@ def test_custom_metrics_default_tags(metric_mock):
     metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
 
     # Check overriding default tags.
-    tags = {"a": "10", "b": "b"}
+    tags = {"a": "10", "b": "c"}
     histogram.with_tags(tags).record(8)
     metric_mock.record.assert_called_with(8, tags=tags)
 
@@ -267,6 +268,13 @@ def test_custom_metrics_edge_cases(metric_mock):
     # Make sure double chained tags will be overwritten.
     histogram.with_tags({"a": "a"}).with_tags({"a": "b"}).record(10)
     metric_mock.record.assert_called_with(10, tags={"a": "b"})
+
+    # None or empty boundaries are not allowed.
+    with pytest.raises(ValueError):
+        Histogram("hist")
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[])
 
 
 if __name__ == "__main__":

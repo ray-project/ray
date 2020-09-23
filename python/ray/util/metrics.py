@@ -16,29 +16,30 @@ class Metric:
 
     Ray's custom metrics APIs are rooted from this class and sharing
     the same public methods.
-
-    Metric name pattern : ray_{component_name}_{metric_name}, and
-    name format must be in [0-9a-zA-Z].
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Tuple[str] = None,
-                 default_tags: Dict[str, Optional[str]] = None):
+                 tag_keys: Optional[Tuple[str]] = None,
+                 default_tags: Optional[Dict[str, str]] = None):
         self._name = name
         self._description = description
         self._unit = ""
         # The default tags key-value pair.
-        self._default_tags = default_tags if default_tags else {}
+        self._default_tags = default_tags or {}
         # Keys of tags.
-        self._tag_keys = tag_keys if tag_keys else tuple()
+        self._tag_keys = tag_keys or tuple()
         # The Cython metric class. This should be set in the child class.
         self._metric = None
         # This field is used to temporarily store tags for record method.
         self._tag_cache = {}
 
-    def with_tags(self, tags: Dict[str, Optional[str]]):
+        if not set(self._default_tags.keys()).issubset(self._tag_keys):
+            raise ValueError(f"Given default tags, {default_tags}, is "
+                             f"not a subset of tag keys, {tag_keys}.")
+
+    def with_tags(self, tags: Dict[str, str]):
         """Chain method to specify tags.
 
         Example:
@@ -54,7 +55,7 @@ class Metric:
         if len(self._tag_cache) > 0:
             logger.warning(
                 "Chaining multiple with_tags method is not recommended. EX) "
-                "metrics.with_chain(tags1).with_chains(tags2). The first "
+                "metrics.with_tags(tags1).with_tags(tags2). The first "
                 f"tag {self._tag_cache} will be overwritten by the second "
                 f"chained method. {tags}")
             self._tag_cache = {}
@@ -114,8 +115,8 @@ class Count(Metric):
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Tuple[str] = None,
-                 default_tags: Dict[str, Optional[str]] = None):
+                 tag_keys: Optional[Tuple[str]] = None,
+                 default_tags: Optional[Dict[str, str]] = None):
         super().__init__(name, description, tag_keys, default_tags)
         self._metric = CythonCount(self._name, self._description, self._unit,
                                    self._tag_keys)
@@ -140,10 +141,15 @@ class Histogram(Metric):
                  name: str,
                  description: str = "",
                  boundaries: List[float] = None,
-                 tag_keys: Tuple[str] = None,
-                 default_tags: Dict[str, Optional[str]] = None):
+                 tag_keys: Optional[Tuple[str]] = None,
+                 default_tags: Optional[Dict[str, str]] = None):
         super().__init__(name, description, tag_keys, default_tags)
-        self.boundaries = boundaries if boundaries else []
+        # SANG-TODO Test this.
+        if boundaries is None or len(boundaries) == 0:
+            raise ValueError(
+                "boundaries argument should be provided when using the "
+                "Histogram class. EX) Histgoram(boundaries=[1.0, 2.0])")
+        self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
                                        self._unit, self.boundaries,
                                        self._tag_keys)
@@ -171,8 +177,8 @@ class Gauge(Metric):
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Tuple[str] = None,
-                 default_tags: Dict[str, Optional[str]] = None):
+                 tag_keys: Optional[Tuple[str]] = None,
+                 default_tags: Optional[Dict[str, str]] = None):
         super().__init__(name, description, tag_keys, default_tags)
         self._metric = CythonGauge(self._name, self._description, self._unit,
                                    self._tag_keys)

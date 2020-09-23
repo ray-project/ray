@@ -4,7 +4,7 @@ To help monitoring Ray applications, Ray
 
 - Collects Ray's pre-selected system level metrics.
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
-- Support custom metrics APIs that resemble prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
+- Support custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
 This page describes how to acces these metrics using Prometheus.
 
@@ -157,6 +157,6 @@ Custom Metrics
 --------------
 Ray supports custom metrics APIs to enable developers to have visibility to their applications.
 
-It current supports 3 metric types. All metric types have the same definition as `prometheus metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
+It current supports 3 metric types. All metric types have the same definition as `Prometheus metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
 :ref:`Custom Metrics APIs Package Reference <custom-metric-api-ref>`
