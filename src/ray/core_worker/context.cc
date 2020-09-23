@@ -84,6 +84,11 @@ struct WorkerThreadContext {
   /// Used to calculate the object index for put object ObjectIDs.
   int put_counter_;
 
+  /// Placement group id that the current task belongs to.
+  /// NOTE: The top level `WorkerContext` will also have placement_group_id
+  ///   which is set when actors are created. It is because we'd like to keep track
+  ///   thread local placement group id for tasks, and the process placement group id for
+  ///   actors.
   PlacementGroupID current_placement_group_id_;
 };
 

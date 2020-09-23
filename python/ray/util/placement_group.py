@@ -1,6 +1,6 @@
 import time
 
-from typing import (List, Dict)
+from typing import (List, Dict, Optional)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
@@ -103,7 +103,7 @@ class PlacementGroup:
                 time.sleep(wait_interval)
                 timeout_cnt += 1
 
-            raise TimeoutError(
+            raise RuntimeError(
                 "Couldn't get the bundle information of placement group id "
                 f"{self.id} in {timeout_second} seconds. It is likely "
                 "because GCS server is too busy.")
@@ -177,8 +177,12 @@ def placement_group_table(placement_group: PlacementGroup) -> dict:
     return ray.state.state.placement_group_table(placement_group.id)
 
 
-def get_current_placement_group() -> PlacementGroup:
+def get_current_placement_group() -> Optional[PlacementGroup]:
     """Get the current placement group which a task or actor is using.
+
+    It returns None if there's no current placement group for the worker.
+    For example, if you call this method in your driver, it returns None
+    (because drivers never belong to any placement group).
 
     Examples:
 
@@ -190,16 +194,21 @@ def get_current_placement_group() -> PlacementGroup:
         >>> pg = placement_group([{"CPU": 2}])
         >>> f.options(placement_group=pg).remote()
 
-    Raises:
-        RuntimeError: If the method is used when the current worker/driver
-            doesn't belong to a placement group, it raises a RuntimeError.
+        >>> # New script.
+        >>> ray.init()
+        >>> # New script doesn't belong to any placement group,
+        >>> # so it returns None.
+        >>> assert get_current_placement_group() is None
+
+    Return:
+        PlacementGroup: Placement group object.
+            None if the current task or actor wasn't
+            created with any placement group.
     """
     pg_id = ray.runtime_context.get_runtime_context(
     ).current_placement_group_id
     if pg_id.is_nil():
-        raise RuntimeError(
-            "The method is not allowed to be used when the task or actor "
-            "does not belong to a placement group.")
+        return None
     return PlacementGroup(pg_id)
 
 

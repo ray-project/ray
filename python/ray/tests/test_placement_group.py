@@ -808,9 +808,8 @@ def test_capture_child_tasks(ray_start_cluster):
     ray.get(pg.ready(), timeout=1)
 
     # If get_current_placement_group is used when the current worker/driver
-    # doesn't belong to any of placement group, it should raise an exception.
-    with pytest.raises(RuntimeError):
-        get_current_placement_group()
+    # doesn't belong to any of placement group, it should return None.
+    assert get_current_placement_group() is None
 
     @ray.remote(num_cpus=1)
     class NestedActor:
