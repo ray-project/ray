@@ -10,7 +10,7 @@ from contextlib import closing
 from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
-from .command_runner import StaroidCommandRunner
+from ray.autoscaler._private.staroid.command_runner import StaroidCommandRunner
 from ray.autoscaler._private.staroid import log_prefix
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
