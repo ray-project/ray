@@ -292,8 +292,8 @@ message GetObjectLocationsRequest {
 
 message GetObjectLocationsReply {
   GcsStatus status = 1;
-  // Data of object.
-  repeated ObjectTableData object_table_data_list = 2;
+  // Object location information.
+  ObjectLocationInfo location_info = 2;
 }
 
 message GetAllObjectLocationsRequest {

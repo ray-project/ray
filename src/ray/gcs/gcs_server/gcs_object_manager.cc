@@ -23,14 +23,14 @@ namespace gcs {
 void GcsObjectManager::HandleGetObjectLocations(
     const rpc::GetObjectLocationsRequest &request, rpc::GetObjectLocationsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  reply->mutable_location_info()->set_object_id(request.object_id());
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Getting object locations, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id;
   auto object_locations = GetObjectLocations(object_id);
   for (auto &node_id : object_locations) {
-    rpc::ObjectTableData object_table_data;
-    object_table_data.set_manager(node_id.Binary());
-    reply->add_object_table_data_list()->CopyFrom(object_table_data);
+    auto loc = reply->mutable_location_info()->add_locations();
+    loc->set_manager(node_id.Binary());
   }
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id;

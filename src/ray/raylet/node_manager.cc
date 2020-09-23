@@ -563,6 +563,9 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send object spilling request: "
                            << status.ToString();
+            if (callback) {
+              callback(status);
+            }
           } else {
             RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
                       objects_ids.size());
@@ -570,21 +573,24 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
               const ObjectID &object_id = objects_ids[i];
               const std::string &object_url = r.spilled_objects_url(i);
               RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              // TODO(suquark): write to object directory. Call the callback
-              // once the write is finished to make sure that the spilled
-              // object can be retrieved by the time the owner learns that we
-              // have spilled.
               spilled_objects_[object_id] = object_url;
-              // Unpin the object.
-              // NOTE(swang): Due to a race condition, the object may not be in
-              // the map yet. In that case, the owner will respond to the
-              // WaitForObjectEvictionRequest and we will unpin the object
-              // then.
-              pinned_objects_.erase(object_id);
+              // Write to object directory. Wait for the write to finish before
+              // releasing the object to make sure that the spilled object can
+              // be retrieved by other raylets.
+              RAY_CHECK_OK(gcs_client_->Objects().AsyncAddSpilledUrl(
+                  object_id, object_url, [this, object_id, callback](Status status) {
+                    RAY_CHECK_OK(status);
+                    // Unpin the object.
+                    // NOTE(swang): Due to a race condition, the object may not be in
+                    // the map yet. In that case, the owner will respond to the
+                    // WaitForObjectEvictionRequest and we will unpin the object
+                    // then.
+                    pinned_objects_.erase(object_id);
+                    if (callback) {
+                      callback(status);
+                    }
+                  }));
             }
-          }
-          if (callback) {
-            callback(status);
           }
         });
   });
@@ -596,6 +602,8 @@ void NodeManager::RestoreSpilledObjects(
   std::vector<std::string> object_urls;
   object_urls.reserve(object_ids.size());
   for (const auto &object_id : object_ids) {
+    // TODO(swang): Read the URL from the GCS directory, not the local
+    // structure.
     if (spilled_objects_.count(object_id) == 0) {
       callback(Status::Invalid("No object URL recorded"));
       return;

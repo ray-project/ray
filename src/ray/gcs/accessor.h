@@ -355,7 +355,7 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncGetLocations(
       const ObjectID &object_id,
-      const MultiItemCallback<rpc::ObjectTableData> &callback) = 0;
+      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) = 0;
 
   /// Get all object's locations from GCS asynchronously.
   ///
@@ -372,6 +372,16 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                                   const StatusCallback &callback) = 0;
+
+  /// Add spilled location of object to GCS asynchronously.
+  ///
+  /// \param object_id The ID of object which location will be added to GCS.
+  /// \param spilled_url The URL where the object has been spilled.
+  /// \param callback Callback that will be called after object has been added to GCS.
+  /// \return Status
+  virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
+                                    const std::string &spilled_url,
+                                    const StatusCallback &callback) = 0;
 
   /// Remove location of object from GCS asynchronously.
   ///

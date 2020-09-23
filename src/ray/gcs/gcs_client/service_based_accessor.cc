@@ -1113,19 +1113,15 @@ ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting object locations, object id = " << object_id;
   rpc::GetObjectLocationsRequest request;
   request.set_object_id(object_id.Binary());
   client_impl_->GetGcsRpcClient().GetObjectLocations(
       request, [object_id, callback](const Status &status,
                                      const rpc::GetObjectLocationsReply &reply) {
-        std::vector<ObjectTableData> result;
-        result.reserve((reply.object_table_data_list_size()));
-        for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
-          result.emplace_back(reply.object_table_data_list(index));
-        }
-        callback(status, result);
+        callback(status, reply.location_info());
         RAY_LOG(DEBUG) << "Finished getting object locations, status = " << status
                        << ", object id = " << object_id;
       });
@@ -1178,6 +1174,12 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
   return Status::OK();
 }
 
+Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
+    const ObjectID &object_id, const std::string &spilled_url,
+    const StatusCallback &callback) {
+  return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+}
+
 Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
     const ObjectID &object_id, const ClientID &node_id, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Removing object location, object id = " << object_id
@@ -1215,10 +1217,12 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                subscribe](const StatusCallback &fetch_done) {
     auto callback = [object_id, subscribe, fetch_done](
                         const Status &status,
-                        const std::vector<rpc::ObjectTableData> &result) {
+                        const boost::optional<rpc::ObjectLocationInfo> &result) {
       if (status.ok()) {
+        std::vector<rpc::ObjectTableData> data(result->locations().begin(),
+                                               result->locations().end());
         gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                   result);
+                                                   data);
         subscribe(object_id, notification);
       }
       if (fetch_done) {

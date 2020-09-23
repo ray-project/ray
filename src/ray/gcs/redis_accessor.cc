@@ -494,11 +494,18 @@ RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
 
 Status RedisObjectInfoAccessor::AsyncGetLocations(
-    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+    const ObjectID &object_id,
+    const OptionalItemCallback<rpc::ObjectLocationInfo> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                             const std::vector<ObjectTableData> &data) {
-    callback(Status::OK(), data);
+    rpc::ObjectLocationInfo info;
+    info.set_object_id(object_id.Binary());
+    for (const auto &item : data) {
+      auto item_ptr = info.add_locations();
+      item_ptr->CopyFrom(item);
+    }
+    callback(Status::OK(), info);
   };
 
   ObjectTable &object_table = client_impl_->object_table();

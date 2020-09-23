@@ -335,8 +335,8 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \return True if the object exists and is owned by us, false otherwise. We
   /// return false here because a borrower should not know the pinned location
   /// for an object.
-  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, ClientID *pinned_at, bool *spilled) const
-      LOCKS_EXCLUDED(mutex_);
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, ClientID *pinned_at,
+                                     bool *spilled) const LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
   /// method should be called upon a node failure, to determine which plasma

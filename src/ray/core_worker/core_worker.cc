@@ -498,13 +498,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto object_lookup_fn = [this](const ObjectID &object_id,
                                  const ObjectLookupCallback &callback) {
     return gcs_client_->Objects().AsyncGetLocations(
-        object_id,
-        [this, object_id, callback](const Status &status,
-                                    const std::vector<rpc::ObjectTableData> &results) {
+        object_id, [this, object_id, callback](
+                       const Status &status,
+                       const boost::optional<rpc::ObjectLocationInfo> &result) {
           RAY_CHECK_OK(status);
           std::vector<rpc::Address> locations;
-          for (const auto &result : results) {
-            const auto &node_id = ClientID::FromBinary(result.manager());
+          for (const auto &loc : result->locations()) {
+            const auto &node_id = ClientID::FromBinary(loc.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
             if (node->state() == rpc::GcsNodeInfo::ALIVE) {
@@ -1169,7 +1169,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   // Find the raylet that hosts the primary copy of the object.
   ClientID pinned_at;
   bool spilled;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
+  RAY_CHECK(
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
   if (spilled) {
     // The object has already been spilled.
     return;

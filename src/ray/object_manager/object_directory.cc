@@ -220,13 +220,14 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     status = gcs_client_->Objects().AsyncGetLocations(
         object_id,
         [this, object_id, callback](
-            Status status, const std::vector<ObjectTableData> &location_updates) {
+            Status status, const boost::optional<rpc::ObjectLocationInfo> &update) {
           RAY_CHECK(status.ok())
               << "Failed to get object location from GCS: " << status.message();
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> node_ids;
-          UpdateObjectLocations(/*is_added*/ true, location_updates, gcs_client_,
-                                &node_ids);
+          std::vector<ObjectTableData> data(update->locations().begin(),
+                                            update->locations().end());
+          UpdateObjectLocations(/*is_added*/ true, data, gcs_client_, &node_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
           callback(object_id, node_ids);

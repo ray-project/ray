@@ -22,7 +22,8 @@ Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
   ClientID pinned_at;
   bool spilled;
-  bool owned_by_us = reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled);
+  bool owned_by_us =
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled);
   if (!owned_by_us) {
     return Status::Invalid(
         "Object reference no longer exists or is not owned by us. Either lineage pinning "
