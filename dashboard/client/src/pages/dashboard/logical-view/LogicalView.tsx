@@ -31,8 +31,7 @@ const actorClassMatchesSearch = (
   return actorClass.toLowerCase().search(loweredNameFilter) !== -1;
 };
 
-const actorGroupsSelector = (state: StoreState) =>
-  state.dashboard.actorGroups;
+const actorGroupsSelector = (state: StoreState) => state.dashboard.actorGroups;
 
 const LogicalView: React.FC = () => {
   const [nameFilter, setNameFilter] = useState("");
@@ -41,6 +40,13 @@ const LogicalView: React.FC = () => {
   const actorGroups = useSelector(actorGroupsSelector);
   if (!actorGroups) {
     return <Typography color="textSecondary">Loading...</Typography>;
+  }
+  if (Object.keys(actorGroups).length === 0) {
+    return (
+      <Typography color="textSecondary">
+        Finished loading, but have found no actors yet.
+      </Typography>
+    );
   }
   const filteredGroups =
     debouncedNameFilter === ""

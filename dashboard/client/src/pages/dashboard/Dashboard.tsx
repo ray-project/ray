@@ -8,7 +8,7 @@ import {
 } from "@material-ui/core";
 import React, { useCallback, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { getNodeInfo, getTuneAvailability, getActorGroups } from "../../api";
+import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -18,7 +18,13 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
-const { setNodeInfo, setTuneAvailability, setActorGroups, setError, setTab } = dashboardActions;
+const {
+  setNodeInfo,
+  setTuneAvailability,
+  setActorGroups,
+  setError,
+  setTab,
+} = dashboardActions;
 const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {

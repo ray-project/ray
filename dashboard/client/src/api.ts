@@ -92,7 +92,7 @@ export type Worker = {
 export type CoreWorkerStats = {
   ipAddress: string;
   port: number;
-  usedResources: { [key: string]: ResourceAllocations };
+  usedResources?: { [key: string]: ResourceAllocations };
   numExecutedTasks: number;
   workerId: string;
   // We need the below but Ant's API does not yet support it.
@@ -191,7 +191,8 @@ export type NodeInfoResponse = {
   clients: NodeDetails[];
 };
 
-export const getNodeInfo = () => get<NodeInfoResponse>("/nodes", {view: "details"});
+export const getNodeInfo = () =>
+  get<NodeInfoResponse>("/nodes", { view: "details" });
 
 export type ResourceSlot = {
   slot: number;
@@ -202,7 +203,8 @@ export type ResourceAllocations = {
   resourceSlots: ResourceSlot[];
 };
 
-export const getActorGroups = () => get<ActorsResponse>("logical/actor_groups", {});
+export const getActorGroups = () =>
+  get<ActorsResponse>("logical/actor_groups", {});
 
 export enum ActorState {
   // These two are virtual states that we air because there is
@@ -223,14 +225,12 @@ export type FullActorInfo = {
   actorId: string;
   actorConstructor: string;
   actorClass: string;
-  averageTaskExecutionSpeed: number;
-  children?: ActorInfo[];
   ipAddress: string;
   jobId: string;
   nodeId: string;
-  numExecutedTasks: number;
-  numLocalObjects: number;
-  numObjectRefsInScope: number;
+  numExecutedTasks?: number;
+  numLocalObjects?: number;
+  numObjectRefsInScope?: number;
   pid: number;
   port: number;
   state:
@@ -239,9 +239,9 @@ export type FullActorInfo = {
     | ActorState.Dead
     | ActorState.DependenciesUnready
     | ActorState.PendingCreation;
-  taskQueueLength: number;
+  taskQueueLength?: number;
   timestamp: number;
-  usedObjectStoreMemory: number;
+  usedObjectStoreMemory?: number;
   usedResources: { [key: string]: ResourceAllocations };
   currentTaskDesc?: string;
   numPendingTasks?: number;
@@ -281,7 +281,9 @@ export type ActorGroup = {
 };
 
 export type ActorsResponse = {
-  [key: string]: ActorGroup;
+  actorGroups: {
+    [key: string]: ActorGroup;
+  };
 };
 
 export type ErrorsResponse = {
@@ -341,10 +343,10 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number,
 ) =>
-  get<object>("/api/kill_actor", {
+  get<{}>("/logical/kill_actor", {
     // make sure object is okay
-    actor_id: actorId,
-    ip_address: actorIpAddress,
+    actorId: actorId,
+    ipAddress: actorIpAddress,
     port: actorPort,
   });
 
@@ -431,6 +433,11 @@ export type MemoryTableEntry = {
   callSite: string;
 };
 
+export type MemoryTable = {
+  group: MemoryTableGroups;
+  summary: MemoryTableSummary;
+};
+
 export type MemoryTableGroups = {
   [groupKey: string]: MemoryTableGroup;
 };
@@ -441,8 +448,7 @@ export type MemoryTableGroup = {
 };
 
 export type MemoryTableResponse = {
-  group: MemoryTableGroups;
-  summary: MemoryTableSummary;
+  memoryTable: MemoryTable;
 };
 
 // This doesn't return anything.
@@ -457,4 +463,4 @@ export const getMemoryTable = async (groupByKey: MemoryGroupByKey) => {
 };
 
 export const setMemoryTableCollection = (value: boolean) =>
-  post<{}>("/memory/set_fetch", { shouldFetch: value });
+  get<{}>("/memory/set_fetch", { shouldFetch: value });

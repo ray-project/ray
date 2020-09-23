@@ -108,6 +108,7 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
         {
           label: "Resources",
           value:
+            actor.usedResources &&
             Object.entries(actor.usedResources).length > 0 &&
             Object.entries(actor.usedResources)
               .sort((a, b) => a[0].localeCompare(b[0]))
@@ -121,20 +122,20 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
         },
         {
           label: "Number of pending tasks",
-          value: actor.taskQueueLength.toLocaleString(),
+          value: actor.taskQueueLength?.toLocaleString() ?? "0",
           tooltip:
             "The number of tasks that are currently pending to execute on this actor. If this number " +
             "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
         },
         {
           label: "Number of executed tasks",
-          value: actor.numExecutedTasks.toLocaleString(),
+          value: actor.numExecutedTasks?.toLocaleString() ?? "0",
           tooltip:
             "The number of tasks this actor has executed throughout its lifetimes.",
         },
         {
           label: "Number of ObjectRefs in scope",
-          value: actor.numObjectRefsInScope.toLocaleString(),
+          value: actor.numObjectRefsInScope?.toLocaleString() ?? "0",
           tooltip:
             "The number of ObjectRefs that this actor is keeping in scope via its internal state. " +
             "This does not imply that the objects are in active use or colocated on the node with the actor " +
@@ -143,14 +144,14 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
         },
         {
           label: "Number of local objects",
-          value: actor.numLocalObjects.toLocaleString(),
+          value: actor.numLocalObjects?.toLocaleString() ?? "0",
           tooltip:
             "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
             `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
         },
         {
           label: "Object store memory used (MiB)",
-          value: actor.usedObjectStoreMemory.toLocaleString(),
+          value: actor.usedObjectStoreMemory?.toLocaleString() ?? "0",
           tooltip:
             "The total amount of memory that this actor is occupying in the Ray object store. " +
             "If this number is increasing without bounds, you might have a memory leak. See " +

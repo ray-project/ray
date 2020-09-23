@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import {
+import { ActorGroup ,
   ActorsResponse,
+  MemoryTable,
   MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
@@ -8,18 +9,19 @@ import {
   TuneJobResponse,
 } from "../../api";
 
+
 const name = "dashboard";
 
 type State = {
   tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
-  actorGroups: ActorsResponse | null;
+  actorGroups: { [key: string]: ActorGroup } | null;
   tuneInfo: TuneJobResponse | null;
   tuneAvailability: TuneAvailabilityResponse | null;
   lastUpdatedAt: number | null;
   error: string | null;
-  memoryTable: MemoryTableResponse | null;
+  memoryTable: MemoryTable | null;
   shouldObtainMemoryTable: boolean;
 };
 
@@ -55,11 +57,8 @@ const slice = createSlice({
       state.nodeInfo = action.payload.nodeInfo;
       state.lastUpdatedAt = Date.now();
     },
-    setActorGroups: (
-      state,
-      action: PayloadAction<ActorsResponse>,
-    ) => {
-      state.actorGroups = action.payload;
+    setActorGroups: (state, action: PayloadAction<ActorsResponse>) => {
+      state.actorGroups = action.payload.actorGroups;
     },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
       state.tuneInfo = action.payload;
@@ -75,11 +74,8 @@ const slice = createSlice({
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
     },
-    setMemoryTable: (
-      state,
-      action: PayloadAction<MemoryTableResponse | null>,
-    ) => {
-      state.memoryTable = action.payload;
+    setMemoryTable: (state, action: PayloadAction<MemoryTableResponse>) => {
+      state.memoryTable = action.payload.memoryTable;
     },
     setShouldObtainMemoryTable: (state, action: PayloadAction<boolean>) => {
       state.shouldObtainMemoryTable = action.payload;
