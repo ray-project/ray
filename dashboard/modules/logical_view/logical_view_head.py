@@ -1,16 +1,22 @@
 import mimetypes
 import logging
 import aiohttp.web
+import ray.utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.actor_utils as actor_utils
 from ray.new_dashboard.utils import rest_response
 from ray.new_dashboard.datacenter import DataSource, GlobalSignals, DataOrganizer
+import asyncio
+from ray.core.generated import core_worker_pb2
+from ray.core.generated import core_worker_pb2_grpc
+
+from grpc.experimental import aio as aiogrpc
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-class LogHead(dashboard_utils.DashboardHeadModule):
+class LogicalViewHead(dashboard_utils.DashboardHeadModule):
     LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
 
     def __init__(self, dashboard_head):
@@ -26,6 +32,27 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         actors.update(actor_creation_tasks)
         actor_groups = actor_utils.construct_actor_groups(actors)
         return await rest_response(success=True, message="Fetched actor groups.", actor_groups=actor_groups)
+
+    @routes.get("/logical/kill_actor")
+    async def kill_actor(self, req) -> aiohttp.web.Response:
+        try:
+            actor_id = req.query["actorId"]
+            ip_address = req.query["ipAddress"]
+            port = req.query["port"]
+        except KeyError as e:
+            return await rest_response(success=False, message=f"Bad Request")
+        try:
+            channel = aiogrpc.insecure_channel("{}:{}".format(ip_address, int(port)))
+            stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
+
+            await stub.KillActor(core_worker_pb2.KillActorRequest(
+                    intended_actor_id=ray.utils.hex_to_binary(actor_id)))
+            
+            return await rest_response(success=True, message=f"Killed actor with id {actor_id}")
+        except Exception as e:
+            # TODO figure out why KillActor is always raising an exception,
+            # despite successfully killing the actor.
+            return await rest_response(success=True, message=f"{e}")
 
     async def run(self, server):
         pass
