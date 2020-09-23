@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import sklearn.datasets
 import sklearn.metrics
 from ray.tune.schedulers import ASHAScheduler
@@ -30,10 +31,14 @@ def train_breast_cancer(config):
     pred_labels = np.rint(preds)
     # Return prediction accuracy
     accuracy = sklearn.metrics.accuracy_score(test_y, pred_labels)
-    tune.report(mean_accuracy=accuracy, done=True)
+    tune.report(mean_accuracy=accuracy, duplicate=True, done=True)
 
 
 if __name__ == "__main__":
+    # Disable strict metric checking to allow final report of accuracy
+    # without reporting the eval logloss
+    os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+
     config = {
         "objective": "binary:logistic",
         "max_depth": tune.randint(1, 9),
