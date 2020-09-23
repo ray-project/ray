@@ -132,10 +132,13 @@ class TrialRunner:
                  fail_fast=False,
                  verbose=True,
                  checkpoint_period=None,
-                 trial_executor=None):
+                 trial_executor=None,
+                 metric=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+
+        self._metric = metric
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -529,6 +532,36 @@ class TrialRunner:
                 result = trial.last_result
                 result.update(done=True)
 
+            # Check if any of the requried metrics was not reported
+            # in the last result
+            if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
+                                  0)) != 1:
+                base_metric = self._metric
+                scheduler_metric = self._scheduler_alg.metric
+                search_metric = self._search_alg.metric
+
+                if base_metric and base_metric not in result:
+                    report_metric = base_metric
+                    location = "tune.run()"
+                elif scheduler_metric and scheduler_metric not in result:
+                    report_metric = scheduler_metric
+                    location = type(self._scheduler_alg).__name__
+                elif search_metric and search_metric not in result:
+                    report_metric = search_metric
+                    location = type(self._search_alg).__name__
+                else:
+                    report_metric = None
+                    location = None
+
+                if report_metric:
+                    raise ValueError(
+                        "Trial returned a result which did not include the "
+                        "specified metric `{}` that `{}` expects. "
+                        "Make sure your calls to `tune.report()` include the "
+                        "metric, or set the "
+                        "TUNE_DISABLE_STRICT_METRIC_CHECKING "
+                        "environment variable to 1. Result: {}".format(
+                            report_metric, location, result))
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)

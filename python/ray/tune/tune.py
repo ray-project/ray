@@ -374,7 +374,8 @@ def run(
         server_port=server_port,
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:
