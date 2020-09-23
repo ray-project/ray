@@ -40,11 +40,13 @@ config = BackendConfig(num_replicas=num_replicas)
 client.create_backend("forward", forward, config=config)
 client.create_endpoint("forward", backend="forward")
 
+client.create_backend("hello_world", hello_world)
+client.create_endpoint("hello_world", backend="hello_world")
+
 client.create_backend("forwardActor", forwardActor, config=config)
 client.create_endpoint("forwardActor", backend="forwardActor")
 
-client.create_backend("hello_world", hello_world)
-client.create_endpoint("hello_world", backend="hello_world")
+
 
 handle = client.get_handle("forwardActor")
 logger.info("Starting serve handle stress testing (actor)")
