@@ -267,6 +267,10 @@ class ObjectInfoGcsServiceHandler {
                                        AddObjectLocationReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleAddObjectSpilledUrl(const AddObjectSpilledUrlRequest &request,
+                                         AddObjectSpilledUrlReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest &request,
                                           RemoveObjectLocationReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
@@ -291,6 +295,7 @@ class ObjectInfoGrpcService : public GrpcService {
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(GetAllObjectLocations);
     OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectSpilledUrl);
     OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation);
   }
 

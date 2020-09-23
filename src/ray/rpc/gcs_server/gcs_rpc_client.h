@@ -202,6 +202,10 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation,
                              object_info_grpc_client_, )
 
+  /// Add location of object to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectSpilledUrl,
+                             object_info_grpc_client_, )
+
   /// Remove location of object to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation,
                              object_info_grpc_client_, )

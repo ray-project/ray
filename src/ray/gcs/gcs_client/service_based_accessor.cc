@@ -1177,7 +1177,27 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 Status ServiceBasedObjectInfoAccessor::AsyncAddSpilledUrl(
     const ObjectID &object_id, const std::string &spilled_url,
     const StatusCallback &callback) {
-  return Status::NotImplemented("AsyncAddSpilledUrl not implemented");
+  RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id
+                 << ", spilled_url = " << spilled_url;
+  rpc::AddObjectSpilledUrlRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_spilled_url(spilled_url);
+
+  auto operation = [this, object_id, request,
+                    callback](const SequencerDoneCallback &done_callback) {
+    client_impl_->GetGcsRpcClient().AddObjectSpilledUrl(
+        request, [object_id, callback, done_callback](
+                     const Status &status, const rpc::AddObjectSpilledUrlReply &reply) {
+          if (callback) {
+            callback(status);
+          }
+
+          done_callback();
+        });
+  };
+
+  sequencer_.Post(object_id, operation);
+  return Status::OK();
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(

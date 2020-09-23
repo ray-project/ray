@@ -31,8 +31,8 @@ using rpc::GcsNodeInfo;
 using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::ObjectLocationInfo;
 using rpc::ObjectTableData;
-using rpc::ObjectTableDataList;
 using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceMap;
@@ -234,7 +234,7 @@ class GcsTaskReconstructionTable
   JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
 };
 
-class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectTableDataList> {
+class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
  public:
   explicit GcsObjectTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTableWithJobId(store_client) {

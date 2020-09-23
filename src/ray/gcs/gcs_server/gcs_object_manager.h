@@ -49,6 +49,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                rpc::AddObjectLocationReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleAddObjectSpilledUrl(const rpc::AddObjectSpilledUrlRequest &request,
+                                 rpc::AddObjectSpilledUrlReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleRemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request,
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
@@ -60,7 +64,10 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   void LoadInitialData(const EmptyCallback &done);
 
  protected:
-  typedef absl::flat_hash_set<ClientID> LocationSet;
+  struct LocationSet {
+    absl::flat_hash_set<ClientID> locations;
+    std::string spilled_url = "";
+  };
 
   /// Add a location of objects.
   /// If the GCS server restarts, this function is used to reload data from storage.
@@ -82,7 +89,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  LocationSet GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  absl::flat_hash_set<ClientID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Handler if a node is removed.
   ///
@@ -99,7 +107,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
-  std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
+  const ObjectLocationInfo GenObjectLocationInfo(
       const GcsObjectManager::LocationSet &location_set) const;
 
   /// Get object locations by object id from map.
