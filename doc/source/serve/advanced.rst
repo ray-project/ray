@@ -343,7 +343,7 @@ You can follow the same pattern for other Starlette middlewares.
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    serve.init(
+    client = serve.start(
         http_middlewares=[
             Middleware(
                 CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
@@ -390,10 +390,10 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
      - ``handle.remote(a="b")``
      - ``request.args``
    * - ``request.get(..., data="long string")``
-     - ``request.remote("long string")``
+     - ``handle.remote("long string")``
      - ``request.data``
    * - ``N/A``
-     - ``request.remote(python_object)``
+     - ``handle.remote(python_object)``
      - ``request.data``
 
 .. note::
@@ -411,3 +411,14 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
             print("Request coming from web!")
         elif isinstance(request, ServeRequest):
             print("Request coming from Python!")
+
+.. note::
+
+    Once special case is when you pass a web request to a handle.
+
+    .. code-block:: python
+
+        handle.remote(flask_request)
+
+    In this case, Serve will `not` wrap it in ServeRequest. You can directly
+    process the request as a ``flask.Request``.
