@@ -15,6 +15,7 @@ from collections import UserDict
 import requests
 import numpy as np
 import pydantic
+import flask
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -88,8 +89,15 @@ def parse_request_item(request_item):
         asgi_scope, body_bytes = request_item.args
         return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
     else:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
+
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, flask.Request):
+            return arg
+
         return ServeRequest(
-            request_item.args[0] if len(request_item.args) == 1 else None,
+            arg,
             request_item.kwargs,
             headers=request_item.metadata.http_headers,
             method=request_item.metadata.http_method,
