@@ -6,7 +6,7 @@ from ray import serve
 from ray.serve import BackendConfig
 import logging
 
-num_replicas = 4
+num_replicas = 3
 num_queries = 10
 
 ray.init(address="auto")
@@ -39,6 +39,9 @@ config = BackendConfig(num_replicas=num_replicas)
 
 client.create_backend("forward", forward, config=config)
 client.create_endpoint("forward", backend="forward")
+
+client.create_backend("forwardActor", forwardActor, config=config)
+client.create_endpoint("forwardActor", backend="forwardActor")
 
 client.create_backend("hello_world", hello_world)
 client.create_endpoint("hello_world", backend="hello_world")
