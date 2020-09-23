@@ -137,7 +137,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
                                 "status"] = "ERROR"
 
     @async_loop_forever(tune_consts.TUNE_STATS_UPDATE_INTERVAL_SECONDS)
-    def collect(self):
+    async def collect(self):
         """
         Collects and cleans data on the running Tune experiment from the
         Tune logs so that users can see this information in the front-end
