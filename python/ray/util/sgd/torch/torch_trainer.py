@@ -672,14 +672,10 @@ class BaseTorchTrainable(Trainable):
         """
         # Maintain Trainable backwards compatibility with pre v0.8.7.
         if self._is_overriden("_train"):
-            result = self._train()
-            if log_once("torch_train"):
-                logger.warning(
-                    "Trainable._train is deprecated and will be "
-                    "removed in "
-                    "a future version of Ray. Override Trainable.step instead."
-                )
-            return result
+            raise DeprecationWarning(
+                "Trainable._train is deprecated and will be "
+                "removed in "
+                "a future version of Ray. Override Trainable.step instead.")
 
         train_stats = self.trainer.train(max_retries=10, profile=True)
         validation_stats = self.trainer.validate(profile=True)
