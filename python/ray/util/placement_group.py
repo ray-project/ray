@@ -89,7 +89,7 @@ class PlacementGroup:
             # Since creating placement group is async, it is
             # possible table is not ready yet. To avoid the
             # problem, we should keep trying with timeout.
-            timeout_second = 5
+            timeout_second = 30
             wait_interval = 0.05
             timeout_cnt = 0
             worker = ray.worker.global_worker
