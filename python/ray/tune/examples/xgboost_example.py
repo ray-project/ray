@@ -31,7 +31,7 @@ def train_breast_cancer(config):
     pred_labels = np.rint(preds)
     # Return prediction accuracy
     accuracy = sklearn.metrics.accuracy_score(test_y, pred_labels)
-    tune.report(mean_accuracy=accuracy, duplicate=True, done=True)
+    tune.report(mean_accuracy=accuracy, done=True)
 
 
 if __name__ == "__main__":
