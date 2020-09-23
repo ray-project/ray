@@ -51,7 +51,11 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         self.bounded = np.logical_and(action_space.bounded_above,
                                       action_space.bounded_below).any()
-        self.low_action = torch.tensor(action_space.low, dtype=torch.float32)
+        action_range = torch.tensor(
+            action_space.high - action_space.low, dtype=torch.float32)
+        low_action = torch.tensor(action_space.low, dtype=torch.float32)
+        self.register_buffer("action_range", action_range)
+        self.register_buffer("low_action", low_action)
         self.action_range = torch.tensor(
             action_space.high - action_space.low, dtype=torch.float32)
         self.action_dim = np.product(action_space.shape)
@@ -184,7 +188,10 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         a Conv2D image preprocessor).
         """
         if as_dict:
-            return map(self.state_dict().pop, self.q_model.state_dict())
+            ret = {
+                k: v for k, v in dict(self.named_parameters()).items()
+                if "q_model." not in k[:8] and "twin_q_model." not in k[:13]}
+            return ret
 
         policy_vars_plus_preprocessor_vars = set(
             self.trainable_variables()) - set(self.q_variables())

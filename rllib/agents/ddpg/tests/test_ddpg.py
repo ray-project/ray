@@ -215,8 +215,10 @@ class TestDDPG(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
-                policy.model.load_state_dict(model_dict)
-                policy.target_model.load_state_dict(model_dict)
+                model_dict_torch = policy.model.state_dict()
+                model_dict_torch.update(model_dict)
+                policy.model.load_state_dict(model_dict_torch)
+                policy.target_model.load_state_dict(model_dict_torch)
 
             if fw == "torch":
                 # Actually convert to torch tensors.
