@@ -6,6 +6,7 @@ import logging
 import time
 import subprocess
 from subprocess import PIPE
+import requests
 
 import ray
 from ray import serve
@@ -42,9 +43,11 @@ while True:
 logger.info("Nodes have all joined. There are %s resources.",
             ray.cluster_resources())
 
+
 def hey(_):
     time.sleep(0.01)  # Sleep for 10ms
     return "hey"
+
 
 client.create_backend("hey", hey, BackendConfig(num_replicas=num_remote_cpus))
 client.create_endpoint("hey", backend="hey", route="/hey")

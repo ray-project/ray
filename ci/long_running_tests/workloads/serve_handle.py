@@ -15,21 +15,25 @@ client = serve.start()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def hello_world(_):
     return "Hello World"
+
 
 class forwardActor:
     def __init__(self):
         self.handle = client.get_handle("hello_world")
 
     def __call__(self, _):
-        return ray.get(handle.remote())
+        return ray.get(self.handle.remote())
+
 
 # Here the handle is created each time the function is called, so it may stress
 # the system more.
 def forward(_):
     handle = client.get_handle("hello_world")
     return ray.get(handle.remote())
+
 
 config = BackendConfig(num_replicas=num_replicas)
 

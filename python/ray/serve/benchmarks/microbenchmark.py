@@ -82,18 +82,17 @@ async def main():
     client.create_backend("backend", backend)
     client.create_endpoint("endpoint", backend="backend", route="/api")
     for intermediate_handles in [False, True]:
-        if(intermediate_handles):
+        if (intermediate_handles):
+
             class forwardActor:
                 def __init__(self):
                     self.handle = client.get_handle("backend")
 
                 def __call__(self, _):
-                    return ray.get(handle.remote())
+                    return ray.get(self.handle.remote())
+
             client.create_backend("forwardActor", forwardActor)
-            client.set_traffic("endpoint", {
-                "backend": 0,
-                "forwardActor": 1
-            })
+            client.set_traffic("endpoint", {"backend": 0, "forwardActor": 1})
         actors = [Client.remote() for _ in range(NUM_CLIENTS)]
         for num_replicas in [1, 8]:
             for backend_config in [
