@@ -430,6 +430,15 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
     if head:
+        # Use default if port is none, allocate an available port if port is 0
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
+
+        if port == 0:
+            with socket() as s:
+                s.bind(("", 0))
+                port = s.getsockname()[1]
+
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -463,15 +472,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             autoscaling_config=autoscaling_config,
         )
 
-        # Use default if port is none, allocate an available port if port is 0
-        if port is None:
-            port = ray_constants.DEFAULT_PORT
-
-        if port == 0:
-            with socket() as s:
-                s.bind(("", 0))
-                port = s.getsockname()[1]
-
+        print(f"port {port}")
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{node_ip_address}:{port}"
