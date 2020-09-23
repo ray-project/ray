@@ -399,8 +399,8 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     if (node != nullptr) {
       CommitResources(bundle, node, commit_resources_callback);
     } else {
-      RAY_LOG(WARNING)
-          << "Failed to commit resources because the node is dead, node id = " << node_id;
+      RAY_LOG(INFO) << "Failed to commit resources because the node is dead, node id = "
+                    << node_id;
       commit_resources_callback(Status::Interrupted("Node is dead"));
     }
   }
