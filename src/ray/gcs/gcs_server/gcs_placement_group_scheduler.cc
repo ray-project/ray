@@ -378,6 +378,14 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         &schedule_failure_handler,
     const std::function<void(std::shared_ptr<GcsPlacementGroup>)>
         &schedule_success_handler) {
+  if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
+    auto const &placement_group = lease_status_tracker->GetPlacementGroup();
+    RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
+                  << " is cancelled, so skip directly.";
+    schedule_failure_handler(placement_group);
+    return;
+  }
+
   const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   lease_status_tracker->MarkCommitPhaseStarted();

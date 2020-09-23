@@ -646,6 +646,36 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommitResources) {
   WaitPendingDone(failure_placement_groups_, 1);
 }
 
+TEST_F(GcsPlacementGroupSchedulerTest, TestRemovePlacementGroupDuringCommitResources) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group =
+      std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
+
+  // Schedule the placement group.
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&vector_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+
+  // The placement group was removed, so it failed to schedule.
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  WaitPendingDone(failure_placement_groups_, 1);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
