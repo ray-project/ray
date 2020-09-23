@@ -125,7 +125,7 @@ class WorkerPool : public WorkerPoolInterface {
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
-  /// announcces its port.
+  /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
