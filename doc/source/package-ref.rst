@@ -162,6 +162,11 @@ remove_placement_group
 
 .. autofunction:: ray.util.placement_group.remove_placement_group
 
+get_current_placement_group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.get_current_placement_group
+
 Experimental APIs
 -----------------
 
