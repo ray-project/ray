@@ -670,7 +670,6 @@ class BaseTorchTrainable(Trainable):
 
         You may want to override this if using a custom LR scheduler.
         """
-        # Maintain Trainable backwards compatibility with pre v0.8.7.
         if self._is_overriden("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and will be "
