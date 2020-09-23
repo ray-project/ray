@@ -1370,9 +1370,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
     DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
   if (RayConfig::instance().enable_multi_tenancy()) {
-    // If the worker remains idle after scheduling, we may kill it to ensure the
-    // registered workers are in a reasonable size.
-    worker_pool_.TryKillingIdleWorker(worker);
+    // We trigger killing here instead of inside `Worker::PushWorker` because we
+    // only kill an idle worker if it remains idle after scheduling.
+    worker_pool_.TryKillingIdleWorkers();
   }
 }
 

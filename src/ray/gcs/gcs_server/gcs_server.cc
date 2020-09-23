@@ -252,11 +252,13 @@ std::unique_ptr<GcsObjectManager> GcsServer::InitObjectManager() {
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
-  std::string address =
-      GetValidLocalIp(
-          GetPort(),
-          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()) +
-      ":" + std::to_string(GetPort());
+  std::string ip = config_.node_ip_address;
+  if (ip.empty()) {
+    ip = GetValidLocalIp(
+        GetPort(),
+        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
+  }
+  std::string address = ip + ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
