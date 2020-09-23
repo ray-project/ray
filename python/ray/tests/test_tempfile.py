@@ -42,7 +42,7 @@ def test_tempdir_commandline():
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
     check_call_ray([
         "start", "--head", "--temp-dir=" + os.path.join(
-            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
+            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2", "--port", "0")
     ])
     assert os.path.exists(
         os.path.join(ray.utils.get_user_temp_dir(),
