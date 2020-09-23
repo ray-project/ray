@@ -276,6 +276,15 @@ def test_custom_metrics_edge_cases(metric_mock):
     with pytest.raises(ValueError):
         Histogram("hist", boundaries=[])
 
+    # Empty name is not allowed.
+    with pytest.raises(ValueError):
+        Count("")
+
+    # Default tag keys should be a subset of tag keys. Otherwise,
+    # it will raise exception.
+    with pytest.raises(ValueError):
+        Count("name", tag_keys=("a"), default_tags={"b": "c"})
+
 
 if __name__ == "__main__":
     import sys

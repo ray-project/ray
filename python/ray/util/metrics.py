@@ -23,6 +23,12 @@ class Metric:
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None,
                  default_tags: Optional[Dict[str, str]] = None):
+        if len(name) == 0:
+            raise ValueError("Empty name is not allowed. "
+                             "Please provide a metric name.")
+        # Length 1 tuple becomes a string.
+        if type(tag_keys) == str:
+            tag_keys = (tag_keys, )
         self._name = name
         self._description = description
         self._unit = ""
@@ -35,8 +41,8 @@ class Metric:
         # This field is used to temporarily store tags for record method.
         self._tag_cache = {}
 
-        if not set(self._default_tags.keys()).issubset(self._tag_keys):
-            raise ValueError(f"Given default tags, {default_tags}, is "
+        if not set(self._default_tags.keys()).issubset(set(self._tag_keys)):
+            raise ValueError(f"Default tag keys, {default_tags.keys()}, is "
                              f"not a subset of tag keys, {tag_keys}.")
 
     def with_tags(self, tags: Dict[str, str]):

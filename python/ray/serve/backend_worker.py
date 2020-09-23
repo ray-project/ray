@@ -195,10 +195,10 @@ class RayServeWorker:
             "backend_processing_latency_ms",
             description="The latency for queries to be processed",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tags=("backend", "replica_tag", "batch_size"),
+            tag_keys=("backend", "replica_tag", "batch_size"),
             default_tags={
                 "backend": self.backend_tag,
-                "replica": self.replica_tag
+                "replica_tag": self.replica_tag
             })
         self.num_queued_items = metrics.Gauge(
             "replica_queued_queries",
