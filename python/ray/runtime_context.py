@@ -14,27 +14,22 @@ class RuntimeContext(object):
     def get(self):
         """Get a dictionary of the current_context.
 
-        The value contains None if the field is not available.
-        For example, if you invoke this method from a driver,
-        task_id or actor_id is not available. In this case,
-        the dictionary will contain {"actor_id": None, "task_id": None}
-
         Returns:
             dict: Dictionary of the current context.
         """
-        job_id = self.current_job_id
-        node_id = self.current_node_id
-        task_id = self.current_task_id
-        actor_id = self.current_actor_id
+        context = {
+            "job_id": self.job_id,
+            "node_id": self.node_id,
+            "task_id": self.task_id,
+            "actor_id": self.actor_id
+        }
         return {
-            "job_id": job_id,
-            "node_id": node_id,
-            "task_id": task_id,
-            "actor_id": actor_id
+            key: value
+            for key, value in context.items() if value is not None
         }
 
     @property
-    def current_job_id(self):
+    def job_id(self):
         """Get current job ID for this worker or driver.
 
         Job ID is the id of your Ray drivers that create tasks or actors.
@@ -48,7 +43,7 @@ class RuntimeContext(object):
         return job_id
 
     @property
-    def current_node_id(self):
+    def node_id(self):
         """Get current node ID for this worker or driver.
 
         Node ID is the id of a node that your driver, task, or actor runs.
@@ -61,7 +56,7 @@ class RuntimeContext(object):
         return node_id
 
     @property
-    def current_task_id(self):
+    def task_id(self):
         """Get current task ID for this worker or driver.
 
         Task ID is the id of a Ray task.
@@ -97,7 +92,7 @@ class RuntimeContext(object):
         return task_id if not task_id.is_nil() else None
 
     @property
-    def current_actor_id(self):
+    def actor_id(self):
         """Get the current actor ID in this worker.
 
         ID of the actor of the current process.
@@ -120,9 +115,9 @@ class RuntimeContext(object):
         Returns:
             Whether this actor has been ever restarted.
         """
-        assert not self.current_actor_id.is_nil(), (
+        assert not self.actor_id.is_nil(), (
             "This method should't be called inside Ray tasks.")
-        actor_info = ray.state.actors(self.current_actor_id.hex())
+        actor_info = ray.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
 
