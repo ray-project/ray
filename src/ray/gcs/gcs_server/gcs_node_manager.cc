@@ -165,7 +165,6 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
             });
           })),
       node_failure_detector_service_(node_failure_detector_io_service),
-      light_heartbeat_enabled_(RayConfig::instance().light_heartbeat_enabled()),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage) {}
 
@@ -460,16 +459,9 @@ void GcsNodeManager::StartNodeFailureDetector() {
 
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
-  if (light_heartbeat_enabled_) {
-    if (heartbeat.resources_available_size() > 0) {
-      if (heartbeat.resources_available().count(kResourcesTurningEmpty) == 1) {
-        cluster_realtime_resources_[node_id] = std::make_shared<ResourceSet>();
-      } else {
-        auto resources_available = MapFromProtobuf(heartbeat.resources_available());
-        cluster_realtime_resources_[node_id] =
-            std::make_shared<ResourceSet>(resources_available);
-      }
-    }
+  if (RayConfig::instance().light_heartbeat_enabled() &&
+      heartbeat.resources_available().count(kResourcesTurningEmpty) == 1) {
+    cluster_realtime_resources_[node_id] = std::make_shared<ResourceSet>();
   } else {
     auto resources_available = MapFromProtobuf(heartbeat.resources_available());
     cluster_realtime_resources_[node_id] =
