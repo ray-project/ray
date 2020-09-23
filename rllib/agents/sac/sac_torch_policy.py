@@ -273,26 +273,32 @@ def actor_critic_loss(
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
     if model.discrete:
+        # Alpha loss.
         weighted_log_alpha_loss = policy_t.detach() * (
             -model.log_alpha * (log_pis_t + model.target_entropy).detach())
         # Sum up weighted terms and mean over all batch items.
         alpha_loss = torch.mean(torch.sum(weighted_log_alpha_loss, dim=-1))
+
         # Actor loss.
+        # q_t has not been min-reduced yet with twin_q_t.
+        q_t_min = torch.min(q_t, twin_q_t) if policy.config["twin_q"] else q_t
         actor_loss = torch.mean(
             torch.sum(
                 torch.mul(
                     # NOTE: No stop_grad around policy output here
                     # (compare with q_t_det_policy for continuous case).
                     policy_t,
-                    alpha.detach() * log_pis_t - q_t.detach()),
+                    alpha.detach() * log_pis_t - q_t_min.detach()),
                 dim=-1))
     else:
+        # Alpha loss.
         alpha_loss = -torch.mean(model.log_alpha *
                                  (log_pis_t + model.target_entropy).detach())
         # Note: Do not detach q_t_det_policy here b/c is depends partly
         # on the policy vars (policy sample pushed through Q-net).
         # However, we must make sure `actor_loss` is not used to update
         # the Q-net(s)' variables.
+        # Actor loss.
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
 
     # Save for stats function.

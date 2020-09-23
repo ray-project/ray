@@ -179,8 +179,15 @@ class DDPGTFModel(TFModelV2):
         return self.policy_model(model_out)
 
     def policy_variables(self):
-        """Return the list of variables for the policy net."""
-        return list(self.policy_model.variables)
+        """Return the list of variables for the policy net.
+
+        This may include any variables present in the wrapping ModelV2 (e.g.
+        a Conv2D image preprocessor).
+        """
+
+        policy_vars_plus_preprocessor_vars = set(
+            self.trainable_variables()) - set(self.q_variables())
+        return list(policy_vars_plus_preprocessor_vars)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""

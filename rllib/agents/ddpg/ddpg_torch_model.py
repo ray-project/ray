@@ -178,10 +178,17 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         return self.policy_model(model_out)
 
     def policy_variables(self, as_dict=False):
-        """Return the list of variables for the policy net."""
+        """Return the list of variables for the policy net.
+
+        This may include any variables present in the wrapping ModelV2 (e.g.
+        a Conv2D image preprocessor).
+        """
         if as_dict:
-            return self.policy_model.state_dict()
-        return list(self.policy_model.parameters())
+            return map(self.state_dict().pop, self.q_model.state_dict())
+
+        policy_vars_plus_preprocessor_vars = set(
+            self.trainable_variables()) - set(self.q_variables())
+        return list(policy_vars_plus_preprocessor_vars)
 
     def q_variables(self, as_dict=False):
         """Return the list of variables for Q / twin Q nets."""

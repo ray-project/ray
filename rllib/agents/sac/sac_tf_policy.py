@@ -348,19 +348,26 @@ def sac_actor_critic_loss(
     # Discrete case: Multiply the action probs as weights with the original
     # loss terms (no expectations needed).
     if model.discrete:
+        # Alpha loss.
+        # Sum up weighted terms and mean over all batch items.
         alpha_loss = tf.reduce_mean(
             tf.reduce_sum(
                 tf.multiply(
                     tf.stop_gradient(policy_t), -model.log_alpha *
                     tf.stop_gradient(log_pis_t + model.target_entropy)),
                 axis=-1))
+        # Actor loss.
+        # q_t has not been min-reduced yet with twin_q_t.
+        q_t_min = tf.reduce_min((q_t, twin_q_t), axis=0) \
+            if policy.config["twin_q"] else q_t
         actor_loss = tf.reduce_mean(
             tf.reduce_sum(
                 tf.multiply(
                     # NOTE: No stop_grad around policy output here
                     # (compare with q_t_det_policy for continuous case).
                     policy_t,
-                    model.alpha * log_pis_t - tf.stop_gradient(q_t)),
+                    model.alpha * log_pis_t - tf.stop_gradient(
+                        q_t_min)),
                 axis=-1))
     else:
         alpha_loss = -tf.reduce_mean(

@@ -215,9 +215,10 @@ class SACTFModel(TFModelV2):
         a Conv2D image preprocessor).
         """
 
-        all_vars = set(self.trainable_variables()) - set(self.q_variables()) \
-                   - {self.log_alpha}
-        return list(all_vars)
+        policy_vars_plus_preprocessor_vars = set(
+            self.trainable_variables()) - set(self.q_variables()) - {
+                                                 self.log_alpha}
+        return list(policy_vars_plus_preprocessor_vars)
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
