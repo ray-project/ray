@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,17 +82,27 @@ public class RunManager {
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
-    String output;
+    String output = null;
     try {
       output = runCommand(command);
+      // Read only the last line here because we want to skip the message "Failed to get
+      // address info. Output: Some processes that the driver needs to connect to have not
+      // registered with Redis, so retrying. Have you run 'ray start' on this node?".
+      String[] lines = output.split("\\R");
+      String lastLine = "";
+      for (int i = lines.length - 1; i >= 0; i--) {
+        if (StringUtils.isNotBlank(lines[i])) {
+          lastLine = lines[i];
+          break;
+        }
+      }
+      JsonObject addressInfo = new JsonParser().parse(lastLine).getAsJsonObject();
+      rayConfig.rayletSocketName = addressInfo.get("raylet_socket_name").getAsString();
+      rayConfig.objectStoreSocketName = addressInfo.get("object_store_address").getAsString();
+      rayConfig.nodeManagerPort = addressInfo.get("node_manager_port").getAsInt();
     } catch (Exception e) {
-      throw new RuntimeException("Failed to get address info.", e);
+      throw new RuntimeException("Failed to get address info. Output: " + output, e);
     }
-
-    JsonObject addressInfo = new JsonParser().parse(output).getAsJsonObject();
-    rayConfig.rayletSocketName = addressInfo.get("raylet_socket_name").getAsString();
-    rayConfig.objectStoreSocketName = addressInfo.get("object_store_address").getAsString();
-    rayConfig.nodeManagerPort = addressInfo.get("node_manager_port").getAsInt();
   }
 
   /**
