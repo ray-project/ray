@@ -113,6 +113,7 @@ def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):
 
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 def test_multi_model(ray_start_2_cpus, num_workers, use_local):
