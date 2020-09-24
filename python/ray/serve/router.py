@@ -140,24 +140,24 @@ class Router:
         self.num_router_requests = metrics.Count(
             "num_router_requests",
             description="Number of requests processed by the router.",
-            tag_keys=("endpoint"))
+            tag_keys=("endpoint", ))
         self.num_error_endpoint_requests = metrics.Count(
             "num_error_endpoint_requests",
             description=(
                 "Number of requests that errored when getting results "
                 "for the endpoint."),
-            tag_keys=("endpoint"))
+            tag_keys=("endpoint", ))
         self.num_error_backend_requests = metrics.Count(
             "num_error_backend_requests",
             description=("Number of requests that errored when getting result "
                          "from the backend."),
-            tag_keys=("backend"))
+            tag_keys=("backend", ))
 
         self.backend_queue_size = metrics.Gauge(
             "backend_queued_queries",
             description=("Current number of queries queued "
                          "in the router for a backend"),
-            tag_keys=("backend"))
+            tag_keys=("backend", ))
 
         asyncio.get_event_loop().create_task(self.report_queue_lengths())
 
@@ -165,7 +165,7 @@ class Router:
                               **request_kwargs):
         endpoint = request_meta.endpoint
         logger.debug("Received a request for endpoint {}".format(endpoint))
-        self.num_router_requests.with_tags({"endpoint": endpoint}).record(1)
+        self.num_router_requests.record(1, tags={"endpoint": endpoint})
 
         request_context = request_meta.request_context
         query = Query(
@@ -181,9 +181,8 @@ class Router:
         try:
             result = await query.async_future
         except RayTaskError as e:
-            self.num_error_endpoint_requests.with_tags({
-                "endpoint": endpoint
-            }).record(1)
+            self.num_error_endpoint_requests.record(
+                1, tags={"endpoint": endpoint})
             result = e
         return result
 
@@ -307,9 +306,8 @@ class Router:
             else:
                 result = await object_ref
         except RayTaskError as error:
-            self.num_error_backend_requests.with_tags({
-                "backend": backend
-            }).record(1)
+            self.num_error_backend_requests.record(
+                1, tags={"backend": backend})
             result = error
         self.queries_counter[backend][backend_replica_tag] -= 1
         await self.mark_worker_idle(backend, backend_replica_tag)
@@ -366,8 +364,7 @@ class Router:
                 self.name, queue_lengths)
 
             for backend, length in queue_lengths.items():
-                self.backend_queue_size.with_tags({
-                    "backend": backend
-                }).record(length)
+                self.backend_queue_size.record(
+                    length, tags={"backend": backend})
 
             await asyncio.sleep(REPORT_QUEUE_LENGTH_PERIOD_S)

@@ -162,23 +162,25 @@ class RayServeWorker:
             "backend_request_counter",
             description=("Number of queries that have been "
                          "processed in this replica"),
-            tag_keys=("backend"),
-            default_tags={"backend": self.backend_tag})
+            tag_keys=("backend", ))
+        self.request_counter.set_default_tags({"backend": self.backend_tag})
+
         self.error_counter = metrics.Count(
             "backend_error_counter",
             description=("Number of exceptions that have "
                          "occurred in the backend"),
-            tag_keys=("backend"),
-            default_tags={"backend": self.backend_tag})
+            tag_keys=("backend", ))
+        self.error_counter.set_default_tags({"backend": self.backend_tag})
+
         self.restart_counter = metrics.Count(
             "backend_worker_starts",
             description=("The number of time this replica workers "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica_tag"),
-            default_tags={
-                "backend": self.backend_tag,
-                "replica_tag": self.replica_tag
-            })
+            tag_keys=("backend", "replica_tag"))
+        self.restart_counter.set_default_tags({
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
 
         self.queuing_latency_tracker = metrics.Histogram(
             "backend_queuing_latency_ms",
@@ -186,37 +188,40 @@ class RayServeWorker:
                 "The latency for queries waiting in the replica's queue "
                 "waiting to be processed or batched."),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag"),
-            default_tags={
-                "backend": self.backend_tag,
-                "replica_tag": self.replica_tag
-            })
+            tag_keys=("backend", "replica_tag"))
+        self.queuing_latency_tracker.set_default_tags({
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
+
         self.processing_latency_tracker = metrics.Histogram(
             "backend_processing_latency_ms",
             description="The latency for queries to be processed",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag", "batch_size"),
-            default_tags={
-                "backend": self.backend_tag,
-                "replica_tag": self.replica_tag
-            })
+            tag_keys=("backend", "replica_tag", "batch_size"))
+        self.processing_latency_tracker.set_default_tags({
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
+
         self.num_queued_items = metrics.Gauge(
             "replica_queued_queries",
             description=("Current number of queries queued in the "
                          "the backend replicas"),
-            tag_keys=("backend", "replica_tag"),
-            default_tags={
-                "backend": self.backend_tag,
-                "replica_tag": self.replica_tag
-            })
+            tag_keys=("backend", "replica_tag"))
+        self.num_queued_items.set_default_tags({
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
+
         self.num_processing_items = metrics.Gauge(
             "replica_processing_queries",
             description="Current number of queries being processed",
-            tag_keys=("backend", "replica_tag"),
-            default_tags={
-                "backend": self.backend_tag,
-                "replica_tag": self.replica_tag
-            })
+            tag_keys=("backend", "replica_tag"))
+        self.num_processing_items.set_default_tags({
+            "backend": self.backend_tag,
+            "replica_tag": self.replica_tag
+        })
 
         self.restart_counter.record(1)
 
@@ -245,9 +250,8 @@ class RayServeWorker:
             result = wrap_to_ray_error(e)
             self.error_counter.record(1)
 
-        self.processing_latency_tracker.with_tags({
-            "batch_size": "1"
-        }).record((time.time() - start) * 1000)
+        self.processing_latency_tracker.record(
+            (time.time() - start) * 1000, tags={"batch_size": "1"})
 
         return result
 
@@ -297,9 +301,9 @@ class RayServeWorker:
             self.error_counter.record(1)
             result_list = [wrapped_exception for _ in range(batch_size)]
 
-        self.processing_latency_tracker.with_tags({
-            "batch_size": str(batch_size)
-        }).record((time.time() - timing_start) * 1000)
+        self.processing_latency_tracker.record(
+            (time.time() - timing_start) * 1000,
+            tags={"batch_size": str(batch_size)})
 
         return result_list
 

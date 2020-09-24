@@ -14,62 +14,56 @@ logger = logging.getLogger(__name__)
 class Metric:
     """The parent class of custom metrics.
 
-    Ray's custom metrics APIs are rooted from this class and sharing
+    Ray's custom metrics APIs are rooted from this class and share
     the same public methods.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None,
-                 default_tags: Optional[Dict[str, str]] = None):
+                 tag_keys: Optional[Tuple[str]] = None):
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. "
                              "Please provide a metric name.")
-        # Length 1 tuple becomes a string.
-        if type(tag_keys) == str:
-            tag_keys = (tag_keys, )
         self._name = name
         self._description = description
+        # We don't specify unit because it won't be
+        # exported to Prometheus anyway.
         self._unit = ""
         # The default tags key-value pair.
-        self._default_tags = default_tags or {}
+        self._default_tags = {}
         # Keys of tags.
         self._tag_keys = tag_keys or tuple()
         # The Cython metric class. This should be set in the child class.
         self._metric = None
-        # This field is used to temporarily store tags for record method.
-        self._tag_cache = {}
 
-        if not set(self._default_tags.keys()).issubset(set(self._tag_keys)):
-            raise ValueError(f"Default tag keys, {default_tags.keys()}, is "
-                             f"not a subset of tag keys, {tag_keys}.")
+        if type(self._tag_keys) != tuple:
+            raise ValueError(
+                "tag_keys should be a tuple type, "
+                f"but {type(self._tag_keys)} type was specified instead.")
 
-    def with_tags(self, tags: Dict[str, str]):
-        """Chain method to specify tags.
+    def set_default_tags(self, default_tags: Dict[str, str]):
+        """Set default tags of metrics.
 
         Example:
-            >>> counter = Counter("name", tags={"key1": None})
-                # This will override original key1 to "1".
-                counter.with_tags({"key1": "1"}).record(3)
-
-        Chaining multiple with_tags method is not allowed.
+            >>> # Note that set_default_tags returns the instance itself.
+            >>> counter = Counter("name")
+            >>> counter2 = counter.set_default_tags({"a": "b"})
+            >>> assert counter is counter2
+            >>> # this means you can instantiate it in this way.
+            >>> counter = Counter("name").set_default_tags({"a": "b"})
 
         Args:
-            tags(dict): Dictionary of tags that overlap the default.
-        """
-        if len(self._tag_cache) > 0:
-            logger.warning(
-                "Chaining multiple with_tags method is not recommended. EX) "
-                "metrics.with_tags(tags1).with_tags(tags2). The first "
-                f"tag {self._tag_cache} will be overwritten by the second "
-                f"chained method. {tags}")
-            self._tag_cache = {}
+            default_tags(dict): Default tags that are
+                used for every record method.
 
-        self._tag_cache = tags
+        Returns:
+            Metric: it returns the instance itself.
+        """
+        self._default_tags = default_tags
         return self
 
-    def record(self, value: float) -> None:
+    def record(self, value: float, tags: dict = None) -> None:
         """Record the metric point of the metric.
 
         Args:
@@ -77,10 +71,8 @@ class Metric:
         """
         assert self._metric is not None
         default_tag_copy = self._default_tags.copy()
-        default_tag_copy.update(self._tag_cache)
+        default_tag_copy.update(tags or {})
         self._metric.record(value, tags=default_tag_copy)
-        # We should reset tag cache. Otherwise, with_tags will be corrupted.
-        self._tag_cache = {}
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -115,15 +107,13 @@ class Count(Metric):
         name(str): Name of the metric.
         description(str): Description of the metric.
         tag_keys(tuple): Tag keys of the metric.
-        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None,
-                 default_tags: Optional[Dict[str, str]] = None):
-        super().__init__(name, description, tag_keys, default_tags)
+                 tag_keys: Optional[Tuple[str]] = None):
+        super().__init__(name, description, tag_keys)
         self._metric = CythonCount(self._name, self._description, self._unit,
                                    self._tag_keys)
 
@@ -140,17 +130,14 @@ class Histogram(Metric):
         description(str): Description of the metric.
         boundaries(list): Boundaries of histogram buckets.
         tag_keys(tuple): Tag keys of the metric.
-        tags(dict): Dictionary of default tag values.
     """
 
     def __init__(self,
                  name: str,
                  description: str = "",
                  boundaries: List[float] = None,
-                 tag_keys: Optional[Tuple[str]] = None,
-                 default_tags: Optional[Dict[str, str]] = None):
-        super().__init__(name, description, tag_keys, default_tags)
-        # SANG-TODO Test this.
+                 tag_keys: Optional[Tuple[str]] = None):
+        super().__init__(name, description, tag_keys)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
                 "boundaries argument should be provided when using the "
@@ -183,9 +170,8 @@ class Gauge(Metric):
     def __init__(self,
                  name: str,
                  description: str = "",
-                 tag_keys: Optional[Tuple[str]] = None,
-                 default_tags: Optional[Dict[str, str]] = None):
-        super().__init__(name, description, tag_keys, default_tags)
+                 tag_keys: Optional[Tuple[str]] = None):
+        super().__init__(name, description, tag_keys)
         self._metric = CythonGauge(self._name, self._description, self._unit,
                                    self._tag_keys)
 
