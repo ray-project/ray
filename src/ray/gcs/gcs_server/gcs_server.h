@@ -34,6 +34,7 @@ struct GcsServerConfig {
   uint16_t redis_port = 6379;
   bool retry_redis = true;
   bool is_test = false;
+  std::string node_ip_address;
 };
 
 class GcsNodeManager;
