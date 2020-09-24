@@ -31,30 +31,30 @@ RUN_RAYLET_PROFILER = False
 RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
-RAY_HOME = os.path.join(os.path.dirname(__file__), "../..")
+RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 REDIS_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/ray/gcs/redis_module/libray_redis_module.so")
 
 # Location of the plasma object store executable.
 PLASMA_STORE_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/ray/raylet/raylet" + EXE_SUFFIX)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)),
+    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
     "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
 # Logger for this module. It should be configured at the entry point
@@ -1394,7 +1394,7 @@ def start_raylet(redis_address,
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
-    current_dir = os.path.abspath(os.path.dirname(__file__))
+    current_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
     if not os.path.exists(jars_dir):
         raise RuntimeError("Ray jars is not packaged into ray. "

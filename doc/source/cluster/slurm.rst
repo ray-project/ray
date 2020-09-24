@@ -83,7 +83,7 @@ Starter SLURM script
   @ray.remote
   def f():
       time.sleep(1)
-      return ray.services.get_node_ip_address()
+      return ray._private.services.get_node_ip_address()
 
   # The following takes one second (assuming that ray was able to access all of the allocated nodes).
   for i in range(60):

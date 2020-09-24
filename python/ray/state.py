@@ -6,10 +6,8 @@ import time
 
 import ray
 
-from ray import (
-    gcs_utils,
-    services,
-)
+from ray import gcs_utils
+from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -883,8 +881,8 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
-    )
+    return (ray.resource_spec.NODE_ID_PREFIX +
+            ray._private.services.get_node_ip_address())
 
 
 def node_ids():

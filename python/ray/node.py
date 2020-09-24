@@ -15,7 +15,7 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink, open_log
@@ -77,10 +77,10 @@ class Node:
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
         elif ray_params.redis_address:
-            node_ip_address = ray.services.get_node_ip_address(
+            node_ip_address = ray._private.services.get_node_ip_address(
                 ray_params.redis_address)
         else:
-            node_ip_address = ray.services.get_node_ip_address()
+            node_ip_address = ray._private.services.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
         if ray_params.raylet_ip_address:
@@ -155,10 +155,11 @@ class Node:
                     or self._ray_params.node_manager_port is None):
                 # Get the address info of the processes to connect to
                 # from Redis.
-                address_info = ray.services.get_address_info_from_redis(
-                    self.redis_address,
-                    self._raylet_ip_address,
-                    redis_password=self.redis_password)
+                address_info = (
+                    ray._private.services.get_address_info_from_redis(
+                        self.redis_address,
+                        self._raylet_ip_address,
+                        redis_password=self.redis_password))
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
                 self._raylet_socket_name = address_info["raylet_socket_name"]
@@ -177,7 +178,7 @@ class Node:
             self._webui_url = None
         else:
             self._webui_url = (
-                ray.services.get_webui_url_from_redis(redis_client))
+                ray._private.services.get_webui_url_from_redis(redis_client))
 
         if head or not connect_only:
             # We need to start a local raylet.
@@ -383,7 +384,7 @@ class Node:
 
     def create_redis_client(self):
         """Create a redis client."""
-        return ray.services.create_redis_client(
+        return ray._private.services.create_redis_client(
             self._redis_address, self._ray_params.redis_password)
 
     def get_temp_dir_path(self):
@@ -549,7 +550,7 @@ class Node:
         """
         assert not self.kernel_fate_share, (
             "a reaper should not be used with kernel fate-sharing")
-        process_info = ray.services.start_reaper(fate_share=False)
+        process_info = ray._private.services.start_reaper(fate_share=False)
         assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
@@ -565,7 +566,7 @@ class Node:
                 self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
-         process_infos) = ray.services.start_redis(
+         process_infos) = ray._private.services.start_redis(
              self._node_ip_address,
              redis_log_files,
              self.get_resource_spec(),
@@ -585,7 +586,7 @@ class Node:
         """Start the log monitor."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "log_monitor", unique=True)
-        process_info = ray.services.start_log_monitor(
+        process_info = ray._private.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
             stdout_file=stdout_file,
@@ -602,7 +603,7 @@ class Node:
         stdout_file, stderr_file = self.get_log_file_handles(
             "reporter", unique=True)
 
-        process_info = ray.services.start_reporter(
+        process_info = ray._private.services.start_reporter(
             self.redis_address,
             self._ray_params.metrics_agent_port,
             self._metrics_export_port,
@@ -629,7 +630,7 @@ class Node:
         else:
             stdout_file, stderr_file = self.get_log_file_handles(
                 "dashboard", unique=True)
-        self._webui_url, process_info = ray.services.start_dashboard(
+        self._webui_url, process_info = ray._private.services.start_dashboard(
             require_dashboard,
             self._ray_params.dashboard_host,
             self.redis_address,
@@ -652,7 +653,7 @@ class Node:
         """Start the plasma store."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "plasma_store", unique=True)
-        process_info = ray.services.start_plasma_store(
+        process_info = ray._private.services.start_plasma_store(
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
@@ -673,7 +674,7 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles(
             "gcs_server", unique=True)
-        process_info = ray.services.start_gcs_server(
+        process_info = ray._private.services.start_gcs_server(
             self._redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
@@ -704,7 +705,7 @@ class Node:
         """
         stdout_file, stderr_file = self.get_log_file_handles(
             "raylet", unique=True)
-        process_info = ray.services.start_raylet(
+        process_info = ray._private.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
             self._ray_params.node_manager_port,
@@ -783,7 +784,7 @@ class Node:
         """Start the monitor."""
         stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
-        process_info = ray.services.start_monitor(
+        process_info = ray._private.services.start_monitor(
             self._redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
@@ -819,7 +820,7 @@ class Node:
         # times to avoid printing multiple warnings.
         resource_spec = self.get_resource_spec()
         plasma_directory, object_store_memory = \
-            ray.services.determine_plasma_store_config(
+            ray._private.services.determine_plasma_store_config(
                 resource_spec.object_store_memory,
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
