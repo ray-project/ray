@@ -525,9 +525,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
 
-            raise Exception(
-                "If --head is not passed in, --port and --redis-port are not "
-                "allowed.")
+            raise Exception("If --head is not passed in, --port is not "
+                            "allowed.")
         if redis_shard_ports is not None:
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--redis-shard-ports"), cf.bold("--head"))
