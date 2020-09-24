@@ -89,23 +89,23 @@ class PlacementGroup:
             # Since creating placement group is async, it is
             # possible table is not ready yet. To avoid the
             # problem, we should keep trying with timeout.
-            timeout_second = 30
-            wait_interval = 0.05
+            TIMEOUT_SECOND = 30
+            WAIT_INTERVAL = 0.05
             timeout_cnt = 0
             worker = ray.worker.global_worker
             worker.check_connected()
 
-            while timeout_cnt < int(timeout_second / wait_interval):
+            while timeout_cnt < int(TIMEOUT_SECOND / WAIT_INTERVAL):
                 pg_info = ray.state.state.placement_group_table(self.id)
                 if pg_info:
                     self.bundle_cache = list(pg_info["bundles"].values())
                     return
-                time.sleep(wait_interval)
+                time.sleep(WAIT_INTERVAL)
                 timeout_cnt += 1
 
             raise RuntimeError(
                 "Couldn't get the bundle information of placement group id "
-                f"{self.id} in {timeout_second} seconds. It is likely "
+                f"{self.id} in {TIMEOUT_SECOND} seconds. It is likely "
                 "because GCS server is too busy.")
 
 
