@@ -8,13 +8,14 @@ import unittest
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
-from ray.autoscaler.autoscaler import StandardAutoscaler
-from ray.autoscaler.load_metrics import LoadMetrics
-from ray.autoscaler.node_provider import NODE_PROVIDERS
-from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
-from ray.autoscaler.resource_demand_scheduler import _utilization_score, \
+from ray.autoscaler.node_provider import _NODE_PROVIDERS
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.resource_demand_scheduler import \
+    _utilization_score, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -180,6 +181,27 @@ def test_get_nodes_to_launch_limits():
     assert to_launch == []
 
 
+def test_calculate_node_resources():
+    provider = MockProvider()
+    scheduler = ResourceDemandScheduler(provider, TYPES_A, 10)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    # 2 free p2.8xls
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+    # 1 more on the way
+    pending_nodes = {"p2.8xlarge": 1}
+    # requires 4 p2.8xls (only 3 are in cluster/pending)
+    demands = [{"GPU": 8}] * (len(utilizations) + 2)
+    to_launch = scheduler.get_nodes_to_launch(nodes, pending_nodes, demands,
+                                              utilizations)
+
+    assert to_launch == [("p2.8xlarge", 1)]
+
+
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
@@ -200,14 +222,14 @@ class LoadMetricsTest(unittest.TestCase):
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
-        NODE_PROVIDERS["mock"] = \
+        _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         self.provider = None
-        del NODE_PROVIDERS["mock"]
+        del _NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 

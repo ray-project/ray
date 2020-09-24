@@ -1,5 +1,6 @@
 import os
 import shutil
+from subprocess import CalledProcessError
 import tempfile
 import threading
 import time
@@ -10,14 +11,14 @@ from jsonschema.exceptions import ValidationError
 
 import ray
 import ray.services as services
-from ray.autoscaler.util import prepare_config, validate_config
-from ray.autoscaler.commands import get_or_create_head_node
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
-from ray.autoscaler.load_metrics import LoadMetrics
-from ray.autoscaler.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
+from ray.autoscaler.node_provider import _NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
 
@@ -48,7 +49,8 @@ class MockProcessRunner:
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
             if token in str(cmd):
-                raise Exception("Failing command on purpose")
+                raise CalledProcessError(1, token,
+                                         "Failing command on purpose")
         self.calls.append(cmd)
 
     def check_output(self, cmd):
@@ -319,14 +321,14 @@ class LoadMetricsTest(unittest.TestCase):
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
-        NODE_PROVIDERS["mock"] = \
+        _NODE_PROVIDERS["mock"] = \
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
         self.provider = None
-        del NODE_PROVIDERS["mock"]
+        del _NODE_PROVIDERS["mock"]
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
@@ -1327,7 +1329,7 @@ class AutoscalingTest(unittest.TestCase):
                 f"{DOCKER_MOUNT_PREFIX}/home/test-folder/")
 
         # Simulate a second `ray up` call
-        from ray.autoscaler import util
+        from ray.autoscaler._private import util
         util._hash_cache = {}
         runner = MockProcessRunner()
         lm = LoadMetrics()

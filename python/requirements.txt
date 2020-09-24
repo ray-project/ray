@@ -38,13 +38,13 @@ tabulate
 tensorboardX
 uvicorn
 pydantic
-dataclasses
+dataclasses; python_version < '3.7'
 
 # Requirements for running tests
 blist; platform_system != "Windows"
 boto3
 cython==0.29.0
-dataclasses
+dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
 gym

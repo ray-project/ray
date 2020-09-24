@@ -65,7 +65,7 @@ class RecurrentNetwork(TFModelV2):
     def forward_rnn(self, inputs, state, seq_lens):
         """Call the model with the given input tensors and state.
 
-        Arguments:
+        Args:
             inputs (dict): observation tensor with shape [B, T, obs_size].
             state (list): list of state tensors, each with shape [B, T, size].
             seq_lens (Tensor): 1d tensor holding input sequence lengths.

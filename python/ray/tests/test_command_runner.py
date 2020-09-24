@@ -1,9 +1,11 @@
+import logging
 import pytest
+from unittest.mock import patch
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler.command_runner import CommandRunnerInterface, \
+from ray.autoscaler._private.command_runner import CommandRunnerInterface, \
     SSHCommandRunner, _with_environment_variables, DockerCommandRunner, \
     KubernetesCommandRunner
-from ray.autoscaler.docker import DOCKER_MOUNT_PREFIX
+from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
 
@@ -123,7 +125,8 @@ def test_ssh_command_runner():
 
 
 def test_kubernetes_command_runner():
-    process_runner = MockProcessRunner()
+    fail_cmd = "fail command"
+    process_runner = MockProcessRunner([fail_cmd])
     provider = MockProvider()
     provider.create_node({}, {}, 1)
     args = {
@@ -154,6 +157,16 @@ def test_kubernetes_command_runner():
     ]
 
     assert process_runner.calls[0] == " ".join(expected)
+
+    logger = logging.getLogger("ray.autoscaler._private.command_runner")
+    with pytest.raises(SystemExit) as pytest_wrapped_e, patch.object(
+            logger, "error") as mock_logger_error:
+        cmd_runner.run(fail_cmd, exit_on_fail=True)
+
+    failed_cmd_expected = f'prefixCommand failed: \n\n  kubectl -n namespace exec -it 0 --\'bash --login -c -i \'"\'"\'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ({fail_cmd})\'"\'"\'\'\n'  # noqa: E501
+    mock_logger_error.assert_called_once_with(failed_cmd_expected)
+    assert pytest_wrapped_e.type == SystemExit
+    assert pytest_wrapped_e.value.code == 1
 
 
 def test_docker_command_runner():
