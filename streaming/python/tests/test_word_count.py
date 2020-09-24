@@ -49,14 +49,9 @@ def test_simple_word_count():
 
     def check_succeed():
         if os.path.exists(sink_file):
-            import time
-            time.sleep(3)  # Wait all data be written
             with open(sink_file, "r") as f:
                 result = f.read()
-                assert "a:2" in result
-                assert "b:2" in result
-                assert "c:2" in result
-            return True
+                return "a:2" in result and "b:2" in result and "c:2" in result
         return False
 
     wait_for_condition(check_succeed, timeout=60, retry_interval_ms=1000)
