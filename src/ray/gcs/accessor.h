@@ -401,7 +401,8 @@ class ObjectInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to any update of an object's location.

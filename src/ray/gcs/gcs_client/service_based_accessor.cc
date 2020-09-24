@@ -1228,7 +1228,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
 
 Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr)
       << "Failed to subscribe object location, object id = " << object_id;
@@ -1239,10 +1239,18 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                         const Status &status,
                         const boost::optional<rpc::ObjectLocationInfo> &result) {
       if (status.ok()) {
-        std::vector<rpc::ObjectTableData> data(result->locations().begin(),
-                                               result->locations().end());
-        gcs::ObjectChangeNotification notification(rpc::GcsChangeMode::APPEND_OR_ADD,
-                                                   data);
+        std::vector<rpc::ObjectLocationChange> notification;
+        for (const auto &loc : result->locations()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(true);
+          update.mutable_data()->CopyFrom(loc);
+          notification.push_back(update);
+        }
+        if (!result->spilled_url().empty()) {
+          rpc::ObjectLocationChange update;
+          update.set_spilled_url(result->spilled_url());
+          notification.push_back(update);
+        }
         subscribe(object_id, notification);
       }
       if (fetch_done) {
@@ -1258,13 +1266,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
                                                const std::string &data) {
       rpc::ObjectLocationChange object_location_change;
       object_location_change.ParseFromString(data);
-      std::vector<rpc::ObjectTableData> object_data_vector;
-      object_data_vector.emplace_back(object_location_change.data());
-      auto change_mode = object_location_change.is_add()
-                             ? rpc::GcsChangeMode::APPEND_OR_ADD
-                             : rpc::GcsChangeMode::REMOVE;
-      gcs::ObjectChangeNotification notification(change_mode, object_data_vector);
-      subscribe(object_id, notification);
+      subscribe(object_id, {object_location_change});
     };
     return client_impl_->GetGcsPubSub().Subscribe(OBJECT_CHANNEL, object_id.Hex(),
                                                   on_subscribe, subscribe_done);

@@ -550,10 +550,23 @@ Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
 
 Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  return object_sub_executor_.AsyncSubscribe(
+      subscribe_id_, object_id,
+      [this, subscribe](const ObjectID &id,
+                        const ObjectChangeNotification &notification_data) {
+        std::vector<rpc::ObjectLocationChange> updates;
+        for (const auto &item : notification_data.GetData()) {
+          rpc::ObjectLocationChange update;
+          update.set_is_add(notification_data.IsAdded());
+          update.mutable_data()->CopyFrom(item);
+          updates.push_back(update);
+        }
+        subscribe(id, updates);
+      },
+      done);
 }
 
 Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id) {
