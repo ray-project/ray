@@ -115,6 +115,8 @@ start a new worker with the given *root temporary directory*.
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.
 
+.. _ray-ports:
+
 Ports configurations
 --------------------
 Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
@@ -130,7 +132,7 @@ The following options specify the range of ports used by worker processes across
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
 
 Head Node
-~~~~~~~~~~~
+~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
 - ``--port``: Port of GCS. Default: 6379.
