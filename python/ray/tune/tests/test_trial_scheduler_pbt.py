@@ -9,7 +9,6 @@ import time
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -24,9 +23,10 @@ class MockParam(object):
         self._index += 1
         return val
 
+
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=1)
 
     def tearDown(self):
         ray.shutdown()
@@ -42,7 +42,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
             def step(self):
                 self.iter += 1
-                return {'metric': self.iter+self.a}
+                return {"metric": self.iter + self.a}
 
             def save_checkpoint(self, checkpoint_dir):
                 file_path = os.path.join(checkpoint_dir, "model.mock")
@@ -56,14 +56,9 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
         class CustomExecutor(RayTrialExecutor):
-            def __init__(self, *args, **kwargs):
-                super(CustomExecutor, self).__init__(*args, **kwargs)
-
             def save(self, *args, **kwargs):
-                checkpoint = super(CustomExecutor, self).save(*args,
-                                                                **kwargs)
-                print(len(ray.objects()))
-                assert len(ray.objects()) <= 20
+                checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
+                assert len(ray.objects()) <= 10
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -76,17 +71,19 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             hyperparam_mutations={"b": [-1]},
         )
 
-        tune.run(MyTrainable,
-                            name="ray_demo",
-                            scheduler=pbt,
-                            stop={"training_iteration": 20},
-                            num_samples=2,
-                            config={
-                                "a": tune.sample_from(lambda _: param_a())
-                            },
-                            trial_executor=CustomExecutor(
-                                queue_trials=False, reuse_actors=False),
-                            )
+        tune.run(
+            MyTrainable,
+            name="ray_demo",
+            scheduler=pbt,
+            stop={"training_iteration": 10},
+            num_samples=3,
+            checkpoint_freq=1,
+            fail_fast=True,
+            config={"a": tune.sample_from(lambda _: param_a())},
+            trial_executor=CustomExecutor(
+                queue_trials=False, reuse_actors=False),
+        )
+
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
