@@ -63,7 +63,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_node_manager_->AddNode(node);
     rpc::HeartbeatTableData heartbeat;
     (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
-    gcs_node_manager_->UpdateNodeRealtimeResources(ClientID::FromBinary(node->node_id()),
+    gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
                                                    heartbeat);
   }
 
@@ -489,10 +489,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   WaitPendingDone(success_placement_groups_, 1);
 
   auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node0->node_id()));
+      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles_on_node0.size());
   auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(ClientID::FromBinary(node1->node_id()));
+      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
   // One node is dead, reschedule the placement group.
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
@@ -543,8 +543,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadStrategyResourceCheck) {
 TEST_F(GcsPlacementGroupSchedulerTest, TestBundleLocationIndex) {
   gcs::BundleLocationIndex bundle_location_index;
   /// Generate data.
-  const auto node1 = ClientID::FromRandom();
-  const auto node2 = ClientID::FromRandom();
+  const auto node1 = NodeID::FromRandom();
+  const auto node2 = NodeID::FromRandom();
   rpc::CreatePlacementGroupRequest request_pg1 =
       Mocker::GenCreatePlacementGroupRequest("pg1");
   const auto pg1_id = PlacementGroupID::FromBinary(

@@ -167,7 +167,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// specified node id.
   ///
   /// \param node_id The specified node id.
-  void OnNodeDead(const ClientID &node_id);
+  void OnNodeDead(const NodeID &node_id);
 
  private:
   /// Try to create placement group after a short time.

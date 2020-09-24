@@ -94,7 +94,7 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID& object_id, const ClientID& owner_raylet_id,
+  PlasmaError CreateObject(const ObjectID& object_id, const NodeID& owner_raylet_id,
                            const std::string& owner_ip_address, int owner_port,
                            const WorkerID& owner_worker_id, bool evict_if_full,
                            int64_t data_size, int64_t metadata_size, int device_num,

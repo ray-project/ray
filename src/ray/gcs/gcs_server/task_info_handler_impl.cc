@@ -93,7 +93,7 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
                                                 AddTaskLeaseReply *reply,
                                                 SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_lease_data().task_id());
-  ClientID node_id = ClientID::FromBinary(request.task_lease_data().node_manager_id());
+  NodeID node_id = NodeID::FromBinary(request.task_lease_data().node_manager_id());
   RAY_LOG(DEBUG) << "Adding task lease, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", node id = " << node_id;
   auto on_done = [this, task_id, node_id, request, reply,
@@ -144,8 +144,8 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
     const AttemptTaskReconstructionRequest &request,
     AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_reconstruction().task_id());
-  ClientID node_id =
-      ClientID::FromBinary(request.task_reconstruction().node_manager_id());
+  NodeID node_id =
+      NodeID::FromBinary(request.task_reconstruction().node_manager_id());
   RAY_LOG(DEBUG) << "Reconstructing task, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", reconstructions num = "
                  << request.task_reconstruction().num_reconstructions()

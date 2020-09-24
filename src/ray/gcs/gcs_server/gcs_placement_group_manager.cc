@@ -53,7 +53,7 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplaced
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
   for (auto &bundle : bundles) {
-    if (ClientID::FromBinary(bundle.node_id()).IsNil()) {
+    if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
       unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
     }
   }
@@ -325,7 +325,7 @@ void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
                 RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
-void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {
+void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(WARNING) << "Node " << node_id
                    << " failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);

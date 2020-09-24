@@ -51,7 +51,7 @@ struct Mocker {
                                                        bool detached = false,
                                                        const std::string name = "") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -67,7 +67,7 @@ struct Mocker {
                                                            bool detached = false,
                                                            const std::string name = "") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -109,7 +109,7 @@ struct Mocker {
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
-    node->set_node_id(ClientID::FromRandom().Binary());
+    node->set_node_id(NodeID::FromRandom().Binary());
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
     return node;
@@ -158,7 +158,7 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const ClientID &node_id) {
+      const NodeID &node_id) {
     auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
     profile_table_data->set_component_id(node_id.Binary());
     return profile_table_data;

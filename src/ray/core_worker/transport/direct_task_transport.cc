@@ -233,9 +233,9 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
   if (raylet_address &&
-      ClientID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+      NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
-    ClientID raylet_id = ClientID::FromBinary(raylet_address->raylet_id());
+    NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;

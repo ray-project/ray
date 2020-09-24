@@ -58,7 +58,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
               RetryTaskCallback retry_task_callback,
-              const std::function<bool(const ClientID &node_id)> &check_node_alive,
+              const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -238,7 +238,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// processing a worker's reply to check whether the node that the worker
   /// was on is still alive. If the node is down, the plasma objects returned by the task
   /// are marked as failed.
-  const std::function<bool(const ClientID &node_id)> check_node_alive_;
+  const std::function<bool(const NodeID &node_id)> check_node_alive_;
   /// Called when processing a worker's reply if the node that the worker was
   /// on died. This should be called to attempt to recover a plasma object
   /// returned by the task (or store an error if the object is not

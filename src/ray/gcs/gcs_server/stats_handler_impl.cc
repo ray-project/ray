@@ -21,7 +21,7 @@ namespace rpc {
 void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &request,
                                                AddProfileDataReply *reply,
                                                SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.profile_data().component_id());
+  NodeID node_id = NodeID::FromBinary(request.profile_data().component_id());
   RAY_LOG(DEBUG) << "Adding profile data, component type = "
                  << request.profile_data().component_type() << ", node id = " << node_id;
   auto profile_table_data = std::make_shared<ProfileTableData>();

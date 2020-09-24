@@ -457,7 +457,7 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
-  auto node_id = ClientID::FromBinary(local_node_info.node_id());
+  auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
@@ -472,7 +472,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
                      const Status &status, const rpc::RegisterNodeReply &reply) {
           if (status.ok()) {
             local_node_info_.CopyFrom(local_node_info);
-            local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+            local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
           }
           RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
                          << ", node id = " << node_id;
@@ -486,7 +486,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
-  ClientID node_id = ClientID::FromBinary(local_node_info_.node_id());
+  NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
@@ -495,7 +495,7 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
       [this, node_id](const Status &status, const rpc::UnregisterNodeReply &reply) {
         if (status.ok()) {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
-          local_node_id_ = ClientID::Nil();
+          local_node_id_ = NodeID::Nil();
         }
         RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
                       << ", node id = " << node_id;
@@ -503,7 +503,7 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   return Status::OK();
 }
 
-const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
+const NodeID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
 
 const GcsNodeInfo &ServiceBasedNodeInfoAccessor::GetSelfInfo() const {
   return local_node_info_;
@@ -511,7 +511,7 @@ const GcsNodeInfo &ServiceBasedNodeInfoAccessor::GetSelfInfo() const {
 
 Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                                    const StatusCallback &callback) {
-  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(node_info);
@@ -527,7 +527,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
+Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const NodeID &node_id,
                                                      const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
@@ -563,7 +563,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   RAY_CHECK(node_change_callback_ == nullptr);
@@ -597,7 +597,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
 }
 
 boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
-    const ClientID &node_id) const {
+    const NodeID &node_id) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
   if (entry != node_cache_.end()) {
@@ -606,17 +606,17 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
   return boost::none;
 }
 
-const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
+const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
   return node_cache_;
 }
 
-bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
+bool ServiceBasedNodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
-    const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
+    const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_LOG(DEBUG) << "Getting node resources, node id = " << node_id;
   rpc::GetResourcesRequest request;
   request.set_node_id(node_id.Binary());
@@ -636,7 +636,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
-    const ClientID &node_id, const ResourceMap &resources,
+    const NodeID &node_id, const ResourceMap &resources,
     const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
   rpc::UpdateResourcesRequest request;
@@ -664,7 +664,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
-    const ClientID &node_id, const std::vector<std::string> &resource_names,
+    const NodeID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
   rpc::DeleteResourcesRequest request;
@@ -732,7 +732,7 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
-    const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+    const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
   const std::string error_msg =
       "Unsupported method of AsyncSubscribeHeartbeat in ServiceBasedNodeInfoAccessor.";
@@ -766,7 +766,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
-  ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
   auto entry = node_cache_.find(node_id);
   bool is_notif_new;
@@ -974,7 +974,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id) {
 Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
     const std::shared_ptr<rpc::TaskLeaseData> &data_ptr, const StatusCallback &callback) {
   TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
-  ClientID node_id = ClientID::FromBinary(data_ptr->node_manager_id());
+  NodeID node_id = NodeID::FromBinary(data_ptr->node_manager_id());
   RAY_LOG(DEBUG) << "Adding task lease, task id = " << task_id
                  << ", node id = " << node_id;
   rpc::AddTaskLeaseRequest request;
@@ -1061,7 +1061,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &tas
 Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
     const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
     const StatusCallback &callback) {
-  ClientID node_id = ClientID::FromBinary(data_ptr->node_manager_id());
+  NodeID node_id = NodeID::FromBinary(data_ptr->node_manager_id());
   RAY_LOG(DEBUG) << "Reconstructing task, reconstructions num = "
                  << data_ptr->num_reconstructions() << ", node id = " << node_id;
   rpc::AttemptTaskReconstructionRequest request;
@@ -1151,7 +1151,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
-                                                        const ClientID &node_id,
+                                                        const NodeID &node_id,
                                                         const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Adding object location, object id = " << object_id
                  << ", node id = " << node_id;
@@ -1179,7 +1179,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
 }
 
 Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
-    const ObjectID &object_id, const ClientID &node_id, const StatusCallback &callback) {
+    const ObjectID &object_id, const NodeID &node_id, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Removing object location, object id = " << object_id
                  << ", node id = " << node_id;
   rpc::RemoveObjectLocationRequest request;
@@ -1299,7 +1299,7 @@ ServiceBasedStatsInfoAccessor::ServiceBasedStatsInfoAccessor(
 Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
     const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
     const StatusCallback &callback) {
-  ClientID node_id = ClientID::FromBinary(data_ptr->component_id());
+  NodeID node_id = NodeID::FromBinary(data_ptr->component_id());
   RAY_LOG(DEBUG) << "Adding profile data, component type = " << data_ptr->component_type()
                  << ", node id = " << node_id;
   rpc::AddProfileDataRequest request;

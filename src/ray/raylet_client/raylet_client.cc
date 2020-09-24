@@ -82,7 +82,7 @@ raylet::RayletClient::RayletClient(
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, Status *status, ClientID *raylet_id, int *port,
+    const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
@@ -120,7 +120,7 @@ raylet::RayletClient::RayletClient(
     *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
     return;
   }
-  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
   RAY_CHECK(system_config);
@@ -307,7 +307,7 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
                                          const double capacity,
-                                         const ClientID &client_Id) {
+                                         const NodeID &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
                                                     capacity, to_flatbuf(fbb, client_Id));

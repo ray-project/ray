@@ -156,35 +156,35 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   Status UnregisterSelf() override;
 
-  const ClientID &GetSelfId() const override;
+  const NodeID &GetSelfId() const override;
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
   Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
-  Status AsyncUnregister(const ClientID &node_id,
+  Status AsyncUnregister(const NodeID &node_id,
                          const StatusCallback &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
+  boost::optional<GcsNodeInfo> Get(const NodeID &node_id) const override;
 
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
 
-  bool IsRemoved(const ClientID &node_id) const override;
+  bool IsRemoved(const NodeID &node_id) const override;
 
-  Status AsyncGetResources(const ClientID &node_id,
+  Status AsyncGetResources(const NodeID &node_id,
                            const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                               const StatusCallback &callback) override;
 
-  Status AsyncDeleteResources(const ClientID &node_id,
+  Status AsyncDeleteResources(const NodeID &node_id,
                               const std::vector<std::string> &resource_names,
                               const StatusCallback &callback) override;
 
@@ -197,7 +197,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   void AsyncReReportHeartbeat() override;
 
   Status AsyncSubscribeHeartbeat(
-      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const SubscribeCallback<NodeID, rpc::HeartbeatTableData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportBatchHeartbeat(
@@ -240,20 +240,20 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   using NodeChangeCallback =
-      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, const GcsNodeInfo &node_info)>;
 
   GcsNodeInfo local_node_info_;
-  ClientID local_node_id_;
+  NodeID local_node_id_;
 
-  Sequencer<ClientID> sequencer_;
+  Sequencer<NodeID> sequencer_;
 
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
-  std::unordered_set<ClientID> removed_nodes_;
+  std::unordered_set<NodeID> removed_nodes_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor
@@ -329,10 +329,10 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
 
   Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback) override;
 
-  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
                           const StatusCallback &callback) override;
 
-  Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
+  Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
                              const StatusCallback &callback) override;
 
   Status AsyncSubscribeToLocations(
