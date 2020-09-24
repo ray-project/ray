@@ -278,7 +278,7 @@ class TuneReporterBase(ProgressReporter):
                 continue
             if not best_metric or \
                t.last_result[metric] * metric_op > best_metric:
-                best_metric = t.last_result[metric]
+                best_metric = t.last_result[metric] * metric_op
                 best_trial = t
         return best_trial, metric
 
