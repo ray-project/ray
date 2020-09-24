@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 import click
 from datetime import datetime
 import json
@@ -69,6 +71,94 @@ class _TuneFunctionDecoder(json.JSONDecoder):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
+class Callback:
+    """Tune base callback that can be passed to a ``TrialRunner``
+
+    Tune callbacks live within the ``TrialRunner`` class.
+    """
+
+    def on_step_begin(self, trial_runner: "TrialRunner"):
+        """Called at the start of each ``TrialRunner.step()`` invocation."""
+        pass
+
+    def on_step_end(self, trial_runner: "TrialRunner"):
+        """Called at the end of each ``TrialRunner.step()`` invocation."""
+        pass
+
+    def on_trial_start(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after starting a trial instance."""
+        pass
+
+    def on_trial_restore(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after restoring a trial instance."""
+        pass
+
+    def on_trial_save(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after receiving a checkpoint from a trial."""
+        pass
+
+    def on_trial_result(self, trial_runner: "TrialRunner", trial: Trial,
+                        result: Dict):
+        """Called directly after receiving a result from a trial."""
+        pass
+
+    def on_trial_complete(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after a trial instance completed."""
+        pass
+
+    def on_trial_fail(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after a trial instance failed (errored)."""
+        pass
+
+
+class _CallbackList:
+    """Call multiple callbacks at once."""
+
+    def __init__(self, callbacks: List[Callback]):
+        self._callbacks = callbacks
+
+    def on_step_begin(self, trial_runner: "TrialRunner"):
+        """Called at the start of each ``TrialRunner.step()`` invocation."""
+        for callback in self._callbacks:
+            callback.on_step_begin(trial_runner)
+
+    def on_step_end(self, trial_runner: "TrialRunner"):
+        """Called at the end of each ``TrialRunner.step()`` invocation."""
+        for callback in self._callbacks:
+            callback.on_step_end(trial_runner)
+
+    def on_trial_start(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after starting a trial instance."""
+        for callback in self._callbacks:
+            callback.on_trial_start(trial_runner, trial)
+
+    def on_trial_restore(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after restoring a trial instance."""
+        for callback in self._callbacks:
+            callback.on_trial_restore(trial_runner, trial)
+
+    def on_trial_save(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after receiving a checkpoint from a trial."""
+        for callback in self._callbacks:
+            callback.on_trial_save(trial_runner, trial)
+
+    def on_trial_result(self, trial_runner: "TrialRunner", trial: Trial,
+                        result: Dict):
+        """Called directly after receiving a result from a trial."""
+        for callback in self._callbacks:
+            callback.on_trial_result(trial_runner, trial, result)
+
+    def on_trial_complete(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after a trial instance completed."""
+        for callback in self._callbacks:
+            callback.on_trial_complete(trial_runner, trial)
+
+    def on_trial_fail(self, trial_runner: "TrialRunner", trial: Trial):
+        """Called directly after a trial instance failed (errored)."""
+        for callback in self._callbacks:
+            callback.on_trial_fail(trial_runner, trial)
+
+
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -114,6 +204,9 @@ class TrialRunner:
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.trial_runner.Callback`` class.
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -132,7 +225,8 @@ class TrialRunner:
                  fail_fast=False,
                  verbose=True,
                  checkpoint_period=None,
-                 trial_executor=None):
+                 trial_executor=None,
+                 callbacks=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -208,6 +302,8 @@ class TrialRunner:
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+        self._callbacks = _CallbackList(callbacks or [])
 
     @property
     def resumed(self):
@@ -367,10 +463,13 @@ class TrialRunner:
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
+        with warn_if_slow("callbacks.on_step_begin"):
+            self._callbacks.on_step_begin(self)
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 self.trial_executor.start_trial(next_trial)
+                self._callbacks.on_trial_start(self, next_trial)
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
@@ -393,6 +492,8 @@ class TrialRunner:
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self)
+        with warn_if_slow("callbacks.on_step_end"):
+            self._callbacks.on_step_end(self)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -476,9 +577,13 @@ class TrialRunner:
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
+                with warn_if_slow("callbacks.on_trial_restore"):
+                    self._callbacks.on_trial_restore(self, trial)
             elif trial.is_saving:
                 with warn_if_slow("process_trial_save") as profile:
                     self._process_trial_save(trial)
+                with warn_if_slow("callbacks.on_trial_save"):
+                    self._callbacks.on_trial_save(self, trial)
                 if profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
@@ -533,6 +638,7 @@ class TrialRunner:
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
+                self._callbacks.on_trial_complete(self, trial)
                 decision = TrialScheduler.STOP
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
@@ -541,10 +647,14 @@ class TrialRunner:
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
+                with warn_if_slow("callbacks.on_trial_result"):
+                    self._callbacks.on_trial_result(self, trial, result)
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
                             trial.trial_id, result=flat_result)
+                    with warn_if_slow("callbacks.on_trial_complete"):
+                        self._callbacks.on_trial_complete(self, trial)
 
             if not is_duplicate:
                 trial.update_last_result(
@@ -639,6 +749,7 @@ class TrialRunner:
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._callbacks.on_trial_fail(self, trial)
                 self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
 
@@ -804,13 +915,8 @@ class TrialRunner:
         """
         state = self.__dict__.copy()
         for k in [
-                "_trials",
-                "_stop_queue",
-                "_server",
-                "_search_alg",
-                "_scheduler_alg",
-                "trial_executor",
-                "_syncer",
+                "_trials", "_stop_queue", "_server", "_search_alg",
+                "_scheduler_alg", "trial_executor", "_syncer", "_callbacks"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)
