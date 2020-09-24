@@ -977,41 +977,74 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
 
   NodeResources node_resources;
 
-  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2 }, {"3", 3}});
-  // initNodeResources(node_resources, pred_capacities, cust_ids,
-  //                   cust_capacities);
-  ClusterResourceScheduler cluster_resources(0, initial_resources);
+  std::unordered_map<std::string, double> initial_resources({
+                                                             {"CPU", 1}, {"GPU", 2}, {"memory", 3},
+                                                             {"1", 1}, {"2", 2 }, {"3", 3}
+    });
+  ClusterResourceScheduler cluster_resources("0", initial_resources);
+  NodeResources other_node_resources;
+  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
+  vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
+  initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
+                    other_cust_capacities);
+  cluster_resources.AddOrUpdateNode(12345, other_node_resources);
 
-  // NodeResources other_node_resources;
-  // vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
-  // vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
-  // initNodeResources(other_node_resources, other_pred_capacities, cust_ids,
-  //                   other_cust_capacities);
-
-  // auto data = std::make_shared<rpc::HeartbeatTableData>();
-  // cluster_resources.Heartbeat(data, false);
-
-  // auto available = data->resources_available();
-  // auto total = data->resources_total();
-
-  // ASSERT_EQ(available[kCPU_ResourceLabel], 4);
-  // ASSERT_EQ(available[kMemory_ResourceLabel], 2);
-  // ASSERT_EQ(available[kGPU_ResourceLabel], 4);
-
-  // ASSERT_EQ(total[kCPU_ResourceLabel], 4);
-  // ASSERT_EQ(total[kMemory_ResourceLabel], 2);
-  // ASSERT_EQ(total[kGPU_ResourceLabel], 4);
-  // for (auto it = available.begin(); it != available.end(); it++) {
-  //   RAY_LOG(ERROR) << it->first << ": " << it->second;
-  // }
-  // ASSERT_EQ(total["1"], 4);
+  {
 
 
+    auto data = std::make_shared<rpc::HeartbeatTableData>();
+    cluster_resources.Heartbeat(data, false);
 
+    auto available = data->resources_available();
+    auto total = data->resources_total();
 
+    ASSERT_EQ(available[kCPU_ResourceLabel], 1);
+    ASSERT_EQ(available[kGPU_ResourceLabel], 2);
+    ASSERT_EQ(available[kMemory_ResourceLabel], 3);
+    ASSERT_EQ(available["1"], 1);
+    ASSERT_EQ(available["2"], 2);
+    ASSERT_EQ(available["3"], 3);
 
+    ASSERT_EQ(total[kCPU_ResourceLabel], 1);
+    ASSERT_EQ(total[kGPU_ResourceLabel], 2);
+    ASSERT_EQ(total[kMemory_ResourceLabel], 3);
+    ASSERT_EQ(total["1"], 1);
+    ASSERT_EQ(total["2"], 2);
+    ASSERT_EQ(total["3"], 3);
+  }
+  {
+    std::shared_ptr<TaskResourceInstances> allocations = std::make_shared<TaskResourceInstances>();
+    allocations->predefined_resources = {
+                                        {0.1}, // CPU
+    };
+    allocations->custom_resources = {
+                                     {1, {0.1}}, // "1"
+    };
+    std::unordered_map<std::string, double> allocation_map({
+                                                            {"CPU", 0.1},
+                                                            {"1", 0.1},
+      });
+    cluster_resources.AllocateLocalTaskResources(allocation_map, allocations);
+    auto data = std::make_shared<rpc::HeartbeatTableData>();
+    cluster_resources.Heartbeat(data, false);
 
+    auto available = data->resources_available();
+    auto total = data->resources_total();
 
+    ASSERT_EQ(available[kCPU_ResourceLabel], 0.9);
+    ASSERT_EQ(available[kGPU_ResourceLabel], 2);
+    ASSERT_EQ(available[kMemory_ResourceLabel], 3);
+    ASSERT_EQ(available["1"], 0.9);
+    ASSERT_EQ(available["2"], 2);
+    ASSERT_EQ(available["3"], 3);
+
+    ASSERT_EQ(total[kCPU_ResourceLabel], 1);
+    ASSERT_EQ(total[kGPU_ResourceLabel], 2);
+    ASSERT_EQ(total[kMemory_ResourceLabel], 3);
+    ASSERT_EQ(total["1"], 1);
+    ASSERT_EQ(total["2"], 2);
+    ASSERT_EQ(total["3"], 3);
+  }
 }
 
 }  // namespace ray
