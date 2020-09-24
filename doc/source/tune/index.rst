@@ -25,9 +25,9 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 Quick Start
 -----------
 
-To run this example, install the following: ``pip install 'ray[tune]' torch torchvision``.
+To run this example, install the following: ``pip install 'ray[tune]'``.
 
-This example runs a small grid search to train a convolutional neural network using PyTorch and Tune.
+This example runs a parallel grid search to optimize an example objective function.
 
 .. literalinclude:: ../../../python/ray/tune/tests/example.py
    :language: python
