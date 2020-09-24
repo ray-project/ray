@@ -84,6 +84,7 @@ async def main():
     for intermediate_handles in [False, True]:
         if (intermediate_handles):
 
+            client.create_endpoint("backend", backend="backend", route="/backend")
             class forwardActor:
                 def __init__(self):
                     self.handle = client.get_handle("backend")
