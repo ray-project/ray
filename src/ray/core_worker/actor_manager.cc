@@ -129,8 +129,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", ip address: " << actor_data.address().ip_address()
                 << ", port: " << actor_data.address().port() << ", worker_id: "
                 << WorkerID::FromBinary(actor_data.address().worker_id())
-                << ", raylet_id: "
-                << NodeID::FromBinary(actor_data.address().raylet_id())
+                << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts();
   if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
