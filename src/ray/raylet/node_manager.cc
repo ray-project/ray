@@ -1420,11 +1420,11 @@ void NodeManager::ProcessDisconnectClientMessage(
   leased_workers_.erase(worker->WorkerId());
 
   // Publish the worker failure.
-  auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-      self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
-      time(nullptr), intentional_disconnect);
-  RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
-                                                                nullptr));
+  auto worker_failure_data_ptr =
+      gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
+                                   worker->Port(), time(nullptr), intentional_disconnect);
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
