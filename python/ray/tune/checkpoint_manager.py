@@ -115,7 +115,7 @@ class CheckpointManager:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            #del self._newest_memory_checkpoint
+            del self._newest_memory_checkpoint
             self._newest_memory_checkpoint = checkpoint
             return
 

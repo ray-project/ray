@@ -32,75 +32,61 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         ray.shutdown()
 
     def testMemoryCheckpointFree(self):
-        import torchvision
-        import torch
-        class Ray(Trainable):
+        class MyTrainable(Trainable):
+            def setup(self, config):
+                # Make sure this is large enough so ray uses object store
+                # instead of in-process store.
+                self.large_object = random.getrandbits(int(10e7))
+                self.iter = 0
+                self.a = config["a"]
 
-            def _setup(self, config):
-                ## https://github.com/ray-project/ray/issues/8569
-                import torch
-                self.model = torchvision.models.resnet50(pretrained=False)
+            def step(self):
+                self.iter += 1
+                return {'metric': self.iter+self.a}
 
-            def _train(self):
-                return {'bbox_mAP_50': random.random()}
+            def save_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
 
-            def _save(self, checkpoint_dir):
-                file_name = 'ray.pth'
-                file_path = os.path.join(checkpoint_dir, file_name)
-
-                ckpt = {'model': self.model,
-
-                        }
-                torch.save(ckpt, file_path)
+                with open(file_path, "wb") as fp:
+                    pickle.dump((self.large_object, self.iter, self.a), fp)
                 return file_path
 
-            def _restore(self, path):
-                self.model = torchvision.models.resnet50(pretrained=False)
-
-            def reset_config(self, new_config):
-                return True
-        train_spec = {
-            "stop": {
-                "bbox_mAP_50": 1,
-                "training_iteration": 100,
-            },
-            "config": {
-                "lr": tune.grid_search([0.01, 0.02]),
-            },
-            "num_samples": 1,
-        }
+            def load_checkpoint(self, path):
+                with open(path, "rb") as fp:
+                    self.large_object, self.iter, self.a = pickle.load(fp)
 
         class CustomExecutor(RayTrialExecutor):
             def __init__(self, *args, **kwargs):
-                super(RayTrialExecutor, self).__init__(*args, **kwargs)
+                super(CustomExecutor, self).__init__(*args, **kwargs)
 
             def save(self, *args, **kwargs):
-                checkpoint = super(RayTrialExecutor, self).save(*args,
+                checkpoint = super(CustomExecutor, self).save(*args,
                                                                 **kwargs)
-                print(ray.objects())
+                print(len(ray.objects()))
+                assert len(ray.objects()) <= 10
                 return checkpoint
+
+        param_a = MockParam([1, -1])
 
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
-            metric="bbox_mAP_50",
+            metric="metric",
             mode="max",
             perturbation_interval=1,
-            hyperparam_mutations={
-                "lr": [0.1, 0.2], },
-            quantile_fraction=0.5,
-            resample_probability=0
+            hyperparam_mutations={"b": [-1]},
         )
 
-        analysis = tune.run(Ray,
+        tune.run(MyTrainable,
                             name="ray_demo",
-                            checkpoint_at_end=True,
-                            reuse_actors=False,
-                            checkpoint_score_attr="bbox_mAP_50",
-                            checkpoint_freq=1,
-                            verbose=1,
                             scheduler=pbt,
-                            trial_executor=CustomExecutor(),
-                            **train_spec)
+                            stop={"training_iteration": 20},
+                            num_samples=2,
+                            config={
+                                "a": tune.sample_from(lambda _: param_a())
+                            },
+                            trial_executor=CustomExecutor(
+                                queue_trials=False, reuse_actors=False),
+                            )
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
