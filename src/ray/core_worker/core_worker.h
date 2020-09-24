@@ -354,6 +354,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return ClientID::FromBinary(rpc_address_.raylet_id());
   }
 
+  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+    return worker_context_.GetCurrentPlacementGroupId();
+  }
+
   void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
