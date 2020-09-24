@@ -2046,6 +2046,12 @@ void NodeManager::ProcessSetResourceRequest(
 bool NodeManager::PrepareBundle(
     std::unordered_map<NodeID, SchedulingResources> &resource_map,
     const BundleSpecification &bundle_spec) {
+  // We will first delete the existing bundle to ensure idempotent.
+  // The reason why we do this is: after GCS restarts, placement group can be rescheduled directly
+  // without rolling back the operations performed before the restart.
+  const auto &bundle_id = bundle_spec.BundleId();
+  bundle_state_map_.erase(bundle_id);
+
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented. If the resource map contains the local raylet, update load
   // before calling policy.
@@ -2059,7 +2065,6 @@ bool NodeManager::PrepareBundle(
   auto bundle_state = std::make_shared<BundleState>();
   if (reserve_resource_success) {
     // Register states.
-    const auto &bundle_id = bundle_spec.BundleId();
     auto it = bundle_state_map_.find(bundle_id);
     // Same bundle cannot be rescheduled.
     RAY_CHECK(it == bundle_state_map_.end());
