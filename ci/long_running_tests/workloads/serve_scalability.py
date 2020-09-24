@@ -40,9 +40,10 @@ def hey(_):
     time.sleep(0.01)  # Sleep for 10ms
     return "hey"
 
-#TODO(architkulkarni): how many replicas?
+
+# TODO(architkulkarni): how many replicas?
 client.create_backend(
-    "hey", hey, config=BackendConfig(num_replicas=num_remote_nodes/2))
+    "hey", hey, config=BackendConfig(num_replicas=num_remote_nodes / 2))
 client.create_endpoint("hey", backend="hey", route="/hey")
 
 logger.info("Warming up for ~3 seconds")
@@ -55,10 +56,12 @@ num_connections = int(num_remote_cpus * 0.75)
 num_threads = 2
 time_to_run = "10s"
 
-#TODO(architkulkarni): make long-running?
-result = subprocess.run([
-    "wrk", "-c",
-    str(num_connections), "-t",
-    str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/hey"
-], stdout=subprocess.PIPE)
+# TODO(architkulkarni): make long-running?
+result = subprocess.run(
+    [
+        "wrk", "-c",
+        str(num_connections), "-t",
+        str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/hey"
+    ],
+    stdout=subprocess.PIPE)
 logger.info(result.stdout.decode())
