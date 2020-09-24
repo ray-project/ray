@@ -67,20 +67,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseResumeMemory(self):
-        trial = Trial("__fake")
-        import pdb
-        pdb.set_trace()
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.pause_trial(trial)
-        self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.stop_trial(trial)
-        self.assertEqual(Trial.TERMINATED, trial.status)
-
-
     def testSavePauseResumeErrorRestore(self):
         """Tests that pause checkpoint does not replace restore checkpoint."""
         trial = Trial("__fake")
