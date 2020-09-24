@@ -134,7 +134,6 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         """
         self._trial_records = {}
         self._errors = {}
-        logger.error(f"logdir={self._logdir}")
         if not self._logdir:
             return
 

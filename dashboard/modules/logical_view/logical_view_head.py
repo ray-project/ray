@@ -15,10 +15,6 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 
 class LogicalViewHead(dashboard_utils.DashboardHeadModule):
-    LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
-
-    def __init__(self, dashboard_head):
-        super().__init__(dashboard_head)
 
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:
@@ -43,8 +39,7 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return await rest_response(success=False, message=f"Bad Request")
         try:
-            channel = aiogrpc.insecure_channel("{}:{}".format(
-                ip_address, int(port)))
+            channel = aiogrpc.insecure_channel(f"{ip_address}:{port}")
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(
@@ -53,9 +48,10 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
 
             return await rest_response(
                 success=True, message=f"Killed actor with id {actor_id}")
-        except Exception as e:
-            # TODO figure out why KillActor is always raising an exception,
-            # despite successfully killing the actor.
+        except aiogrpc.AioRpcError:
+            # This always throws an exception because the worker
+            # is killed and the channel is closed on the worker side
+            # before this handler, however it deletes the actor correctly.
             return await rest_response(success=True, message=f"{e}")
 
     async def run(self, server):
