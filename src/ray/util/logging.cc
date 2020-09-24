@@ -189,25 +189,20 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_file_name;
       }
     }
-    char buffer[80];
-    time_t rawtime;
-    time(&rawtime);
-#ifdef _WIN32
-    int pid = _getpid();
-#else
-    pid_t pid = getpid();
-#endif
-    strftime(buffer, sizeof(buffer), "%Y%m%d-%H%M%S", localtime(&rawtime));
-    std::string path = dir_ends_with_slash + app_name_without_path + "." + buffer + "." +
-                       std::to_string(pid) + ".log";
-    stream_logger_singleton.out_.rdbuf()->pubsetbuf(0, 0);
-    stream_logger_singleton.out_.open(path.c_str(),
-                                      std::ios_base::app | std::ios_base::binary);
+    app_name_without_path += ".";
+    google::SetLogFilenameExtension(app_name_without_path.c_str());
+    int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
+    google::SetLogDestination(level, dir_ends_with_slash.c_str());
+    for (int i = static_cast<int>(severity_threshold_) + 1;
+         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+      google::SetLogDestination(i, "");
+    }
+    FLAGS_stop_logging_if_full_disk = true;
+  } else {
+    google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
+    int level = GetMappedSeverity(severity_threshold_);
+    google::base::SetLogger(level, &stream_logger_singleton);
   }
-  for (int lvl = 0; lvl < NUM_SEVERITIES; ++lvl) {
-    google::base::SetLogger(lvl, &stream_logger_singleton);
-  }
-  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
 #endif
 }
 
@@ -238,7 +233,9 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
-  stream_logger_singleton.out_.close();
+  if (stream_logger_singleton.out_.is_open()) {
+    stream_logger_singleton.out_.close();
+  }
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
   google::ShutdownGoogleLogging();
