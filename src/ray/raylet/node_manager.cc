@@ -1814,8 +1814,8 @@ void NodeManager::HandlePrepareBundleResources(
   // TODO(sang): Port this onto the new scheduler.
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
+                 << bundle_spec.DebugString();
   auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
   if (!prepared) {
     reply->set_success(false);
@@ -1835,8 +1835,8 @@ void NodeManager::HandleCommitBundleResources(
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
 
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Received bundle commit request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
+                 << bundle_spec.DebugString();
   CommitBundle(cluster_resource_map_, bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1850,9 +1850,9 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(INFO) << "bundle return resource request " << bundle_spec.BundleId().first
-                << bundle_spec.BundleId().second;
-  auto resource_set = bundle_spec.GetRequiredResources();
+  RAY_LOG(INFO) << "Request to cancel reserved resource is received, "
+                << bundle_spec.DebugString();
+  const auto &resource_set = bundle_spec.GetRequiredResources();
 
   // Kill all workers that are currently associated with the placement group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
