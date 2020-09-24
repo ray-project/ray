@@ -49,7 +49,8 @@ def hey(_):
     return "hey"
 
 
-client.create_backend("hey", hey, config=BackendConfig(num_replicas=num_remote_nodes))
+client.create_backend(
+    "hey", hey, config=BackendConfig(num_replicas=num_remote_nodes))
 client.create_endpoint("hey", backend="hey", route="/hey")
 
 logger.info("Warming up for ~3 seconds")
