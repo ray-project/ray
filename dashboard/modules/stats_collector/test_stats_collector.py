@@ -91,6 +91,83 @@ def test_node_info(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
+def test_memory_table(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+
+    @ray.remote
+    class ActorWithObjs:
+        def __init__(self):
+            self.obj_ref = ray.put([1, 2, 3])
+
+        def get_obj(self):
+            return ray.get(self.obj_ref)
+
+    my_obj = ray.put([1, 2, 3] * 100)  # noqa
+    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
+    results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+    resp = requests.get(
+        webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
+    resp.raise_for_status()
+
+    def check_mem_table():
+        resp = requests.get(f"{webui_url}/memory/memory_table")
+        resp_data = resp.json()["data"]
+        latest_memory_table = resp_data["memoryTable"]
+        summary = latest_memory_table["summary"]
+        try:
+            # 1 ref per handle and per object the actor has a ref to
+            assert summary["totalActorHandles"] == len(actors) * 2
+            # 1 ref for my_obj
+            assert summary["totalLocalRefCount"] == 1
+            return True
+        except AssertionError:
+            return False
+
+    wait_for_condition(check_mem_table, 10)
+
+
+def test_get_all_node_details(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
+
+    webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+
+    @ray.remote
+    class ActorWithObjs:
+        def __init__(self):
+            self.obj_ref = ray.put([1, 2, 3])
+            raise Exception("Uh oh it's an error")
+
+        def get_obj(self):
+            return ray.get(self.obj_ref)
+
+    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
+
+    def check_node_details():
+        resp = requests.get(f"{webui_url}/nodes?view=details")
+        resp_json = resp.json()
+        resp_data = resp_json["data"]
+        try:
+            clients = resp_data["clients"]
+            node = clients[0]
+            assert len(clients) == 1
+            assert len(node.get("actors")) == 2
+            # Workers information should be in the detailed payload
+            assert "workers" in node
+            assert "logCount" in node
+            worker = node["workers"][0]
+            assert "logCount" in worker
+            # assert worker["logCount"] == 1
+            # assert node["logCount"] == 2
+            assert "errorCount" in worker
+            assert worker["errorCount"] == 1
+            return True
+        except (AssertionError, KeyError):
+            return False
+
+    wait_for_condition(check_node_details, 10)
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "include_dashboard": True
