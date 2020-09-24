@@ -33,9 +33,9 @@ def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
         total_gb = psutil_mem.total / 1e9
         mem_size = num_items * item_size / 1e9
         msg = ("Estimated max memory usage for replay buffer is {} GB "
-               "({} batches of {} bytes each), "
+               "({} batches of size {}, {} bytes each), "
                "available system memory is {} GB".format(
-                   mem_size, num_items, item_size, total_gb))
+                   mem_size, num_items, item.count, item_size, total_gb))
         if mem_size > total_gb:
             raise ValueError(msg)
         elif mem_size > 0.2 * total_gb:
