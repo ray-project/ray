@@ -46,8 +46,6 @@ client.create_endpoint("hello_world", backend="hello_world")
 client.create_backend("forwardActor", forwardActor, config=config)
 client.create_endpoint("forwardActor", backend="forwardActor")
 
-
-
 handle = client.get_handle("forwardActor")
 logger.info("Starting serve handle stress testing (actor)")
 for _ in range(num_queries):
