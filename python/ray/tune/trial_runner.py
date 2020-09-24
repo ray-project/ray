@@ -72,9 +72,34 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 
 
 class Callback:
-    """Tune base callback that can be passed to a ``TrialRunner``
+    """Tune base callback that can be extended and passed to a ``TrialRunner``
 
-    Tune callbacks live within the ``TrialRunner`` class.
+    Tune callbacks are called from within the ``TrialRunner`` class. There are
+    several hooks that can be used, all of which are found in the submethod
+    definitions of this base class.
+
+    This example will print a metric each time a result is received:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune import Callback
+
+
+        class MyCallback(Callback):
+            def on_trial_result(self, trial_runner, trial, result):
+                print(f"Got result: {result['metric']}")
+
+
+        def train(config):
+            for i in range(10):
+                tune.report(metric=i)
+
+
+        tune.run(
+            train,
+            callbacks=[MyCallback()])
+
     """
 
     def on_step_begin(self, trial_runner: "TrialRunner"):

@@ -509,6 +509,40 @@ too.
 If ``log_to_file`` is set, Tune will automatically register a new logging handler
 for Ray's base logger and log the output to the specified stderr output file.
 
+.. _tune-callbacks:
+
+Callbacks
+---------
+
+Ray Tune supports callbacks that are called during various times of the training process.
+Callbacks can be passed as a parameter to ``tune.run()``, and the submethod will be
+invoked automatically.
+
+This simple callback just prints a metric each time a result is received:
+
+.. code-block:: python
+
+    from ray import tune
+    from ray.tune import Callback
+
+
+    class MyCallback(Callback):
+        def on_trial_result(self, trial_runner, trial, result):
+            print(f"Got result: {result['metric']}")
+
+
+    def train(config):
+        for i in range(10):
+            tune.report(metric=i)
+
+
+    tune.run(
+        train,
+        callbacks=[MyCallback()])
+
+For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
+
+
 .. _tune-debugging:
 
 Debugging
