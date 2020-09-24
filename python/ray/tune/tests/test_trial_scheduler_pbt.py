@@ -63,7 +63,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
                 checkpoint = super(CustomExecutor, self).save(*args,
                                                                 **kwargs)
                 print(len(ray.objects()))
-                assert len(ray.objects()) <= 10
+                assert len(ray.objects()) <= 20
                 return checkpoint
 
         param_a = MockParam([1, -1])

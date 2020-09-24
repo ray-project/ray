@@ -38,7 +38,6 @@ class PytorchTrainable(tune.Trainable):
             momentum=config.get("momentum", 0.9))
 
     def step(self):
-        print(ray.objects())
         train(self.model, self.optimizer, self.train_loader)
         acc = test(self.model, self.test_loader)
         return {"mean_accuracy": acc}
