@@ -527,39 +527,7 @@ class TrialRunner:
                 result = trial.last_result
                 result.update(done=True)
 
-            # Check if any of the required metrics was not reported
-            # in the last result. If the only item is `done=True`, this
-            # means that no result was ever received and the trial just
-            # returned. This is also okay and will not raise an error.
-            if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
-                                  0)) != 1 and (len(result) > 1
-                                                or "done" not in result):
-                base_metric = self._metric
-                scheduler_metric = self._scheduler_alg.metric
-                search_metric = self._search_alg.metric
-
-                if base_metric and base_metric not in result:
-                    report_metric = base_metric
-                    location = "tune.run()"
-                elif scheduler_metric and scheduler_metric not in result:
-                    report_metric = scheduler_metric
-                    location = type(self._scheduler_alg).__name__
-                elif search_metric and search_metric not in result:
-                    report_metric = search_metric
-                    location = type(self._search_alg).__name__
-                else:
-                    report_metric = None
-                    location = None
-
-                if report_metric:
-                    raise ValueError(
-                        "Trial returned a result which did not include the "
-                        "specified metric `{}` that `{}` expects. "
-                        "Make sure your calls to `tune.report()` include the "
-                        "metric, or set the "
-                        "TUNE_DISABLE_STRICT_METRIC_CHECKING "
-                        "environment variable to 1. Result: {}".format(
-                            report_metric, location, result))
+            self._validate_result_metrics(result)
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
@@ -604,6 +572,43 @@ class TrialRunner:
             if self._fail_fast == TrialRunner.RAISE:
                 raise
             self._process_trial_failure(trial, traceback.format_exc())
+
+    def _validate_result_metrics(self, result):
+        """
+        Check if any of the required metrics was not reported
+        in the last result. If the only item is `done=True`, this
+        means that no result was ever received and the trial just
+        returned. This is also okay and will not raise an error.
+        """
+        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
+                              0)) != 1 and (len(result) > 1
+                                            or "done" not in result):
+            base_metric = self._metric
+            scheduler_metric = self._scheduler_alg.metric
+            search_metric = self._search_alg.metric
+
+            if base_metric and base_metric not in result:
+                report_metric = base_metric
+                location = "tune.run()"
+            elif scheduler_metric and scheduler_metric not in result:
+                report_metric = scheduler_metric
+                location = type(self._scheduler_alg).__name__
+            elif search_metric and search_metric not in result:
+                report_metric = search_metric
+                location = type(self._search_alg).__name__
+            else:
+                report_metric = None
+                location = None
+
+            if report_metric:
+                raise ValueError(
+                    "Trial returned a result which did not include the "
+                    "specified metric `{}` that `{}` expects. "
+                    "Make sure your calls to `tune.report()` include the "
+                    "metric, or set the "
+                    "TUNE_DISABLE_STRICT_METRIC_CHECKING "
+                    "environment variable to 1. Result: {}".format(
+                        report_metric, location, result))
 
     def _process_trial_save(self, trial):
         """Processes a trial save.
