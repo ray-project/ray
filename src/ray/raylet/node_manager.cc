@@ -1878,9 +1878,10 @@ void NodeManager::HandleCancelResourceReserve(
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
-  RAY_CHECK(it != bundle_state_map_.end())
-      << "Cancel requests are received to raylet although it hasn't received any prepare "
-         "or commit requests. This must be an anomaly.";
+  if (it == bundle_state_map_.end()) {
+    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
+    return;
+  }
   const auto &bundle_state = it->second;
   if (bundle_state->state == CommitState::PREPARED) {
     CommitBundle(cluster_resource_map_, bundle_spec);
@@ -2086,8 +2087,13 @@ void NodeManager::CommitBundle(
   const auto &bundle_id = bundle_spec.BundleId();
   auto it = bundle_state_map_.find(bundle_id);
   // When bundle is committed, it should've been prepared already.
-  // We don't need this check if commit becomes idempotent.
-  RAY_CHECK(it != bundle_state_map_.end());
+  // If GCS call `CommitBundleResources` after `CancelResourceReserve`, we will skip it
+  // directly.
+  if (it == bundle_state_map_.end()) {
+    RAY_LOG(INFO) << "The bundle has been cancelled. Skip it directly. Bundle info is "
+                  << bundle_spec.DebugString();
+    return;
+  }
   const auto &bundle_state = it->second;
   bundle_state->state = CommitState::COMMITTED;
   const auto &acquired_resources = bundle_state->acquired_resources;
