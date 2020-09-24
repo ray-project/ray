@@ -56,7 +56,6 @@ def test_simple_word_count():
                 assert "a:2" in result
                 assert "b:2" in result
                 assert "c:2" in result
-            print("Execution succeed")
             return True
         return False
 
