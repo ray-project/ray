@@ -47,26 +47,6 @@
 
 namespace ray {
 
-#ifdef RAY_USE_GLOG
-struct StreamLogger : public google::base::Logger {
-  std::ofstream out_;
-
-  std::ostream &out() { return out_.is_open() ? out_ : std::cout; }
-
-  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
-                     int length) {
-    // note: always flush otherwise it never shows up in raylet.out
-    out().write(message, length) << std::flush;
-  }
-
-  virtual void Flush() { out().flush(); }
-
-  virtual google::uint32 LogSize() { return 0; }
-};
-
-static StreamLogger stream_logger_singleton;
-#endif
-
 // This is the default implementation of ray log,
 // which is independent of any libs.
 class CerrLog {
@@ -198,11 +178,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       google::SetLogDestination(i, "");
     }
     FLAGS_stop_logging_if_full_disk = true;
-  } else {
-    google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
-    int level = GetMappedSeverity(severity_threshold_);
-    google::base::SetLogger(level, &stream_logger_singleton);
   }
+  google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
 #endif
 }
 
@@ -233,9 +210,6 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
-  if (stream_logger_singleton.out_.is_open()) {
-    stream_logger_singleton.out_.close();
-  }
 #ifdef RAY_USE_GLOG
   UninstallSignalAction();
   google::ShutdownGoogleLogging();
