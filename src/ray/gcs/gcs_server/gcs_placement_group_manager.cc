@@ -126,7 +126,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   // registered.
   auto state = placement_group->GetState();
   RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
-            state == rpc::PlacementGroupTableData::PENDING);
+            state == rpc::PlacementGroupTableData::PENDING)
+      << "State: " << state;
   if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
     // NOTE: If a node is dead, the placement group scheduler should try to recover the
     // group by rescheduling the bundles of the dead node. This should have higher

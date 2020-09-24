@@ -181,10 +181,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The idle worker to add.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Try to kill the worker if it's idle.
-  ///
-  /// \param worker The worker to be killed.
-  void TryKillingIdleWorker(std::shared_ptr<WorkerInterface> worker);
+  /// Try killing idle workers to ensure the running workers are in a
+  /// reasonable size.
+  void TryKillingIdleWorkers();
 
   /// Pop an idle worker from the pool. The caller is responsible for pushing
   /// the worker back onto the pool once the worker has completed its work.
@@ -298,10 +297,6 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
     /// All drivers that have registered and are still connected.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_drivers;
-    /// All workers that have been killed but been unregistered yet.
-    /// This field is used to calculate the size of running workers when trying to kill an
-    /// idle worker.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> pending_unregistration_workers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
@@ -362,6 +357,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// started.
   void TryStartIOWorkers(const Language &language, State &state);
 
+  /// Get all workers of the given process.
+  ///
+  /// \param process The process of workers.
+  /// \return The workers of the given process.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> GetWorkersByProcess(
+      const Process &process);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
   /// The soft limit of the number of registered workers.
@@ -397,6 +399,10 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+
+  /// The pool of idle non-actor workers of all languages. This is used to kill idle
+  /// workers in FIFO order.
+  std::list<std::shared_ptr<WorkerInterface>> idle_of_all_languages;
 };
 
 }  // namespace raylet

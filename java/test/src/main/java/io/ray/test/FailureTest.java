@@ -121,6 +121,7 @@ public class FailureTest extends BaseTest {
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
+      Assert.assertEquals(e.actorId, actor.getId());
     }
     try {
       actor.task(BadActor::badMethod).remote().get();

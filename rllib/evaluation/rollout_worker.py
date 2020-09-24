@@ -782,7 +782,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         This is typically used in combination with distributed allreduce.
 
-        Arguments:
+        Args:
             expected_batch_size (int): Expected number of samples to learn on.
             num_sgd_iter (int): Number of SGD iterations.
             sgd_minibatch_size (int): SGD minibatch size.
@@ -827,7 +827,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
 
