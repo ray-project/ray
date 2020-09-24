@@ -95,6 +95,7 @@ def test_train(ray_start_2_cpus, num_workers, use_local):  # noqa: F811
                                                   validation_loss1)
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):
@@ -108,7 +109,7 @@ def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):
         use_gpu=False)
 
     results = trainer.apply_all_workers(fn)
-    assert all(x==1 for x in results)
+    assert all(x == 1 for x in results)
 
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
