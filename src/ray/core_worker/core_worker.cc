@@ -1183,6 +1183,7 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Ask the raylet to spill the object.
+  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
   auto raylet_client =
       std::make_shared<raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
           node->node_manager_address(), node->node_manager_port(),

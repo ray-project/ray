@@ -24,14 +24,14 @@ void GcsObjectManager::HandleGetObjectLocations(
     const rpc::GetObjectLocationsRequest &request, rpc::GetObjectLocationsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   reply->mutable_location_info()->set_object_id(request.object_id());
+
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Getting object locations, job id = " << object_id.TaskId().JobId()
                  << ", object id = " << object_id;
-  auto object_locations = GetObjectLocations(object_id);
-  for (auto &node_id : object_locations) {
-    auto loc = reply->mutable_location_info()->add_locations();
-    loc->set_manager(node_id.Binary());
-  }
+
+  absl::MutexLock lock(&mutex_);
+  auto object_data = GenObjectLocationInfo(object_id);
+  reply->mutable_location_info()->Swap(&object_data);
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -86,9 +86,7 @@ void GcsObjectManager::HandleAddObjectLocation(
   };
 
   absl::MutexLock lock(&mutex_);
-  auto object_location_set =
-      GetObjectLocationSet(object_id, /* create_if_not_exist */ false);
-  const auto object_data = GenObjectLocationInfo(*object_location_set);
+  const auto object_data = GenObjectLocationInfo(object_id);
   Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   if (!status.ok()) {
     on_done(status);
@@ -100,15 +98,15 @@ void GcsObjectManager::HandleAddObjectSpilledUrl(
     rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   const auto &spilled_url = request.spilled_url();
-  absl::MutexLock lock(&mutex_);
+  RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
 
-  auto *object_locations =
-      GetObjectLocationSet(object_id, /* create_if_not_exist */ true);
-  object_locations->spilled_url = spilled_url;
+  absl::MutexLock lock(&mutex_);
+  object_to_locations_[object_id].spilled_url = spilled_url;
 
   auto on_done = [this, object_id, spilled_url, reply,
                   send_reply_callback](const Status &status) {
     if (status.ok()) {
+      RAY_LOG(DEBUG) << "Published object spilled location, object id = " << object_id;
       rpc::ObjectLocationChange notification;
       notification.set_spilled_url(spilled_url);
       RAY_CHECK_OK(gcs_pub_sub_->Publish(OBJECT_CHANNEL, object_id.Hex(),
@@ -123,8 +121,7 @@ void GcsObjectManager::HandleAddObjectSpilledUrl(
     // request.
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
-
-  const auto object_data = GenObjectLocationInfo(*object_locations);
+  const auto object_data = GenObjectLocationInfo(object_id);
   Status status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   if (!status.ok()) {
     on_done(status);
@@ -165,7 +162,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
       GetObjectLocationSet(object_id, /* create_if_not_exist */ false);
   Status status;
   if (object_location_set != nullptr) {
-    const auto object_data = GenObjectLocationInfo(*object_location_set);
+    const auto object_data = GenObjectLocationInfo(object_id);
     status = gcs_table_storage_->ObjectTable().Put(object_id, object_data, on_done);
   } else {
     status = gcs_table_storage_->ObjectTable().Delete(object_id, on_done);
@@ -293,12 +290,16 @@ GcsObjectManager::ObjectSet *GcsObjectManager::GetObjectSetByNode(
 }
 
 const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
-    const GcsObjectManager::LocationSet &location_set) const {
+    const ObjectID &object_id) const {
   ObjectLocationInfo object_data;
-  for (auto &node_id : location_set.locations) {
-    object_data.add_locations()->set_manager(node_id.Binary());
+  object_data.set_object_id(object_id.Binary());
+  auto it = object_to_locations_.find(object_id);
+  if (it != object_to_locations_.end()) {
+    for (const auto &node_id : it->second.locations) {
+      object_data.add_locations()->set_manager(node_id.Binary());
+    }
+    object_data.set_spilled_url(it->second.spilled_url);
   }
-  object_data.set_spilled_url(location_set.spilled_url);
   return object_data;
 }
 

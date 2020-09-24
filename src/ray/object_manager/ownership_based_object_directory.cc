@@ -141,7 +141,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
     for (const auto &callback_pair : callbacks) {
       // It is safe to call the callback directly since this is already running
       // in the subscription callback stack.
-      callback_pair.second(object_id, it->second.current_object_locations);
+      callback_pair.second(object_id, it->second.current_object_locations, "");
     }
   }
 
@@ -207,8 +207,9 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   if (rpc_client == nullptr) {
     RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                      << "LookupLocations returns an empty list of locations.";
-    io_service_.post(
-        [callback, object_id]() { callback(object_id, std::unordered_set<ClientID>()); });
+    io_service_.post([callback, object_id]() {
+      callback(object_id, std::unordered_set<ClientID>(), "");
+    });
     return Status::OK();
   }
 
@@ -228,7 +229,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           client_ids.emplace(ClientID::FromBinary(client_id));
         }
         FilterRemovedClients(gcs_client_, &client_ids);
-        callback(object_id, client_ids);
+        callback(object_id, client_ids, "");
       });
   return Status::OK();
 }

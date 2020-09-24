@@ -107,8 +107,8 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
-  const ObjectLocationInfo GenObjectLocationInfo(
-      const GcsObjectManager::LocationSet &location_set) const;
+  const ObjectLocationInfo GenObjectLocationInfo(const ObjectID &object_id) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.

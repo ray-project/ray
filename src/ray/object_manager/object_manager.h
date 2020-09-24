@@ -104,6 +104,9 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
+  using RestoreSpilledObjectCallback = std::function<void(
+      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+
   /// Implementation of object manager service
 
   /// Handle push request from remote object manager
@@ -190,7 +193,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const ClientID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory);
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                         RestoreSpilledObjectCallback restore_spilled_object);
 
   ~ObjectManager();
 
@@ -470,6 +474,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Client id - object manager gRPC client.
   std::unordered_map<ClientID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
+
+  const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

@@ -50,7 +50,8 @@ ObjectStoreRunner::~ObjectStoreRunner() {
 
 ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &self_node_id,
                              const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory)
+                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
+                             RestoreSpilledObjectCallback restore_spilled_object)
     : self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
@@ -61,7 +62,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const ClientID &sel
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service, config_.rpc_service_threads_number) {
+      client_call_manager_(main_service, config_.rpc_service_threads_number),
+      restore_spilled_object_(restore_spilled_object) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   main_service_ = &main_service;
 
@@ -184,7 +186,8 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
   // no ordering guarantee between notifications.
   return object_directory_->SubscribeObjectLocations(
       object_directory_pull_callback_id_, object_id, owner_address,
-      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids) {
+      [this](const ObjectID &object_id, const std::unordered_set<ClientID> &client_ids,
+             const std::string &spilled_url) {
         // Exit if the Pull request has already been fulfilled or canceled.
         auto it = pull_requests_.find(object_id);
         if (it == pull_requests_.end()) {
@@ -196,7 +199,16 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
         // before.
         it->second.client_locations =
             std::vector<ClientID>(client_ids.begin(), client_ids.end());
-        if (it->second.client_locations.empty()) {
+        if (!spilled_url.empty()) {
+          // Try to restore the spilled object.
+          restore_spilled_object_(object_id, spilled_url,
+                                  [this, object_id](const ray::Status &status) {
+                                    // Fall back to fetching from another object manager.
+                                    if (!status.ok()) {
+                                      TryPull(object_id);
+                                    }
+                                  });
+        } else if (it->second.client_locations.empty()) {
           // The object locations are now empty, so we should wait for the next
           // notification about a new object location.  Cancel the timer until
           // the next Pull attempt since there are no more clients to try.
@@ -606,12 +618,14 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_RETURN_NOT_OK(object_directory_->LookupLocations(
           object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &lookup_object_id,
-                          const std::unordered_set<ClientID> &client_ids) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          const std::string &spilled_url) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
+            bool remote_object_ready = !client_ids.empty() || !spilled_url.empty();
             if (local_objects_.count(lookup_object_id) > 0 ||
-                (!wait_state.wait_local && !client_ids.empty())) {
+                (!wait_state.wait_local && remote_object_ready)) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -647,7 +661,8 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
       RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
           wait_id, object_id, wait_state.owner_addresses[object_id],
           [this, wait_id](const ObjectID &subscribe_object_id,
-                          const std::unordered_set<ClientID> &client_ids) {
+                          const std::unordered_set<ClientID> &client_ids,
+                          const std::string &spilled_url) {
             auto object_id_wait_state = active_wait_requests_.find(wait_id);
             if (object_id_wait_state == active_wait_requests_.end()) {
               // Depending on the timing of calls to the object directory, we
@@ -659,8 +674,9 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             auto &wait_state = object_id_wait_state->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
+            bool remote_object_ready = !client_ids.empty() || !spilled_url.empty();
             if (local_objects_.count(subscribe_object_id) > 0 ||
-                (!wait_state.wait_local && !client_ids.empty())) {
+                (!wait_state.wait_local && remote_object_ready)) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;

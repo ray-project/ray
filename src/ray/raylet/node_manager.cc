@@ -525,14 +525,9 @@ void NodeManager::HandleRequestObjectSpillage(
                });
 }
 
-void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
+void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids,
                                std::function<void(const ray::Status &)> callback) {
-  std::vector<ObjectID> objects_ids;
-  for (const auto &id : objects_ids_to_spill) {
-    // Do not spill already spilled objects.
-    if (spilled_objects_.count(id) == 0) {
-      objects_ids.push_back(id);
-    }
+  for (const auto &id : objects_ids) {
     // We should not spill an object that we are not the primary copy for.
     // TODO(swang): We should really return an error here but right now there
     // is a race condition where the raylet receives the owner's request to
@@ -542,12 +537,6 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
       RAY_LOG(WARNING) << "Requested spill for object that has not yet been marked as "
                           "the primary copy";
     }
-  }
-  if (objects_ids.empty()) {
-    if (callback) {
-      callback(Status::OK());
-    }
-    return;
   }
   worker_pool_.PopIOWorker([this, objects_ids,
                             callback](std::shared_ptr<WorkerInterface> io_worker) {
@@ -567,13 +556,10 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
               callback(status);
             }
           } else {
-            RAY_CHECK(static_cast<size_t>(r.spilled_objects_url_size()) ==
-                      objects_ids.size());
             for (size_t i = 0; i < objects_ids.size(); ++i) {
               const ObjectID &object_id = objects_ids[i];
               const std::string &object_url = r.spilled_objects_url(i);
               RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-              spilled_objects_[object_id] = object_url;
               // Write to object directory. Wait for the write to finish before
               // releasing the object to make sure that the spilled object can
               // be retrieved by other raylets.
@@ -599,24 +585,48 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill
 void NodeManager::RestoreSpilledObjects(
     const std::vector<ObjectID> &object_ids,
     std::function<void(const ray::Status &)> callback) {
-  std::vector<std::string> object_urls;
-  object_urls.reserve(object_ids.size());
+  auto num_objects_remaining = std::make_shared<size_t>(object_ids.size());
+  auto final_status = std::make_shared<Status>();
   for (const auto &object_id : object_ids) {
-    // TODO(swang): Read the URL from the GCS directory, not the local
-    // structure.
-    if (spilled_objects_.count(object_id) == 0) {
-      callback(Status::Invalid("No object URL recorded"));
-      return;
-    }
-    object_urls.push_back(spilled_objects_[object_id]);
+    // TODO(swang): Fill in owner address.
+    object_directory_->LookupLocations(
+        object_id, rpc::Address(),
+        [this, final_status, num_objects_remaining, callback](
+            const ObjectID &object_id, const std::unordered_set<ray::ClientID> &node_ids,
+            const std::string &spilled_url) {
+          if (spilled_url.empty()) {
+            *final_status = Status::Invalid("No object URL recorded");
+            (*num_objects_remaining)--;
+            if (*num_objects_remaining == 0 && callback) {
+              callback(*final_status);
+            }
+          } else {
+            AsyncRestoreSpilledObject(object_id, spilled_url,
+                                      [this, final_status, num_objects_remaining,
+                                       callback](const Status &status) {
+                                        if (!status.ok()) {
+                                          *final_status = status;
+                                        }
+                                        (*num_objects_remaining)--;
+                                        if (*num_objects_remaining == 0 && callback) {
+                                          callback(*final_status);
+                                        }
+                                      });
+          }
+        });
   }
-  worker_pool_.PopIOWorker([this, object_urls,
+}
+
+void NodeManager::AsyncRestoreSpilledObject(
+    const ObjectID &object_id, const std::string &object_url,
+    std::function<void(const ray::Status &)> callback) {
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+                 << object_url;
+  worker_pool_.PopIOWorker([this, object_url,
                             callback](std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
-    for (const auto &url : object_urls) {
-      request.add_spilled_objects_url(std::move(url));
-    }
+    request.add_spilled_objects_url(std::move(object_url));
     io_worker->rpc_client()->RestoreSpilledObjects(
         request, [this, callback, io_worker](const ray::Status &status,
                                              const rpc::RestoreSpilledObjectsReply &r) {
@@ -1525,22 +1535,14 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
-    std::vector<ObjectID> spilled_object_ids;
     for (const auto &ref : refs) {
       ObjectID object_id = ObjectID::FromBinary(ref.object_id());
       // If only a fetch is required, then do not subscribe to the
       // dependencies to the task dependency manager.
       if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-        if (spilled_objects_.count(object_id) > 0) {
-          spilled_object_ids.push_back(object_id);
-        } else {
-          // Fetch the object if it's not already local.
-          RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
-        }
+        // Fetch the object if it's not already local.
+        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
       }
-    }
-    if (spilled_object_ids.size() > 0) {
-      RestoreSpilledObjects(spilled_object_ids);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -2268,45 +2270,6 @@ void NodeManager::MarkObjectsAsFailed(
           gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
-  }
-}
-
-void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId()
-                 << " as failed if return values lost.";
-  // Loop over the return IDs (except the dummy ID) and check whether a
-  // location for the return ID exists.
-  int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask()) {
-    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
-    // information about the TaskSpecification implementation.
-    num_returns -= 1;
-  }
-  // Use a shared flag to make sure that we only treat the task as failed at
-  // most once. This flag will get deallocated once all of the object table
-  // lookup callbacks are fired.
-  auto task_marked_as_failed = std::make_shared<bool>(false);
-  for (int64_t i = 0; i < num_returns; i++) {
-    const ObjectID object_id = spec.ReturnId(i);
-    // Lookup the return value's locations.
-    RAY_CHECK_OK(object_directory_->LookupLocations(
-        object_id, spec.CallerAddress(),
-        [this, task_marked_as_failed, task](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients) {
-          if (!*task_marked_as_failed) {
-            // Only process the object locations if we haven't already marked the
-            // task as failed.
-            if (clients.empty()) {
-              // The object does not exist on any nodes but has been created
-              // before, so the object has been lost. Mark the task as failed to
-              // prevent any tasks that depend on this object from hanging.
-              TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
-              *task_marked_as_failed = true;
-            }
-          }
-        }));
   }
 }
 
