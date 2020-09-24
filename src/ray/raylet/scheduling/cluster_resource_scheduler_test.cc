@@ -1011,6 +1011,10 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     ASSERT_EQ(total["1"], 1);
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
+
+    // GCS doesn't like entries which are 0 (like TPU).
+    ASSERT_EQ(available.size(), 6);
+    ASSERT_EQ(total.size(), 6);
   }
   {
     std::shared_ptr<TaskResourceInstances> allocations = std::make_shared<TaskResourceInstances>();

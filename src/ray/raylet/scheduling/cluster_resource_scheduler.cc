@@ -794,15 +794,23 @@ void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> hea
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       std::string label = ResourceEnumToString((PredefinedResources)i);
       struct ResourceCapacity capacity = resources.predefined_resources[i];
-      (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
-      (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      if (capacity.available != 0) {
+        (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+      }
+      if (capacity.total != 0) {
+        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
     }
     for (auto it = resources.custom_resources.begin(); it != resources.custom_resources.end(); it++) {
       uint64_t custom_id = it->first;
       struct ResourceCapacity capacity = it->second;
       std::string label = string_to_int_map_.Get(custom_id);
-      (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
-      (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      if (capacity.available != 0) {
+        (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+      }
+      if (capacity.total != 0) {
+        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
     }
   }
 }
