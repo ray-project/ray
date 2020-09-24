@@ -1,6 +1,6 @@
 import logging
 import ray.new_dashboard.consts as dashboard_consts
-import ray.new_dashboard.memory as memory
+import ray.new_dashboard.memory_utils as memory_utils
 from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
 from ray.new_dashboard.utils import Dict, Signal
 
@@ -199,7 +199,7 @@ class DataOrganizer:
         all_worker_stats = []
         for node_stats in DataSource.node_stats.values():
             all_worker_stats.extend(node_stats.get("workersStats", []))
-        memory_information = memory.construct_memory_table(
+        memory_information = memory_utils.construct_memory_table(
             all_worker_stats, group_by=group_by, sort_by=sort_by)
         return memory_information
 
