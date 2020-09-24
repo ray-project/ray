@@ -25,7 +25,6 @@ def test_spill_objects_manually(shutdown_only):
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
     pinned_objects = set()
-    spilled_objects = set()
 
     # Create objects of more than 200 MiB.
     for _ in range(25):
@@ -38,19 +37,15 @@ def test_spill_objects_manually(shutdown_only):
             except ray.exceptions.ObjectStoreFullError:
                 ref_to_spill = pinned_objects.pop()
                 ray.experimental.force_spill_objects([ref_to_spill])
-                spilled_objects.add(ref_to_spill)
 
     # Spill 2 more objects so we will always have enough space for
     # restoring objects back.
     refs_to_spill = (pinned_objects.pop(), pinned_objects.pop())
     ray.experimental.force_spill_objects(refs_to_spill)
-    spilled_objects.update(refs_to_spill)
 
     # randomly sample objects
     for _ in range(100):
         ref = random.choice(replay_buffer)
-        if ref in spilled_objects:
-            ray.experimental.force_restore_spilled_objects([ref])
         sample = ray.get(ref)
         assert np.array_equal(sample, arr)
 
@@ -72,13 +67,19 @@ def test_spill_objects_manually_from_workers(shutdown_only):
 
     @ray.remote
     def _worker():
-        arr = np.random.rand(100 * 1024)
+        arr = np.random.rand(1024 * 1024)  # 8 MB data
         ref = ray.put(arr)
         ray.experimental.force_spill_objects([ref])
-        ray.experimental.force_restore_spilled_objects([ref])
-        assert np.array_equal(ray.get(ref), arr)
+        return ref
 
-    ray.get([_worker.remote() for _ in range(50)])
+    # Create objects of more than 200 MiB.
+    replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
+    values = dict((ref, np.copy(ray.get(ref))) for ref in replay_buffer)
+    # Randomly sample objects.
+    for _ in range(100):
+        ref = random.choice(replay_buffer)
+        sample = ray.get(ref)
+        assert np.array_equal(sample, values[ref])
 
 
 @pytest.mark.skip(reason="Not implemented yet.")
@@ -140,20 +141,30 @@ def test_spill_remote_object(ray_start_cluster_head):
     def put():
         return np.random.rand(5 * 1024 * 1024)  # 40 MB data
 
-    # Create 2 objects. Only 1 should fit.
+    @ray.remote
+    def depends(arg):
+        return
+
     ref = put.remote()
-    ray.get(ref)
+    copy = np.copy(ray.get(ref))
+    # Evict local copy.
+    ray.put(np.random.rand(5 * 1024 * 1024))  # 40 MB data
+    # Remote copy should not fit.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(put.remote())
-    time.sleep(1)
     # Spill 1 object. The second should now fit.
     ray.experimental.force_spill_objects([ref])
     ray.get(put.remote())
 
-    # TODO(swang): Restoring from the object directory is not yet supported.
-    # ray.experimental.force_restore_spilled_objects([ref])
-    # sample = ray.get(ref)
-    # assert np.array_equal(sample, copy)
+    sample = ray.get(ref)
+    assert np.array_equal(sample, copy)
+    # Evict the spilled object.
+    del sample
+    ray.get(put.remote())
+    ray.put(np.random.rand(5 * 1024 * 1024))  # 40 MB data
+
+    # Test passing the spilled object as an arg to another task.
+    ray.get(depends.remote(ref))
 
 
 @pytest.mark.skip(reason="Not implemented yet.")
