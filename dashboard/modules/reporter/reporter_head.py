@@ -60,7 +60,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             with open(config_path) as f:
                 cfg = yaml.safe_load(f)
         except Exception:
-            error = "No config"
             return await dashboard_utils.rest_response(
                 success=False,
                 message="No config.",

@@ -1,12 +1,10 @@
-import mimetypes
 import logging
 import aiohttp.web
 import ray.utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.actor_utils as actor_utils
 from ray.new_dashboard.utils import rest_response
-from ray.new_dashboard.datacenter import DataSource, GlobalSignals, DataOrganizer
-import asyncio
+from ray.new_dashboard.datacenter import DataOrganizer
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 
@@ -31,7 +29,10 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         # hence we merge them together before constructing actor groups.
         actors.update(actor_creation_tasks)
         actor_groups = actor_utils.construct_actor_groups(actors)
-        return await rest_response(success=True, message="Fetched actor groups.", actor_groups=actor_groups)
+        return await rest_response(
+            success=True,
+            message="Fetched actor groups.",
+            actor_groups=actor_groups)
 
     @routes.get("/logical/kill_actor")
     async def kill_actor(self, req) -> aiohttp.web.Response:
@@ -39,16 +40,19 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             actor_id = req.query["actorId"]
             ip_address = req.query["ipAddress"]
             port = req.query["port"]
-        except KeyError as e:
+        except KeyError:
             return await rest_response(success=False, message=f"Bad Request")
         try:
-            channel = aiogrpc.insecure_channel("{}:{}".format(ip_address, int(port)))
+            channel = aiogrpc.insecure_channel("{}:{}".format(
+                ip_address, int(port)))
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
-            await stub.KillActor(core_worker_pb2.KillActorRequest(
+            await stub.KillActor(
+                core_worker_pb2.KillActorRequest(
                     intended_actor_id=ray.utils.hex_to_binary(actor_id)))
-            
-            return await rest_response(success=True, message=f"Killed actor with id {actor_id}")
+
+            return await rest_response(
+                success=True, message=f"Killed actor with id {actor_id}")
         except Exception as e:
             # TODO figure out why KillActor is always raising an exception,
             # despite successfully killing the actor.

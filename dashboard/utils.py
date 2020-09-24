@@ -218,7 +218,7 @@ class CustomEncoder(json.JSONEncoder):
 
 
 async def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
-    # In the dev context we allow a dev server running on a 
+    # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
     if os.environ.get("RAY_DASHBOARD_DEV") == "1":
@@ -248,7 +248,6 @@ def to_google_style(d):
     new_dict = {}
 
     for k, v in d.items():
-        assert k != None
         if isinstance(v, dict):
             new_dict[to_camel_case(k)] = to_google_style(v)
         elif isinstance(v, list):
@@ -396,7 +395,7 @@ class Dict(MutableMapping):
 
     def __iter__(self):
         return iter(copy.deepcopy(self._data))
-    
+
     def __str__(self):
         return str(self._data)
 

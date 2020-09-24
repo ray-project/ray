@@ -110,11 +110,14 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             if sort_by:
                 kwargs["sort_by"] = SortingType(sort_by)
         except ValueError as e:
-            return await dashboard_utils.rest_response(success=False, message=str(e))
+            return await dashboard_utils.rest_response(
+                success=False, message=str(e))
 
-        memory_table = await DataOrganizer.get_memory_table(
-            **kwargs)
-        return await dashboard_utils.rest_response(success=True, message="Fetched memory table",memory_table=memory_table.as_dict())
+        memory_table = await DataOrganizer.get_memory_table(**kwargs)
+        return await dashboard_utils.rest_response(
+            success=True,
+            message="Fetched memory table",
+            memory_table=memory_table.as_dict())
 
     @routes.get("/memory/set_fetch")
     async def set_fetch_memory_info(self, req) -> aiohttp.web.Response:
@@ -124,8 +127,12 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         elif should_fetch == "false":
             self._collect_memory_info = False
         else:
-            return await dashboard_utils.rest_response(success=False, message=f"Unknown argument to set_fetch {should_fetch}")
-        return await dashboard_utils.rest_response(success=True, message=f"Successfully set fetching to {should_fetch}")
+            return await dashboard_utils.rest_response(
+                success=False,
+                message=f"Unknown argument to set_fetch {should_fetch}")
+        return await dashboard_utils.rest_response(
+            success=True,
+            message=f"Successfully set fetching to {should_fetch}")
 
     @routes.get("/node_logs")
     async def get_logs(self, req) -> aiohttp.web.Response:
@@ -133,7 +140,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = req.query.get("pid")
         node_logs = DataSource.ip_and_pid_to_logs[ip]
         payload = node_logs.get(pid, []) if pid else node_logs
-        return await dashboard_utils.rest_response(success=True, message="Fetched logs.", logs=payload)
+        return await dashboard_utils.rest_response(
+            success=True, message="Fetched logs.", logs=payload)
 
     @routes.get("/node_errors")
     async def get_errors(self, req) -> aiohttp.web.Response:
@@ -141,7 +149,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = req.query.get("pid")
         node_errors = DataSource.ip_and_pid_to_errors[ip]
         filtered_errs = node_errors.get(pid, []) if pid else node_errors
-        return await dashboard_utils.rest_response(success=True, message="Fetched errors.", errors=filtered_errs)
+        return await dashboard_utils.rest_response(
+            success=True, message="Fetched errors.", errors=filtered_errs)
 
     async def _update_actors(self):
         # Subscribe actor channel.
@@ -199,7 +208,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             try:
                 reply = await stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
-                            include_memory_info=self._collect_memory_info),
+                        include_memory_info=self._collect_memory_info),
                     timeout=2)
                 reply_dict = node_stats_to_dict(reply)
                 DataSource.node_stats[node_id] = reply_dict
@@ -258,11 +267,11 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         "type": error_data.type
                     })
                     errs_for_ip[pid] = pid_errors
-                    DataSource.ip_and_pid_to_errors[ip] = errs_for_ip 
+                    DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                     logger.info(f"Received error entry for {ip} {pid}")
             except Exception:
                 logger.exception("Error receiving error info.")
-        
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._gcs_job_info_stub = \
@@ -270,7 +279,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = \
             gcs_service_pb2_grpc.ActorInfoGcsServiceStub(gcs_channel)
 
-        await asyncio.gather(self._update_node_stats(),
-                             self._update_actors(),
+        await asyncio.gather(self._update_node_stats(), self._update_actors(),
                              self._update_log_info(),
                              self._update_error_info())

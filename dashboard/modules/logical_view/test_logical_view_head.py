@@ -4,15 +4,12 @@ import logging
 import requests
 import time
 import traceback
-import json
 import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
-from datetime import datetime, timedelta
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
-    wait_for_condition,
 )
 
 os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
@@ -25,21 +22,21 @@ def test_actor_groups(ray_start_with_dashboard):
     class Foo:
         def __init__(self, num):
             self.num = num
+
         def do_task(self):
             return self.num
 
     @ray.remote(num_gpus=1)
     class InfeasibleActor:
         pass
-    
+
     foo_actors = [Foo.remote(4), Foo.remote(5)]
-    infeasible_actor = InfeasibleActor.remote()
-    results = [actor.do_task.remote() for actor in foo_actors]
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+    results = [actor.do_task.remote() for actor in foo_actors]  # noqa
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = ray_start_with_dashboard["node_id"]
 
     timeout_seconds = 5
     start_time = time.time()
@@ -50,7 +47,8 @@ def test_actor_groups(ray_start_with_dashboard):
             response = requests.get(webui_url + "/logical/actor_groups")
             response.raise_for_status()
             actor_groups_resp = response.json()
-            assert actor_groups_resp["result"] is True, actor_groups_resp["msg"]
+            assert actor_groups_resp["result"] is True, actor_groups_resp[
+                "msg"]
             actor_groups = actor_groups_resp["data"]["actorGroups"]
             assert "Foo" in actor_groups
             summary = actor_groups["Foo"]["summary"]
@@ -75,6 +73,7 @@ def test_actor_groups(ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

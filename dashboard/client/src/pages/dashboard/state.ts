@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { ActorGroup ,
+import {
+  ActorGroup,
   ActorsResponse,
   MemoryTable,
   MemoryTableResponse,
@@ -7,10 +8,9 @@ import { ActorGroup ,
   RayConfigResponse,
   TuneAvailability,
   TuneAvailabilityResponse,
-  TuneJobResponse,
   TuneJob,
+  TuneJobResponse,
 } from "../../api";
-
 
 const name = "dashboard";
 

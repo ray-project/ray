@@ -1,24 +1,13 @@
-import asyncio
 import logging
 import datetime
 import copy
 import os
 import aiohttp.web
-from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
-import ray.gcs_utils
 import ray.new_dashboard.modules.tune.tune_consts \
     as tune_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import async_loop_forever, rest_response
-from ray.new_dashboard.memory import GroupByType, SortingType
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource, DataOrganizer
-from ray.utils import binary_to_hex
 
 try:
     from ray.tune import Analysis
@@ -26,14 +15,14 @@ try:
 except ImportError:
     Analysis = None
 
-
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
+
 
 class TuneController(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         """
-        This dashboard module is responsible for enabling the Tune tab of 
+        This dashboard module is responsible for enabling the Tune tab of
         the dashboard. To do so, it periodically scrapes Tune output logs,
         transforms them, and serves them up over an API.
 
@@ -52,12 +41,16 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     @routes.get("/tune/info")
     async def tune_info(self, req) -> aiohttp.web.Response:
         stats = self.get_stats()
-        return await rest_response(success=True, message="Fetched tune info", result=stats)
+        return await rest_response(
+            success=True, message="Fetched tune info", result=stats)
 
     @routes.get("/tune/availability")
     async def get_availability(self, req) -> aiohttp.web.Response:
         availability = self._get_availability()
-        return await rest_response(success=True, message="Fetched tune availability", result=availability)
+        return await rest_response(
+            success=True,
+            message="Fetched tune availability",
+            result=availability)
 
     @routes.get("/tune/set_experiment")
     async def set_tune_experiment(self, req) -> aiohttp.web.Response:
@@ -69,13 +62,15 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         err, experiment = self.set_experiment(experiment)
         if err:
             return await rest_response(success=False, error=err)
-        return await rest_response(success=True, message="Successfully set experiment", **experiment)
+        return await rest_response(
+            success=True, message="Successfully set experiment", **experiment)
 
     @routes.get("/tune/enable_tensorboard")
     async def enable_tensorboard(self, req) -> aiohttp.web.Response:
         self._enable_tensorboard()
         if not self._tensor_board_dir:
-            return await rest_response(success=False, message="Error enabling tensorboard")
+            return await rest_response(
+                success=False, message="Error enabling tensorboard")
         return await rest_response(success=True, message="Enabled tensorboard")
 
     def get_stats(self):
@@ -104,11 +99,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
             self._tensor_board_dir = self._logdir
 
     def _get_availability(self):
-        return {
-            "available": True,
-            "trials_available": self._trials_available
-        }
-
+        return {"available": True, "trials_available": self._trials_available}
 
     def collect_errors(self, df):
         sub_dirs = os.listdir(self._logdir)
@@ -143,6 +134,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         """
         self._trial_records = {}
         self._errors = {}
+        logger.error(f"logdir={self._logdir}")
         if not self._logdir:
             return
 
@@ -240,4 +232,3 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         # Forever loop the collection process
         await self.collect()
-    

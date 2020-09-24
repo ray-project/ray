@@ -27,27 +27,6 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return data as T;
 };
 
-const post = async <T>(path: string, params: { [key: string]: any }) => {
-  const requestOptions = {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  };
-
-  const url = new URL(path, base);
-
-  const response = await fetch(url.toString(), requestOptions);
-  const json: APIResponse<T> = await response.json();
-
-  const { result, msg, data } = json;
-
-  if (!result) {
-    throw Error(msg);
-  }
-
-  return data as T;
-};
-
 export type RayConfigResponse = {
   minWorkers: number;
   maxWorkers: number;
@@ -293,11 +272,11 @@ export type ErrorsResponse = {
 
 export type ErrorsByPid = {
   [pid: string]: {
-      message: string;
-      timestamp: number;
-      type: string;
-    }[];
-}
+    message: string;
+    timestamp: number;
+    type: string;
+  }[];
+};
 export const getErrors = (nodeIp: string, pid: number | null) =>
   get<ErrorsResponse>("/node_errors", {
     nodeIp,
@@ -411,7 +390,7 @@ export type TuneAvailability = {
 };
 
 export type TuneAvailabilityResponse = {
-  result: TuneAvailability
+  result: TuneAvailability;
 };
 
 export const getTuneAvailability = () =>

@@ -15,11 +15,9 @@ import {
 
 export const ClusterObjectStoreMemory: ClusterFeatureRenderFn = ({ nodes }) => {
   const totalAvailable = sum(
-    nodes.map(n => n.raylet.objectStoreAvailableMemory),
+    nodes.map((n) => n.raylet.objectStoreAvailableMemory),
   );
-  const totalUsed = sum(
-    nodes.map(n => n.raylet.objectStoreUsedMemory),
-  );
+  const totalUsed = sum(nodes.map((n) => n.raylet.objectStoreUsedMemory));
   return (
     <div style={{ minWidth: 60 }}>
       <UsageBar

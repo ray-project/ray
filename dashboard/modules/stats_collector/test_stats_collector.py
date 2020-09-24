@@ -98,16 +98,17 @@ def test_memory_table(ray_start_with_dashboard):
     @ray.remote
     class ActorWithObjs:
         def __init__(self):
-            self.obj_ref = ray.put([1,2,3])
+            self.obj_ref = ray.put([1, 2, 3])
 
         def get_obj(self):
             return ray.get(self.obj_ref)
 
-    my_obj = ray.put([1,2,3] * 100)
-    actors = [ActorWithObjs.remote() for _ in range(2)]
-    results = ray.get([actor.get_obj.remote() for actor in actors])
+    my_obj = ray.put([1, 2, 3] * 100)  # noqa
+    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
+    results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.post(webui_url + "/memory/set_fetch", json={"shouldFetch": "true"})
+    resp = requests.post(
+        webui_url + "/memory/set_fetch", json={"shouldFetch": "true"})
     resp.raise_for_status()
 
     memory_fetch_threshhold = datetime.now() + timedelta(seconds=5)
@@ -123,34 +124,33 @@ def test_memory_table(ray_start_with_dashboard):
         summary = latest_memory_table["summary"]
         try:
             # 1 ref per handle and per object the actor has a ref to
-            assert summary["totalActorHandles"] == len(actors) * 2 
+            assert summary["totalActorHandles"] == len(actors) * 2
             # 1 ref for my_obj
             assert summary["totalLocalRefCount"] == 1
-        except AssertionError as e:
+        except AssertionError:
             time.sleep(.5)
             continue
         done_in_time = True
         break
     assert done_in_time
 
+
 def test_get_all_node_details(ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"]))
 
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
+
     @ray.remote
     class ActorWithObjs:
         def __init__(self):
-            self.obj_ref = ray.put([1,2,3])
+            self.obj_ref = ray.put([1, 2, 3])
             raise Exception("Uh oh it's an error")
 
         def get_obj(self):
             return ray.get(self.obj_ref)
 
-    my_obj = ray.put([1,2,3] * 100)
-    actors = [ActorWithObjs.remote() for _ in range(2)]
-
+    actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
     threshhold = datetime.now() + timedelta(seconds=5)
-    done_in_time = False
     while True:
         resp = requests.get(f"{webui_url}/nodes?view=details")
         if not resp or "data" not in resp.json():
@@ -162,7 +162,7 @@ def test_get_all_node_details(ray_start_with_dashboard):
             clients = resp_data["clients"]
             node = clients[0]
             assert len(clients) == 1
-            assert len(node.get('actors')) == 2
+            assert len(node.get("actors")) == 2
             # Workers information should be in the detailed payload
             assert "workers" in node
             assert "logCount" in node
@@ -176,7 +176,7 @@ def test_get_all_node_details(ray_start_with_dashboard):
             time.sleep(.5)
             if datetime.now() < threshhold:
                 continue
-            raise(e)
+            raise (e)
 
 
 @pytest.mark.parametrize(

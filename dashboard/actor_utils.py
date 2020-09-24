@@ -1,17 +1,14 @@
 import time
-import ray.utils
 import re
-import json
-from base64 import b64decode
 from collections import defaultdict
 
 PYCLASSNAME_RE = re.compile(r"(.+?)\(")
+
 
 def construct_actor_groups(actors):
     """actors is a dict from actor id to an actor or an
        actor creation task The shared fields currently are
        "actorClass", "actorId", and "state" """
-    now = time.time()
     actor_groups = _group_actors_by_python_class(actors)
     stats_by_group = {
         name: _get_actor_group_stats(group)
@@ -25,6 +22,7 @@ def construct_actor_groups(actors):
             "summary": stats_by_group[name]
         }
     return summarized_actor_groups
+
 
 def actor_classname_from_task_spec(task_spec):
     return task_spec.get("functionDescriptor", {})\
