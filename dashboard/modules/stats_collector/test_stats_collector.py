@@ -107,18 +107,12 @@ def test_memory_table(ray_start_with_dashboard):
     actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
     results = ray.get([actor.get_obj.remote() for actor in actors])  # noqa
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
-    resp = requests.post(
-        webui_url + "/memory/set_fetch", json={"shouldFetch": "true"})
+    resp = requests.get(
+        webui_url + "/memory/set_fetch", params={"shouldFetch": "true"})
     resp.raise_for_status()
 
-    memory_fetch_threshhold = datetime.now() + timedelta(seconds=5)
-    done_in_time = False
-    latest_memory_table = None
-    while datetime.now() < memory_fetch_threshhold:
+    def check_mem_table():
         resp = requests.get(f"{webui_url}/memory/memory_table")
-        if not resp or "data" not in resp.json():
-            time.sleep(.5)
-            continue
         resp_data = resp.json()["data"]
         latest_memory_table = resp_data["memoryTable"]
         summary = latest_memory_table["summary"]
@@ -127,12 +121,12 @@ def test_memory_table(ray_start_with_dashboard):
             assert summary["totalActorHandles"] == len(actors) * 2
             # 1 ref for my_obj
             assert summary["totalLocalRefCount"] == 1
+            return True
         except AssertionError:
-            time.sleep(.5)
-            continue
-        done_in_time = True
-        break
-    assert done_in_time
+            return False
+
+    wait_for_condition(check_mem_table, 10)
+    
 
 
 def test_get_all_node_details(ray_start_with_dashboard):
@@ -150,12 +144,8 @@ def test_get_all_node_details(ray_start_with_dashboard):
             return ray.get(self.obj_ref)
 
     actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
-    threshhold = datetime.now() + timedelta(seconds=5)
-    while True:
+    def check_node_details():
         resp = requests.get(f"{webui_url}/nodes?view=details")
-        if not resp or "data" not in resp.json():
-            time.sleep(.5)
-            continue
         resp_json = resp.json()
         resp_data = resp_json["data"]
         try:
@@ -172,11 +162,10 @@ def test_get_all_node_details(ray_start_with_dashboard):
             # assert node["logCount"] == 2
             assert "errorCount" in worker
             assert worker["errorCount"] == 1
+            return True
         except (AssertionError, KeyError) as e:
-            time.sleep(.5)
-            if datetime.now() < threshhold:
-                continue
-            raise (e)
+            return False
+    wait_for_condition(check_node_details, 10)
 
 
 @pytest.mark.parametrize(

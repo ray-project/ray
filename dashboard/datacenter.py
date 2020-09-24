@@ -125,15 +125,14 @@ class DataOrganizer:
             worker["logCount"] = len(log_info.get(str(worker["pid"]), []))
             worker["errorCount"] = len(error_info.get(str(worker["pid"]), []))
 
-        views = node_stats.pop("viewData")
-        view_data = _extract_view_data(
-            views,
+        extracted_views = _extract_view_data(
+            node_stats["viewData"],
             {"object_store_used_memory", "object_store_available_memory"})
 
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
-        node_info["raylet"].update(view_data)
+        node_info["raylet"].update(extracted_views)
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
