@@ -7,6 +7,7 @@ import time
 import ray
 
 from ray import gcs_utils
+from google.protobuf.json_format import MessageToDict
 from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
@@ -421,7 +422,10 @@ class GlobalState:
                 placement_group_info.placement_group_id),
             "name": placement_group_info.name,
             "bundles": {
-                bundle.bundle_id.bundle_index: bundle.unit_resources
+                # The value here is needs to be dictionarified
+                # otherwise, the payload becomes unserializable.
+                bundle.bundle_id.bundle_index:
+                MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),

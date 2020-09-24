@@ -110,7 +110,7 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def find_redis_address_or_die():
+def find_redis_address(address=None):
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -129,12 +129,19 @@ def find_redis_address_or_die():
                 for arg in arglist.split(" "):
                     # TODO(ekl): Find a robust solution for locating Redis.
                     if arg.startswith("--redis-address="):
-                        addr = arg.split("=")[1]
-                        redis_addresses.add(addr)
+                        proc_addr = arg.split("=")[1]
+                        if address is not None and address != proc_addr:
+                            continue
+                        redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
             pass
+    return redis_addresses
+
+
+def find_redis_address_or_die():
+    redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
             f"Found multiple active Ray instances: {redis_addresses}. "
