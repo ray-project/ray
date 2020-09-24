@@ -391,6 +391,10 @@ export type TuneError = {
 };
 
 export type TuneJobResponse = {
+  result: TuneJob;
+};
+
+export type TuneJob = {
   trialRecords: { [key: string]: TuneTrial };
   errors: { [key: string]: TuneError };
   tensorboard: {
@@ -401,25 +405,29 @@ export type TuneJobResponse = {
 
 export const getTuneInfo = () => get<TuneJobResponse>("/tune/info", {});
 
-export type TuneAvailabilityResponse = {
+export type TuneAvailability = {
   available: boolean;
   trialsAvailable: boolean;
+};
+
+export type TuneAvailabilityResponse = {
+  result: TuneAvailability
 };
 
 export const getTuneAvailability = () =>
   get<TuneAvailabilityResponse>("/tune/availability", {});
 
-export type TuneSetExperimentReponse = {
+export type TuneSetExperimentResponse = {
   experiment: string;
 };
 
 export const setTuneExperiment = (experiment: string) =>
-  post<TuneSetExperimentReponse>("/tune/set_experiment", {
+  get<TuneSetExperimentResponse>("/tune/set_experiment", {
     experiment: experiment,
   });
 
 export const enableTuneTensorBoard = () =>
-  post<{}>("/tune/enable_tensorboard", {});
+  get<{}>("/tune/enable_tensorboard", {});
 
 export type MemoryTableSummary = {
   totalActorHandles: number;

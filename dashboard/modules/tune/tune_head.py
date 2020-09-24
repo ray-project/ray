@@ -59,21 +59,19 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         availability = self._get_availability()
         return await rest_response(success=True, message="Fetched tune availability", result=availability)
 
-    @routes.post("/tune/set_experiment")
+    @routes.get("/tune/set_experiment")
     async def set_tune_experiment(self, req) -> aiohttp.web.Response:
-        data = await req.json()
         try:
-            assert "experiment" in data
-        except AssertionError:
+            experiment = req.query["experiment"]
+        except KeyError:
             return await rest_response(success=False, message="Bad request")
 
-        error, result = self.dashboard_controller.set_tune_experiment(
-            data["experiment"])
-        if error:
-            return await rest_response(success=False, message=error)
-        return await rest_response(self.is_dev, result=result)
+        err, experiment = self.set_experiment(experiment)
+        if err:
+            return await rest_response(success=False, error=err)
+        return await rest_response(success=True, message="Successfully set experiment", **experiment)
 
-    @routes.post("/tune/enable_tensorboard")
+    @routes.get("/tune/enable_tensorboard")
     async def enable_tensorboard(self, req) -> aiohttp.web.Response:
         self._enable_tensorboard()
         if not self._tensor_board_dir:

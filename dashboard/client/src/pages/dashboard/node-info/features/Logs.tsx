@@ -53,7 +53,7 @@ const makeWorkerLogs = (
     </SpanButton>
   ) : (
     <Typography color="textSecondary" component="span" variant="inherit">
-      No lo(s
+      No logs
     </Typography>
   );
 

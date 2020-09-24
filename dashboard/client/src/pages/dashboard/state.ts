@@ -5,8 +5,10 @@ import { ActorGroup ,
   MemoryTableResponse,
   NodeInfoResponse,
   RayConfigResponse,
+  TuneAvailability,
   TuneAvailabilityResponse,
   TuneJobResponse,
+  TuneJob,
 } from "../../api";
 
 
@@ -17,8 +19,8 @@ type State = {
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
   actorGroups: { [key: string]: ActorGroup } | null;
-  tuneInfo: TuneJobResponse | null;
-  tuneAvailability: TuneAvailabilityResponse | null;
+  tuneInfo: TuneJob | null;
+  tuneAvailability: TuneAvailability | null;
   lastUpdatedAt: number | null;
   error: string | null;
   memoryTable: MemoryTable | null;
@@ -61,14 +63,14 @@ const slice = createSlice({
       state.actorGroups = action.payload.actorGroups;
     },
     setTuneInfo: (state, action: PayloadAction<TuneJobResponse>) => {
-      state.tuneInfo = action.payload;
+      state.tuneInfo = action.payload.result;
       state.lastUpdatedAt = Date.now();
     },
     setTuneAvailability: (
       state,
       action: PayloadAction<TuneAvailabilityResponse>,
     ) => {
-      state.tuneAvailability = action.payload;
+      state.tuneAvailability = action.payload.result;
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {

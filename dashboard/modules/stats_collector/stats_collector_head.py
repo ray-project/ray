@@ -262,7 +262,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     logger.info(f"Received error entry for {ip} {pid}")
             except Exception:
                 logger.exception("Error receiving error info.")
-
         
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

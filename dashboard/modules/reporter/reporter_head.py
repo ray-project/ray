@@ -87,7 +87,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         return await dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
-            config=payload,
+            **payload,
         )
 
     async def run(self, server):
