@@ -1,5 +1,6 @@
 import os
 import shutil
+from subprocess import CalledProcessError
 import tempfile
 import threading
 import time
@@ -48,7 +49,8 @@ class MockProcessRunner:
     def check_call(self, cmd, *args, **kwargs):
         for token in self.fail_cmds:
             if token in str(cmd):
-                raise Exception("Failing command on purpose")
+                raise CalledProcessError(1, token,
+                                         "Failing command on purpose")
         self.calls.append(cmd)
 
     def check_output(self, cmd):

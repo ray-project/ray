@@ -110,7 +110,7 @@ def new_port():
     return random.randint(10000, 65535)
 
 
-def find_redis_address_or_die():
+def find_redis_address(address=None):
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -129,12 +129,19 @@ def find_redis_address_or_die():
                 for arg in arglist.split(" "):
                     # TODO(ekl): Find a robust solution for locating Redis.
                     if arg.startswith("--redis-address="):
-                        addr = arg.split("=")[1]
-                        redis_addresses.add(addr)
+                        proc_addr = arg.split("=")[1]
+                        if address is not None and address != proc_addr:
+                            continue
+                        redis_addresses.add(proc_addr)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
             pass
+    return redis_addresses
+
+
+def find_redis_address_or_die():
+    redis_addresses = find_redis_address()
     if len(redis_addresses) > 1:
         raise ConnectionError(
             f"Found multiple active Ray instances: {redis_addresses}. "
@@ -992,6 +999,7 @@ def start_dashboard(require_dashboard,
                     host,
                     redis_address,
                     temp_dir,
+                    logdir,
                     port=ray_constants.DEFAULT_DASHBOARD_PORT,
                     stdout_file=None,
                     stderr_file=None,
@@ -1009,6 +1017,7 @@ def start_dashboard(require_dashboard,
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
+        logdir (str): The log directory used to generate dashboard log.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1040,6 +1049,7 @@ def start_dashboard(require_dashboard,
         dashboard_dir = "new_dashboard"
     else:
         dashboard_dir = "dashboard"
+        logdir = None
 
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
@@ -1053,6 +1063,8 @@ def start_dashboard(require_dashboard,
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
     ]
+    if logdir:
+        command += [f"--log-dir={logdir}"]
     if redis_password:
         command += ["--redis-password", redis_password]
 
