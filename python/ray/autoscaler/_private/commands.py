@@ -654,6 +654,8 @@ def get_or_create_head_node(config,
             remote_config["file_mounts"] = new_mounts
             remote_config["no_restart"] = no_restart
 
+            remote_config = provider.prepare_for_head_node(remote_config)
+
             # Now inject the rewritten config and SSH key into the head node
             remote_config_file = tempfile.NamedTemporaryFile(
                 "w", prefix="ray-bootstrap-")

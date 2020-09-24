@@ -43,6 +43,12 @@ def _import_kubernetes(provider_config):
     return KubernetesNodeProvider
 
 
+def _import_staroid(provider_config):
+    from ray.autoscaler._private.staroid.node_provider import \
+        StaroidNodeProvider
+    return StaroidNodeProvider
+
+
 def _load_local_example_config():
     import ray.autoscaler.local as ray_local
     return os.path.join(
@@ -71,6 +77,12 @@ def _load_azure_example_config():
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
+def _load_staroid_example_config():
+    import ray.autoscaler.staroid as ray_staroid
+    return os.path.join(
+        os.path.dirname(ray_staroid.__file__), "example-full.yaml")
+
+
 def _import_external(provider_config):
     provider_cls = _load_class(path=provider_config["module"])
     return provider_cls
@@ -81,6 +93,7 @@ _NODE_PROVIDERS = {
     "aws": _import_aws,
     "gcp": _import_gcp,
     "azure": _import_azure,
+    "staroid": _import_staroid,
     "kubernetes": _import_kubernetes,
     "external": _import_external  # Import an external module
 }
@@ -90,6 +103,7 @@ _PROVIDER_PRETTY_NAMES = {
     "aws": "AWS",
     "gcp": "GCP",
     "azure": "Azure",
+    "staroid": "Staroid",
     "kubernetes": "Kubernetes",
     "external": "External"
 }
@@ -99,6 +113,7 @@ _DEFAULT_CONFIGS = {
     "aws": _load_aws_example_config,
     "gcp": _load_gcp_example_config,
     "azure": _load_azure_example_config,
+    "staroid": _load_staroid_example_config,
     "kubernetes": _load_kubernetes_example_config,
 }
 
@@ -227,7 +242,7 @@ class NodeProvider:
                            process_runner,
                            use_internal_ip,
                            docker_config=None) -> Any:
-        """ Returns the CommandRunner class used to perform SSH commands.
+        """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
         log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used
@@ -256,3 +271,7 @@ class NodeProvider:
             return DockerCommandRunner(docker_config, **common_args)
         else:
             return SSHCommandRunner(**common_args)
+
+    def prepare_for_head_node(self, cluster_config):
+        """Returns a new cluster config with custom configs for head node."""
+        return cluster_config

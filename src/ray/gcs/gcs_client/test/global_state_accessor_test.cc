@@ -192,7 +192,7 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = 100;
+  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
     auto client_id = ClientID::FromRandom();
@@ -203,7 +203,8 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
         [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
   }
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), profile_count);
+  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
+            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_F(GlobalStateAccessorTest, TestObjectTable) {

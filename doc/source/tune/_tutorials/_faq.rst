@@ -183,6 +183,7 @@ additional outputs:
   called
 * ``trial_id``: Unique trial ID
 
+
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the

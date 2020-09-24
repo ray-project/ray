@@ -39,7 +39,7 @@ class WorkerSet:
                  _setup: bool = True):
         """Create a new WorkerSet and initialize its workers.
 
-        Arguments:
+        Args:
             env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
                 that returns env given env config.
             policy (Optional[Type[Policy]]): A rllib.policy.Policy class.

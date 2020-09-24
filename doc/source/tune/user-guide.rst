@@ -56,13 +56,15 @@ You can find an example of this in the :doc:`Keras MNIST example </tune/examples
 
 .. warning:: If 'gpu' is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 
-To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``:
+To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
 
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+
+
 
 .. _tune-default-search-space:
 
@@ -532,6 +534,35 @@ By default, ``tune.run`` will continue executing until all trials have terminate
     tune.run(trainable, fail_fast=True)
 
 This is useful when you are trying to setup a large hyperparameter experiment.
+
+Environment variables
+---------------------
+Some of Ray Tune's behavior can be configured using environment variables.
+These are the environment variables Ray Tune currently considers:
+
+* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
+  to remote cluster machines for checkpoint syncing. If this is not set,
+  ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
+  not attached to a Ray session.
+* **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
+  ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
+  or a search algorithm, Tune will error
+  if the metric was not reported in the result. Setting this environment variable
+  to ``1`` will disable this check.
+* **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
+  experiment state is checkpointed. If not set this will default to ``10``.
+* **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
+  with the parameter values in them)
+* **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
+  is not set, ``~/ray_results`` will be used.
+
+
+There are some environment variables that are mostly relevant for integrated libraries:
+
+* **SIGOPT_KEY**: SigOpt API access key.
+* **WANDB_API_KEY**: Weights and Biases API key. You can also use ``wandb login``
+  instead.
 
 
 Further Questions or Issues?

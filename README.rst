@@ -18,7 +18,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/master/installation.html>`__.
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search

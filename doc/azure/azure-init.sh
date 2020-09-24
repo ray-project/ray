@@ -19,7 +19,7 @@ NUM_GPUS=\`nvidia-smi -L | wc -l\`
 
 ray stop
 ulimit -n 65536
-ray start --head --redis-port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --webui-host 0.0.0.0
+ray start --head -port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --webui-host 0.0.0.0
 EOM
 
 cat > /home/"$USERNAME"/ray-worker.sh << EOM

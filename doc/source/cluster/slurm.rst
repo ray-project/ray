@@ -55,8 +55,8 @@ Starter SLURM script
   # Make sure the head successfully starts before any worker does, otherwise
   # the worker will not be able to connect to redis. In case of longer delay,
   # adjust the sleeptime above to ensure proper order.
-  
-  # Now we execute worker_num worker nodes on all nodes in the allocation except hostname by 
+
+  # Now we execute worker_num worker nodes on all nodes in the allocation except hostname by
   # specifying --nodes=${worker_num} and --exclude=`hostname`. Use 1 task per node, so worker_num tasks in total
   # (--ntasks=${worker_num}) and 5 CPUs per task (--cps-per-task=${SLURM_CPUS_PER_TASK}).
   srun --nodes=${worker_num} --ntasks=${worker_num} --cpus-per-task=${SLURM_CPUS_PER_TASK} --exclude=`hostname` ray start --address $ip_head --block --num-cpus ${SLURM_CPUS_PER_TASK} &

@@ -5,7 +5,7 @@ Policy Gradient (PG)
 This file defines the distributed Trainer class for policy gradients.
 See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#pg
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
 """
 
 from typing import Optional, Type
