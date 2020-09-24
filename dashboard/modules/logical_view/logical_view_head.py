@@ -15,7 +15,6 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 
 class LogicalViewHead(dashboard_utils.DashboardHeadModule):
-
     @routes.get("/logical/actor_groups")
     async def get_actor_groups(self, req) -> aiohttp.web.Response:
         actors = await DataOrganizer.get_all_actors()
@@ -46,13 +45,14 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
                 core_worker_pb2.KillActorRequest(
                     intended_actor_id=ray.utils.hex_to_binary(actor_id)))
 
-            return await rest_response(
-                success=True, message=f"Killed actor with id {actor_id}")
         except aiogrpc.AioRpcError:
             # This always throws an exception because the worker
             # is killed and the channel is closed on the worker side
             # before this handler, however it deletes the actor correctly.
-            return await rest_response(success=True, message=f"{e}")
+            pass
+
+        return await rest_response(
+            success=True, message=f"Killed actor with id {actor_id}")
 
     async def run(self, server):
         pass

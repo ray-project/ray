@@ -8,7 +8,6 @@ import traceback
 import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
-from datetime import datetime, timedelta
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -126,7 +125,6 @@ def test_memory_table(ray_start_with_dashboard):
             return False
 
     wait_for_condition(check_mem_table, 10)
-    
 
 
 def test_get_all_node_details(ray_start_with_dashboard):
@@ -144,6 +142,7 @@ def test_get_all_node_details(ray_start_with_dashboard):
             return ray.get(self.obj_ref)
 
     actors = [ActorWithObjs.remote() for _ in range(2)]  # noqa
+
     def check_node_details():
         resp = requests.get(f"{webui_url}/nodes?view=details")
         resp_json = resp.json()
@@ -163,8 +162,9 @@ def test_get_all_node_details(ray_start_with_dashboard):
             assert "errorCount" in worker
             assert worker["errorCount"] == 1
             return True
-        except (AssertionError, KeyError) as e:
+        except (AssertionError, KeyError):
             return False
+
     wait_for_condition(check_node_details, 10)
 
 
