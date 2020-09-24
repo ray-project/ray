@@ -69,7 +69,8 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float):
-        warn_replay_buffer_size(item=item, num_items=self._maxsize)
+        warn_replay_buffer_size(
+            item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
