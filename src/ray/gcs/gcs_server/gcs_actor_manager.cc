@@ -422,12 +422,17 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
-  RAY_CHECK(registered_actors_.emplace(actor->GetActorID(), actor).second);
+
+  // If GCS restarts before reply to GCS client and after writes to storage,
+  // GCS client will resend the `RegisterActor` request. After GCS restarts,
+  // `registered_actors_` and `unresolved_actors_` may recover data from storage, so we
+  // override them directly without checking.
+  registered_actors_.emplace(actor->GetActorID(), actor);
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
+  unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID());
 
   if (!actor->IsDetached()) {
     // This actor is owned. Send a long polling request to the actor's
@@ -1049,7 +1054,12 @@ void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &act
   if (iter != unresolved_actors_.end()) {
     auto it = iter->second.find(worker_id);
     RAY_CHECK(it != iter->second.end());
-    RAY_CHECK(it->second.erase(actor->GetActorID()) != 0);
+
+    // If GCS restarts while processing `CreateActor` request, GCS client will resend the
+    // `CreateActor` request.
+    // After GCS restarts, the ID of the actor owned by the worker may be empty, so we
+    // erase it directly without checking.
+    it->second.erase(actor->GetActorID());
     if (it->second.empty()) {
       iter->second.erase(it);
       if (iter->second.empty()) {
