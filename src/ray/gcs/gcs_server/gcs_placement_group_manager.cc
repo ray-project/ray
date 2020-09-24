@@ -126,7 +126,8 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
   // registered.
   auto state = placement_group->GetState();
   RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
-            state == rpc::PlacementGroupTableData::PENDING)
+            state == rpc::PlacementGroupTableData::PENDING ||
+            state == rpc::PlacementGroupTableData::REMOVED)
       << "State: " << state;
   if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
     // NOTE: If a node is dead, the placement group scheduler should try to recover the
@@ -321,8 +322,9 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
-  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
-                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+  execute_after(
+      io_context_, [this] { SchedulePendingPlacementGroups(); },
+      RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const ClientID &node_id) {

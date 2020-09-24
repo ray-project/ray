@@ -569,6 +569,35 @@ By default, ``tune.run`` will continue executing until all trials have terminate
 
 This is useful when you are trying to setup a large hyperparameter experiment.
 
+Environment variables
+---------------------
+Some of Ray Tune's behavior can be configured using environment variables.
+These are the environment variables Ray Tune currently considers:
+
+* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
+  to remote cluster machines for checkpoint syncing. If this is not set,
+  ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
+  not attached to a Ray session.
+* **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
+  ``tune.report()`` and passed a ``metric`` parameter to ``tune.run()``, a scheduler,
+  or a search algorithm, Tune will error
+  if the metric was not reported in the result. Setting this environment variable
+  to ``1`` will disable this check.
+* **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
+  experiment state is checkpointed. If not set this will default to ``10``.
+* **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
+  with the parameter values in them)
+* **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
+  is not set, ``~/ray_results`` will be used.
+
+
+There are some environment variables that are mostly relevant for integrated libraries:
+
+* **SIGOPT_KEY**: SigOpt API access key.
+* **WANDB_API_KEY**: Weights and Biases API key. You can also use ``wandb login``
+  instead.
+
 
 Further Questions or Issues?
 ----------------------------

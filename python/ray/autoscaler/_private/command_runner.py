@@ -235,6 +235,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
             cmd = _with_interactive(cmd)
+            cmd_prefix = " ".join(final_cmd)
             final_cmd += cmd
             # `kubectl exec` + subprocess w/ list of args has unexpected
             # side-effects.
@@ -248,8 +249,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                     self.process_runner.check_call(final_cmd, shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
-                    quoted_cmd = " ".join(final_cmd[:-1] +
-                                          [quote(final_cmd[-1])])
+                    quoted_cmd = cmd_prefix + quote(" ".join(cmd))
                     logger.error(
                         self.log_prefix +
                         "Command failed: \n\n  {}\n".format(quoted_cmd))

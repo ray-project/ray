@@ -379,7 +379,8 @@ def run(
         verbose=bool(verbose > 1),
         fail_fast=fail_fast,
         trial_executor=trial_executor,
-        callbacks=callbacks)
+        callbacks=callbacks,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:
