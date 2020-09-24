@@ -1,6 +1,7 @@
 import json
 import logging
-
+import yaml
+import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
@@ -51,6 +52,42 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
+
+    @routes.get("/api/ray_config")
+    async def get_ray_config(self, req) -> aiohttp.web.Response:
+        try:
+            config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f)
+        except Exception:
+            return await dashboard_utils.rest_response(
+                success=False,
+                message="No config.",
+            )
+
+        payload = {
+            "min_workers": cfg["min_workers"],
+            "max_workers": cfg["max_workers"],
+            "initial_workers": cfg["initial_workers"],
+            "autoscaling_mode": cfg["autoscaling_mode"],
+            "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+        }
+
+        try:
+            payload["head_type"] = cfg["head_node"]["InstanceType"]
+        except KeyError:
+            payload["head_type"] = "unknown"
+
+        try:
+            payload["worker_type"] = cfg["worker_nodes"]["InstanceType"]
+        except KeyError:
+            payload["worker_type"] = "unknown"
+
+        return await dashboard_utils.rest_response(
+            success=True,
+            message="Fetched ray config.",
+            **payload,
+        )
 
     async def run(self, server):
         aioredis_client = self._dashboard_head.aioredis_client
