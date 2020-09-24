@@ -281,16 +281,22 @@ message HeartbeatTableData {
   bytes client_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+  // Indicates whether resources avaialbe is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 3;
+  map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 4;
+  map<string, double> resource_load = 5;
+  // Indicates whether resource load is changed. Only used when 
+  // light heartbeat enabled.
+  bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 5;
+  ResourceLoad resource_load_by_shape = 7;
   // Object IDs that are in use by workers on this node manager's node.
-  repeated bytes active_object_id = 6;
+  repeated bytes active_object_id = 8;
   // Whether this node manager is requesting global GC.
-  bool should_global_gc = 7;
+  bool should_global_gc = 9;
 }
 
 message HeartbeatBatchTableData {

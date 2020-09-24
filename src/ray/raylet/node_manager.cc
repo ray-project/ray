@@ -406,14 +406,11 @@ void NodeManager::Heartbeat() {
 
     if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
             local_resources.GetAvailableResources())) {
-      if (local_resources.GetAvailableResources().IsEmpty()) {
-        (*heartbeat_data->mutable_resources_available())[kResourcesTurningEmpty] = 0.0;
-      } else {
-        for (const auto &resource_pair :
-             local_resources.GetAvailableResources().GetResourceMap()) {
-          (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-              resource_pair.second;
-        }
+      heartbeat_data->set_resources_available_changed(true);
+      for (const auto &resource_pair :
+           local_resources.GetAvailableResources().GetResourceMap()) {
+        (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+            resource_pair.second;
       }
       last_heartbeat_resources_.SetAvailableResources(
           ResourceSet(local_resources.GetAvailableResources()));
@@ -422,14 +419,11 @@ void NodeManager::Heartbeat() {
     local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
     if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
             local_resources.GetLoadResources())) {
-      if (local_resources.GetLoadResources().IsEmpty()) {
-        (*heartbeat_data->mutable_resource_load())[kResourcesTurningEmpty] = 0.0;
-      } else {
-        for (const auto &resource_pair :
-             local_resources.GetLoadResources().GetResourceMap()) {
-          (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-              resource_pair.second;
-        }
+      heartbeat_data->set_resource_load_changed(true);
+      for (const auto &resource_pair :
+           local_resources.GetLoadResources().GetResourceMap()) {
+        (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+            resource_pair.second;
       }
       last_heartbeat_resources_.SetLoadResources(
           ResourceSet(local_resources.GetLoadResources()));
@@ -957,23 +951,14 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
       ResourceSet remote_total(MapFromProtobuf(heartbeat_data.resources_total()));
       remote_resources.SetTotalResources(std::move(remote_total));
     }
-    if (heartbeat_data.resources_available_size() > 0) {
-      if (heartbeat_data.resources_available().count(kResourcesTurningEmpty) == 1) {
-        remote_resources.SetAvailableResources(ResourceSet());
-      } else {
-        ResourceSet remote_available(
-            MapFromProtobuf(heartbeat_data.resources_available()));
-        remote_resources.SetAvailableResources(std::move(remote_available));
-      }
+    if (heartbeat_data.resource_load_changed()) {
+      ResourceSet remote_available(MapFromProtobuf(heartbeat_data.resources_available()));
+      remote_resources.SetAvailableResources(std::move(remote_available));
     }
-    if (heartbeat_data.resource_load_size() > 0) {
-      if (heartbeat_data.resource_load().count(kResourcesTurningEmpty) == 1) {
-        remote_resources.SetLoadResources(ResourceSet());
-      } else {
-        ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
-        // Extract the load information and save it locally.
-        remote_resources.SetLoadResources(std::move(remote_load));
-      }
+    if (heartbeat_data.resource_load_changed()) {
+      ResourceSet remote_load(MapFromProtobuf(heartbeat_data.resource_load()));
+      // Extract the load information and save it locally.
+      remote_resources.SetLoadResources(std::move(remote_load));
     }
   } else {
     // If light heartbeat disabled, we update remote resources every time.
