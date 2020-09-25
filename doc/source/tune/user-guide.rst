@@ -448,6 +448,27 @@ By default, syncing occurs every 300 seconds. To change the frequency of syncing
 
 Note that uploading only happens when global experiment state is collected, and the frequency of this is determined by the ``TUNE_GLOBAL_CHECKPOINT_S`` environment variable. So the true upload period is given by ``max(TUNE_CLOUD_SYNC_S, TUNE_GLOBAL_CHECKPOINT_S)``.
 
+
+.. _tune-docker:
+
+Using Tune with Docker
+----------------------
+Tune automatically syncs files and checkpoints between different remote
+containers as needed.
+
+To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
+with docker containers, you will need to pass a
+``DockerSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+
+.. code-block:: python
+
+    from ray.tune.integration.docker import DockerSyncer
+    sync_config = tune.SyncConfig(
+        sync_to_driver=DockerSyncer)
+
+    tune.run(train, sync_config=sync_config)
+
+
 .. _tune-kubernetes:
 
 Using Tune with Kubernetes
