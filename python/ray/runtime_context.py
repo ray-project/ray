@@ -45,6 +45,15 @@ class RuntimeContext(object):
         actor_info = ray.state.actors(self.current_actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
+    @property
+    def current_placement_group_id(self):
+        """Get the current Placement group ID of this worker.
+
+        Returns:
+            The current placement group id of this worker.
+        """
+        return self.worker.placement_group_id
+
 
 _runtime_context = None
 

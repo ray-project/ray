@@ -791,6 +791,11 @@ cdef class CoreWorker:
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
 
+    def get_placement_group_id(self):
+        return PlacementGroupID(
+            CCoreWorkerProcess.GetCoreWorker()
+            .GetCurrentPlacementGroupId().Binary())
+
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)
 

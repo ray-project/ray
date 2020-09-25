@@ -11,7 +11,8 @@ import ray
 from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import PlacementGroup
+from ray.util.placement_group import (PlacementGroup,
+                                      get_current_placement_group)
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -288,7 +289,7 @@ def test_remove_placement_group(ray_start_cluster):
     # First try to remove a placement group that doesn't
     # exist. This should not do anything.
     random_group_id = PlacementGroupID.from_random()
-    random_placement_group = PlacementGroup(random_group_id, [{"CPU": 1}])
+    random_placement_group = PlacementGroup(random_group_id)
     for _ in range(3):
         ray.util.remove_placement_group(random_placement_group)
 
@@ -591,7 +592,7 @@ def test_placement_group_wait(ray_start_cluster):
     assert table["state"] == "CREATED"
 
     pg = ray.get(placement_group.ready())
-    assert pg.bundles == placement_group.bundles
+    assert pg.bundle_specs == placement_group.bundle_specs
     assert pg.id.binary() == placement_group.id.binary()
 
 
@@ -789,6 +790,60 @@ def test_mini_integration(ray_start_cluster):
     # actors that take up all existing resources.
     actors = [A.remote() for _ in range(num_nodes)]
     assert all(ray.get([a.ping.remote() for a in actors]))
+
+
+def test_capture_child_tasks(ray_start_cluster):
+    cluster = ray_start_cluster
+    total_num_actors = 4
+    for _ in range(2):
+        cluster.add_node(num_cpus=total_num_actors)
+    ray.init(address=cluster.address)
+
+    pg = ray.util.placement_group(
+        [{
+            "CPU": 2
+        }, {
+            "CPU": 2
+        }], strategy="STRICT_PACK")
+    ray.get(pg.ready(), timeout=5)
+
+    # If get_current_placement_group is used when the current worker/driver
+    # doesn't belong to any of placement group, it should return None.
+    assert get_current_placement_group() is None
+
+    @ray.remote(num_cpus=1)
+    class NestedActor:
+        def ready(self):
+            return True
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.actors = []
+
+        def ready(self):
+            return True
+
+        def schedule_nested_actor(self):
+            actor = NestedActor.options(
+                placement_group=get_current_placement_group()).remote()
+            ray.get(actor.ready.remote())
+            self.actors.append(actor)
+
+    a = Actor.options(placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    # 1 top level actor + 3 children.
+    for _ in range(total_num_actors - 1):
+        ray.get(a.schedule_nested_actor.remote())
+    # Make sure all the actors are scheduled on the same node.
+    # (why? The placement group has STRICT_PACK strategy).
+    node_id_set = set()
+    for actor_info in ray.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+
+    # Since all node id should be identical, set should be equal to 1.
+    assert len(node_id_set) == 1
 
 
 if __name__ == "__main__":
