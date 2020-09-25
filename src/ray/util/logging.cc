@@ -173,9 +173,11 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     google::SetLogFilenameExtension(app_name_without_path.c_str());
     int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
     google::SetLogDestination(level, dir_ends_with_slash.c_str());
-    for (int i = static_cast<int>(severity_threshold_) + 1;
+    for (int i = static_cast<int>(RayLogLevel::DEBUG);
          i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
-      google::SetLogDestination(i, "");
+      if (i != level) {
+        google::SetLogDestination(i, "");
+      }
     }
     FLAGS_stop_logging_if_full_disk = true;
   }
