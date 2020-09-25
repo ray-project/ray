@@ -994,7 +994,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object1_id);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  WaitForObjectUnsubscribed(object1_id);
 
   // Restart GCS.
   RestartGcsServer();
@@ -1091,6 +1091,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   WaitForExpectedCount(task_count, 1);
   WaitForExpectedCount(task_lease_count, 1);
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   RestartGcsServer();
 
