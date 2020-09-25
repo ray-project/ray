@@ -25,6 +25,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             "env_id": ViewRequirement(),
+            "t": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
             SampleBatch.PREV_ACTIONS: ViewRequirement(
                 SampleBatch.ACTIONS, space=self.action_space, shift=-1),
@@ -59,6 +60,8 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
                                         explore=None,
                                         timestep=None,
                                         **kwargs):
+        ts = input_dict["t"]
+        print(ts)
         # Always return [episodeID, envID] as actions.
         actions = np.array([
             [
@@ -68,7 +71,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             for i, _ in enumerate(input_dict["obs"])
         ])
         states = [
-            np.array([self.state_space.sample() for i in range(len(input_dict["obs"]))]) for _ in range(2)
+            np.array([[ts[i]] for i in range(len(input_dict["obs"]))]) for _ in range(2)
         ]
         return actions, states, {}
 
@@ -77,5 +80,5 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        sample_batch["postprocessed_column"] = sample_batch["obs"] + 1.0
+        sample_batch["postprocessed_column"] = sample_batch["obs"] * 2.0
         return sample_batch

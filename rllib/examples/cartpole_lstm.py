@@ -23,7 +23,8 @@ if __name__ == "__main__":
 
     configs = {
         "PPO": {
-            "_use_trajectory_view_api": False,
+            "_use_trajectory_view_api": True,
+            #"num_workers": 0, #TODO
             "num_sgd_iter": 5,
             "vf_share_layers": True,
             "vf_loss_coeff": 0.0001,
@@ -51,6 +52,11 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    #from ray.rllib.agents import ppo as ppo
+    #trainer = ppo.PPOTrainer(config)
+    #rollout_worker = trainer.workers.local_worker()
+    #trainer.train()
+    #quit()
     results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:

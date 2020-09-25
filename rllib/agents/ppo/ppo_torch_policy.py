@@ -271,9 +271,9 @@ def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
     return {
         # Next obs are needed for PPO postprocessing, but not in loss.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, used_for_training=False),
+            SampleBatch.OBS, shift=1, used_for_training=True), #TODO
         # Rewards not needed for loss function.
-        SampleBatch.REWARDS: ViewRequirement(used_for_training=False),
+        #SampleBatch.REWARDS: ViewRequirement(used_for_training=False), #TODO
 
         # Created during postprocessing.
         Postprocessing.ADVANTAGES: ViewRequirement(shift=0),

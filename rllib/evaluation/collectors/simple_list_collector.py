@@ -402,7 +402,8 @@ class _SimpleListCollector(_SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             time_indices = view_req.shift - \
-                           (1 if data_col == SampleBatch.OBS else 0)
+                           (1 if data_col in [SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX] else 0)
+            print("view_col={} t-idx={}".format(view_col, time_indices))
             data_list = []
             for k in keys:
                 if data_col not in buffers[k]:

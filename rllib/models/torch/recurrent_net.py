@@ -138,6 +138,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         self.inference_view_requirements.update(
             dict(
                 **{
+                    "t": ViewRequirement(shift=0),#TEST: remove
                     SampleBatch.OBS: ViewRequirement(shift=0),
                     SampleBatch.PREV_REWARDS: ViewRequirement(
                         SampleBatch.REWARDS, shift=-1),
@@ -153,7 +154,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                     space=Box(-1.0, 1.0, shape=(self.cell_size,)))
             self.inference_view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
+                    space=Box(-1.0, 1.0, shape=(self.cell_size,)),
+                    used_for_training=True) #TODO:set back to False
 
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):

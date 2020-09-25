@@ -29,7 +29,7 @@ class DebugCounterEnv(gym.Env):
 class MultiAgentDebugCounterEnv(MultiAgentEnv):
     def __init__(self, config):
         self.num_agents = config["num_agents"]
-        self.p_done = config.get("p_done", 0.02)
+        self.base_episode_len = config.get("base_episode_len", 103)
         # Actions are always:
         # (episodeID, envID) as floats.
         self.action_space = \
@@ -45,6 +45,7 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         self.dones = set()
 
     def reset(self):
+        self.timesteps = [0] * self.num_agents
         self.dones = set()
         return {
             i: np.array([i, 0.0, 0.0, 0.0], dtype=np.float32)
@@ -57,9 +58,10 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
             self.timesteps[i] += 1
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
-            done[i] = bool(
-                np.random.choice(
-                    [True, False], p=[self.p_done, 1.0 - self.p_done]))
+            done[i] = True if self.timesteps[i] > self.base_episode_len + i else False
+            #done[i] = bool(
+            #    np.random.choice(
+            #        [True, False], p=[self.p_done, 1.0 - self.p_done]))
             if done[i]:
                 self.dones.add(i)
         done["__all__"] = len(self.dones) == self.num_agents

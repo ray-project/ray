@@ -9,8 +9,9 @@ from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwarePolicy
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator, check
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
@@ -203,110 +204,160 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         def policy_fn(agent_id):
             return "pol0"
 
-        rollout_worker = RolloutWorker(
-            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config={
-                "multiagent": {
-                    "policies": policies,
-                    "policy_mapping_fn": policy_fn,
-                },
-                "_use_trajectory_view_api": True,
-                "model": {
-                    "use_lstm": True,
-                    "max_seq_len": max_seq_len,
-                },
+        config = {
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": policy_fn,
             },
+            "model": {
+                "use_lstm": True,
+                "max_seq_len": max_seq_len,
+            },
+        },
+
+        rollout_worker_w_api = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config=dict(config, **{"_use_trajectory_view_api": True}),
+            rollout_fragment_length=rollout_fragment_length,
+            policy=policies,
+            policy_mapping_fn=policy_fn,
+            num_envs=1,
+        )
+        rollout_worker_wo_api = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config=dict(config, **{"_use_trajectory_view_api": False}),
             rollout_fragment_length=rollout_fragment_length,
             policy=policies,
             policy_mapping_fn=policy_fn,
             num_envs=1,
         )
         for iteration in range(20):
-            sc = rollout_worker.sampler.sample_collector
-            pc = sc.policy_collectors["pol0"]
-            buffers = pc.buffers
-            result = rollout_worker.sample()
-            pol_batch = result.policy_batches["pol0"]
+            result = rollout_worker_w_api.sample()
+            check(result.count, rollout_fragment_length)
+            pol_batch_w = result.policy_batches["pol0"]
+            assert pol_batch_w.count >= rollout_fragment_length
+            analyze_rnn_batch(pol_batch_w, max_seq_len)
 
-            self.assertTrue(result.count == rollout_fragment_length)
-            self.assertTrue(pol_batch.count >= rollout_fragment_length)
+            result = rollout_worker_wo_api.sample()
+            pol_batch_wo = result.policy_batches["pol0"]
+            check(pol_batch_w.data, pol_batch_wo.data)
 
-            # Check prev_reward/action, next_obs consistency.
-            for t in range(pol_batch.count):
-                obs_t = pol_batch["obs"][t]
-                a_t = pol_batch["actions"][t]
-                r_t = pol_batch["rewards"][t]
-                state_in_0 = pol_batch["state_in_0"][t]
-                state_in_1 = pol_batch["state_in_1"][t]
 
-                # Check postprocessing outputs.
-                postprocessed_col_t = pol_batch["postprocessed_column"][t]
-                self.assertTrue((obs_t == postprocessed_col_t - 1.0).all())
-
-                # Check state-in/out and next-obs values.
-                if t > 0:
-                    next_obs_t_m_1 = pol_batch["new_obs"][t - 1]
-                    state_out_0_t_m_1 = pol_batch["state_out_0"][t - 1]
-                    state_out_1_t_m_1 = pol_batch["state_out_1"][t - 1]
-                    # Same trajectory as for t-1 -> Should be able to match.
-                    if (pol_batch[SampleBatch.AGENT_INDEX][t] ==
-                            pol_batch[SampleBatch.AGENT_INDEX][t - 1] and
-                            pol_batch[SampleBatch.EPS_ID][t] ==
-                            pol_batch[SampleBatch.EPS_ID][t - 1]):
-                        self.assertTrue((obs_t == next_obs_t_m_1).all())
-                        self.assertTrue((state_in_0 == state_out_0_t_m_1).all())
-                        self.assertTrue((state_in_1 == state_out_1_t_m_1).all())
-                    # Different trajectory.
-                    else:
-                        self.assertFalse((obs_t == next_obs_t_m_1).all())
-                        self.assertFalse((state_in_0 == state_out_0_t_m_1).all())
-                        self.assertFalse((state_in_1 == state_out_1_t_m_1).all())
-                        # Check initial 0-internal states.
-                        if pol_batch["dones"][t - 1]:
-                            self.assertTrue((state_in_0 == 0.0).all())
-                            self.assertTrue((state_in_1 == 0.0).all())
-
-                # Check initial 0-internal states (at ts==0; obs[3] is always
-                # the ts).
-                if pol_batch["obs"][t][3] == 0:
-                    self.assertTrue((state_in_0 == 0.0).all())
-                    self.assertTrue((state_in_1 == 0.0).all())
-
-                # Check prev. a/r values.
-                if t < pol_batch.count - 1:
-                    prev_actions_t_p_1 = pol_batch["prev_actions"][t + 1]
-                    prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
-                    # Same trajectory as for t+1 -> Should be able to match.
-                    if pol_batch[SampleBatch.AGENT_INDEX][t] == \
-                            pol_batch[SampleBatch.AGENT_INDEX][t + 1] and \
-                            pol_batch[SampleBatch.EPS_ID][t] == \
-                            pol_batch[SampleBatch.EPS_ID][t + 1]:
-                        self.assertTrue((a_t == prev_actions_t_p_1).all())
-                        self.assertTrue(r_t == prev_rewards_t_p_1)
-                    # Different (new) trajectory. Assume t-1 (prev-a/r) to be
-                    # always 0.0s.
-                    else:
-                        self.assertTrue((prev_actions_t_p_1 == 0).all())
-                        self.assertTrue(prev_rewards_t_p_1 == 0.0)
-
-            # Check seq-lens.
-            #for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
-            #    if seq_len < rollout_fragment_length - 1:
-            #        # At least in the beginning, the next slots should always
-            #        # be empty (once all agent slots have been used once, these
-            #        # may be filled with "old" values (from longer sequences)).
-            #        if iteration < 8:
-            #            self.assertTrue(
-            #                (pol_batch["obs"][seq_len +
-            #                                  1][agent_slot] == 0.0).all())
-            #            self.assertTrue(
-            #                (pol_batch["rewards"][seq_len][agent_slot] == 0.0
-            #                 ).all())
-            #            self.assertTrue(
-            #                (pol_batch["actions"][seq_len][agent_slot] == 0.0
-            #                 ).all())
-            #        self.assertFalse(
-            #            (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
+def analyze_rnn_batch(batch, max_seq_len):
+    count = batch.count
+    
+    # Check prev_reward/action, next_obs consistency.
+    for idx in range(count):
+        # If timestep tracked by batch, good.
+        if "t" in batch:
+            ts = batch["t"][idx]
+        # Else, ts
+        else:
+            ts = batch["obs"][idx][3]
+        obs_t = batch["obs"][idx]
+        a_t = batch["actions"][idx]
+        r_t = batch["rewards"][idx]
+        state_in_0 = batch["state_in_0"][idx]
+        state_in_1 = batch["state_in_1"][idx]
+        
+        # Check postprocessing outputs.
+        if "postprocessed_column" in batch:
+            postprocessed_col_t = batch["postprocessed_column"][idx]
+            assert (obs_t == postprocessed_col_t / 2.0).all()
+        
+        # Check state-in/out and next-obs values.
+        if idx > 0:
+            next_obs_t_m_1 = batch["new_obs"][idx - 1]
+            state_out_0_t_m_1 = batch["state_out_0"][idx - 1]
+            state_out_1_t_m_1 = batch["state_out_1"][idx - 1]
+            # Same trajectory as for t-1 -> Should be able to match.
+            if (batch[SampleBatch.AGENT_INDEX][idx] ==
+                    batch[SampleBatch.AGENT_INDEX][idx - 1] and
+                    batch[SampleBatch.EPS_ID][idx] ==
+                    batch[SampleBatch.EPS_ID][idx - 1]):
+                assert batch["unroll_id"][idx - 1] == batch["unroll_id"][idx]
+                assert (obs_t == next_obs_t_m_1).all()
+                assert (state_in_0 == state_out_0_t_m_1).all()
+                assert (state_in_1 == state_out_1_t_m_1).all()
+            # Different trajectory.
+            else:
+                assert batch["unroll_id"][idx - 1] != batch["unroll_id"][idx]
+                assert not (obs_t == next_obs_t_m_1).all()
+                assert not (state_in_0 == state_out_0_t_m_1).all()
+                assert not (state_in_1 == state_out_1_t_m_1).all()
+                # Check initial 0-internal states.
+                if ts == 0:
+                    assert (state_in_0 == 0.0).all()
+                    assert (state_in_1 == 0.0).all()
+        
+        # Check initial 0-internal states (at ts=0).
+        if ts == 0:
+            assert (state_in_0 == 0.0).all()
+            assert (state_in_1 == 0.0).all()
+        
+        # Check prev. a/r values.
+        if idx < count - 1:
+            prev_actions_t_p_1 = batch["prev_actions"][idx + 1]
+            prev_rewards_t_p_1 = batch["prev_rewards"][idx + 1]
+            # Same trajectory as for t+1 -> Should be able to match.
+            if batch[SampleBatch.AGENT_INDEX][idx] == \
+                    batch[SampleBatch.AGENT_INDEX][idx + 1] and \
+                    batch[SampleBatch.EPS_ID][idx] == \
+                    batch[SampleBatch.EPS_ID][idx + 1]:
+                assert (a_t == prev_actions_t_p_1).all()
+                assert r_t == prev_rewards_t_p_1
+            # Different (new) trajectory. Assume t-1 (prev-a/r) to be
+            # always 0.0s. [3]=ts
+            elif ts == 0:
+                assert (prev_actions_t_p_1 == 0).all()
+                assert prev_rewards_t_p_1 == 0.0
+    
+    pad_batch_to_sequences_of_same_size(
+        batch, max_seq_len=max_seq_len,
+        shuffle=False, batch_divisibility_req=1)
+    
+    # Check after seq-len 0-padding.
+    cursor = 0
+    for i, seq_len in enumerate(batch["seq_lens"]):
+        state_in_0 = batch["state_in_0"][i]
+        state_in_1 = batch["state_in_1"][i]
+        for j in range(seq_len):
+            k = cursor + j
+            ts = batch["t"][k]
+            obs_t = batch["obs"][k]
+            a_t = batch["actions"][k]
+            r_t = batch["rewards"][k]
+            
+            # Check postprocessing outputs.
+            if "postprocessed_column" in batch:
+                postprocessed_col_t = batch["postprocessed_column"][k]
+                assert (obs_t == postprocessed_col_t / 2.0).all()
+            
+            # Check state-in/out and next-obs values.
+            if j > 0:
+                next_obs_t_m_1 = batch["new_obs"][k - 1]
+                # state_out_0_t_m_1 = batch["state_out_0"][k - 1]
+                # state_out_1_t_m_1 = batch["state_out_1"][k - 1]
+                # Always same trajectory as for t-1.
+                assert batch["unroll_id"][k - 1] == batch["unroll_id"][k]
+                assert (obs_t == next_obs_t_m_1).all()
+                # assert (state_in_0 == state_out_0_t_m_1).all())
+                # assert (state_in_1 == state_out_1_t_m_1).all())
+            # Check initial 0-internal states.
+            elif ts == 0:
+                assert (state_in_0 == 0.0).all()
+                assert (state_in_1 == 0.0).all()
+        
+        for j in range(seq_len, max_seq_len):
+            k = cursor + j
+            obs_t = batch["obs"][k]
+            a_t = batch["actions"][k]
+            r_t = batch["rewards"][k]
+            assert (obs_t == 0.0).all()
+            assert (a_t == 0.0).all()
+            assert (r_t == 0.0).all()
+        
+        cursor += max_seq_len
 
 
 if __name__ == "__main__":

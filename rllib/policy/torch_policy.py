@@ -340,6 +340,9 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        #from ray.rllib.policy.rnn_sequencing import analyze_rnn_batch
+        #analyze_rnn_batch(postprocessed_batch,
+        #                  self.config["rollout_fragment_length"], self.model.model_config["max_seq_len"])  # TODO
         # Get batch ready for RNNs, if applicable.
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
