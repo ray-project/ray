@@ -32,30 +32,25 @@ RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
+RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/ray/gcs/redis_module/libray_redis_module.so")
+    RAY_PATH, "core/src/ray/gcs/redis_module/libray_redis_module.so")
 
 # Location of the plasma object store executable.
 PLASMA_STORE_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
+    RAY_PATH, "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/ray/raylet/raylet" + EXE_SUFFIX)
+RAYLET_EXECUTABLE = os.path.join(RAY_PATH,
+                                 "core/src/ray/raylet/raylet" + EXE_SUFFIX)
 GCS_SERVER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    os.path.abspath(os.path.dirname(os.path.dirname(__file__))),
-    "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+    RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -638,8 +633,7 @@ def start_reaper(fate_share=None):
             # other user processes.
             return None
 
-    reaper_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
+    reaper_filepath = os.path.join(RAY_PATH, "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
     process_info = start_ray_process(
         command,
@@ -934,8 +928,7 @@ def start_log_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    log_monitor_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "log_monitor.py")
+    log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
     command = [
         sys.executable,
         "-u",
@@ -976,8 +969,7 @@ def start_reporter(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    reporter_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "reporter.py")
+    reporter_filepath = os.path.join(RAY_PATH, "reporter.py")
     command = [
         sys.executable, "-u", reporter_filepath,
         f"--redis-address={redis_address}", f"--port={port}",
@@ -1051,9 +1043,7 @@ def start_dashboard(require_dashboard,
         dashboard_dir = "dashboard"
         logdir = None
 
-    dashboard_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), dashboard_dir,
-        "dashboard.py")
+    dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
         sys.executable,
         "-u",
@@ -1328,9 +1318,7 @@ def start_raylet(redis_address,
     agent_command = [
         sys.executable,
         "-u",
-        os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "new_dashboard/agent.py"),
+        os.path.join(RAY_PATH, "new_dashboard/agent.py"),
         "--redis-address={}".format(redis_address),
         "--metrics-export-port={}".format(metrics_export_port),
         "--node-manager-port={}".format(node_manager_port),
@@ -1401,7 +1389,7 @@ def start_raylet(redis_address,
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
-    current_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    current_dir = RAY_PATH
     jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
     if not os.path.exists(jars_dir):
         raise RuntimeError("Ray jars is not packaged into ray. "
@@ -1730,8 +1718,7 @@ def start_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "monitor.py")
+    monitor_path = os.path.join(RAY_PATH, "monitor.py")
     command = [
         sys.executable,
         "-u",
