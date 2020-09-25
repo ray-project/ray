@@ -16,8 +16,8 @@ const std::string ResourceEnumToString(PredefinedResources resource) {
     label = ray::kTPU_ResourceLabel;
     break;
   default:
-    // RAY_CHECK(false) << "Something went wrong. Please file a bug report with this stack
-    // trace: https://github.com/ray-project/ray/issues/new.";
+    RAY_CHECK(false) << "Something went wrong. Please file a bug report with this stack "
+                        "trace: https://github.com/ray-project/ray/issues/new.";
     break;
   }
   return label;

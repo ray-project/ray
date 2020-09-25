@@ -195,8 +195,8 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
     RAY_CHECK(false) << "TODO";
   } else {
     // TODO (Alex): Implement the 1-CPU task optimization.
-    for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end(); it++) {
-      auto &task = std::get<0>(*it);
+    for (const auto &work : tasks_to_schedule_) {
+      auto &task = std::get<0>(work);
       auto &resources =
           task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
 
@@ -223,8 +223,8 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
       }
     }
 
-    for (auto it = tasks_to_dispatch_.begin(); it != tasks_to_dispatch_.end(); it++) {
-      auto &task = std::get<0>(*it);
+    for (const auto &work : tasks_to_dispatch_) {
+      auto &task = std::get<0>(work);
       auto &resources =
           task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
 
