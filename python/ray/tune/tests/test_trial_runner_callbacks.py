@@ -4,7 +4,6 @@ import sys
 import tempfile
 import time
 import unittest
-from typing import Dict
 
 import ray
 from ray import tune
@@ -21,36 +20,29 @@ class TestCallback(Callback):
     def __init__(self):
         self.state = {}
 
-    def on_step_begin(self, trial_runner: "TrialRunner"):
-        self.state["step_begin"] = trial_runner.__getstate__()
+    def on_step_begin(self, **info):
+        self.state["step_begin"] = info
 
-    def on_step_end(self, trial_runner: "TrialRunner"):
-        self.state["step_end"] = trial_runner.__getstate__()
+    def on_step_end(self, **info):
+        self.state["step_end"] = info
 
-    def on_trial_start(self, trial_runner: "TrialRunner", trial: Trial):
-        self.state["trial_start"] = (trial_runner.__getstate__(),
-                                     trial.__getstate__())
+    def on_trial_start(self, **info):
+        self.state["trial_start"] = info
 
-    def on_trial_restore(self, trial_runner: "TrialRunner", trial: Trial):
-        self.state["trial_restore"] = (trial_runner.__getstate__(),
-                                       trial.__getstate__())
+    def on_trial_restore(self, **info):
+        self.state["trial_restore"] = info
 
-    def on_trial_save(self, trial_runner: "TrialRunner", trial: Trial):
-        self.state["trial_save"] = (trial_runner.__getstate__(),
-                                    trial.__getstate__())
+    def on_trial_save(self, **info):
+        self.state["trial_save"] = info
 
-    def on_trial_result(self, trial_runner: "TrialRunner", trial: Trial,
-                        result: Dict):
-        self.state["trial_result"] = (trial_runner.__getstate__(),
-                                      trial.__getstate__(), result)
+    def on_trial_result(self, **info):
+        self.state["trial_result"] = info
 
-    def on_trial_complete(self, trial_runner: "TrialRunner", trial: Trial):
-        self.state["trial_complete"] = (trial_runner.__getstate__(),
-                                        trial.__getstate__())
+    def on_trial_complete(self, **info):
+        self.state["trial_complete"] = info
 
-    def on_trial_fail(self, trial_runner: "TrialRunner", trial: Trial):
-        self.state["trial_fail"] = (trial_runner.__getstate__(),
-                                    trial.__getstate__())
+    def on_trial_fail(self, **info):
+        self.state["trial_fail"] = info
 
 
 class _MockTrialExecutor(RayTrialExecutor):
@@ -96,9 +88,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.trial_runner.step()
 
         # Trial 1 has been started
-        self.assertEqual(self.callback.state["trial_start"][0]["_iteration"],
-                         0)
-        self.assertEqual(self.callback.state["trial_start"][1]["trial_id"],
+        self.assertEqual(self.callback.state["trial_start"]["iteration"], 0)
+        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id,
                          "one")
 
         # All these events haven't happened, yet
@@ -111,15 +102,14 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.trial_runner.step()
 
         # Iteration not increased yet
-        self.assertEqual(self.callback.state["step_begin"]["_iteration"], 1)
+        self.assertEqual(self.callback.state["step_begin"]["iteration"], 1)
 
         # Iteration increased
-        self.assertEqual(self.callback.state["step_end"]["_iteration"], 2)
+        self.assertEqual(self.callback.state["step_end"]["iteration"], 2)
 
         # Second trial has been just started
-        self.assertEqual(self.callback.state["trial_start"][0]["_iteration"],
-                         1)
-        self.assertEqual(self.callback.state["trial_start"][1]["trial_id"],
+        self.assertEqual(self.callback.state["trial_start"]["iteration"], 1)
+        self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id,
                          "two")
 
         cp = Checkpoint(Checkpoint.PERSISTENT, "__checkpoint",
@@ -128,8 +118,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Let the first trial save a checkpoint
         trials[0].saving_to = cp
         self.trial_runner.step()
-        self.assertEqual(self.callback.state["trial_save"][0]["_iteration"], 2)
-        self.assertEqual(self.callback.state["trial_save"][1]["trial_id"],
+        self.assertEqual(self.callback.state["trial_save"]["iteration"], 2)
+        self.assertEqual(self.callback.state["trial_save"]["trial"].trial_id,
                          "one")
 
         # Let the second trial send a result
@@ -141,20 +131,19 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.executor.results[trials[1]] = trials[1].last_result
         self.executor.next_trial = trials[1]
         self.trial_runner.step()
-        self.assertEqual(self.callback.state["trial_result"][0]["_iteration"],
-                         3)
-        self.assertEqual(self.callback.state["trial_result"][1]["trial_id"],
+        self.assertEqual(self.callback.state["trial_result"]["iteration"], 3)
+        self.assertEqual(self.callback.state["trial_result"]["trial"].trial_id,
                          "two")
-        self.assertEqual(self.callback.state["trial_result"][2]["metric"], 800)
+        self.assertEqual(
+            self.callback.state["trial_result"]["result"]["metric"], 800)
 
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
         self.executor.results[trials[1]] = trials[1].last_result
         self.trial_runner.step()
-        self.assertEqual(self.callback.state["trial_restore"][0]["_iteration"],
-                         4)
-        self.assertEqual(self.callback.state["trial_restore"][1]["trial_id"],
-                         "two")
+        self.assertEqual(self.callback.state["trial_restore"]["iteration"], 4)
+        self.assertEqual(
+            self.callback.state["trial_restore"]["trial"].trial_id, "two")
 
         # Let the second trial finish
         trials[1].restoring_from = None
@@ -164,16 +153,15 @@ class TrialRunnerCallbacks(unittest.TestCase):
             "done": True
         }
         self.trial_runner.step()
+        self.assertEqual(self.callback.state["trial_complete"]["iteration"], 5)
         self.assertEqual(
-            self.callback.state["trial_complete"][0]["_iteration"], 5)
-        self.assertEqual(self.callback.state["trial_complete"][1]["trial_id"],
-                         "two")
+            self.callback.state["trial_complete"]["trial"].trial_id, "two")
 
         # Let the first trial error
         self.executor.failed_trial = trials[0]
         self.trial_runner.step()
-        self.assertEqual(self.callback.state["trial_fail"][0]["_iteration"], 6)
-        self.assertEqual(self.callback.state["trial_fail"][1]["trial_id"],
+        self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)
+        self.assertEqual(self.callback.state["trial_fail"]["trial"].trial_id,
                          "one")
 
     def testCallbacksEndToEnd(self):
@@ -196,14 +184,15 @@ class TrialRunnerCallbacks(unittest.TestCase):
             raise_on_failed_trial=False,
             callbacks=[self.callback])
 
-        self.assertEqual(self.callback.state["trial_fail"][1]["config"]["do"],
-                         "fail")
-        self.assertEqual(self.callback.state["trial_save"][1]["config"]["do"],
-                         "save")
         self.assertEqual(
-            self.callback.state["trial_result"][1]["config"]["do"], "delay")
+            self.callback.state["trial_fail"]["trial"].config["do"], "fail")
         self.assertEqual(
-            self.callback.state["trial_complete"][1]["config"]["do"], "delay")
+            self.callback.state["trial_save"]["trial"].config["do"], "save")
+        self.assertEqual(
+            self.callback.state["trial_result"]["trial"].config["do"], "delay")
+        self.assertEqual(
+            self.callback.state["trial_complete"]["trial"].config["do"],
+            "delay")
 
 
 if __name__ == "__main__":

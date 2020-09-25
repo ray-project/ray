@@ -527,8 +527,8 @@ This simple callback just prints a metric each time a result is received:
 
 
     class MyCallback(Callback):
-        def on_trial_result(self, trial_runner, trial, result):
-            print(f"Got result: {result['metric']}")
+        def on_trial_result(self, **info):
+            print(f"Got result: {info['result']['metric']}")
 
 
     def train(config):
