@@ -7,10 +7,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray.util.placement_group import (
-    PlacementGroup,
-    check_placement_group_index,
-    get_current_placement_group
-)
+    PlacementGroup, check_placement_group_index, get_current_placement_group)
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -421,7 +418,7 @@ class ActorClass:
                 lifetime=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
-                placement_group_capture_child_tasks=True):
+                placement_group_capture_child_tasks=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -481,7 +478,7 @@ class ActorClass:
                 lifetime=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
-                placement_group_capture_child_tasks=True):
+                placement_group_capture_child_tasks=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -575,11 +572,17 @@ class ActorClass:
         else:
             raise ValueError("lifetime must be either `None` or 'detached'")
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                ray.runtime_context.get_runtime_context()
+                .should_capture_parent_placement_group)
+
         if placement_group is None:
             if placement_group_capture_child_tasks:
                 placement_group = get_current_placement_group()
-            else:
-                placement_group = PlacementGroup.empty()
+
+        if not placement_group:
+            placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)
@@ -657,6 +660,7 @@ class ActorClass:
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
+            placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu))
 

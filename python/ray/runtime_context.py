@@ -54,6 +54,16 @@ class RuntimeContext(object):
         """
         return self.worker.placement_group_id
 
+    @property
+    def should_capture_parent_placement_group(self):
+        """Get if the current task should capture parent's placement group.
+
+        Returns:
+            Return True if the current task should implicitly
+                capture the parent placement group.
+        """
+        return self.worker.should_capture_parent_placement_group
+
 
 _runtime_context = None
 

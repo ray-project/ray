@@ -160,6 +160,10 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
+    def should_capture_parent_placement_group(self):
+        return self.core_worker.should_capture_parent_placement_group()
+
+    @property
     def current_session_and_job(self):
         """Get the current session index and job id as pair."""
         assert isinstance(self._session_index, int)
@@ -1702,7 +1706,8 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index, placement_group_capture_child_tasks)
+                placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
