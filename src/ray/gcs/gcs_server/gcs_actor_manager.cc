@@ -392,20 +392,19 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end() &&
-      iter->second->GetState() == rpc::ActorTableData::ALIVE) {
-    // In case of temporary network failures, workers will re-send multiple duplicate
-    // requests to GCS server.
-    // In this case, we can just reply.
-    success_callback(iter->second);
-    return Status::OK();
-  }
-
-  auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
-  if (pending_register_iter != actor_to_register_callbacks_.end()) {
-    // It is a duplicate message, just mark the callback as pending and invoke it after
-    // the actor has been flushed to the storage.
-    pending_register_iter->second.emplace_back(std::move(success_callback));
+  if (iter != registered_actors_.end()) {
+    auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
+    if (pending_register_iter != actor_to_register_callbacks_.end()) {
+      // 1. Worker send RegisterActor request to GCS server.
+      // 2. Worker receives some network errors.
+      // 3. Worker re-send the RegisterActor request to GCS server.
+      pending_register_iter->second.emplace_back(std::move(success_callback));
+    } else {
+      // 1. Worker send RegisterActor request to GCS server.
+      // 2. GCS server flushed the actor and restarted before replied to the worker.
+      // 3. Worker re-send RegisterActor request to GCS server.
+      success_callback(iter->second);
+    }
     return Status::OK();
   }
 
@@ -422,17 +421,12 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   actor_to_register_callbacks_[actor_id].emplace_back(std::move(success_callback));
-
-  // If GCS restarts before reply to GCS client and after writes to storage,
-  // GCS client will resend the `RegisterActor` request. After GCS restarts,
-  // `registered_actors_` and `unresolved_actors_` may recover data from storage, so we
-  // override them directly without checking.
   registered_actors_.emplace(actor->GetActorID(), actor);
 
   const auto &owner_address = actor->GetOwnerAddress();
   auto node_id = ClientID::FromBinary(owner_address.raylet_id());
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID());
+  RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
   if (!actor->IsDetached()) {
     // This actor is owned. Send a long polling request to the actor's
@@ -479,8 +473,12 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
 
   auto iter = registered_actors_.find(actor_id);
-  if (iter != registered_actors_.end() &&
-      iter->second->GetState() == rpc::ActorTableData::ALIVE) {
+  if (iter == registered_actors_.end()) {
+    RAY_LOG(WARNING) << "Actor " << actor_id << " may be already destroyed.";
+    return Status::Invalid("Actor may be already destroyed.");
+  }
+
+  if (iter->second->GetState() == rpc::ActorTableData::ALIVE) {
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
     // In this case, we can just reply.
@@ -498,6 +496,14 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // Mark the callback as pending and invoke it after the actor has been successfully
   // created.
   actor_to_create_callbacks_[actor_id].emplace_back(std::move(callback));
+
+  // If GCS restarts while processing `CreateActor` request, GCS client will resend the
+  // `CreateActor` request.
+  // After GCS restarts, the state of the actor may not be `DEPENDENCIES_UNREADY`.
+  if (iter->second->GetState() != rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+    RAY_LOG(INFO) << "Actor is already in the process of creation. Skip it directly.";
+    return Status::OK();
+  }
 
   // Remove the actor from the unresolved actor map.
   auto actor = std::make_shared<GcsActor>(request.task_spec());
@@ -1054,12 +1060,7 @@ void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &act
   if (iter != unresolved_actors_.end()) {
     auto it = iter->second.find(worker_id);
     RAY_CHECK(it != iter->second.end());
-
-    // If GCS restarts while processing `CreateActor` request, GCS client will resend the
-    // `CreateActor` request.
-    // After GCS restarts, the ID of the actor owned by the worker may be empty, so we
-    // erase it directly without checking.
-    it->second.erase(actor->GetActorID());
+    RAY_CHECK(it->second.erase(actor->GetActorID()) != 0);
     if (it->second.empty()) {
       iter->second.erase(it);
       if (iter->second.empty()) {
