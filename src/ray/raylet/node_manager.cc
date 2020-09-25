@@ -1849,7 +1849,6 @@ void NodeManager::HandleCancelResourceReserve(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(INFO) << "Request to cancel reserved resource is received, "
                 << bundle_spec.DebugString();
-  const auto &resource_set = bundle_spec.GetRequiredResources();
 
   // Kill all workers that are currently associated with the placement group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
@@ -1875,30 +1874,13 @@ void NodeManager::HandleCancelResourceReserve(
     KillWorker(worker);
   }
 
-  // We should commit resources if it weren't because
-  // ReturnBundleResources requires resources to be committed when it is called.
-  auto it = bundle_state_map_.find(bundle_spec.BundleId());
-  if (it == bundle_state_map_.end()) {
-    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
-    return;
+  // Return bundle resources.
+  if (ReturnBundleResources(bundle_spec)) {
+    // Call task dispatch to assign work to the released resources.
+    TryLocalInfeasibleTaskScheduling();
+    DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-  const auto &bundle_state = it->second;
-  if (bundle_state->state == CommitState::PREPARED) {
-    CommitBundle(cluster_resource_map_, bundle_spec);
-  }
-  bundle_state_map_.erase(it);
-
-  // Return resources.
-  for (auto resource : resource_set.GetResourceMap()) {
-    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
-                                                     bundle_spec.Index(), resource.first);
-  }
-  cluster_resource_map_[self_node_id_].ReturnBundleResources(
-      bundle_spec.PlacementGroupId(), bundle_spec.Index());
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  // Call task dispatch to assign work to the released resources.
-  TryLocalInfeasibleTaskScheduling();
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
@@ -2047,10 +2029,14 @@ bool NodeManager::PrepareBundle(
     std::unordered_map<NodeID, SchedulingResources> &resource_map,
     const BundleSpecification &bundle_spec) {
   // We will first delete the existing bundle to ensure idempotent.
-  // The reason why we do this is: after GCS restarts, placement group can be rescheduled directly
-  // without rolling back the operations performed before the restart.
+  // The reason why we do this is: after GCS restarts, placement group can be rescheduled
+  // directly without rolling back the operations performed before the restart.
   const auto &bundle_id = bundle_spec.BundleId();
-  bundle_state_map_.erase(bundle_id);
+  if (bundle_state_map_.contains(bundle_id)) {
+    // If there was a bundle in prepare state, it already locked resources, we will return
+    // bundle resources.
+    ReturnBundleResources(bundle_spec);
+  }
 
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented. If the resource map contains the local raylet, update load
@@ -3510,6 +3496,31 @@ void NodeManager::RecordMetrics() {
   stats::LiveActors().Record(statistical_data.live_actors);
   stats::RestartingActors().Record(statistical_data.restarting_actors);
   stats::DeadActors().Record(statistical_data.dead_actors);
+}
+
+bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {
+  // We should commit resources if it weren't because
+  // ReturnBundleResources requires resources to be committed when it is called.
+  auto it = bundle_state_map_.find(bundle_spec.BundleId());
+  if (it == bundle_state_map_.end()) {
+    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
+    return false;
+  }
+  const auto &bundle_state = it->second;
+  if (bundle_state->state == CommitState::PREPARED) {
+    CommitBundle(cluster_resource_map_, bundle_spec);
+  }
+  bundle_state_map_.erase(it);
+
+  // Return resources.
+  const auto &resource_set = bundle_spec.GetRequiredResources();
+  for (const auto &resource : resource_set.GetResourceMap()) {
+    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
+                                                     bundle_spec.Index(), resource.first);
+  }
+  cluster_resource_map_[self_node_id_].ReturnBundleResources(
+      bundle_spec.PlacementGroupId(), bundle_spec.Index());
+  return true;
 }
 
 }  // namespace raylet
