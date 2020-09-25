@@ -4,9 +4,9 @@ import sys
 from unittest.mock import patch
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
-from ray.autoscaler._private.command_runner import CommandRunnerInterface, \
-    SSHCommandRunner, _with_environment_variables, DockerCommandRunner, \
-    KubernetesCommandRunner
+from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.autoscaler._private.command_runner import SSHCommandRunner, \
+    DockerCommandRunner, KubernetesCommandRunner, _with_environment_variables
 from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
 from getpass import getuser
 import hashlib
