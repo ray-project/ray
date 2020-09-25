@@ -23,7 +23,8 @@ def NamespacedKubernetesSyncer(namespace):
 
         from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
         tune.run(train,
-                 sync_to_driver=NamespacedKubernetesSyncer("ray"))
+                 sync_config=tune.SyncConfig(
+                     sync_to_driver=NamespacedKubernetesSyncer("ray")))
 
     """
 
