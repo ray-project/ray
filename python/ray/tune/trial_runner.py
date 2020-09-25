@@ -192,7 +192,7 @@ class Callback:
         Keyword Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been completed.
+            trial (Trial): Trial that just has errored.
         """
         pass
 
