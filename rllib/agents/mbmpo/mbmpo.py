@@ -345,18 +345,18 @@ def execution_plan(workers: WorkerSet,
     sync_stats(workers)
 
     # Dropping metrics from the first iteration
-    episodes, to_be_collected = collect_episodes(
+    _, _ = collect_episodes(
         workers.local_worker(),
         workers.remote_workers(), [],
         timeout_seconds=9999)
 
-    # Metrics Collector
+    # Metrics Collector.
     metric_collect = CollectMetrics(
         workers,
         min_history=0,
         timeout_seconds=config["collect_metrics_timeout"])
 
-    inner_steps = config["inner_adaptation_steps"]
+    num_inner_steps = config["inner_adaptation_steps"]
 
     def inner_adaptation_steps(itr):
         buf = []
@@ -374,7 +374,7 @@ def execution_plan(workers: WorkerSet,
             prefix = "DynaTrajInner_" + str(adapt_iter)
             metrics = post_process_metrics(prefix, workers, metrics)
 
-            if len(split) > inner_steps:
+            if len(split) > num_inner_steps:
                 out = SampleBatch.concat_samples(buf)
                 out["split"] = np.array(split)
                 buf = []
@@ -385,7 +385,7 @@ def execution_plan(workers: WorkerSet,
             else:
                 inner_adaptation(workers, samples)
 
-    # Iterator for Inner Adaptation Data gathering (from pre->post adaptation)
+    # Iterator for Inner Adaptation Data gathering (from pre->post adaptation).
     rollouts = from_actors(workers.remote_workers())
     rollouts = rollouts.batch_across_shards()
     rollouts = rollouts.transform(inner_adaptation_steps)
