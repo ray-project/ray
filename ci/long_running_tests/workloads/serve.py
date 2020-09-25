@@ -24,13 +24,6 @@ for i in range(num_nodes):
         redis_max_memory=redis_max_memory,
         dashboard_host="0.0.0.0")
 
-print("Downloading load testing tool")
-subprocess.call([
-    "bash", "-c", "rm hey_linux_amd64 || true;"
-    "wget https://storage.googleapis.com/hey-release/hey_linux_amd64;"
-    "chmod +x hey_linux_amd64"
-])
-
 ray.init(address=cluster.address, dashboard_host="0.0.0.0")
 client = serve.start()
 
