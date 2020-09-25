@@ -2160,7 +2160,7 @@ void NodeManager::ScheduleTasks(
     task_dependency_manager_.TaskPending(task);
     move_task_set.insert(task.GetTaskSpecification().TaskId());
 
-    // This block is used to surpress infeasible task warning.
+    // This block is used to suppress infeasible task warning.
     bool suppress_warning = false;
     const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
     const auto &resources_map = required_resources.GetResourceMap();
@@ -2170,9 +2170,9 @@ void NodeManager::ScheduleTasks(
     // suppressed. It is currently only used by placement group ready API. We don't want
     // to have this in ray_config_def.h because the use case is very narrow, and we don't
     // want to expose this anywhere.
-    double INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER = 0.0101;
+    double INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101;
     if (it != resources_map.end() &&
-        it->second == INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER) {
+        it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
       suppress_warning = true;
     }
 

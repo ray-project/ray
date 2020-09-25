@@ -847,7 +847,7 @@ def test_capture_child_tasks(ray_start_cluster):
     assert len(node_id_set) == 1
 
 
-def test_ready_warning_surpressed(ray_start_regular, error_pubsub):
+def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
     p = error_pubsub
     # Create an infeasible pg.
     pg = ray.util.placement_group([{"CPU": 2}] * 2, strategy="STRICT_PACK")
