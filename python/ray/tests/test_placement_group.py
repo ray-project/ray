@@ -11,8 +11,9 @@ import ray
 from ray.test_utils import get_other_nodes, wait_for_condition
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup,
-                                      get_current_placement_group)
+from ray.util.placement_group import (
+    PlacementGroup,
+    get_current_placement_group)
 
 
 def test_placement_group_pack(ray_start_cluster):
@@ -811,6 +812,7 @@ def test_capture_child_tasks(ray_start_cluster):
     # doesn't belong to any of placement group, it should return None.
     assert get_current_placement_group() is None
 
+    # Test actors first.
     @ray.remote(num_cpus=1)
     class NestedActor:
         def ready(self):
@@ -825,8 +827,10 @@ def test_capture_child_tasks(ray_start_cluster):
             return True
 
         def schedule_nested_actor(self):
-            actor = NestedActor.options(
-                placement_group=get_current_placement_group()).remote()
+            # Make sure we can capture the current placement group.
+            assert get_current_placement_group() is not None
+            # Actors should be implicitly captured.
+            actor = NestedActor.remote()
             ray.get(actor.ready.remote())
             self.actors.append(actor)
 
@@ -844,6 +848,29 @@ def test_capture_child_tasks(ray_start_cluster):
 
     # Since all node id should be identical, set should be equal to 1.
     assert len(node_id_set) == 1
+
+    # Kill an actor and wait until it is killed.
+    ray.kill(a)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    # Now create an actor, but do not capture the current tasks
+    a = Actor.options(
+        placement_group=pg,
+        placement_group_capture_child_tasks=False).remote()
+    ray.get(a.ready.remote())
+    # 1 top level actor + 3 children.
+    for _ in range(total_num_actors - 1):
+        ray.get(a.schedule_nested_actor.remote())
+    # Make sure all the actors are scheduled on the same node.
+    # (why? The placement group has STRICT_PACK strategy).
+    node_id_set = set()
+    for actor_info in ray.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+
+    # Since all node id should be identical, set should be equal to 1.
+    assert len(node_id_set) == 2
 
 
 if __name__ == "__main__":

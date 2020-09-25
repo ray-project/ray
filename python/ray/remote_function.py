@@ -63,7 +63,8 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
-                 placement_group, placement_group_bundle_index):
+                 placement_group, placement_group_bundle_index,
+                 placement_group_capture_child_tasks):
         self._language = language
         self._function = function
         self._function_name = (
@@ -135,6 +136,7 @@ class RemoteFunction:
                 max_retries=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=True,
                 name=""):
         """Configures and overrides the task invocation parameters.
 
@@ -168,6 +170,8 @@ class RemoteFunction:
                     max_retries=max_retries,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks),
                     name=name)
 
         return FuncWrapper()
@@ -185,6 +189,7 @@ class RemoteFunction:
                 max_retries=None,
                 placement_group=None,
                 placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=True,
                 name=""):
         """Submit the remote function for execution."""
         worker = ray.worker.global_worker
@@ -221,7 +226,10 @@ class RemoteFunction:
             max_retries = self._max_retries
 
         if placement_group is None:
-            placement_group = PlacementGroup.empty()
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+            else:
+                placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
                                     placement_group_bundle_index)

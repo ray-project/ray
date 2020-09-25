@@ -1671,7 +1671,8 @@ def make_decorator(num_returns=None,
                    max_task_retries=None,
                    worker=None,
                    placement_group=None,
-                   placement_group_bundle_index=-1):
+                   placement_group_bundle_index=-1,
+                   placement_group_capture_child_tasks=True):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1701,7 +1702,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index)
+                placement_group_bundle_index, placement_group_capture_child_tasks)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1831,6 +1832,9 @@ def remote(*args, **kwargs):
         placement_group_bundle_index (int): The index of the bundle
             if the task belongs to a placement group, which may be
             -1 to indicate any available bundle.
+        placement_group_capture_child_tasks (bool): Default True.
+            If True, all the child tasks (including actor creation)
+            are scheduled in the same placement group.
 
     """
     worker = global_worker
@@ -1864,6 +1868,7 @@ def remote(*args, **kwargs):
             "max_retries",
             "placement_group",
             "placement_group_bundle_index",
+            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
