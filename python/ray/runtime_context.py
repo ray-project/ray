@@ -58,6 +58,8 @@ class RuntimeContext(object):
     def should_capture_parent_placement_group(self):
         """Get if the current task should capture parent's placement group.
 
+        This returns True if it is called inside a driver.
+
         Returns:
             Return True if the current task should implicitly
                 capture the parent placement group.
