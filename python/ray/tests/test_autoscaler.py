@@ -11,7 +11,7 @@ import sys
 from jsonschema.exceptions import ValidationError
 
 import ray
-import ray.services as services
+import ray._private.services as services
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.docker import DOCKER_MOUNT_PREFIX
