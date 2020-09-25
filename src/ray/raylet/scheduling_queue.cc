@@ -69,7 +69,9 @@ bool TaskQueue::AppendTask(const TaskID &task_id, const Task &task) {
   task_map_[task_id] = list_iterator;
   // Resource bookkeeping
   total_resource_load_.AddResources(task.GetTaskSpecification().GetRequiredResources());
-  resource_load_by_shape_[task.GetTaskSpecification().GetSchedulingClass()]++;
+  const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  resource_load_by_shape_[scheduling_class]++;
+  request_backlog_by_shape_[scheduling_class] += task.BacklogSize();
   return true;
 }
 
@@ -87,6 +89,10 @@ bool TaskQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tas
   resource_load_by_shape_[scheduling_class]--;
   if (resource_load_by_shape_[scheduling_class] == 0) {
     resource_load_by_shape_.erase(scheduling_class);
+  }
+  request_backlog_by_shape_[scheduling_class] -= it->BacklogSize();
+  if (request_backlog_by_shape_[scheduling_class] == 0) {
+    request_backlog_by_shape_.erase(scheduling_class);
   }
   if (removed_tasks) {
     removed_tasks->push_back(std::move(*it));
@@ -115,6 +121,10 @@ const ResourceSet &TaskQueue::GetTotalResourceLoad() const {
 const std::unordered_map<SchedulingClass, uint64_t> &TaskQueue::GetResourceLoadByShape()
     const {
   return resource_load_by_shape_;
+}
+
+const std::unordered_map<SchedulingClass, int64_t> &TaskQueue::GetRequestBacklogByShape() const {
+  return request_backlog_by_shape_;
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
@@ -166,6 +176,7 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
   auto infeasible_queue_load =
       task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetResourceLoadByShape();
   auto ready_queue_load = ready_queue_->GetResourceLoadByShape();
+  auto backlog_size_load = ready_queue_->GetRequestBacklogByShape();
   size_t max_shapes_to_add = ready_queue_load.size() + infeasible_queue_load.size();
   if (max_shapes >= 0) {
     max_shapes_to_add = max_shapes;
@@ -186,6 +197,9 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
       load[one_cpu_scheduling_cls].set_num_ready_requests_queued(
           ready_queue_load.at(one_cpu_scheduling_cls));
     }
+    if (backlog_size_load.count(one_cpu_scheduling_cls) > 0) {
+      load[one_cpu_scheduling_cls].set_backlog_size(backlog_size_load.at(one_cpu_scheduling_cls));
+    }
   }
 
   // Collect the infeasible queue's load.
@@ -201,6 +215,13 @@ rpc::ResourceLoad SchedulingQueue::GetResourceLoadByShape(int64_t max_shapes) co
   while (ready_it != ready_queue_load.end() && load.size() < max_shapes_to_add) {
     load[ready_it->first].set_num_ready_requests_queued(ready_it->second);
     ready_it++;
+  }
+
+  // Collect the ready queue's load.
+  auto backlog_it = backlog_size_load.begin();
+  while (backlog_it != backlog_size_load.end() && load.size() < max_shapes_to_add) {
+    load[backlog_it->first].set_backlog_size(backlog_it->second);
+    backlog_it++;
   }
 
   // Set the resource shapes.
