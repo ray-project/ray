@@ -30,7 +30,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.updater import NodeUpdaterThread
-from ray.autoscaler._private.command_runner import set_using_login_shells, \
+from ray.autoscaler.command_runner import set_using_login_shells, \
                                           set_rsync_silent
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.worker import global_worker
