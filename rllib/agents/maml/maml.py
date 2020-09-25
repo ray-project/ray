@@ -66,8 +66,8 @@ DEFAULT_CONFIG = with_common_config({
 def set_worker_tasks(workers, use_meta_env):
     if use_meta_env:
         n_tasks = len(workers.remote_workers())
-        tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(
-            n_tasks)
+        tasks = workers.local_worker().foreach_env(lambda x: x)[
+            0].sample_tasks(n_tasks)
         for i, worker in enumerate(workers.remote_workers()):
             worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
 
@@ -196,7 +196,8 @@ def execution_plan(workers, config):
 
     # Metaupdate Step
     train_op = rollouts.for_each(
-        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect, use_meta_env))
+        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect,
+                   use_meta_env))
     return train_op
 
 

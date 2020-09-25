@@ -1,3 +1,4 @@
+# Same configs as Pendulum
 cartpole-maml:
     env: CartPole-v0
     run: MAML
