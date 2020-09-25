@@ -57,7 +57,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a get, the plasma
@@ -98,7 +98,7 @@ ray.get(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a worker dies in the middle of a wait, the plasma
@@ -136,7 +136,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a wait, the plasma
@@ -177,7 +177,7 @@ ray.wait([ray.ObjectRef(ray.utils.hex_to_binary("{}"))])
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 if __name__ == "__main__":

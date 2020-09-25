@@ -2,7 +2,7 @@ import logging
 import time
 
 import numpy as np
-import ray.services as services
+import ray._private.services as services
 from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 logger = logging.getLogger(__name__)
