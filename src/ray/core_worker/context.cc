@@ -48,10 +48,19 @@ struct WorkerThreadContext {
 
   void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
 
+  const PlacementGroupID &GetCurrentPlacementGroupId() const {
+    return current_placement_group_id_;
+  }
+
+  void SetCurrentPlacementGroupId(const PlacementGroupID &placement_group_id) {
+    current_placement_group_id_ = placement_group_id;
+  }
+
   void SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
+    SetCurrentPlacementGroupId(task_spec.PlacementGroupId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
@@ -74,6 +83,13 @@ struct WorkerThreadContext {
   /// A running counter for the number of object puts carried out in the current task.
   /// Used to calculate the object index for put object ObjectIDs.
   int put_counter_;
+
+  /// Placement group id that the current task belongs to.
+  /// NOTE: The top level `WorkerContext` will also have placement_group_id
+  ///   which is set when actors are created. It is because we'd like to keep track
+  ///   thread local placement group id for tasks, and the process placement group id for
+  ///   actors.
+  PlacementGroupID current_placement_group_id_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -85,6 +101,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
       worker_id_(worker_id),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       current_actor_id_(ActorID::Nil()),
+      current_actor_placement_group_id_(PlacementGroupID::Nil()),
       main_thread_id_(boost::this_thread::get_id()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
@@ -108,6 +125,15 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
+const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
+  // If the worker is an actor, we should return the actor's placement group id.
+  if (current_actor_id_ != ActorID::Nil()) {
+    return current_actor_placement_group_id_;
+  } else {
+    return GetThreadContext().GetCurrentPlacementGroupId();
+  }
+}
+
 void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
@@ -128,6 +154,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
+    current_actor_placement_group_id_ = task_spec.PlacementGroupId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());

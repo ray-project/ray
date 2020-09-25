@@ -1330,6 +1330,7 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   int port = message->port();
   worker->Connect(port);
   if (is_worker) {
+    worker_pool_.OnWorkerStarted(worker);
     HandleWorkerAvailable(worker->Connection());
   }
 }
@@ -1397,36 +1398,34 @@ void NodeManager::ProcessDisconnectClientMessage(
   RAY_CHECK(!(is_worker && is_driver));
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
-  if (worker) {
-    if (is_worker && worker->IsDead()) {
-      // If the worker was killed by us because the driver exited,
-      // treat it as intentionally disconnected.
-      intentional_disconnect = true;
-      // Don't need to unblock the client if it's a worker and is already dead.
-      // Because in this case, its task is already cleaned up.
-      RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-    } else {
-      // Clean up any open ray.get calls that the worker made.
-      while (!worker->GetBlockedTaskIds().empty()) {
-        // NOTE(swang): AsyncResolveObjectsFinish will modify the worker, so it is
-        // not safe to pass in the iterator directly.
-        const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        AsyncResolveObjectsFinish(client, task_id, true);
-      }
-      // Clean up any open ray.wait calls that the worker made.
-      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+  if (is_worker && worker->IsDead()) {
+    // If the worker was killed by us because the driver exited,
+    // treat it as intentionally disconnected.
+    intentional_disconnect = true;
+    // Don't need to unblock the client if it's a worker and is already dead.
+    // Because in this case, its task is already cleaned up.
+    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
+  } else {
+    // Clean up any open ray.get calls that the worker made.
+    while (!worker->GetBlockedTaskIds().empty()) {
+      // NOTE(swang): AsyncResolveObjectsFinish will modify the worker, so it is
+      // not safe to pass in the iterator directly.
+      const TaskID task_id = *worker->GetBlockedTaskIds().begin();
+      AsyncResolveObjectsFinish(client, task_id, true);
     }
-
-    // Erase any lease metadata.
-    leased_workers_.erase(worker->WorkerId());
-
-    // Publish the worker failure.
-    auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-        self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
-        time(nullptr), intentional_disconnect);
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
-                                                                 nullptr));
+    // Clean up any open ray.wait calls that the worker made.
+    task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
   }
+
+  // Erase any lease metadata.
+  leased_workers_.erase(worker->WorkerId());
+
+  // Publish the worker failure.
+  auto worker_failure_data_ptr =
+      gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
+                                   worker->Port(), time(nullptr), intentional_disconnect);
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
@@ -1813,8 +1812,8 @@ void NodeManager::HandlePrepareBundleResources(
   // TODO(sang): Port this onto the new scheduler.
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "bundle prepare request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
+                 << bundle_spec.DebugString();
   auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
   if (!prepared) {
     reply->set_success(false);
@@ -1834,8 +1833,8 @@ void NodeManager::HandleCommitBundleResources(
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
 
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(DEBUG) << "Received bundle commit request " << bundle_spec.BundleId().first
-                 << bundle_spec.BundleId().second;
+  RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
+                 << bundle_spec.DebugString();
   CommitBundle(cluster_resource_map_, bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1849,9 +1848,9 @@ void NodeManager::HandleCancelResourceReserve(
     rpc::CancelResourceReserveReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(!new_scheduler_enabled_) << "Not implemented";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
-  RAY_LOG(INFO) << "bundle return resource request " << bundle_spec.BundleId().first
-                << bundle_spec.BundleId().second;
-  auto resource_set = bundle_spec.GetRequiredResources();
+  RAY_LOG(INFO) << "Request to cancel reserved resource is received, "
+                << bundle_spec.DebugString();
+  const auto &resource_set = bundle_spec.GetRequiredResources();
 
   // Kill all workers that are currently associated with the placement group.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;

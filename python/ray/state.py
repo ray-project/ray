@@ -6,6 +6,7 @@ import time
 
 import ray
 
+from google.protobuf.json_format import MessageToDict
 from ray import (
     gcs_utils,
     services,
@@ -423,7 +424,10 @@ class GlobalState:
                 placement_group_info.placement_group_id),
             "name": placement_group_info.name,
             "bundles": {
-                bundle.bundle_id.bundle_index: bundle.unit_resources
+                # The value here is needs to be dictionarified
+                # otherwise, the payload becomes unserializable.
+                bundle.bundle_id.bundle_index:
+                MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -754,20 +758,8 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
-    def available_resources(self):
-        """Get the current available cluster resources.
-
-        This is different from `cluster_resources` in that this will return
-        idle (available) resources rather than total resources.
-
-        Note that this information can grow stale as tasks start and finish.
-
-        Returns:
-            A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
-        """
-        self._check_connected()
-
+    def _available_resources_per_node(self):
+        """Returns a dictionary mapping node id to avaiable resources."""
         available_resources_by_id = {}
 
         subscribe_client = self.redis_client.pubsub(
@@ -803,14 +795,32 @@ class GlobalState:
                 if client_id not in client_ids:
                     del available_resources_by_id[client_id]
 
+        # Close the pubsub clients to avoid leaking file descriptors.
+        subscribe_client.close()
+
+        return available_resources_by_id
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        self._check_connected()
+
+        available_resources_by_id = self._available_resources_per_node()
+
         # Calculate total available resources
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():
                 total_available_resources[resource_id] += num_available
-
-        # Close the pubsub clients to avoid leaking file descriptors.
-        subscribe_client.close()
 
         return dict(total_available_resources)
 
