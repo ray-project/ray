@@ -417,7 +417,8 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                override_worker_env=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -455,7 +456,8 @@ class ActorClass:
                     name=name,
                     lifetime=lifetime,
                     placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index)
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    override_worker_env=override_worker_env)
 
         return ActorOptionWrapper()
 
@@ -474,7 +476,8 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                override_worker_env=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -508,6 +511,7 @@ class ActorClass:
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
+            override_worker_env: TODO(simon) document
 
         Returns:
             A handle to the newly created actor.
@@ -645,7 +649,8 @@ class ActorClass:
             placement_group.id,
             placement_group_bundle_index,
             # Store actor_method_cpu in actor handle's extension data.
-            extension_data=str(actor_method_cpu))
+            extension_data=str(actor_method_cpu),
+            override_worker_env=override_worker_env or dict())
 
         actor_handle = ActorHandle(
             meta.language,

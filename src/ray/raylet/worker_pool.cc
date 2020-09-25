@@ -165,10 +165,10 @@ WorkerPool::~WorkerPool() {
   }
 }
 
-Process WorkerPool::StartWorkerProcess(const Language &language,
-                                       const rpc::WorkerType worker_type,
-                                       const JobID &job_id,
-                                       std::vector<std::string> dynamic_options) {
+Process WorkerPool::StartWorkerProcess(
+    const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+    std::vector<std::string> dynamic_options,
+    std::unordered_map<std::string, std::string> override_worker_env) {
   rpc::JobConfig *job_config = nullptr;
   if (RayConfig::instance().enable_multi_tenancy()) {
     RAY_CHECK(!job_id.IsNil());
@@ -314,7 +314,12 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   ProcessEnvironment env;
   if (RayConfig::instance().enable_multi_tenancy()) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
+
+    for (const auto &pair : override_worker_env) {
+      env[pair.first] = pair.second;
+    }
   }
+
   Process proc = StartProcess(worker_command_args, env);
   if (RayConfig::instance().enable_multi_tenancy()) {
     // If the pid is reused between processes, the old process must have exited.
@@ -723,7 +728,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
+  if (task_spec.IsActorCreationTask() && (!task_spec.DynamicWorkerOptions().empty() ||
+                                          (RayConfig::instance().enable_multi_tenancy() &&
+                                           task_spec.OverrideWorkerEnv().size() > 0))) {
     // Code path of actor creation task with dynamic worker options.
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
@@ -739,7 +746,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), task_spec.DynamicWorkerOptions());
+                                task_spec.JobId(), task_spec.DynamicWorkerOptions(),
+                                task_spec.OverrideWorkerEnv());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
@@ -760,6 +768,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     } else {
       // Find an available worker which is already assigned to this job.
       // Try to pop the most recently pushed worker.
+      RAY_LOG(ERROR) << "THERE";
       for (auto it = idle_of_all_languages.rbegin(); it != idle_of_all_languages.rend();
            it++) {
         if (task_spec.GetLanguage() != (*it)->GetLanguage() ||

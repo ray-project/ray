@@ -75,7 +75,8 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
+      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      const std::unordered_map<std::string, std::string> &override_worker_env = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -85,7 +86,8 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
-        placement_options(placement_options){};
+        placement_options(placement_options),
+        override_worker_env(override_worker_env){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -117,6 +119,8 @@ struct ActorCreationOptions {
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
   PlacementOptions placement_options;
+  // TODO(simon): document
+  const std::unordered_map<std::string, std::string> override_worker_env;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

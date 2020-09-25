@@ -226,6 +226,12 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+std::unordered_map<std::string, std::string> TaskSpecification::OverrideWorkerEnv()
+    const {
+  RAY_CHECK(IsActorCreationTask());
+  return MapFromProtobuf(message_->actor_creation_task_spec().override_worker_env());
+}
+
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
 }

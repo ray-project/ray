@@ -258,9 +258,10 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             std::vector<std::string> dynamic_options = {});
+  Process StartWorkerProcess(
+      const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      std::vector<std::string> dynamic_options = {},
+      std::unordered_map<std::string, std::string> override_worker_env = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,

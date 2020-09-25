@@ -155,6 +155,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
+  std::unordered_map<std::string, std::string> OverrideWorkerEnv() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
