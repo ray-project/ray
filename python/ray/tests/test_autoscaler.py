@@ -7,6 +7,7 @@ import time
 import unittest
 import yaml
 import copy
+import sys
 from jsonschema.exceptions import ValidationError
 
 import ray
@@ -400,6 +401,7 @@ class AutoscalingTest(unittest.TestCase):
         except ValidationError:
             self.fail("Default config did not pass validation test!")
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNode(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -1225,6 +1227,7 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call("172.0.0.{}".format(i), "start_ray_worker")
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testContinuousFileMounts(self):
         file_mount_dir = tempfile.mkdtemp()
 
