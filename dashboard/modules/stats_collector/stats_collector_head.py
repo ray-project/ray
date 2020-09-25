@@ -11,7 +11,7 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import async_loop_forever
-from ray.new_dashboard.memory import GroupByType, SortingType
+from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
