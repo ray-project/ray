@@ -53,9 +53,9 @@ time_to_run = "60m"
 while True:
     proc = subprocess.Popen(
         [
-        "wrk", "-c",
-        str(connections), "-t",
-        str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/echo"
+            "wrk", "-c",
+            str(connections), "-t",
+            str(num_threads), "-s", time_to_run, "http://127.0.0.1:8000/echo"
         ],
         stdout=PIPE,
         stderr=PIPE)
