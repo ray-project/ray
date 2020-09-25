@@ -144,7 +144,7 @@ def _get_node_provider(provider_config: Dict[str, Any],
 
 
 def _get_default_config(provider_config: Dict[str, Any]
-    ) -> Union[Dict[str, Any], 'NotImplemented']:
+                        ) -> Union[Dict[str, Any], 'NotImplemented']:
     if provider_config["type"] == "external":
         return {}
     load_config = _DEFAULT_CONFIGS.get(provider_config["type"])
@@ -169,7 +169,8 @@ class NodeProvider:
     immediately to terminated when `terminate_node` is called.
     """
 
-    def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
+    def __init__(self, provider_config: Dict[str, Any],
+                 cluster_name: str) -> None:
         self.provider_config = provider_config
         self.cluster_name = cluster_name
 
@@ -195,7 +196,8 @@ class NodeProvider:
         """Return whether the specified node is terminated."""
         raise NotImplementedError
 
-    def node_tags(self, node_id: str) -> Union[Dict[str, str], 'NotImplemented']:
+    def node_tags(self,
+                  node_id: str) -> Union[Dict[str, str], 'NotImplemented']:
         """Returns the tags of the given node (string dict)."""
         raise NotImplementedError
 
@@ -207,7 +209,8 @@ class NodeProvider:
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
 
-    def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str], count: int) -> None:
+    def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str],
+                    count: int) -> None:
         """Creates a number of nodes within the namespace."""
         raise NotImplementedError
 
@@ -273,6 +276,7 @@ class NodeProvider:
         else:
             return SSHCommandRunner(**common_args)
 
-    def prepare_for_head_node(self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+    def prepare_for_head_node(
+            self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Returns a new cluster config with custom configs for head node."""
         return cluster_config
