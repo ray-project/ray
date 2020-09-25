@@ -4,7 +4,7 @@ from typing import Dict, Optional, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import AgentID, EpisodeID, PolicyID, \
+from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class _SampleCollector(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def add_init_obs(self, episode_id: EpisodeID, agent_id: AgentID,
+    def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      policy_id: PolicyID, init_obs: TensorType) -> None:
         """Adds an initial obs (after reset) to this collector.
 
@@ -42,10 +42,11 @@ class _SampleCollector(metaclass=ABCMeta):
         called for that same agent/episode-pair.
 
         Args:
-            episode_id (EpisodeID): Unique id for the episode we are adding
-                values for.
+            episode (MultiAgentEpisode): The MultiAgentEpisode, for which we
+                are adding an Agent's initial observation.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
+            env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
             init_obs (TensorType): Initial observation (after env.reset()).
 
@@ -53,7 +54,7 @@ class _SampleCollector(metaclass=ABCMeta):
             >>> obs = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
             >>> obs, r, done, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })
         """
@@ -61,7 +62,8 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
-                                   agent_id: AgentID, policy_id: PolicyID,
+                                   agent_id: AgentID, env_id: EnvID,
+                                   policy_id: PolicyID, agent_done: bool,
                                    values: Dict[str, TensorType]) -> None:
         """Add the given dictionary (row) of values to this collector.
 
@@ -75,7 +77,10 @@ class _SampleCollector(metaclass=ABCMeta):
                 values for.
             agent_id (AgentID): Unique id for the agent we are adding
                 values for.
+            env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
+            agent_done (bool): Whether the given agent is done with its
+                trajectory (the multi-agent episode may still be ongoing).
             values (Dict[str, TensorType]): Row of values to add for this
                 agent. This row must contain the keys SampleBatch.ACTION,
                 REWARD, NEW_OBS, and DONE.
@@ -84,7 +89,7 @@ class _SampleCollector(metaclass=ABCMeta):
             >>> obs = env.reset()
             >>> collector.add_init_obs(12345, 0, "pol0", obs)
             >>> obs, r, done, info = env.step(action)
-            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", {
+            >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
             ... })
         """
@@ -137,20 +142,10 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def has_non_postprocessed_data(self) -> bool:
-        """Returns whether there is pending, unprocessed data.
-
-        Returns:
-            bool: True if there is at least some data that has not been
-                postprocessed yet.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
-                            check_dones: bool = False,
-                            cut_at_env_step: Optional[int] = None) -> None:
+                            is_done: bool = False,
+                            check_dones: bool = False) -> None:
         """TODO: returns MultiAgentBatch if Apply postprocessing to unprocessed data (in one or all episodes).
 
         Generates (single-trajectory) SampleBatches for all Policies/Agents and
@@ -163,11 +158,26 @@ class _SampleCollector(metaclass=ABCMeta):
         Args:
             episode (MultiAgentEpisode): The Episode object for which
                 to post-process data.
-            check_dones (bool): Whether the given episode is actually
-                completely terminated (all agents are done) and we need to
-                check that all agents' trajectories have dones=True at the end.
-            cut_at_env_step (Optional[int]): Whether to only postprocess the
-                episode up until this env-step.
+            is_done (bool): Whether the given episode is actually terminated
+                (all agents are done).
+            check_dones (bool): Whether we need to check that all agents'
+                trajectories have dones=True at the end.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def build_multi_agent_batch(self, env_steps: int, perf_stats) -> \
+            Union[MultiAgentBatch, SampleBatch]:
+        """Builds a MultiAgentBatch of size=env_steps from the collected data.
+
+        Args:
+            env_steps (int): The sum of all env-steps (across all agents) taken
+                so far.
+
+        Returns:
+            Union[MultiAgentBatch, SampleBatch]: Returns the accumulated
+                sample batches for each policy inside one MultiAgentBatch
+                object (or a simple SampleBatch if only one policy).
         """
         raise NotImplementedError
 

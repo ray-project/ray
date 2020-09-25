@@ -190,6 +190,124 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                             sampler_perf_wo["mean_action_processing_ms"])
             self.assertLess(duration_w, duration_wo)
 
+    def test_traj_view_lstm_functionality(self):
+        action_space = Box(-float("inf"), float("inf"), shape=(3, ))
+        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        max_seq_len = 50
+        rollout_fragment_length = 200
+        assert rollout_fragment_length % max_seq_len == 0
+        policies = {
+            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+        }
+
+        def policy_fn(agent_id):
+            return "pol0"
+
+        rollout_worker = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config={
+                "multiagent": {
+                    "policies": policies,
+                    "policy_mapping_fn": policy_fn,
+                },
+                "_use_trajectory_view_api": True,
+                "model": {
+                    "use_lstm": True,
+                    "max_seq_len": max_seq_len,
+                },
+            },
+            rollout_fragment_length=rollout_fragment_length,
+            policy=policies,
+            policy_mapping_fn=policy_fn,
+            num_envs=1,
+        )
+        for iteration in range(20):
+            sc = rollout_worker.sampler.sample_collector
+            pc = sc.policy_collectors["pol0"]
+            buffers = pc.buffers
+            result = rollout_worker.sample()
+            pol_batch = result.policy_batches["pol0"]
+
+            self.assertTrue(result.count == rollout_fragment_length)
+            self.assertTrue(pol_batch.count >= rollout_fragment_length)
+
+            # Check prev_reward/action, next_obs consistency.
+            for t in range(pol_batch.count):
+                obs_t = pol_batch["obs"][t]
+                a_t = pol_batch["actions"][t]
+                r_t = pol_batch["rewards"][t]
+                state_in_0 = pol_batch["state_in_0"][t]
+                state_in_1 = pol_batch["state_in_1"][t]
+
+                # Check postprocessing outputs.
+                postprocessed_col_t = pol_batch["postprocessed_column"][t]
+                self.assertTrue((obs_t == postprocessed_col_t - 1.0).all())
+
+                # Check state-in/out and next-obs values.
+                if t > 0:
+                    next_obs_t_m_1 = pol_batch["new_obs"][t - 1]
+                    state_out_0_t_m_1 = pol_batch["state_out_0"][t - 1]
+                    state_out_1_t_m_1 = pol_batch["state_out_1"][t - 1]
+                    # Same trajectory as for t-1 -> Should be able to match.
+                    if (pol_batch[SampleBatch.AGENT_INDEX][t] ==
+                            pol_batch[SampleBatch.AGENT_INDEX][t - 1] and
+                            pol_batch[SampleBatch.EPS_ID][t] ==
+                            pol_batch[SampleBatch.EPS_ID][t - 1]):
+                        self.assertTrue((obs_t == next_obs_t_m_1).all())
+                        self.assertTrue((state_in_0 == state_out_0_t_m_1).all())
+                        self.assertTrue((state_in_1 == state_out_1_t_m_1).all())
+                    # Different trajectory.
+                    else:
+                        self.assertFalse((obs_t == next_obs_t_m_1).all())
+                        self.assertFalse((state_in_0 == state_out_0_t_m_1).all())
+                        self.assertFalse((state_in_1 == state_out_1_t_m_1).all())
+                        # Check initial 0-internal states.
+                        if pol_batch["dones"][t - 1]:
+                            self.assertTrue((state_in_0 == 0.0).all())
+                            self.assertTrue((state_in_1 == 0.0).all())
+
+                # Check initial 0-internal states (at ts==0; obs[3] is always
+                # the ts).
+                if pol_batch["obs"][t][3] == 0:
+                    self.assertTrue((state_in_0 == 0.0).all())
+                    self.assertTrue((state_in_1 == 0.0).all())
+
+                # Check prev. a/r values.
+                if t < pol_batch.count - 1:
+                    prev_actions_t_p_1 = pol_batch["prev_actions"][t + 1]
+                    prev_rewards_t_p_1 = pol_batch["prev_rewards"][t + 1]
+                    # Same trajectory as for t+1 -> Should be able to match.
+                    if pol_batch[SampleBatch.AGENT_INDEX][t] == \
+                            pol_batch[SampleBatch.AGENT_INDEX][t + 1] and \
+                            pol_batch[SampleBatch.EPS_ID][t] == \
+                            pol_batch[SampleBatch.EPS_ID][t + 1]:
+                        self.assertTrue((a_t == prev_actions_t_p_1).all())
+                        self.assertTrue(r_t == prev_rewards_t_p_1)
+                    # Different (new) trajectory. Assume t-1 (prev-a/r) to be
+                    # always 0.0s.
+                    else:
+                        self.assertTrue((prev_actions_t_p_1 == 0).all())
+                        self.assertTrue(prev_rewards_t_p_1 == 0.0)
+
+            # Check seq-lens.
+            #for agent_slot, seq_len in enumerate(pol_batch.seq_lens):
+            #    if seq_len < rollout_fragment_length - 1:
+            #        # At least in the beginning, the next slots should always
+            #        # be empty (once all agent slots have been used once, these
+            #        # may be filled with "old" values (from longer sequences)).
+            #        if iteration < 8:
+            #            self.assertTrue(
+            #                (pol_batch["obs"][seq_len +
+            #                                  1][agent_slot] == 0.0).all())
+            #            self.assertTrue(
+            #                (pol_batch["rewards"][seq_len][agent_slot] == 0.0
+            #                 ).all())
+            #            self.assertTrue(
+            #                (pol_batch["actions"][seq_len][agent_slot] == 0.0
+            #                 ).all())
+            #        self.assertFalse(
+            #            (pol_batch["obs"][seq_len][agent_slot] == 0.0).all())
+
 
 if __name__ == "__main__":
     import pytest

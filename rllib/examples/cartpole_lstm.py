@@ -19,10 +19,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True) #TODO
 
     configs = {
         "PPO": {
+            "_use_trajectory_view_api": False,
             "num_sgd_iter": 5,
             "vf_share_layers": True,
             "vf_loss_coeff": 0.0001,
@@ -50,7 +51,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

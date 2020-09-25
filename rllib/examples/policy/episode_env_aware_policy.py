@@ -1,3 +1,4 @@
+from gym.spaces import Box
 import numpy as np
 
 from ray.rllib.examples.policy.random_policy import RandomPolicy
@@ -13,8 +14,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.episode_id = None
-        self.env_id = None
+        self.state_space = Box(-1.0, 1.0, (1,))
 
         class _fake_model:
             pass
@@ -22,6 +22,7 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
         self.model = _fake_model()
         self.model.time_major = True
         self.model.inference_view_requirements = {
+            SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             "env_id": ViewRequirement(),
             SampleBatch.OBS: ViewRequirement(),
@@ -30,6 +31,14 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
             SampleBatch.PREV_REWARDS: ViewRequirement(
                 SampleBatch.REWARDS, shift=-1),
         }
+        for i in range(2):
+            self.model.inference_view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i), shift=-1, space=self.state_space)
+            self.model.inference_view_requirements[
+                "state_out_{}".format(i)] = \
+                ViewRequirement(space=self.state_space)
+
         self.view_requirements = dict(
             **{
                 SampleBatch.NEXT_OBS: ViewRequirement(
@@ -50,12 +59,18 @@ class EpisodeEnvAwarePolicy(RandomPolicy):
                                         explore=None,
                                         timestep=None,
                                         **kwargs):
-        self.episode_id = input_dict[SampleBatch.EPS_ID][0]
-        self.env_id = input_dict["env_id"][0]
-        # Always return (episodeID, envID)
-        return [
-            np.array([self.episode_id, self.env_id]) for _ in input_dict["obs"]
-        ], [], {}
+        # Always return [episodeID, envID] as actions.
+        actions = np.array([
+            [
+                input_dict[SampleBatch.AGENT_INDEX][i],
+                input_dict[SampleBatch.EPS_ID][i],
+                input_dict["env_id"][i]]
+            for i, _ in enumerate(input_dict["obs"])
+        ])
+        states = [
+            np.array([self.state_space.sample() for i in range(len(input_dict["obs"]))]) for _ in range(2)
+        ]
+        return actions, states, {}
 
     @override(Policy)
     def postprocess_trajectory(self,

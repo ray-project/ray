@@ -121,6 +121,7 @@ class TorchPolicy(Policy):
                 SampleBatch.REWARDS: ViewRequirement(shift=0),
                 SampleBatch.DONES: ViewRequirement(shift=0),
                 SampleBatch.EPS_ID: ViewRequirement(shift=0),
+                SampleBatch.AGENT_INDEX: ViewRequirement(shift=0),
             },
             **self.model.inference_view_requirements)
 
@@ -345,7 +346,6 @@ class TorchPolicy(Policy):
             max_seq_len=self.max_seq_len,
             shuffle=False,
             batch_divisibility_req=self.batch_divisibility_req,
-            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
         )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)

@@ -1074,6 +1074,7 @@ def _process_observations_w_trajectory_view_api(
                 values_dict = {
                     "t": episode.length - 1,
                     "eps_id": episode.episode_id,
+                    "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
                     "actions": prev_policy_outputs[policy_id][0][eval_idx],

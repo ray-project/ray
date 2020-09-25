@@ -269,17 +269,20 @@ def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
         Dict[str, ViewRequirement]: The Policy's view requirements.
     """
     return {
-        # Next obs are needed for PPO postprocessing.
+        # Next obs are needed for PPO postprocessing, but not in loss.
         SampleBatch.NEXT_OBS: ViewRequirement(
             SampleBatch.OBS, shift=1, used_for_training=False),
-        # VF preds are needed for the loss.
-        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
-        # Needed for postprocessing.
-        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
-        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
+        # Rewards not needed for loss function.
+        SampleBatch.REWARDS: ViewRequirement(used_for_training=False),
+
         # Created during postprocessing.
         Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
         Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
+
+        # Needed for loss function.
+        SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
+        SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
+        SampleBatch.VF_PREDS: ViewRequirement(shift=0),
     }
 
 
