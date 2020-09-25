@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List, Union
 
 import yaml
 
@@ -11,22 +11,22 @@ from ray.autoscaler._private.command_runner import \
 logger = logging.getLogger(__name__)
 
 
-def _import_aws(provider_config):
+def _import_aws(provider_config: Dict[str, Any]) -> Any:
     from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
     return AWSNodeProvider
 
 
-def _import_gcp(provider_config):
+def _import_gcp(provider_config: Dict[str, Any]) -> Any:
     from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
     return GCPNodeProvider
 
 
-def _import_azure(provider_config):
+def _import_azure(provider_config: Dict[str, Any]) -> Any:
     from ray.autoscaler._private.azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 
-def _import_local(provider_config):
+def _import_local(provider_config: Dict[str, Any]) -> Any:
     if "coordinator_address" in provider_config:
         from ray.autoscaler._private.local.coordinator_node_provider import (
             CoordinatorSenderNodeProvider)
@@ -37,53 +37,53 @@ def _import_local(provider_config):
         return LocalNodeProvider
 
 
-def _import_kubernetes(provider_config):
+def _import_kubernetes(provider_config: Dict[str, Any]) -> Any:
     from ray.autoscaler._private.kubernetes.node_provider import \
         KubernetesNodeProvider
     return KubernetesNodeProvider
 
 
-def _import_staroid(provider_config):
+def _import_staroid(provider_config: Dict[str, Any]) -> Any:
     from ray.autoscaler._private.staroid.node_provider import \
         StaroidNodeProvider
     return StaroidNodeProvider
 
 
-def _load_local_example_config():
+def _load_local_example_config() -> str:
     import ray.autoscaler.local as ray_local
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
 
 
-def _load_kubernetes_example_config():
+def _load_kubernetes_example_config() -> str:
     import ray.autoscaler.kubernetes as ray_kubernetes
     return os.path.join(
         os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
 
-def _load_aws_example_config():
+def _load_aws_example_config() -> str:
     import ray.autoscaler.aws as ray_aws
     return os.path.join(os.path.dirname(ray_aws.__file__), "example-full.yaml")
 
 
-def _load_gcp_example_config():
+def _load_gcp_example_config() -> str:
     import ray.autoscaler.gcp as ray_gcp
     return os.path.join(os.path.dirname(ray_gcp.__file__), "example-full.yaml")
 
 
-def _load_azure_example_config():
+def _load_azure_example_config() -> str:
     import ray.autoscaler.azure as ray_azure
     return os.path.join(
         os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
-def _load_staroid_example_config():
+def _load_staroid_example_config() -> str:
     import ray.autoscaler.staroid as ray_staroid
     return os.path.join(
         os.path.dirname(ray_staroid.__file__), "example-full.yaml")
 
 
-def _import_external(provider_config):
+def _import_external(provider_config: Dict[str, Any]) -> Any:
     provider_cls = _load_class(path=provider_config["module"])
     return provider_cls
 
@@ -118,7 +118,7 @@ _DEFAULT_CONFIGS = {
 }
 
 
-def _load_class(path):
+def _load_class(path: str) -> Any:
     """Load a class at runtime given a full path.
 
     Example of the path: mypkg.mysubpkg.myclass
@@ -134,7 +134,7 @@ def _load_class(path):
 
 
 def _get_node_provider(provider_config: Dict[str, Any],
-                       cluster_name: str) -> Any:
+                       cluster_name: str) -> Union[Any, 'NotImplemented']:
     importer = _NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError("Unsupported node provider: {}".format(
@@ -143,7 +143,8 @@ def _get_node_provider(provider_config: Dict[str, Any],
     return provider_cls(provider_config, cluster_name)
 
 
-def _get_default_config(provider_config):
+def _get_default_config(provider_config: Dict[str, Any]
+    ) -> Union[Dict[str, Any], 'NotImplemented']:
     if provider_config["type"] == "external":
         return {}
     load_config = _DEFAULT_CONFIGS.get(provider_config["type"])
@@ -168,11 +169,11 @@ class NodeProvider:
     immediately to terminated when `terminate_node` is called.
     """
 
-    def __init__(self, provider_config, cluster_name):
+    def __init__(self, provider_config: Dict[str, Any], cluster_name: str) -> None:
         self.provider_config = provider_config
         self.cluster_name = cluster_name
 
-    def non_terminated_nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
@@ -186,62 +187,62 @@ class NodeProvider:
         """
         raise NotImplementedError
 
-    def is_running(self, node_id):
+    def is_running(self, node_id: str) -> Union[bool, 'NotImplemented']:
         """Return whether the specified node is running."""
         raise NotImplementedError
 
-    def is_terminated(self, node_id):
+    def is_terminated(self, node_id: str) -> Union[bool, 'NotImplemented']:
         """Return whether the specified node is terminated."""
         raise NotImplementedError
 
-    def node_tags(self, node_id):
+    def node_tags(self, node_id: str) -> Union[Dict[str, str], 'NotImplemented']:
         """Returns the tags of the given node (string dict)."""
         raise NotImplementedError
 
-    def external_ip(self, node_id):
+    def external_ip(self, node_id: str) -> Union[str, 'NotImplemented']:
         """Returns the external ip of the given node."""
         raise NotImplementedError
 
-    def internal_ip(self, node_id):
+    def internal_ip(self, node_id: str) -> Union[str, 'NotImplemented']:
         """Returns the internal ip (Ray ip) of the given node."""
         raise NotImplementedError
 
-    def create_node(self, node_config, tags, count):
+    def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str], count: int) -> None:
         """Creates a number of nodes within the namespace."""
         raise NotImplementedError
 
-    def set_node_tags(self, node_id, tags):
+    def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
         """Sets the tag values (string dict) for the specified node."""
         raise NotImplementedError
 
-    def terminate_node(self, node_id):
+    def terminate_node(self, node_id: str) -> None:
         """Terminates the specified node."""
         raise NotImplementedError
 
-    def terminate_nodes(self, node_ids):
+    def terminate_nodes(self, node_ids: List[str]) -> None:
         """Terminates a set of nodes. May be overridden with a batch method."""
         for node_id in node_ids:
             logger.info("NodeProvider: "
                         "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean-up when a Provider is no longer required."""
         pass
 
     @staticmethod
-    def bootstrap_config(cluster_config):
+    def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Bootstraps the cluster config by adding env defaults if needed."""
         return cluster_config
 
     def get_command_runner(self,
-                           log_prefix,
-                           node_id,
-                           auth_config,
-                           cluster_name,
-                           process_runner,
-                           use_internal_ip,
-                           docker_config=None) -> Any:
+                           log_prefix: str,
+                           node_id: str,
+                           auth_config: Dict[str, Any],
+                           cluster_name: str,
+                           process_runner: Any,
+                           use_internal_ip: bool,
+                           docker_config: Dict[str, Any] = None) -> Any:
         """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
@@ -272,6 +273,6 @@ class NodeProvider:
         else:
             return SSHCommandRunner(**common_args)
 
-    def prepare_for_head_node(self, cluster_config):
+    def prepare_for_head_node(self, cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Returns a new cluster config with custom configs for head node."""
         return cluster_config
