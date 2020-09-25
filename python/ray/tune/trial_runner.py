@@ -10,7 +10,7 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
-from ray.services import get_node_ip_address
+from ray._private.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
