@@ -486,6 +486,14 @@ py_test(
     srcs = ["agents/maml/tests/test_maml.py"]
 )
 
+# MBMPOTrainer
+py_test(
+    name = "test_mbmpo",
+    tags = ["agents_dir"],
+    size = "medium",
+    srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",

@@ -19,7 +19,7 @@ class TDModel(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,
-                 hidden_layers=[512, 512],
+                 hidden_layers=(512, 512),
                  hidden_nonlinearity=None,
                  output_nonlinearity=None,
                  weight_normalization=False,
@@ -118,7 +118,7 @@ def process_samples(samples: SampleBatchType):
 
 
 class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
-    """Represents a Transition Dyamics ensemble
+    """Represents a Transition Dyamics ensemble.
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
@@ -317,10 +317,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             val[key] = samples[key][idx_test, :]
         return SampleBatch(train), SampleBatch(val)
 
-    """Used by worker who gather trajectories via TD models
-    """
-
     def predict_model_batches(self, obs, actions, device=None):
+        """Used by worker who gather trajectories via TD models.
+        """
         pre_obs = obs
         if self.normalize_data:
             obs = normalize(obs, self.normalizations[SampleBatch.CUR_OBS])

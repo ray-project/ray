@@ -1,13 +1,7 @@
 import numpy as np
-import scipy
-from typing import Union
 
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
+from ray.rllib.evaluation.postprocessing import discount_cumsum
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -67,13 +61,3 @@ def calculate_gae_advantages(paths, discount, gae_lambda):
             path_baselines[:-1]
         path["advantages"] = discount_cumsum(deltas, discount * gae_lambda)
     return paths
-
-
-def discount_cumsum(x, discount):
-    """
-        Returns:
-            (float) : y[t] - discount*y[t+1] = x[t] or rev(y)[t]
-            - discount*rev(y)[t-1] = rev(x)[t]
-        """
-    return scipy.signal.lfilter(
-        [1], [1, float(-discount)], x[::-1], axis=0)[::-1]

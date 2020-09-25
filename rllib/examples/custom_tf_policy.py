@@ -3,7 +3,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.evaluation.postprocessing import discount
+from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 
@@ -25,7 +25,7 @@ def calculate_advantages(policy,
                          sample_batch,
                          other_agent_batches=None,
                          episode=None):
-    sample_batch["returns"] = discount(sample_batch["rewards"], 0.99)
+    sample_batch["returns"] = discount_cumsum(sample_batch["rewards"], 0.99)
     return sample_batch
 
 
