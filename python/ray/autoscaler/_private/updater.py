@@ -1,5 +1,4 @@
 import click
-
 import logging
 import os
 import subprocess
