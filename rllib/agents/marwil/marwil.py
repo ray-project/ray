@@ -29,8 +29,8 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 1e-4,
     # Number of timesteps collected for each SGD round.
     "train_batch_size": 2000,
-    # Number of steps max to keep in the batch replay buffer.
-    "replay_buffer_size": 100000,
+    # Size of the replay buffer in batches (not timesteps!).
+    "replay_buffer_size": 1000,
     # Number of steps to read before learning starts.
     "learning_starts": 0,
     # === Parallelism ===

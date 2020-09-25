@@ -114,7 +114,7 @@ and heap memory to roughly 200 MB. This is conservative and should be set accord
 
 .. code-block:: bash
 
-    ray start --head --redis-port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
+    ray start --head --port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
 
 Execute the user script containing the Ray program.
 

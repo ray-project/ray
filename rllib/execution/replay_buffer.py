@@ -5,12 +5,16 @@ import platform
 import random
 from typing import List
 
-import ray
+# Import ray before psutil will make sure we use psutil's bundled version
+import ray  # noqa F401
+import psutil  # noqa E402
+
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.util.iter import ParallelIteratorWorker
+from ray.util.debug import log_once
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
@@ -19,6 +23,25 @@ from ray.rllib.utils.typing import SampleBatchType
 _ALL_POLICIES = "__all__"
 
 logger = logging.getLogger(__name__)
+
+
+def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
+    """Warn if the configured replay buffer size is too large."""
+    if log_once("replay_buffer_size"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = num_items * item_size / 1e9
+        msg = ("Estimated max memory usage for replay buffer is {} GB "
+               "({} batches of {} bytes each), "
+               "available system memory is {} GB".format(
+                   mem_size, num_items, item_size, total_gb))
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
+        else:
+            logger.info(msg)
 
 
 @DeveloperAPI
@@ -45,6 +68,7 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float):
+        warn_replay_buffer_size(item=item, num_items=self._maxsize)
         assert item.count > 0, item
         self._num_added += 1
 

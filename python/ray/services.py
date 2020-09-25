@@ -1097,7 +1097,8 @@ def start_gcs_server(redis_address,
                      config=None,
                      fate_share=None,
                      gcs_server_port=None,
-                     metrics_agent_port=None):
+                     metrics_agent_port=None,
+                     node_ip_address=None):
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
@@ -1110,6 +1111,7 @@ def start_gcs_server(redis_address,
             override defaults in RayConfig.
         gcs_server_port (int): Port number of the gcs server.
         metrics_agent_port(int): The port where metrics agent is bound to.
+        node_ip_address(str): IP Address of a node where gcs server starts.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1126,6 +1128,7 @@ def start_gcs_server(redis_address,
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
+        f"--node-ip-address={node_ip_address}",
     ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]

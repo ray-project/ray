@@ -362,7 +362,7 @@ def test_ray_options(shutdown_only):
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
-        assert without_options[key] != with_options[key]
+        assert without_options[key] != with_options[key], key
     assert without_options != with_options
 
 

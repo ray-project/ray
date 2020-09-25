@@ -122,6 +122,7 @@ test_core() {
       args+=(
         -//:redis_gcs_client_test
         -//:core_worker_test
+        -//:event_test
         -//:gcs_pub_sub_test
         -//:gcs_server_test
         -//:gcs_server_rpc_test
