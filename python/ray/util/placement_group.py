@@ -81,14 +81,9 @@ class PlacementGroup:
         # This number shouldn't be changed.
         # When it is specified, node manager won't warn about infeasible
         # tasks.
-        INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER = 0.0007
+        INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER = 0.0101
         for key, value in bundle.items():
             if value > 0:
-                if value < INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER:
-                    raise ValueError(
-                        "placement_group.ready() API cannot be used if there "
-                        "is resource quantity less than or equal to "
-                        f"{INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER}")
                 value = INFEASIBLE_TASK_SURPRESS_MAGIC_NUMBER
                 return key, value
         assert False, "This code should be unreachable."
