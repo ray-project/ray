@@ -242,7 +242,7 @@ class NodeProvider:
                            process_runner,
                            use_internal_ip,
                            docker_config=None) -> Any:
-        """ Returns the CommandRunner class used to perform SSH commands.
+        """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
         log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used
@@ -271,3 +271,7 @@ class NodeProvider:
             return DockerCommandRunner(docker_config, **common_args)
         else:
             return SSHCommandRunner(**common_args)
+
+    def prepare_for_head_node(self, cluster_config):
+        """Returns a new cluster config with custom configs for head node."""
+        return cluster_config

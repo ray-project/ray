@@ -162,6 +162,11 @@ remove_placement_group
 
 .. autofunction:: ray.util.placement_group.remove_placement_group
 
+get_current_placement_group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.util.placement_group.get_current_placement_group
+
 .. _custom-metric-api-ref:
 
 Custom Metrics APIs

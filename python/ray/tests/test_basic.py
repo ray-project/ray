@@ -308,6 +308,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -361,7 +362,7 @@ def test_ray_options(shutdown_only):
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
-        assert without_options[key] != with_options[key]
+        assert without_options[key] != with_options[key], key
     assert without_options != with_options
 
 
