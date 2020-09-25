@@ -101,7 +101,7 @@ def validate_config(config: TrainerConfigDict) -> None:
     Args:
         config (TrainerConfigDict): The Trainer's config to check.
 
-    Throws:
+    Raises:
         ValueError: In case something is wrong with the config.
     """
     if isinstance(config["entropy_coeff"], int):
@@ -284,4 +284,5 @@ PPOTrainer = build_trainer(
     validate_config=validate_config,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+)

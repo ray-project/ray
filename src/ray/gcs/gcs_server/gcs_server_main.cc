@@ -27,6 +27,7 @@ DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
+DEFINE_string(node_ip_address, "", "The ip address of the node.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -42,6 +43,7 @@ int main(int argc, char *argv[]) {
   const std::string config_list = FLAGS_config_list;
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
+  const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
   std::unordered_map<std::string, std::string> config_map;
@@ -75,6 +77,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
+  gcs_server_config.node_ip_address = node_ip_address;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

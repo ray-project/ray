@@ -121,6 +121,9 @@ class MetaUpdate:
         self.metrics = {}
 
     def __call__(self, data_tuple):
+        """Args:
+            data_tuple (tuple): 1st element is samples collected from MAML
+            Inner adaptation steps and 2nd element is accumulated metrics
         """
         Args:
             data_tuple (tuple): 1st element is samples collected from MAML.
@@ -187,7 +190,7 @@ class MetaUpdate:
     def postprocess_metrics(self, metrics, prefix=""):
         """Appends prefix to current metrics
 
-        Arguments:
+        Args:
             metrics (dict): Dictionary of current metrics
             prefix (str): Prefix string to be appended
         """

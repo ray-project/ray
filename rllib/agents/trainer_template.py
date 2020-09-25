@@ -160,11 +160,22 @@ def build_trainer(
         @staticmethod
         @override(Trainer)
         def with_updates(**overrides) -> Type[Trainer]:
-            """Build a copy of this trainer with the specified overrides.
+            """Build a copy of this trainer class with the specified overrides.
 
             Keyword Args:
                 overrides (dict): use this to override any of the arguments
                     originally passed to build_trainer() for this policy.
+
+            Returns:
+                Type[Trainer]: A the Trainer sub-class using `original_kwargs`
+                    and `overrides`.
+
+            Examples:
+                >>> MyClass = SomeOtherClass.with_updates({"name": "Mine"})
+                >>> issubclass(MyClass, SomeOtherClass)
+                ... False
+                >>> issubclass(MyClass, Trainer)
+                ... True
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 

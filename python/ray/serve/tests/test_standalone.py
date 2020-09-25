@@ -15,7 +15,7 @@ from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.test_utils import wait_for_condition
-from ray.services import new_port
+from ray._private.services import new_port
 
 
 @pytest.mark.skipif(

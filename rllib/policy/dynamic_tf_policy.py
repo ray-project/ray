@@ -80,7 +80,7 @@ class DynamicTFPolicy(TFPolicy):
             obs_include_prev_action_reward: bool = True):
         """Initialize a dynamic TF policy.
 
-        Arguments:
+        Args:
             observation_space (gym.spaces.Space): Observation space of the
                 policy.
             action_space (gym.spaces.Space): Action space of the policy.
