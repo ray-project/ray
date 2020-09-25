@@ -390,6 +390,7 @@ void NodeManager::Heartbeat() {
 
   if (new_scheduler_enabled_) {
     new_resource_scheduler_->Heartbeat(heartbeat_data, light_heartbeat_enabled_);
+    cluster_task_manager_->Heartbeat(heartbeat_data, light_heartbeat_enabled_);
   } else {
     // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet directly.
     // TODO(atumanov): implement a ResourceSet const_iterator.
