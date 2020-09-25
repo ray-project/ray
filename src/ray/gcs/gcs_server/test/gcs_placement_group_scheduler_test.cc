@@ -641,7 +641,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommitResources) {
 
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  gcs_node_manager_->RemoveNode(ClientID::FromBinary(node1->node_id()));
+  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
   WaitPendingDone(failure_placement_groups_, 1);
 }
