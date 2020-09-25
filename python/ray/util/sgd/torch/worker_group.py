@@ -464,7 +464,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
         return [local_call] + ray.get(remote_calls)
 
     def apply_all_workers(self, fn):
-        remote_calls = self.remote_worker_group.apply_all_workers(fn)
+        remote_calls = self.remote_worker_group._apply_all_workers(fn)
         local_call = self.local_worker.apply(fn)
         return [local_call] + ray.get(remote_calls)
 
