@@ -202,11 +202,10 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
 
       auto by_shape_entry = resource_load_by_shape->Add();
 
-      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
-           to_add_it++) {
+      for (const auto &resource : resources) {
         // Add to `resource_loads`.
-        auto label = to_add_it->first;
-        auto quantity = to_add_it->second;
+        auto label = resource.first;
+        auto quantity = resource.second;
         auto entry = resource_loads->find(label);
         if (entry == resource_loads->end()) {
           (*resource_loads)[label] = quantity;
