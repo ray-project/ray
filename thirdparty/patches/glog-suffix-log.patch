@@ -11,3 +11,17 @@ diff --git src/logging.cc src/logging.cc
      const string& time_pid_string = time_pid_stream.str();
  
      if (base_filename_selected_) {
+@@ -1146,6 +1147,10 @@ void LogFileObject::Write(bool force_flush,
+         return;
+       }
+     } else {
++      // NOTE(lingxuan.zlx): Why we need do this? Raylet process will never call
++      // StartRayLog, so all log items created by RayLog was erroneously rewritten
++      // to a special file in the tmp directory. To avoid this, we need to output
++      // the log directly to standard output so that the log is redirected to
++      // either raylet.out or raylet.err.
++      std::cout << std::string(message, message_len) << std::flush;
++      return;
+       // If no base filename for logs of this severity has been set, use a
+       // default base filename of
+       // "<program name>.<hostname>.<user name>.log.<severity level>.".  So
