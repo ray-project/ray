@@ -160,8 +160,8 @@ class Worker:
         return self.core_worker.get_placement_group_id()
 
     @property
-    def should_capture_parent_placement_group(self):
-        return self.core_worker.should_capture_parent_placement_group()
+    def should_capture_child_tasks_in_placement_group(self):
+        return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
     def current_session_and_job(self):

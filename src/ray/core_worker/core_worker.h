@@ -358,8 +358,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return worker_context_.GetCurrentPlacementGroupId();
   }
 
-  bool ShouldCaptureParentPlacementGroup() const {
-    return worker_context_.PlacementGroupCaptureChildTasks();
+  bool ShouldCaptureChildTasksInPlacementGroup() const {
+    return worker_context_.ShouldCaptureChildTasksInPlacementGroup();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);

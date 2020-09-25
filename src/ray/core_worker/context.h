@@ -37,7 +37,7 @@ class WorkerContext {
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const;
 
-  bool PlacementGroupCaptureChildTasks() const;
+  bool ShouldCaptureChildTasksInPlacementGroup() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentJobId(const JobID &job_id);

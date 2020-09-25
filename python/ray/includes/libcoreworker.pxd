@@ -124,7 +124,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         CClientID GetCurrentNodeId()
         CPlacementGroupID GetCurrentPlacementGroupId()
-        c_bool ShouldCaptureParentPlacementGroup()
+        c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
         void SetWebuiDisplay(const c_string &key, const c_string &message)

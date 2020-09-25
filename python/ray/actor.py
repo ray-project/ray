@@ -574,8 +574,7 @@ class ActorClass:
 
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
-                ray.runtime_context.get_runtime_context()
-                .should_capture_parent_placement_group)
+                worker.should_capture_child_tasks_in_placement_group)
 
         if placement_group is None:
             if placement_group_capture_child_tasks:

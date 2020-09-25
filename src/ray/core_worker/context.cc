@@ -100,8 +100,7 @@ struct WorkerThreadContext {
   ///   actors.
   PlacementGroupID current_placement_group_id_;
 
-  /// Whether or not if the current task should capture the parent's placement group
-  /// implicilty.
+  /// Whether or not child tasks are captured in the parent's placement group implicitly.
   bool placement_group_capture_child_tasks_ = true;
 };
 
@@ -148,7 +147,7 @@ const PlacementGroupID &WorkerContext::GetCurrentPlacementGroupId() const {
   }
 }
 
-bool WorkerContext::PlacementGroupCaptureChildTasks() const {
+bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   // If the worker is an actor, we should return the actor's placement group id.
   if (current_actor_id_ != ActorID::Nil()) {
     return placement_group_capture_child_tasks_;

@@ -796,9 +796,9 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker()
             .GetCurrentPlacementGroupId().Binary())
 
-    def should_capture_parent_placement_group(self):
+    def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
-            ).ShouldCaptureParentPlacementGroup()
+            ).ShouldCaptureChildTasksInPlacementGroup()
 
     def set_webui_display(self, key, message):
         CCoreWorkerProcess.GetCoreWorker().SetWebuiDisplay(key, message)

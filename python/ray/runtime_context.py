@@ -55,7 +55,7 @@ class RuntimeContext(object):
         return self.worker.placement_group_id
 
     @property
-    def should_capture_parent_placement_group(self):
+    def should_capture_child_tasks_in_placement_group(self):
         """Get if the current task should capture parent's placement group.
 
         This returns True if it is called inside a driver.
@@ -64,7 +64,7 @@ class RuntimeContext(object):
             Return True if the current task should implicitly
                 capture the parent placement group.
         """
-        return self.worker.should_capture_parent_placement_group
+        return self.worker.should_capture_child_tasks_in_placement_group
 
 
 _runtime_context = None
