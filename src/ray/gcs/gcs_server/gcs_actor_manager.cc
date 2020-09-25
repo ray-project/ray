@@ -395,14 +395,15 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   if (iter != registered_actors_.end()) {
     auto pending_register_iter = actor_to_register_callbacks_.find(actor_id);
     if (pending_register_iter != actor_to_register_callbacks_.end()) {
-      // 1. Worker send RegisterActor request to GCS server.
-      // 2. Worker receives some network errors.
-      // 3. Worker re-send the RegisterActor request to GCS server.
+      // 1. The GCS client sends the `RegisterActor` request to the GCS server.
+      // 2. The GCS client receives some network errors.
+      // 3. The GCS client resends the `RegisterActor` request to the GCS server.
       pending_register_iter->second.emplace_back(std::move(success_callback));
     } else {
-      // 1. Worker send RegisterActor request to GCS server.
-      // 2. GCS server flushed the actor and restarted before replied to the worker.
-      // 3. Worker re-send RegisterActor request to GCS server.
+      // 1. The GCS client sends the `RegisterActor` request to the GCS server.
+      // 2. The GCS server flushes the actor to the storage and restarts before replying
+      // to the GCS client.
+      // 3. The GCS client resends the `RegisterActor` request to the GCS server.
       success_callback(iter->second);
     }
     return Status::OK();
