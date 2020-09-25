@@ -102,6 +102,8 @@ void GcsNodeManager::NodeFailureDetector::SendBatchedHeartbeat() {
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
+        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                          demand.backlog_size());
       }
       heartbeat.second.clear_resource_load_by_shape();
 
