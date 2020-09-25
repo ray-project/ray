@@ -582,41 +582,6 @@ void NodeManager::SpillObjects(const std::vector<ObjectID> &objects_ids,
   });
 }
 
-void NodeManager::RestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids,
-    std::function<void(const ray::Status &)> callback) {
-  auto num_objects_remaining = std::make_shared<size_t>(object_ids.size());
-  auto final_status = std::make_shared<Status>();
-  for (const auto &object_id : object_ids) {
-    // TODO(swang): Fill in owner address.
-    object_directory_->LookupLocations(
-        object_id, rpc::Address(),
-        [this, final_status, num_objects_remaining, callback](
-            const ObjectID &object_id, const std::unordered_set<ray::ClientID> &node_ids,
-            const std::string &spilled_url) {
-          if (spilled_url.empty()) {
-            *final_status = Status::Invalid("No object URL recorded");
-            (*num_objects_remaining)--;
-            if (*num_objects_remaining == 0 && callback) {
-              callback(*final_status);
-            }
-          } else {
-            AsyncRestoreSpilledObject(object_id, spilled_url,
-                                      [this, final_status, num_objects_remaining,
-                                       callback](const Status &status) {
-                                        if (!status.ok()) {
-                                          *final_status = status;
-                                        }
-                                        (*num_objects_remaining)--;
-                                        if (*num_objects_remaining == 0 && callback) {
-                                          callback(*final_status);
-                                        }
-                                      });
-          }
-        });
-  }
-}
-
 void NodeManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
@@ -1239,24 +1204,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);
-  } break;
-  case protocol::MessageType::ForceRestoreSpilledObjectsRequest: {
-    auto message =
-        flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsRequest>(message_data);
-    std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
-    RestoreSpilledObjects(object_ids, [this, client](const ray::Status &status) {
-      flatbuffers::FlatBufferBuilder fbb;
-      flatbuffers::Offset<protocol::ForceRestoreSpilledObjectsReply> reply =
-          protocol::CreateForceRestoreSpilledObjectsReply(fbb);
-      fbb.Finish(reply);
-      auto reply_status = client->WriteMessage(
-          static_cast<int64_t>(protocol::MessageType::ForceRestoreSpilledObjectsReply),
-          fbb.GetSize(), fbb.GetBufferPointer());
-      if (!reply_status.ok()) {
-        // We failed to write to the client, so disconnect the client.
-        ProcessDisconnectClientMessage(client);
-      }
-    });
   } break;
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;

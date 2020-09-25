@@ -332,23 +332,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
-/// Restore spilled objects from external storage.
-/// \param object_ids The IDs of objects to be restored.
-Status raylet::RayletClient::ForceRestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateForceRestoreSpilledObjectsRequest(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
-      MessageType::ForceRestoreSpilledObjectsRequest,
-      MessageType::ForceRestoreSpilledObjectsReply, &reply, &fbb));
-  RAY_UNUSED(
-      flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsReply>(reply.data()));
-  return Status::OK();
-}
-
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
                                           bool disconnect_worker) {
   rpc::ReturnWorkerRequest request;

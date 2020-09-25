@@ -626,11 +626,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// to spill the object.
   Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
-  /// Restore objects from external storage.
-  /// \param[in] object_ids The objects to be restored.
-  /// \return Status
-  Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.

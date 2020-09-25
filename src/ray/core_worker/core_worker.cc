@@ -1249,10 +1249,6 @@ Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
   return final_status;
 }
 
-Status CoreWorker::ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids) {
-  return local_raylet_client_->ForceRestoreSpilledObjects(object_ids);
-}
-
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     PlacementGroupID placement_group_id, int64_t bundle_index) {

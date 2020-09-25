@@ -169,6 +169,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   /// Restore a spilled object from external storage back into local memory.
+  /// \param object_id The ID of the object to restore.
+  /// \param object_url The URL in external storage from which the object can be restored.
+  /// \param callback A callback to call when the restoration is done. Status
+  /// will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
@@ -653,11 +657,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param objects_ids_to_spill The objects to be spilled.
   void SpillObjects(const std::vector<ObjectID> &objects_ids_to_spill,
                     std::function<void(const ray::Status &)> callback = nullptr);
-
-  /// Restore spilled objects from external storage.
-  /// \param object_ids Objects to be restored.
-  void RestoreSpilledObjects(const std::vector<ObjectID> &object_ids,
-                             std::function<void(const ray::Status &)> callback = nullptr);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
