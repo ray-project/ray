@@ -527,6 +527,8 @@ class ParallelIterator(Generic[T]):
                             batch_ms)] = actor
                         for item in batch:
                             yield item
+                    except ForceIteratorStopIteration:
+                        raise
                     except StopIteration:
                         pass
                 # Always yield after each round of wait with timeout.
@@ -1001,7 +1003,8 @@ class LocalIterator(Generic[T]):
     def union(self,
               *others: "LocalIterator[T]",
               deterministic: bool = False,
-              round_robin_weights: List[float] = None) -> "LocalIterator[T]":
+              round_robin_weights: List[float] = None,
+              strict=False) -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the others.
 
         Args:
@@ -1071,17 +1074,17 @@ class LocalIterator(Generic[T]):
                             else:
                                 yield_counts[i] += 1
                                 yield item
-                    except StopIteration as ex:
+                    except ForceIteratorStopIteration:
+                        raise
+                    except StopIteration:
                         fix_weights = [
                             w != "*" for w in round_robin_weights
                         ]
                         expected_yield_counts = weight if weight != "*" else MAX_PULL
-                        if (any(fix_weights) and
+                        if strict or (any(fix_weights) and
                             yield_counts[i] < expected_yield_counts and
                             pull_counts[i] >= MAX_PULL):
-                            raise ex
-                        elif isinstance(ex, ForceIteratorStopIteration):
-                            raise ex
+                            raise
                         else:
                             removed_iter_indices.append(i)
                             active.remove((weight, it))

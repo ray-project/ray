@@ -149,6 +149,7 @@ class SyncSampler(SamplerInput):
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.perf_stats = PerfStats()
+        self.worker = worker
         # Create the rollout generator to use for calls to `get_data()`.
         self.rollout_provider = _env_runner(
             worker, self.base_env, self.extra_batches.put, self.policies,
@@ -162,6 +163,8 @@ class SyncSampler(SamplerInput):
     def get_data(self):
         while True:
             item = next(self.rollout_provider)
+            if log_once("sync_get_data"):
+                logger.info("Get data item: {}\n{}".format(self.worker.worker_index, item))
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
@@ -495,8 +498,13 @@ def _env_runner(worker, base_env, extra_batch_callback, policies,
             no_done_at_end=no_done_at_end,
             observation_fn=observation_fn)
         perf_stats.processing_time += time.time() - t1
-        for o in outputs:
-            yield o
+        if log_once("env_returns_outputs"):
+            logger.info("Outputs env: {}\n{}".format(outputs, summarize(infos)))
+        if outputs:
+            for o in outputs:
+                yield o
+        else:
+            yield from ()
 
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()

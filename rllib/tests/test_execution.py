@@ -5,7 +5,9 @@ import gym
 import queue
 
 import ray
+from ray.rllib import VectorEnv
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.env.base_env import _VectorEnvToBaseEnv
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
@@ -36,6 +38,64 @@ def make_workers(n):
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=PPOTFPolicy,
             rollout_fragment_length=100) for _ in range(n)
+    ]
+    workers = WorkerSet._from_existing(local, remotes)
+    return workers
+
+
+class MockEnv(gym.Env):
+    def __init__(self, episode_length, config=None):
+        self.episode_length = episode_length
+        self.config = config
+        self.i = 0
+        self.observation_space = gym.spaces.Box(low=0.0, high=100.0, shape=(4,))
+        self.action_space = gym.spaces.Discrete(2)
+
+    def reset(self):
+        self.i = 0
+        return np.repeat(self.i, 4)
+
+    def step(self, action):
+        self.i += 1
+        return np.zeros(4), 1, self.i >= self.episode_length, {}
+
+
+class MockBaseEnv(_VectorEnvToBaseEnv):
+    def __init__(self, vector_env, slow):
+        super().__init__(vector_env)
+        self.slow = slow
+        self.poll_count = 0
+
+    def poll(self):
+        self.poll_count += 1
+        if not self.slow or (self.poll_count % 7) == 0:
+            sample = super().poll()
+            return sample
+        else:
+            raise StopIteration
+
+
+def make_base_env(slow):
+    env = MockEnv(episode_length=10)
+    vector_env = VectorEnv.wrap(
+        make_env=lambda _: MockEnv(episode_length=10),
+        existing_envs=[env],
+        action_space=env.action_space,
+        observation_space=env.observation_space)
+    base_env = MockBaseEnv(vector_env, slow)
+    return base_env
+
+
+def make_slow_sim_workers(n):
+    local = RolloutWorker(
+        env_creator=lambda _: make_base_env(False),
+        policy=PPOTFPolicy,
+        rollout_fragment_length=100)
+    remotes = [
+        RolloutWorker.as_remote().remote(
+            env_creator=lambda _: make_base_env(i == 1),
+            policy=PPOTFPolicy,
+            rollout_fragment_length=100) for i in range(n)
     ]
     workers = WorkerSet._from_existing(local, remotes)
     return workers
@@ -124,6 +184,19 @@ def test_rollouts(ray_start_regular_shared):
     assert next(a).count == 200
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 200, counters
+    a = ParallelRollouts(workers, mode="async")
+    assert next(a).count == 100
+    counters = a.shared_metrics.get().counters
+    assert counters["num_steps_sampled"] == 100, counters
+    workers.stop()
+
+
+def test_straggler_rollouts(ray_start_regular_shared):
+    workers = make_slow_sim_workers(2)
+    a = ParallelRollouts(workers, mode="bulk_sync")
+    assert next(a).count == 100
+    counters = a.shared_metrics.get().counters
+    assert counters["num_steps_sampled"] == 100, counters
     a = ParallelRollouts(workers, mode="async")
     assert next(a).count == 100
     counters = a.shared_metrics.get().counters

@@ -172,12 +172,16 @@ def apex_execution_plan(workers: WorkerSet, config: dict):
             [store_op, replay_op, update_op],
             mode="round_robin",
             output_indexes=[2],
-            round_robin_weights=rr_weights)
+            round_robin_weights=rr_weights,
+            strict=True)
     else:
         # Execute (1), (2), (3) asynchronously as fast as possible. Only output
         # items from (3) since metrics aren't available before then.
         merged_op = Concurrently(
-            [store_op, replay_op, update_op], mode="async", output_indexes=[2])
+            [store_op, replay_op, update_op],
+            mode="async",
+            output_indexes=[2],
+            strict=True)
 
     # Add in extra replay and learner metrics to the training result.
     def add_apex_metrics(result):
