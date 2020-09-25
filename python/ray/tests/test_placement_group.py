@@ -8,7 +8,8 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import get_other_nodes, wait_for_condition
+from ray.test_utils import (get_other_nodes, wait_for_condition,
+                            get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup,
@@ -844,6 +845,18 @@ def test_capture_child_tasks(ray_start_cluster):
 
     # Since all node id should be identical, set should be equal to 1.
     assert len(node_id_set) == 1
+
+
+def test_ready_warning_surpressed(ray_start_regular, error_pubsub):
+    p = error_pubsub
+    # Create an infeasible pg.
+    pg = ray.util.placement_group([{"CPU": 2}] * 2, strategy="STRICT_PACK")
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=0.5)
+
+    errors = get_error_message(
+        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
+    assert len(errors) == 0
 
 
 if __name__ == "__main__":
