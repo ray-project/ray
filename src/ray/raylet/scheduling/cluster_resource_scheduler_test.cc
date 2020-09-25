@@ -174,7 +174,6 @@ bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
   return true;
 }
 
-
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() {}
@@ -971,16 +970,13 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
 
-
 TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   vector<int64_t> cust_ids{1, 2, 3, 4, 5};
 
   NodeResources node_resources;
 
-  std::unordered_map<std::string, double> initial_resources({
-                                                             {"CPU", 1}, {"GPU", 2}, {"memory", 3},
-                                                             {"1", 1}, {"2", 2 }, {"3", 3}
-    });
+  std::unordered_map<std::string, double> initial_resources(
+      {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
   ClusterResourceScheduler cluster_resources("0", initial_resources);
   NodeResources other_node_resources;
   vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
@@ -990,8 +986,6 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   cluster_resources.AddOrUpdateNode(12345, other_node_resources);
 
   {
-
-
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     cluster_resources.Heartbeat(data, false);
 
@@ -1017,17 +1011,18 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     ASSERT_EQ(total.size(), 6);
   }
   {
-    std::shared_ptr<TaskResourceInstances> allocations = std::make_shared<TaskResourceInstances>();
+    std::shared_ptr<TaskResourceInstances> allocations =
+        std::make_shared<TaskResourceInstances>();
     allocations->predefined_resources = {
-                                        {0.1}, // CPU
+        {0.1},  // CPU
     };
     allocations->custom_resources = {
-                                     {1, {0.1}}, // "1"
+        {1, {0.1}},  // "1"
     };
     std::unordered_map<std::string, double> allocation_map({
-                                                            {"CPU", 0.1},
-                                                            {"1", 0.1},
-      });
+        {"CPU", 0.1},
+        {"1", 0.1},
+    });
     cluster_resources.AllocateLocalTaskResources(allocation_map, allocations);
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     cluster_resources.Heartbeat(data, false);

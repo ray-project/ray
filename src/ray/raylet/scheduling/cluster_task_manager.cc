@@ -185,66 +185,72 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
-void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data, bool light_heartbeat_enabled) const {
+void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
+                                   bool light_heartbeat_enabled) const {
   auto resource_loads = data->mutable_resource_load();
-  auto resource_load_by_shape = data->mutable_resource_load_by_shape()->mutable_resource_demands();
+  auto resource_load_by_shape =
+      data->mutable_resource_load_by_shape()->mutable_resource_demands();
 
   if (light_heartbeat_enabled) {
     RAY_CHECK(false) << "TODO";
   } else {
-      // TODO (Alex): Implement the 1-CPU task optimization.
-      for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end(); it++) {
-        auto &task = std::get<0>(*it);
-        auto &resources = task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+    // TODO (Alex): Implement the 1-CPU task optimization.
+    for (auto it = tasks_to_schedule_.begin(); it != tasks_to_schedule_.end(); it++) {
+      auto &task = std::get<0>(*it);
+      auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
 
-        auto by_shape_entry = resource_load_by_shape->Add();
+      auto by_shape_entry = resource_load_by_shape->Add();
 
-        for (auto to_add_it = resources.begin(); to_add_it != resources.end(); to_add_it++) {
-          // Add to `resource_loads`.
-          auto label = to_add_it->first;
-          auto quantity = to_add_it->second;
-          auto entry = resource_loads->find(label);
-          if (entry == resource_loads->end()) {
-            (*resource_loads)[label] = quantity;
-          } else {
-            (*resource_loads)[label] = entry->second + quantity;
-          }
-
-          // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
-          // Add to `resource_load_by_shape`.
-          (*by_shape_entry->mutable_shape())[label] = quantity;
-          // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-          // that the entire cluster is utilized.
-          by_shape_entry->set_num_infeasible_requests_queued(1);
+      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
+           to_add_it++) {
+        // Add to `resource_loads`.
+        auto label = to_add_it->first;
+        auto quantity = to_add_it->second;
+        auto entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
         }
-      }
 
-      for (auto it = tasks_to_dispatch_.begin(); it != tasks_to_dispatch_.end(); it++) {
-        auto &task = std::get<0>(*it);
-        auto &resources = task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-
-        auto by_shape_entry = resource_load_by_shape->Add();
-
-        for (auto to_add_it = resources.begin(); to_add_it != resources.end(); to_add_it++) {
-          // Add to `resource_loads`.
-          auto label = to_add_it->first;
-          auto quantity = to_add_it->second;
-          auto entry = resource_loads->find(label);
-          if (entry == resource_loads->end()) {
-            (*resource_loads)[label] = quantity;
-          } else {
-            (*resource_loads)[label] = entry->second + quantity;
-          }
-
-          // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
-          // Add to `resource_load_by_shape`.
-          (*by_shape_entry->mutable_shape())[label] = quantity;
-          // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-          // that the entire cluster is utilized.
-          by_shape_entry->set_num_ready_requests_queued(1);
-        }
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_infeasible_requests_queued(1);
       }
     }
+
+    for (auto it = tasks_to_dispatch_.begin(); it != tasks_to_dispatch_.end(); it++) {
+      auto &task = std::get<0>(*it);
+      auto &resources =
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (auto to_add_it = resources.begin(); to_add_it != resources.end();
+           to_add_it++) {
+        // Add to `resource_loads`.
+        auto label = to_add_it->first;
+        auto quantity = to_add_it->second;
+        auto entry = resource_loads->find(label);
+        if (entry == resource_loads->end()) {
+          (*resource_loads)[label] = quantity;
+        } else {
+          (*resource_loads)[label] = entry->second + quantity;
+        }
+
+        // TODO (Alex): Adding repeated entries with quantity 1 is fine, but inefficient.
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+        // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+        // that the entire cluster is utilized.
+        by_shape_entry->set_num_ready_requests_queued(1);
+      }
+    }
+  }
 }
 
 std::string ClusterTaskManager::DebugString() {

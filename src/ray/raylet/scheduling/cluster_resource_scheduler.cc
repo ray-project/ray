@@ -782,31 +782,38 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> heartbeat_data, bool light_heartbeat_enabled) const {
+void ClusterResourceScheduler::Heartbeat(
+    std::shared_ptr<HeartbeatTableData> heartbeat_data,
+    bool light_heartbeat_enabled) const {
   NodeResources resources;
 
-  RAY_CHECK(GetNodeResources(local_node_id_, &resources)) << "Error: Populating heartbeat failed. Please file a bug report: https://github.com/ray-project/ray/issues/new.";
+  RAY_CHECK(GetNodeResources(local_node_id_, &resources))
+      << "Error: Populating heartbeat failed. Please file a bug report: "
+         "https://github.com/ray-project/ray/issues/new.";
 
   if (light_heartbeat_enabled) {
-    //TODO
+    // TODO
     RAY_CHECK(false) << "TODO";
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       std::string label = ResourceEnumToString((PredefinedResources)i);
       struct ResourceCapacity capacity = resources.predefined_resources[i];
       if (capacity.available != 0) {
-        (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+        (*heartbeat_data->mutable_resources_available())[label] =
+            capacity.available.Double();
       }
       if (capacity.total != 0) {
         (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
       }
     }
-    for (auto it = resources.custom_resources.begin(); it != resources.custom_resources.end(); it++) {
+    for (auto it = resources.custom_resources.begin();
+         it != resources.custom_resources.end(); it++) {
       uint64_t custom_id = it->first;
       struct ResourceCapacity capacity = it->second;
       std::string label = string_to_int_map_.Get(custom_id);
       if (capacity.available != 0) {
-        (*heartbeat_data->mutable_resources_available())[label] = capacity.available.Double();
+        (*heartbeat_data->mutable_resources_available())[label] =
+            capacity.available.Double();
       }
       if (capacity.total != 0) {
         (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
@@ -815,4 +822,4 @@ void ClusterResourceScheduler::Heartbeat(std::shared_ptr<HeartbeatTableData> hea
   }
 }
 
-} // namespace ray
+}  // namespace ray

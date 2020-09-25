@@ -375,7 +375,8 @@ class ClusterResourceScheduler {
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resources_available and resources_total.
-  void Heartbeat(std::shared_ptr<HeartbeatTableData> data, bool light_heartbeat_enabled) const;
+  void Heartbeat(std::shared_ptr<HeartbeatTableData> data,
+                 bool light_heartbeat_enabled) const;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

@@ -485,7 +485,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
 
 TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   {
@@ -514,7 +514,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     task_manager_.QueueTask(task, &reply, callback);
     task_manager_.SchedulePendingTasks();
     task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
-    ASSERT_FALSE(callback_called); // No worker available.
+    ASSERT_FALSE(callback_called);  // No worker available.
     // Now {CPU: 7, GPU: 4, MEM:128} with 1 queued task.
   }
 
@@ -529,7 +529,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     task_manager_.QueueTask(task, &reply, callback);
     task_manager_.SchedulePendingTasks();
     task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
-    ASSERT_FALSE(callback_called); // Infeasible.
+    ASSERT_FALSE(callback_called);  // Infeasible.
     // Now there is also an infeasible task {CPU: 9}.
   }
 
@@ -539,11 +539,11 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
     auto load = data->mutable_resource_load();
     ASSERT_EQ(load->size(), 2);
-    ASSERT_EQ((*load)["CPU"], 10); // 9 + 1 = 10
+    ASSERT_EQ((*load)["CPU"], 10);  // 9 + 1 = 10
     ASSERT_EQ((*load)["GPU"], 5);
 
-
-    auto load_by_shape = data->mutable_resource_load_by_shape()->mutable_resource_demands();
+    auto load_by_shape =
+        data->mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 2);
 
     auto load1 = (*load_by_shape)[0];
@@ -560,8 +560,6 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     ASSERT_EQ((*load2.mutable_shape())["CPU"], 1);
     ASSERT_EQ((*load2.mutable_shape()).size(), 1);
   }
-
-
 }
 
 int main(int argc, char **argv) {
@@ -572,4 +570,3 @@ int main(int argc, char **argv) {
 }  // namespace raylet
 
 }  // namespace ray
-
