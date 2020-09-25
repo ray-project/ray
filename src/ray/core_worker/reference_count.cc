@@ -144,11 +144,12 @@ void ReferenceCounter::AddObjectRefStats(
   }
 }
 
-void ReferenceCounter::AddOwnedObject(
-    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-    const rpc::Address &owner_address, const std::string &call_site,
-    const int64_t object_size, bool is_reconstructable,
-    const absl::optional<NodeID> &pinned_at_raylet_id) {
+void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
+                                      const int64_t object_size, bool is_reconstructable,
+                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
