@@ -980,6 +980,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
 
   if (new_scheduler_enabled_ && client_id != self_node_id_) {
+    // TODO (Alex): Don't forget to implement this.
+    RAY_CHECK(light_heartbeat_enabled_ == False) << "TODO"
     new_resource_scheduler_->AddOrUpdateNode(
         client_id.Binary(), remote_resources.GetTotalResources().GetResourceMap(),
         remote_resources.GetAvailableResources().GetResourceMap());
