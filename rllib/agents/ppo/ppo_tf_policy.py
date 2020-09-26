@@ -326,7 +326,7 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors before PPOPolicy initialization.
+    """Call mixin classes' constructors before Policy's loss initialization.
 
     Args:
         policy (Policy): The Policy object.

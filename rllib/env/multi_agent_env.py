@@ -100,7 +100,7 @@ class MultiAgentEnv:
 
         This API is experimental.
 
-        Arguments:
+        Args:
             groups (dict): Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
                 value, it will be left ungrouped.

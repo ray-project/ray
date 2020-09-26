@@ -35,7 +35,7 @@ class Monitor:
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
-        self.redis = ray.services.create_redis_client(
+        self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
@@ -372,7 +372,7 @@ if __name__ == "__main__":
         monitor.destroy_autoscaler_workers()
 
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The monitor failed with the "

@@ -135,12 +135,17 @@ If you want to run applications on the cluster that are accessible from a web br
 Running Ray scripts on the cluster (``ray submit``)
 ---------------------------------------------------
 
-You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the cluster and execute it with the given arguments. See :ref:`the documentation <ray-submit-doc>` for ``ray submit``.
+You can also use ``ray submit`` to execute Python scripts on clusters. This will ``rsync`` the designated file onto the head node cluster and execute it with the given arguments. See :ref:`the documentation <ray-submit-doc>` for ``ray submit``.
 
 .. code-block:: shell
 
     # Run a Python script in a detached tmux session
     $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
+
+    # Run a Python script with arguments.
+    # This executes script.py on the head node of the cluster, using
+    # the command: python ~/script.py --arg1 --arg2 --arg3
+    $ ray submit cluster.yaml script.py -- --arg1 --arg2 --arg3
 
 
 Attaching to a running cluster (``ray attach``)
@@ -216,13 +221,4 @@ This tells ``ray up`` to sync the current git branch SHA from your personal comp
 Questions or Issues?
 --------------------
 
-You can post questions or issues or feedback through the following channels:
-
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

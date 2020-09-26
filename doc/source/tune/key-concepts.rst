@@ -58,8 +58,8 @@ The other is a :ref:`class-based API <tune-class-api>`. Here's an example of spe
 
 See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-examples>`.
 
-tune.run
---------
+tune.run and Trials
+-------------------
 
 Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
 
@@ -68,7 +68,11 @@ Use ``tune.run`` execute hyperparameter tuning using the core Ray APIs. This fun
     # Pass in a Trainable class or function to tune.run.
     tune.run(trainable)
 
-This function will report status on the command line until all trials stop (each trial is one instance of a :ref:`Trainable <trainable-docs>`):
+``tune.run`` will generate a couple hyperparameter configurations from its arguments, and each hyperparameter configuration is logically represented by a Trial object.
+
+Each trial has a resource specification (``resources_per_trial`` or ``trial.resources``), a hyperparameter configuration (``trial.config``), id (``trial.trial_id``), among other configuration values. Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
+
+``tune.run`` will execute until all trials stop or error:
 
 .. code-block:: bash
 
@@ -210,6 +214,8 @@ Unlike **Search Algorithms**, :ref:`Trial Scheduler <tune-schedulers>` do not se
 
 See the documentation: :ref:`schedulers-ref`.
 
+.. _tune-concepts-analysis:
+
 Analysis
 --------
 
@@ -242,19 +248,13 @@ What's Next?
 
 Now that you have a working understanding of Tune, check out:
 
- * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
- * :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
- * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
- * :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
+* :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
+* :ref:`tune-guides`: Tutorials for using Tune with your preferred machine learning library.
+* :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
+* :ref:`tune-tutorial`: A simple tutorial that walks you through the process of setting up a Tune experiment.
 
 
 Further Questions or Issues?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Reach out to us if you have any questions or issues or feedback through the following channels:
-
-1. `StackOverflow`_: For questions about how to use Ray.
-2. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

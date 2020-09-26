@@ -86,7 +86,7 @@ def validate_config(config):
     Args:
         config (TrainerConfigDict): The Trainer's config to check.
 
-    Throws:
+    Raises:
         ValueError: In case something is wrong with the config.
     """
 
