@@ -214,6 +214,15 @@ py_test(
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
 )
 
+py_test(
+    name = "mnist-ptl",
+    size = "small",
+    main = "torch/examples/pytorch-lightning/mnist-ptl.py",
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+    args = ["--smoke-test"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

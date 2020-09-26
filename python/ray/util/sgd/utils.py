@@ -6,7 +6,6 @@ import socket
 import time
 
 import ray
-from filelock import FileLock
 from ray.exceptions import RayActorError
 
 logger = logging.getLogger(__name__)
@@ -247,6 +246,7 @@ def check_for_failure(remote_values):
     except RayActorError as exc:
         logger.exception(str(exc))
     return False
+
 
 def override(interface_class):
     def overrider(method):

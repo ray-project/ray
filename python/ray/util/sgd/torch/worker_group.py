@@ -194,8 +194,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
     def _setup_local_rank(self, rank_counter_dict=defaultdict(int)):
         """Sets local rank for all workers."""
-        node_ips = ray.get([w.get_node_ip.remote() for w in
-                            self.remote_workers])
+        node_ips = ray.get(
+            [w.get_node_ip.remote() for w in self.remote_workers])
         futures = []
         for i in range(len(self.remote_workers)):
             ip = node_ips[i]
@@ -204,7 +204,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             futures.append(worker.set_local_rank.remote(rank))
             rank_counter_dict[ip] += 1
         return futures
-
 
     def start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
