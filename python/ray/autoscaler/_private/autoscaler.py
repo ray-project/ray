@@ -350,9 +350,15 @@ class StandardAutoscaler:
             ideal_num_workers = max(
                 ideal_num_workers,
                 int(np.ceil(cores_desired / cores_per_worker)))
-
-        return min(self.config["max_workers"],
-                   max(self.config["min_workers"], ideal_num_workers))
+        min_node_types_workers = 0
+        if self.resource_demand_scheduler:
+            for node_type in self.available_node_types:
+                min_node_types_workers += \
+                    self.available_node_types[node_type].get("min_workers",0)
+        return min(
+            self.config["max_workers"],
+            max(self.config["min_workers"], min_node_types_workers,
+                ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         node_tags = self.provider.node_tags(node_id)
