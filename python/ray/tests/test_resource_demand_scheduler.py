@@ -421,7 +421,7 @@ class AutoscalingTest(unittest.TestCase):
 
         for id in self.provider.mock_nodes:
             if self.provider.mock_nodes[id].state == "running" or \
-                self.provider.mock_nodes[id].state == "pending":
+                    self.provider.mock_nodes[id].state == "pending":
                 assert self.provider.mock_nodes[id].node_type in {
                     "p2.8xlarge", "m4.large"
                 }

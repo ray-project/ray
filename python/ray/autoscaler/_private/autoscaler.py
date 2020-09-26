@@ -178,7 +178,8 @@ class StandardAutoscaler:
                     node_type = tags[TAG_RAY_USER_NODE_TYPE]
                     node_type_counts[node_type] += 1
                     if node_type_counts[node_type] <= \
-                        self.available_node_types[node_type].get("min_workers", 0):
+                            self.available_node_types[node_type].get(
+                                "min_workers", 0):
                         continue
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
@@ -366,7 +367,7 @@ class StandardAutoscaler:
         if self.resource_demand_scheduler:
             for node_type in self.available_node_types:
                 min_node_types_workers += \
-                    self.available_node_types[node_type].get("min_workers",0)
+                    self.available_node_types[node_type].get("min_workers", 0)
         return min(
             self.config["max_workers"],
             max(self.config["min_workers"], min_node_types_workers,
