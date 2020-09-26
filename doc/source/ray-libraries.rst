@@ -15,7 +15,7 @@ Ray also comes packaged with several built-in machine learning libraries:
 ClassyVision |classyvision|
 ---------------------------
 
-Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions. 
+Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
 
 
 [`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
@@ -69,12 +69,6 @@ Scale your pandas workflows by changing one line of code. Modin transparently di
 
 GitHub: `https://github.com/modin-project/modin <https://github.com/modin-project/modin>`_
 
-PyCaret |pycaret|
------------------
-
-PyCaret is an open source low-code machine learning library in Python that aims to reduce the hypothesis to insights cycle time in a ML experiment. It enables data scientists to perform end-to-end experiments quickly and efficiently.
-
-GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
 
 RayDP |raydp|
 -------------
@@ -125,10 +119,6 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |zoo| image:: images/zoo.png
-    :class: inline-figure
-    :height: 30
-
-.. |pycaret| image:: images/pycaret.png
     :class: inline-figure
     :height: 30
 
