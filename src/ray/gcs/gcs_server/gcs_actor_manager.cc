@@ -387,6 +387,9 @@ void GcsActorManager::HandleGetActorCheckpointID(
 
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback success_callback) {
+  // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
+  // the GCS server is restarted, it is required to continue to register actor
+  // successfully.
   RAY_CHECK(success_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -469,6 +472,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
 Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
                                     CreateActorCallback callback) {
+  // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
+  // the GCS server is restarted, it is required to continue to create actor
+  // successfully.
   RAY_CHECK(callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -502,7 +508,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // `CreateActor` request.
   // After GCS restarts, the state of the actor may not be `DEPENDENCIES_UNREADY`.
   if (iter->second->GetState() != rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-    RAY_LOG(INFO) << "Actor is already in the process of creation. Skip it directly.";
+    RAY_LOG(INFO) << "Actor " << actor_id
+                  << " is already in the process of creation. Skip it directly.";
     return Status::OK();
   }
 
