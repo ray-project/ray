@@ -306,8 +306,7 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 }
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity,
-                                         const NodeID &client_Id) {
+                                         const double capacity, const NodeID &client_Id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
                                                     capacity, to_flatbuf(fbb, client_Id));

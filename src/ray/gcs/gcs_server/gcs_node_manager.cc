@@ -423,8 +423,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
 
-  auto get_node_callback = [this, done](
-                               const std::unordered_map<NodeID, GcsNodeInfo> &result) {
+  auto get_node_callback = [this,
+                            done](const std::unordered_map<NodeID, GcsNodeInfo> &result) {
     for (auto &item : result) {
       if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
         // Call `AddNode` for this node to make sure it is tracked by the failure

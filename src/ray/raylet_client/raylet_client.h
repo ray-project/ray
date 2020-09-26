@@ -28,8 +28,8 @@
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
-using ray::NodeID;
 using ray::JobID;
+using ray::NodeID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;

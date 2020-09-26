@@ -372,8 +372,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
   /// The actor whose dependencies are not resolved should be destroyed once it creator
   /// dies.
-  absl::flat_hash_map<NodeID,
-                      absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
+  absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
   /// The pending actors which will not be scheduled until there's a resource change.
   std::vector<std::shared_ptr<GcsActor>> pending_actors_;

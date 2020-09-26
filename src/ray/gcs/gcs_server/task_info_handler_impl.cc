@@ -144,8 +144,7 @@ void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
     const AttemptTaskReconstructionRequest &request,
     AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) {
   TaskID task_id = TaskID::FromBinary(request.task_reconstruction().task_id());
-  NodeID node_id =
-      NodeID::FromBinary(request.task_reconstruction().node_manager_id());
+  NodeID node_id = NodeID::FromBinary(request.task_reconstruction().node_manager_id());
   RAY_LOG(DEBUG) << "Reconstructing task, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", reconstructions num = "
                  << request.task_reconstruction().num_reconstructions()

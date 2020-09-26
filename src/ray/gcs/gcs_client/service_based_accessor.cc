@@ -563,8 +563,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
+    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   RAY_CHECK(node_change_callback_ == nullptr);
   node_change_callback_ = subscribe;
@@ -636,8 +635,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
-    const NodeID &node_id, const ResourceMap &resources,
-    const StatusCallback &callback) {
+    const NodeID &node_id, const ResourceMap &resources, const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Updating node resources, node id = " << node_id;
   rpc::UpdateResourcesRequest request;
   request.set_node_id(node_id.Binary());

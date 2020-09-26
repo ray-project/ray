@@ -57,9 +57,9 @@ class SchedulingPolicy {
   /// \param bundle_spec the description of a bundle which include the resource the bundle
   /// need. \return If this bundle can be scheduled in this node, return true; else return
   /// false.
-  bool ScheduleBundle(
-      std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-      const NodeID &local_client_id, const ray::BundleSpecification &bundle_spec);
+  bool ScheduleBundle(std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
+                      const NodeID &local_client_id,
+                      const ray::BundleSpecification &bundle_spec);
 
   /// \brief Given a set of cluster resources, try to spillover infeasible tasks.
   ///

@@ -139,8 +139,7 @@ Status RedisLogBasedActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return log_based_actor_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), subscribe,
-                                                         done);
+  return log_based_actor_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), subscribe, done);
 }
 
 Status RedisLogBasedActorInfoAccessor::AsyncSubscribe(
@@ -602,8 +601,7 @@ Status RedisNodeInfoAccessor::AsyncUnregister(const NodeID &node_id,
 }
 
 Status RedisNodeInfoAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
+    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   ClientTable &client_table = client_impl_->client_table();
   return client_table.SubscribeToNodeChange(subscribe, done);
@@ -666,8 +664,7 @@ Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
     const SubscribeCallback<NodeID, HeartbeatTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const NodeID &node_id,
-                                  const HeartbeatTableData &data) {
+  auto on_subscribe = [subscribe](const NodeID &node_id, const HeartbeatTableData &data) {
     subscribe(node_id, data);
   };
 

@@ -142,8 +142,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  void ReleaseUnusedWorkers(const std::unordered_map<NodeID, std::vector<WorkerID>>
-                                &node_to_workers) override;
+  void ReleaseUnusedWorkers(
+      const std::unordered_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It
@@ -269,8 +269,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from
   /// that node. This is needed so that we can retry lease requests from the node until we
   /// receive a reply or the node is removed.
-  absl::flat_hash_map<NodeID, absl::flat_hash_set<ActorID>>
-      node_to_actors_when_leasing_;
+  absl::flat_hash_map<NodeID, absl::flat_hash_set<ActorID>> node_to_actors_when_leasing_;
   /// Map from node ID to the workers on which we are trying to create actors. This is
   /// needed so that we can cancel actor creation requests if the worker is removed.
   absl::flat_hash_map<NodeID,

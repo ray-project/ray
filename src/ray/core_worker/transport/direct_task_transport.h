@@ -154,8 +154,8 @@ class CoreWorkerDirectTaskSubmitter {
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
 
   /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>>
-      remote_lease_clients_ GUARDED_BY(mu_);
+  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>> remote_lease_clients_
+      GUARDED_BY(mu_);
 
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;

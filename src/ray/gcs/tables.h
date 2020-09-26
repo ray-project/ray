@@ -214,8 +214,8 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// notifications can be requested, a call to `Subscribe` to this
   /// table with the same `client_id` must complete successfully.
   /// \return Status
-  Status RequestNotifications(const JobID &job_id, const ID &id,
-                              const NodeID &client_id, const StatusCallback &done);
+  Status RequestNotifications(const JobID &job_id, const ID &id, const NodeID &client_id,
+                              const StatusCallback &done);
 
   /// Cancel notifications about a key in this table.
   ///

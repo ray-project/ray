@@ -519,8 +519,7 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id,
-                                      const ResourceMap &resources,
+  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
                                       const StatusCallback &callback) = 0;
 
   /// Delete resources of a node from GCS asynchronously.

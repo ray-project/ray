@@ -117,9 +117,8 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
-NodeManager::NodeManager(boost::asio::io_service &io_service,
-                         const NodeID &self_node_id, const NodeManagerConfig &config,
-                         ObjectManager &object_manager,
+NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
+                         const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
@@ -2918,8 +2917,7 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   }
 }
 
-void NodeManager::ForwardTaskOrResubmit(const Task &task,
-                                        const NodeID &node_manager_id) {
+void NodeManager::ForwardTaskOrResubmit(const Task &task, const NodeID &node_manager_id) {
   // Attempt to forward the task.
   // TODO(sang): Modify method names.
   ForwardTask(task, node_manager_id,

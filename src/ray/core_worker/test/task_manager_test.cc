@@ -41,15 +41,16 @@ class TaskManagerTest : public ::testing::Test {
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
             rpc::Address(),
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
-        manager_(store_, reference_counter_,
-                 [this](TaskSpecification &spec, bool delay) {
-                   num_retries_++;
-                   return Status::OK();
-                 },
-                 [this](const NodeID &node_id) { return all_nodes_alive_; },
-                 [this](const ObjectID &object_id) {
-                   objects_to_recover_.push_back(object_id);
-                 }) {}
+        manager_(
+            store_, reference_counter_,
+            [this](TaskSpecification &spec, bool delay) {
+              num_retries_++;
+              return Status::OK();
+            },
+            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            [this](const ObjectID &object_id) {
+              objects_to_recover_.push_back(object_id);
+            }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<ReferenceCounter> reference_counter_;

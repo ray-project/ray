@@ -651,8 +651,7 @@ ray::Status ClientTable::MarkDisconnected(const NodeID &dead_node_id,
 }
 
 ray::Status ClientTable::SubscribeToNodeChange(
-    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
+    const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   // Callback for a notification from the client table.
   auto on_subscribe = [this](RedisGcsClient *client, const UniqueID &log_key,
                              const std::vector<GcsNodeInfo> &notifications) {

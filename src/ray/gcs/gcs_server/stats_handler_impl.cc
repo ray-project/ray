@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
+
 #include "ray/common/ray_config.h"
 
 namespace ray {

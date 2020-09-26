@@ -337,10 +337,9 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   }
 }
 
-void ObjectManager::HandleSendFinished(const ObjectID &object_id,
-                                       const NodeID &client_id, uint64_t chunk_index,
-                                       double start_time, double end_time,
-                                       ray::Status status) {
+void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &client_id,
+                                       uint64_t chunk_index, double start_time,
+                                       double end_time, ray::Status status) {
   RAY_LOG(DEBUG) << "HandleSendFinished on " << self_node_id_ << " to " << client_id
                  << " of object " << object_id << " chunk " << chunk_index
                  << ", status: " << status.ToString();
