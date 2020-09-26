@@ -376,11 +376,12 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinWorkers(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["min_workers"] = 3
+        config["min_workers"] = 2
         config["max_workers"] = 50
+        config["idle_timeout_minutes"] = 1
         # Since config["min_workers"] > 2, the remaining worker is started
         # with the default worker node type.
-        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 2
+        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -392,11 +393,15 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
-        self.waitForNodes(3)
-        assert len(self.provider.mock_nodes) == 3
-        assert self.provider.mock_nodes[0].node_type == "p2.8xlarge"
-        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
-        assert self.provider.mock_nodes[2].node_type == "m4.large"
+        self.waitForNodes(2)
+        assert len(self.provider.mock_nodes) == 2
+        assert {
+            self.provider.mock_nodes[0].node_type,
+            self.provider.mock_nodes[1].node_type
+        } == {"p2.8xlarge", "m4.large"}
+        time.sleep(60.5)
+        autoscaler.update()
+        assert len(self.provider.non_terminated_nodes({})) == 2
 
     def testScaleUpIgnoreUsed(self):
         config = MULTI_WORKER_CLUSTER.copy()
