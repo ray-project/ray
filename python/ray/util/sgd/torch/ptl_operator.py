@@ -11,7 +11,8 @@ import pytorch_lightning as ptl
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from pytorch_lightning.utilities.memory import recursive_detach
 from ray.util.sgd.torch import TrainingOperator
-from ray.util.sgd.torch.constants import NUM_STEPS, SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH
+from ray.util.sgd.torch.constants import NUM_STEPS, SCHEDULER_STEP_BATCH, \
+    SCHEDULER_STEP_EPOCH
 from ray.util.sgd.utils import AverageMeterCollection, NUM_SAMPLES
 
 tqdm = None
@@ -22,14 +23,16 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMixin):
+
+class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
+                  TrainerOptimizersMixin):
     def _configure_amp(self, amp, models, optimizers):
         assert len(models) == 1
         model = models[0]
         assert isinstance(model, ptl.LightningModule)
         amp_level = self._apex_args.get("opt_level", "O2")
-        model, optimizers = model.configure_apex(amp, model, optimizers,
-                                                 amp_level=amp_level)
+        model, optimizers = model.configure_apex(
+            amp, model, optimizers, amp_level=amp_level)
         return [model], optimizers
 
     def _configure_ddp(self, models, device_ids):
@@ -62,7 +65,6 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         else:
             return self.model
 
-
     def setup(self, config):
         self._ptl = True
         # Pass in config if ptl_module accepts it.
@@ -73,9 +75,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
             ptl_module = ptl_class()
         if not isinstance(ptl_module, ptl.LightningModule):
             raise TypeError("Argument must be instance of "
-                             "pytorch_lightning.LightningModule. Got object "
-                             "of type {} instead.".format(type(
-                ptl_module)))
+                            "pytorch_lightning.LightningModule. Got object "
+                            "of type {} instead.".format(type(ptl_module)))
 
         # Call on_fit_start on instantiation.
         if self.is_function_implemented("on_fit_start", ptl_module):
@@ -83,7 +84,7 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
 
         # Only run data preparation once per node.
         if self.local_rank == 0 and self.is_function_implemented(
-            "prepare_data", ptl_module):
+                "prepare_data", ptl_module):
             ptl_module.prepare_data()
 
         # Call model.setup.
@@ -91,12 +92,10 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
 
         if not self.is_overridden("configure_optimizers", ptl_module):
             raise MisconfigurationException(
-                "No `configure_optimizers()` method defined."
-            )
+                "No `configure_optimizers()` method defined.")
 
         optimizers, self._scheduler_dicts, optimizer_frequencies = \
-            self.init_optimizers(
-            model=ptl_module)
+            self.init_optimizers(model=ptl_module)
 
         if len(optimizer_frequencies) > 0:
             logger.warning("Optimizer frequencies will be ignored. When "
@@ -109,10 +108,12 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
             if isinstance(scheduler, dict):
                 # A scheduler dictionary is passed in.
                 if "reduce_on_plateau" in scheduler or "monitor" in scheduler:
-                    logger.info("reduce_on_plateau and/or monitor will be "
-                                "ignored "
-                                "from the scheduler dict {}. To update a "
-                                "ReduceLROnPlateau scheduler, you should use TorchTrainer.update_schedulers.".format(scheduler))
+                    logger.info(
+                        "reduce_on_plateau and/or monitor will be "
+                        "ignored "
+                        "from the scheduler dict {}. To update a "
+                        "ReduceLROnPlateau scheduler, you should use "
+                        "TorchTrainer.update_schedulers.".format(scheduler))
                 if "frequency" in scheduler:
                     logger.info("frequency will be ignored from the "
                                 "scheduler dict {}.".format(scheduler))
@@ -123,14 +124,15 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         # Set this so register doesn't complain.
         self._scheduler_step_freq = "ptl"
         ddp_model, self._optimizers, self._schedulers = self.register(
-            models=[ptl_module], optimizers=optimizers, schedulers=lr_schedulers)
+            models=[ptl_module],
+            optimizers=optimizers,
+            schedulers=lr_schedulers)
 
         assert len(ddp_model) == 1
         self._model = ddp_model[0]
 
         model = self.get_model()
-        if self.is_function_implemented("on_pretrain_routine_start",
-                                        model):
+        if self.is_function_implemented("on_pretrain_routine_start", model):
             model.on_pretrain_routine_start()
 
         train_data_loader = None
@@ -145,8 +147,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         elif self.is_function_implemented("val_dataloader", model):
             val_data_loader = model.val_dataloader()
 
-        self.register_data(train_loader=train_data_loader,
-                           validation_loader=val_data_loader)
+        self.register_data(
+            train_loader=train_data_loader, validation_loader=val_data_loader)
 
     def train_epoch(self, iterator, info):
         model = self.get_model()
@@ -236,8 +238,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
                 if isinstance(raw_output, dict):
                     meter_collection.update(raw_output, num_samples)
                 elif isinstance(raw_output, torch.Tensor):
-                    meter_collection.update({"train_loss": o[
-                        "training_loss"]}, num_samples)
+                    meter_collection.update({
+                        "train_loss": o["training_loss"]
+                    }, num_samples)
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_train_epoch_end", model):
@@ -249,7 +252,6 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
 
         return return_output
 
-
     def train_batch(self, batch, batch_info):
         # Get the original PTL module.
         model = self.get_model()
@@ -258,9 +260,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         epoch_idx = batch_info["epoch_idx"]
 
         if self.is_function_implemented("on_train_batch_start", model):
-            response = model.on_train_batch_start(batch=batch,
-                                                  batch_idx=batch_idx,
-                                                  dataloader_idx=0)
+            response = model.on_train_batch_start(
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
             # Skip remainder of epoch if response is -1.
             if response == -1:
                 return {"signal": -1}
@@ -276,12 +277,12 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
                 output = self.model(*args)
             elif self.use_gpu:
                 # Using single GPU.
-                # Don't copy the batch since there is a single gpu that the batch could
-                # be referenced from and if there are multiple optimizers the batch will
-                # wind up copying it to the same device repeatedly.
+                # Don't copy the batch since there is a single gpu that
+                # the batch could be referenced from and if there are
+                # multiple optimizers the batch will wind up copying it to
+                # the same device repeatedly.
                 device = self.device
-                batch = model.transfer_batch_to_device(batch,
-                                                           device=device)
+                batch = model.transfer_batch_to_device(batch, device=device)
                 args[0] = batch
                 output = model.training_step(*args)
             else:
@@ -305,8 +306,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
                 loss = output
             else:
                 raise RuntimeError(
-                    'No `loss` value in the dictionary returned from `model.training_step()`.'
-                )
+                    "No `loss` value in the dictionary returned from "
+                    "`model.training_step()`.")
 
         # If output contains tensors, detach them all.
         if isinstance(output, torch.Tensor):
@@ -322,8 +323,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         with self.timers.record("grad"):
             if self.use_fp16:
                 with self._amp.scale_loss(loss, optimizer) as scaled_loss:
-                    model.backward(self, scaled_loss, optimizer,
-                                   optimizer_idx=0)
+                    model.backward(
+                        self, scaled_loss, optimizer, optimizer_idx=0)
             else:
                 model.backward(self, loss, optimizer, optimizer_idx=0)
 
@@ -331,23 +332,29 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
             model.on_after_backward()
 
         with self.timers.record("apply"):
-            model.optimizer_step(epoch=epoch_idx, batch_idx=batch_idx,
-                                 optimizer=optimizer, optimizer_idx=0)
+            model.optimizer_step(
+                epoch=epoch_idx,
+                batch_idx=batch_idx,
+                optimizer=optimizer,
+                optimizer_idx=0)
 
         model.on_before_zero_grad(optimizer)
 
-        model.optimizer_zero_grad(epoch=epoch_idx, batch_idx=batch_idx,
-                                  optimizer=optimizer, optimizer_idx=0)
+        model.optimizer_zero_grad(
+            epoch=epoch_idx,
+            batch_idx=batch_idx,
+            optimizer=optimizer,
+            optimizer_idx=0)
 
         if self.is_function_implemented("on_train_batch_end", model):
-            model.on_train_batch_end(batch=batch, batch_idx=batch_idx,
-                                     dataloader_idx=0)
+            model.on_train_batch_end(
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
 
         return {
             "signal": 0,
             "training_loss": untouched_loss.item(),
             "raw_output": output,
-            #NUM_SAMPLES: len(batch)
+            # NUM_SAMPLES: len(batch)
         }
 
     def validate(self, val_iterator, info):
@@ -396,8 +403,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
                 if isinstance(raw_output, dict):
                     meter_collection.update(raw_output, num_samples)
                 elif isinstance(raw_output, torch.Tensor):
-                    meter_collection.update({"val_loss": raw_output.item()},
-                                            num_samples)
+                    meter_collection.update({
+                        "val_loss": raw_output.item()
+                    }, num_samples)
                 return_output = meter_collection.summary()
 
         if self.is_function_implemented("on_validation_epoch_end", model):
@@ -409,9 +417,8 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
         model = self.get_model()
         batch_idx = batch_info["batch_idx"]
         if self.is_overridden("on_validation_batch_start", model):
-            model.on_validation_batch_start(batch=batch,
-                                            batch_idx=batch_idx,
-                                            dataloader_idx=0)
+            model.on_validation_batch_start(
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
         args = [batch, batch_idx]
         with self.timers.record("eval_fwd"):
             if self._use_ddp:
@@ -420,8 +427,7 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
             elif self.use_gpu:
                 # Using single GPU.
                 device = self.device
-                batch = model.transfer_batch_to_device(batch,
-                                                       device=device)
+                batch = model.transfer_batch_to_device(batch, device=device)
                 args[0] = batch
                 output = model.validation_step(*args)
             else:
@@ -436,11 +442,11 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
             output = model.validation_step_end(output)
 
         if self.is_function_implemented("on_validation_batch_end", model):
-            model.on_validation_batch_end(batch=batch, batch_idx=batch_idx,
-                                     dataloader_idx=0)
+            model.on_validation_batch_end(
+                batch=batch, batch_idx=batch_idx, dataloader_idx=0)
         return {
             "raw_output": output,
-            #NUM_SAMPLES: len(batch)
+            # NUM_SAMPLES: len(batch)
         }
 
     def state_dict(self):
@@ -468,6 +474,3 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin, TrainerOptimizersMix
                                "TrainingOperator.from_ptl or implement "
                                "val_dataloader in your LightningModule.")
         return self._validation_loader
-
-
-
