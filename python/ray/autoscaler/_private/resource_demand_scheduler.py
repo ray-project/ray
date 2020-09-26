@@ -60,8 +60,13 @@ class ResourceDemandScheduler:
         """
 
         if resource_demands is None:
-            logger.info("No resource demands")
-            return []
+            node_resources, node_type_counts = self.calculate_node_resources(
+                nodes, pending_nodes, usage_by_ip)
+            nodes = _add_min_workers_nodes(self.node_types, node_type_counts,
+                                           nodes)
+            if not nodes:
+                logger.info("No resource demands")
+            return nodes
 
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, pending_nodes, usage_by_ip)
@@ -75,7 +80,6 @@ class ResourceDemandScheduler:
             self.node_types, node_type_counts,
             self.max_workers - len(nodes) - sum(pending_nodes.values()),
             unfulfilled)
-
         nodes = _add_min_workers_nodes(self.node_types, node_type_counts,
                                        nodes)
 
@@ -168,7 +172,7 @@ def _add_min_workers_nodes(node_types: Dict[NodeType, NodeTypeConfigDict],
         new_num_nodes = node_type_counts_to_add.get(node_type, 0)
         if new_num_nodes > num_nodes:
             total_nodes_to_add[index] = (node_type, new_num_nodes)
-            del node_type_counts_to_add[node_type]
+        node_type_counts_to_add.pop(node_type, None)
 
     # Add the remaining nodes
     total_nodes_to_add.extend(node_type_counts_to_add.items())

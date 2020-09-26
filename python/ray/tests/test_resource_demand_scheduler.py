@@ -210,11 +210,15 @@ def test_add_min_workers_nodes():
     assert _add_min_workers_nodes(types,
                                   {"m2.large": 5},
                                   [("m2.large", 9)]) == \
-        [("m2.large", 41), ("gpu", 99999)]
+        [("m2.large", 45), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types,
+                                  {"m2.large": 5},
+                                  [("m2.large", 60)]) == \
+        [("m2.large", 60), ("gpu", 99999)]
     assert _add_min_workers_nodes(types,
                                   {"m2.large": 5},
                                   [("m2.large", 9), ("m4.large", 5)]) == \
-        [("m2.large", 41), ("m4.large", 5), ("gpu", 99999)]
+        [("m2.large", 45), ("m4.large", 5), ("gpu", 99999)]
     assert _add_min_workers_nodes(types, {
         "m2.large": 50,
         "m4.large": 0,
@@ -377,9 +381,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
     def testScaleUpMinWorkers(self):
-        config = MULTI_WORKER_CLUSTER.copy()
-        config["min_workers"] = 2
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["min_workers"] = 3
         config["max_workers"] = 50
+        # Since config["min_workers"] > 2, the remaining worker is started
+        # with the default worker node type.
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -392,9 +398,11 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
-        self.waitForNodes(2)
-        assert len(self.provider.mock_nodes) == 1
-        assert self.provider.mock_nodes[0].node_type == "p2.8xlarge"
+        self.waitForNodes(3)
+        assert len(self.provider.mock_nodes) == 3
+        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
 
     def testScaleUpIgnoreUsed(self):
         config = MULTI_WORKER_CLUSTER.copy()
