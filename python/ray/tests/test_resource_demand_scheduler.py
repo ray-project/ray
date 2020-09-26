@@ -16,7 +16,8 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
-from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
+from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
+                                NODE_KIND_WORKER
 from ray.test_utils import same_elements
 
 from time import sleep
@@ -385,9 +386,10 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
-            LoadMetrics(),
+            lm,
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -399,9 +401,32 @@ class AutoscalingTest(unittest.TestCase):
             self.provider.mock_nodes[0].node_type,
             self.provider.mock_nodes[1].node_type
         } == {"p2.8xlarge", "m4.large"}
+        self.provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        }, 2)
+        self.provider.create_node({}, {
+            TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+        }, 2)
+        assert len(self.provider.non_terminated_nodes({})) == 6
+        # Make sure that after idle_timeout_minutes we don't kill idle
+        # min workers.
         time.sleep(60.5)
+        for node_id in self.provider.non_terminated_nodes({}):
+            lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = 0
         autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 2
+        self.waitForNodes(2)
+        cnt = 0
+
+        for id in self.provider.mock_nodes:
+            if self.provider.mock_nodes[id].state == "running" or \
+                self.provider.mock_nodes[id].state == "pending":
+                assert self.provider.mock_nodes[id].node_type in {
+                    "p2.8xlarge", "m4.large"
+                }
+                cnt += 1
+        assert cnt == 2
 
     def testScaleUpIgnoreUsed(self):
         config = MULTI_WORKER_CLUSTER.copy()
