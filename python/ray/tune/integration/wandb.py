@@ -139,7 +139,6 @@ def wandb_mixin(func: Callable):
 
     """
     func.__mixins__ = (WandbTrainableMixin, )
-    func.__wandb_group__ = func.__name__
     return func
 
 
@@ -344,8 +343,8 @@ class WandbLogger(Logger):
             exclude_results += ["config"]
 
         # Fill trial ID and name
-        trial_id = self.trial.trial_id
-        trial_name = str(self.trial)
+        trial_id = self.trial.trial_id if self.trial else None
+        trial_name = str(self.trial) if self.trial else None
 
         # Project name for Wandb
         try:
@@ -355,7 +354,8 @@ class WandbLogger(Logger):
                 "You need to specify a `project` in your wandb `config` dict.")
 
         # Grouping
-        wandb_group = wandb_config.pop("group", self.trial.trainable_name)
+        wandb_group = wandb_config.pop(
+            "group", self.trial.trainable_name if self.trial else None)
 
         # remove unpickleable items!
         config = _clean_log(config)

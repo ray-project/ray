@@ -9,7 +9,7 @@ Experience collection can scale to hundreds of CPU workers due to the
 distributed prioritization of experience prior to storage in replay buffers.
 
 Detailed documentation:
-https://docs.ray.io/en/latest/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
+https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
 """  # noqa: E501
 
 import collections

@@ -170,6 +170,7 @@ struct GcsServerMocker {
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
         override {
+      num_commit_requested += 1;
       rpc::CommitBundleResourcesReply reply;
       callback(Status::OK(), reply);
     }
@@ -215,6 +216,7 @@ struct GcsServerMocker {
 
     int num_lease_requested = 0;
     int num_return_requested = 0;
+    int num_commit_requested = 0;
     ClientID node_id = ClientID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};

@@ -1,5 +1,7 @@
 package io.ray.runtime.exception;
 
+import io.ray.api.id.ActorId;
+
 /**
  * Indicates that the actor died unexpectedly before finishing a task.
  *
@@ -8,8 +10,16 @@ package io.ray.runtime.exception;
  */
 public class RayActorException extends RayException {
 
+  public ActorId actorId;
+
   public RayActorException() {
     super("The actor died unexpectedly before finishing this task.");
+  }
+
+  public RayActorException(ActorId actorId) {
+    super(String.format(
+        "The actor %s died unexpectedly before finishing this task.", actorId));
+    this.actorId = actorId;
   }
 
   public RayActorException(String message) {

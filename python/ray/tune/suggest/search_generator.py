@@ -67,12 +67,20 @@ class SearchGenerator(SearchAlgorithm):
         self._parser = make_parser()
         self._experiment = None
         self._counter = 0  # Keeps track of number of trials created.
-        self._total_samples = None  # int: total samples to evaluate.
+        self._total_samples = 0  # int: total samples to evaluate.
         self._finished = False
+
+    @property
+    def metric(self):
+        return self.searcher.metric
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         return self.searcher.set_search_properties(metric, mode, config)
+
+    @property
+    def total_samples(self):
+        return self._total_samples
 
     def add_configurations(
             self,
@@ -95,20 +103,16 @@ class SearchGenerator(SearchAlgorithm):
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
 
-    def next_trials(self) -> List[Trial]:
-        """Provides a batch of Trial objects to be queued into the TrialRunner.
+    def next_trial(self):
+        """Provides one Trial object to be queued into the TrialRunner.
 
         Returns:
-            List[Trial]: A list of trials for the Runner to consume.
+            Trial: Returns a single trial.
         """
-        trials = []
-        while not self.is_finished():
-            trial = self.create_trial_if_possible(self._experiment.spec,
-                                                  self._experiment.name)
-            if trial is None:
-                break
-            trials.append(trial)
-        return trials
+        if not self.is_finished():
+            return self.create_trial_if_possible(self._experiment.spec,
+                                                 self._experiment.name)
+        return None
 
     def create_trial_if_possible(self, experiment_spec: Dict,
                                  output_path: str) -> Optional[Trial]:

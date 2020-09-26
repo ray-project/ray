@@ -9,7 +9,7 @@ import aiohttp.web
 from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
-import ray.services
+import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2
@@ -42,7 +42,7 @@ class DashboardHead:
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
-        self.ip = ray.services.get_node_ip_address()
+        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,

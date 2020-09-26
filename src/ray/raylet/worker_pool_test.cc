@@ -248,6 +248,7 @@ TEST_P(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -439,6 +440,51 @@ TEST_P(WorkerPoolTest, PopWorkerMultiTenancy) {
       }
     }
   }
+}
+
+TEST_P(WorkerPoolTest, MaximumStartupConcurrency) {
+  auto task_spec = ExampleTaskSpec();
+  std::vector<Process> started_processes;
+
+  // Try to pop some workers. Some worker processes will be started.
+  for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
+    auto worker = worker_pool_->PopWorker(task_spec);
+    RAY_CHECK(!worker);
+    auto last_process = worker_pool_->LastStartedWorkerProcess();
+    RAY_CHECK(last_process.IsValid());
+    started_processes.push_back(last_process);
+  }
+
+  // Can't start a new worker process at this point.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  RAY_CHECK(!worker_pool_->PopWorker(task_spec));
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  // Call `RegisterWorker` to emulate worker registration.
+  for (const auto &process : started_processes) {
+    auto worker = CreateWorker(Process());
+    RAY_CHECK_OK(
+        worker_pool_->RegisterWorker(worker, process.GetId(), [](Status, int) {}));
+    // Calling `RegisterWorker` won't affect the counter of starting worker processes.
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+    workers.push_back(worker);
+  }
+
+  // Can't start a new worker process at this point.
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+  RAY_CHECK(!worker_pool_->PopWorker(task_spec));
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+
+  // Call `OnWorkerStarted` to emulate worker port announcement.
+  for (size_t i = 0; i < workers.size(); i++) {
+    worker_pool_->OnWorkerStarted(workers[i]);
+    // Calling `OnWorkerStarted` will affect the counter of starting worker processes.
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY - i - 1,
+              worker_pool_->NumWorkerProcessesStarting());
+  }
+
+  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,

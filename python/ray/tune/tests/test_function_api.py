@@ -467,3 +467,53 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["cp"], "DIR")
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["cp"], "DIR")
+
+    def test_return_anonymous(self):
+        def train(config):
+            return config["a"]
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["_metric"], 4)
+        self.assertEquals(trial_2.last_result["_metric"], 8)
+
+    def test_return_specific(self):
+        def train(config):
+            return {"m": config["a"]}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["m"], 4)
+        self.assertEquals(trial_2.last_result["m"], 8)
+
+    def test_yield_anonymous(self):
+        def train(config):
+            for i in range(10):
+                yield config["a"] + i
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["_metric"], 4 + 9)
+        self.assertEquals(trial_2.last_result["_metric"], 8 + 9)
+
+    def test_yield_specific(self):
+        def train(config):
+            for i in range(10):
+                yield {"m": config["a"] + i}
+
+        trial_1, trial_2 = tune.run(
+            train, config={
+                "a": tune.grid_search([4, 8])
+            }).trials
+
+        self.assertEquals(trial_1.last_result["m"], 4 + 9)
+        self.assertEquals(trial_2.last_result["m"], 8 + 9)

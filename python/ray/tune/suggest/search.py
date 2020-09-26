@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional, Union
 
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial
 
 
 class SearchAlgorithm:
@@ -17,6 +16,12 @@ class SearchAlgorithm:
     See also: `ray.tune.suggest.BasicVariantGenerator`.
     """
     _finished = False
+
+    _metric = None
+
+    @property
+    def metric(self):
+        return self._metric
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -34,7 +39,16 @@ class SearchAlgorithm:
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
         """
+        if self._metric and metric:
+            return False
+        if metric:
+            self._metric = metric
         return True
+
+    @property
+    def total_samples(self):
+        """Get number of total trials to be generated"""
+        return 0
 
     def add_configurations(
             self,
@@ -46,11 +60,11 @@ class SearchAlgorithm:
         """
         raise NotImplementedError
 
-    def next_trials(self) -> List[Trial]:
-        """Provides Trial objects to be queued into the TrialRunner.
+    def next_trial(self):
+        """Returns single Trial object to be queued into the TrialRunner.
 
         Returns:
-            trials (list): Returns a list of trials.
+            trial (Trial): Returns a Trial object.
         """
         raise NotImplementedError
 
