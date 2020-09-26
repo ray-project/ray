@@ -379,7 +379,7 @@ class AutoscalingTest(unittest.TestCase):
         config["min_workers"] = 2
         config["max_workers"] = 50
         config["idle_timeout_minutes"] = 1
-        # Since config["min_workers"] > 2, the remaining worker is started
+        # Since config["min_workers"] > 1, the remaining worker is started
         # with the default worker node type.
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 1
         config_path = self.write_config(config)
