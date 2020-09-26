@@ -339,20 +339,16 @@ class SchedulingQueue {
         main_thread_id_(boost::this_thread::get_id()),
         waiter_(waiter) {}
 
-  bool ActorTaskQueueEmpty() const {
-    return pending_actor_tasks_.empty();
-  }
+  bool ActorTaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
 
-  bool NormalTaskQueueEmpty() const {
-    return pending_normal_tasks_.empty();
-  }
+  bool NormalTaskQueueEmpty() const { return pending_normal_tasks_.empty(); }
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    
     if (seq_no == -1) {
-      pending_normal_tasks_.push_back(InboundRequest(accept_request, reject_request, dependencies.size() > 0));
+      pending_normal_tasks_.push_back(
+          InboundRequest(accept_request, reject_request, dependencies.size() > 0));
       return;
     }
 
@@ -368,7 +364,7 @@ class SchedulingQueue {
 
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
-        //RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+        // RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
         auto it = pending_actor_tasks_.find(seq_no);
         if (it != pending_actor_tasks_.end()) {
           it->second.MarkDependenciesSatisfied();
@@ -380,7 +376,6 @@ class SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
-
     if (!NormalTaskQueueEmpty()) {
       while (!pending_normal_tasks_.empty()) {
         auto head = pending_normal_tasks_.begin();
@@ -413,7 +408,8 @@ class SchedulingQueue {
     }
 
     // Cancel any stale requests that the client doesn't need any longer.
-    while (!pending_actor_tasks_.empty() && pending_actor_tasks_.begin()->first < next_seq_no_) {
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_actor_tasks_.begin();
       RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                      << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
@@ -422,7 +418,8 @@ class SchedulingQueue {
     }
 
     // Process as many in-order requests as we can.
-    while (!pending_actor_tasks_.empty() && pending_actor_tasks_.begin()->first == next_seq_no_ &&
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first == next_seq_no_ &&
            pending_actor_tasks_.begin()->second.CanExecute()) {
       auto head = pending_actor_tasks_.begin();
       auto request = head->second;
@@ -441,7 +438,8 @@ class SchedulingQueue {
       next_seq_no_++;
     }
 
-    if (pending_actor_tasks_.empty() || !pending_actor_tasks_.begin()->second.CanExecute()) {
+    if (pending_actor_tasks_.empty() ||
+        !pending_actor_tasks_.begin()->second.CanExecute()) {
       // No timeout for object dependency waits.
       wait_timer_.cancel();
     } else {
@@ -458,7 +456,7 @@ class SchedulingQueue {
     }
   }
 
-  private:
+ private:
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout() {
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -529,7 +527,7 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void EnqueuePushedTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+                         rpc::SendReplyCallback send_reply_callback);
 
   void RunTasksFromQueue(WorkerID caller_worker_id);
 
