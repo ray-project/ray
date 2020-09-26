@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 import yaml
+import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
@@ -167,7 +168,18 @@ class StandardAutoscaler:
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
         nodes_to_terminate = []
+        node_type_counts = collections.defaultdict(int)
         for node_id in nodes:
+            # Make sure to not kill idle node types if the number of workers
+            # of that type is lower/equal to the min_workers of that type.
+            if self.resource_demand_scheduler:
+                tags = self.provider.node_tags(node_id)
+                if TAG_RAY_USER_NODE_TYPE in tags:
+                    node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                    node_type_counts[node_type] += 1
+                    if node_type_counts[node_type] <= \
+                        self.available_node_types[node_type].get("min_workers", 0):
+                        continue
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
                     (len(nodes) - len(nodes_to_terminate)
