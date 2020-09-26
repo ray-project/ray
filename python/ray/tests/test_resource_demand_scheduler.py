@@ -27,7 +27,6 @@ TYPES_A = {
             "FooProperty": 42,
         },
         "resources": {},
-        "min_workers": 0,
         "max_workers": 0,
     },
     "m4.large": {
@@ -35,7 +34,6 @@ TYPES_A = {
         "resources": {
             "CPU": 2
         },
-        "min_workers": 0,
         "max_workers": 10,
     },
     "m4.4xlarge": {
@@ -43,7 +41,6 @@ TYPES_A = {
         "resources": {
             "CPU": 16
         },
-        "min_workers": 0,
         "max_workers": 8,
     },
     "m4.16xlarge": {
@@ -51,7 +48,6 @@ TYPES_A = {
         "resources": {
             "CPU": 64
         },
-        "min_workers": 0,
         "max_workers": 4,
     },
     "p2.xlarge": {
@@ -60,7 +56,6 @@ TYPES_A = {
             "CPU": 16,
             "GPU": 1
         },
-        "min_workers": 0,
         "max_workers": 10,
     },
     "p2.8xlarge": {
@@ -69,7 +64,6 @@ TYPES_A = {
             "CPU": 32,
             "GPU": 8
         },
-        "min_workers": 0,
         "max_workers": 4,
     },
 }
@@ -400,9 +394,9 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(3)
         assert len(self.provider.mock_nodes) == 3
-        assert self.provider.mock_nodes[0].node_type == "m4.large"
+        assert self.provider.mock_nodes[0].node_type == "p2.8xlarge"
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
-        assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
+        assert self.provider.mock_nodes[2].node_type == "m4.large"
 
     def testScaleUpIgnoreUsed(self):
         config = MULTI_WORKER_CLUSTER.copy()
