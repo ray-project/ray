@@ -718,7 +718,7 @@ class TrainingOperator:
 
     def _get_validation_loader(self):
         if not hasattr(self, "_validation_loader") or \
-                self.training_operator._validation_loader is None:
+                self._validation_loader is None:
             raise RuntimeError(
                 "Training Operator does not have any "
                 "registered validation loader. If this is "
