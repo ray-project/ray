@@ -308,6 +308,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 

@@ -649,7 +649,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 
 void WorkerPool::TryKillingIdleWorkers() {
   size_t running_size = 0;
-  for (const auto worker : GetAllRegisteredWorkers()) {
+  for (const auto &worker : GetAllRegisteredWorkers()) {
     if (!worker->IsDead()) {
       running_size++;
     }
