@@ -497,7 +497,8 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandlePushTask(request, &reply, reply_callback);
+    receiver_->EnqueuePushedTask(request, &reply, reply_callback);
+    receiver_->RunTasksFromQueue(worker_id);
   }
 
   // Push a task request with actor counter 1. This should scucceed
@@ -511,7 +512,8 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandlePushTask(request, &reply, reply_callback);
+    receiver_->EnqueuePushedTask(request, &reply, reply_callback);
+    receiver_->RunTasksFromQueue(worker_id);
   }
 
   // Create another request with the same caller id, but a different worker id,
@@ -529,7 +531,8 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(status.ok());
     };
-    receiver_->HandlePushTask(request, &reply, reply_callback);
+    receiver_->EnqueuePushedTask(request, &reply, reply_callback);
+    receiver_->RunTasksFromQueue(worker_id);
   }
 
   // Push a task request with actor counter 1, but with a different worker id,
@@ -544,7 +547,8 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
       ++callback_count;
       ASSERT_TRUE(!status.ok());
     };
-    receiver_->HandlePushTask(request, &reply, reply_callback);
+    receiver_->EnqueuePushedTask(request, &reply, reply_callback);
+    receiver_->RunTasksFromQueue(worker_id);
   }
 
   StartIOService();

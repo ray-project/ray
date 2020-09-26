@@ -309,7 +309,7 @@ void CoreWorkerDirectTaskReceiver::Init(
   client_pool_ = client_pool;
 }
 
-void CoreWorkerDirectTaskReceiver::HandlePushTask(
+void CoreWorkerDirectTaskReceiver::EnqueuePushedTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
@@ -429,6 +429,17 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   }
   it->second.Add(request.sequence_number(), request.client_processed_up_to(),
                  accept_callback, reject_callback, dependencies);
+}
+
+void CoreWorkerDirectTaskReceiver::RunTasksFromQueue(WorkerID caller_worker_id) {
+  auto it = scheduling_queue_.find(caller_worker_id);
+  if (it == scheduling_queue_.end()) {
+    return;
+  }
+  if (it->second.ActorTaskQueueEmpty() && it->second.NormalTaskQueueEmpty()) {
+    return;
+  }
+  it->second.ScheduleRequests();
 }
 
 }  // namespace ray
