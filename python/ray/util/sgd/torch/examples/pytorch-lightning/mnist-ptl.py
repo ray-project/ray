@@ -40,7 +40,7 @@ class LitMNIST(LightningModule):
     def configure_optimizers(self):
         return Adam(self.parameters(), lr=self.config["lr"])
 
-    def prepare_data(self):
+    def setup(self, stage):
         # transforms for images
         transform = transforms.Compose([
             transforms.ToTensor(),

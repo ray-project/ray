@@ -78,6 +78,9 @@ class PTLOperator(TrainingOperator, TrainerModelHooksMixin,
                             "pytorch_lightning.LightningModule. Got object "
                             "of type {} instead.".format(type(ptl_module)))
 
+        # This is needed for LightningDistributedDataParallel.
+        ptl_module.testing = False
+
         # Call on_fit_start on instantiation.
         if self.is_function_implemented("on_fit_start", ptl_module):
             ptl_module.on_fit_start()
