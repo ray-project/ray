@@ -20,7 +20,7 @@ from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
-from ray.tune.utils import warn_if_slow
+from ray.tune.utils import warn_if_slow, detect_chdir
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +123,10 @@ class _TrialCleanup:
                 del self._cleanup_map[done]
 
 
-def noop_logger_creator(config, logdir):
+def noop_logger_creator(config, logdir, should_chdir=False):
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
-    if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+    if should_chdir and not ray.worker._mode() == ray.worker.LOCAL_MODE:
         os.chdir(logdir)
     return NoopLogger(config, logdir)
 
@@ -179,7 +179,10 @@ class RayTrialExecutor(TrialExecutor):
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
-        logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
+        logger_creator = partial(
+            noop_logger_creator,
+            logdir=trial.logdir,
+            should_chdir=detect_chdir())
 
         if (self._reuse_actors and reuse_allowed
                 and self._cached_actor is not None):
@@ -772,7 +775,7 @@ class RayTrialExecutor(TrialExecutor):
 
         For non-local mode it is no-op.
         """
-        if ray.worker._mode() == ray.worker.LOCAL_MODE:
+        if ray.worker._mode() == ray.worker.LOCAL_MODE and detect_chdir():
             old_dir = os.getcwd()
             try:
                 os.chdir(trial.logdir)

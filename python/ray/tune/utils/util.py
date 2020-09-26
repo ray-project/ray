@@ -9,6 +9,7 @@ from threading import Thread
 
 import numpy as np
 import ray
+from ray.util.debug import log_once
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -164,6 +165,14 @@ def env_integer(key, default):
     return default
 
 
+def detect_chdir():
+    detected = os.environ.get("TUNE_WORKER_CHDIR") == "1"
+    if detected:
+        if log_once("tune_detected_chdir"):
+            logger.info("TUNE_WORKER_CHDIR detected.")
+    return detected
+
+
 def merge_dicts(d1, d2):
     """
     Args:
@@ -205,7 +214,7 @@ def deep_update(original,
 
     for k, value in new_dict.items():
         if k not in original and not new_keys_allowed:
-            raise Exception("Unknown config parameter `{}` ".format(k))
+            raise ValueError("Unknown config parameter `{}` ".format(k))
 
         # Both orginal value and new one are dicts.
         if isinstance(original.get(k), dict) and isinstance(value, dict):
