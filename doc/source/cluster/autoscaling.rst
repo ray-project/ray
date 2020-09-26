@@ -72,6 +72,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
             node_config:
                 InstanceType: m4.xlarge
             resources: {"CPU": 4}
+            min_workers: 0
             max_workers: 5
         cpu_16_spot:
             node_config:
@@ -79,11 +80,13 @@ An example of configuring multiple node types is as follows `(full example) <htt
                 InstanceMarketOptions:
                     MarketType: spot
             resources: {"CPU": 16, "Custom1": 1, "is_spot": 1}
+            min_workers: 0
             max_workers: 10
         gpu_1_ondemand:
             node_config:
                 InstanceType: p2.xlarge
             resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
+            min_workers: 0
             max_workers: 4
             worker_setup_commands:
                 - pip install tensorflow-gpu  # Example command.
@@ -91,6 +94,7 @@ An example of configuring multiple node types is as follows `(full example) <htt
             node_config:
                 InstanceType: p2.8xlarge
             resources: {"CPU": 32, "GPU": 8}
+            min_workers: 0
             max_workers: 2
             worker_setup_commands:
                 - pip install tensorflow-gpu  # Example command.

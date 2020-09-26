@@ -4,6 +4,7 @@ import yaml
 import tempfile
 import shutil
 import unittest
+import copy
 
 import ray
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
@@ -13,7 +14,7 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
-    _utilization_score, \
+    _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND
 from ray.test_utils import same_elements
@@ -26,6 +27,7 @@ TYPES_A = {
             "FooProperty": 42,
         },
         "resources": {},
+        "min_workers": 0,
         "max_workers": 0,
     },
     "m4.large": {
@@ -33,6 +35,7 @@ TYPES_A = {
         "resources": {
             "CPU": 2
         },
+        "min_workers": 0,
         "max_workers": 10,
     },
     "m4.4xlarge": {
@@ -40,6 +43,7 @@ TYPES_A = {
         "resources": {
             "CPU": 16
         },
+        "min_workers": 0,
         "max_workers": 8,
     },
     "m4.16xlarge": {
@@ -47,6 +51,7 @@ TYPES_A = {
         "resources": {
             "CPU": 64
         },
+        "min_workers": 0,
         "max_workers": 4,
     },
     "p2.xlarge": {
@@ -55,6 +60,7 @@ TYPES_A = {
             "CPU": 16,
             "GPU": 1
         },
+        "min_workers": 0,
         "max_workers": 10,
     },
     "p2.8xlarge": {
@@ -63,6 +69,7 @@ TYPES_A = {
             "CPU": 32,
             "GPU": 8
         },
+        "min_workers": 0,
         "max_workers": 4,
     },
 }
@@ -162,6 +169,76 @@ def test_get_nodes_respects_max_limit():
     assert get_nodes_for(types, {"m4.large": 7}, 2, [{
         "CPU": 1
     }] * 10) == [("m4.large", 2)]
+
+
+def test_add_min_workers_nodes():
+    types = {
+        "m2.large": {
+            "resources": {
+                "CPU": 2
+            },
+            "min_workers": 50,
+            "max_workers": 100,
+        },
+        "m4.large": {
+            "resources": {
+                "CPU": 2
+            },
+            "min_workers": 0,
+            "max_workers": 10,
+        },
+        "gpu": {
+            "resources": {
+                "GPU": 1
+            },
+            "min_workers": 99999,
+            "max_workers": 99999,
+        },
+    }
+    assert _add_min_workers_nodes(types,
+                                  {},
+                                  []) == \
+        [("m2.large", 50), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types,
+                                  {"m2.large": 5},
+                                  []) == \
+        [("m2.large", 45), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types,
+                                  {"m2.large": 5},
+                                  [("m2.large", 2)]) == \
+        [("m2.large", 45), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types,
+                                  {"m2.large": 5},
+                                  [("m2.large", 9)]) == \
+        [("m2.large", 41), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types,
+                                  {"m2.large": 5},
+                                  [("m2.large", 9), ("m4.large", 5)]) == \
+        [("m2.large", 41), ("m4.large", 5), ("gpu", 99999)]
+    assert _add_min_workers_nodes(types, {
+        "m2.large": 50,
+        "m4.large": 0,
+        "gpu": 99999
+    }, []) == []
+
+
+def test_get_nodes_to_launch_with_min_workers():
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    new_types["p2.8xlarge"]["min_workers"] = 2
+    scheduler = ResourceDemandScheduler(provider, new_types, 3)
+
+    provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
+
+    nodes = provider.non_terminated_nodes({})
+
+    ips = provider.non_terminated_node_ips({})
+    utilizations = {ip: {"GPU": 8} for ip in ips}
+
+    to_launch = scheduler.get_nodes_to_launch(nodes, {}, [{
+        "GPU": 8
+    }], utilizations)
+    assert to_launch == [("p2.8xlarge", 1)]
 
 
 def test_get_nodes_to_launch_limits():
@@ -298,6 +375,26 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         autoscaler.update()
         self.waitForNodes(2)
+
+    def testScaleUpMinWorkers(self):
+        config = MULTI_WORKER_CLUSTER.copy()
+        config["min_workers"] = 2
+        config["max_workers"] = 50
+        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 2
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert len(self.provider.mock_nodes) == 1
+        assert self.provider.mock_nodes[0].node_type == "p2.8xlarge"
 
     def testScaleUpIgnoreUsed(self):
         config = MULTI_WORKER_CLUSTER.copy()
