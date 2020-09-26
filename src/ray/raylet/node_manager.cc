@@ -2159,8 +2159,25 @@ void NodeManager::ScheduleTasks(
   for (const auto &task : local_queues_.GetTasks(TaskState::PLACEABLE)) {
     task_dependency_manager_.TaskPending(task);
     move_task_set.insert(task.GetTaskSpecification().TaskId());
+
+    // This block is used to suppress infeasible task warning.
+    bool suppress_warning = false;
+    const auto &required_resources = task.GetTaskSpecification().GetRequiredResources();
+    const auto &resources_map = required_resources.GetResourceMap();
+    const auto &it = resources_map.begin();
+    // It is a hack to suppress infeasible task warning.
+    // If the first resource of a task requires this magic number, infeasible warning is
+    // suppressed. It is currently only used by placement group ready API. We don't want
+    // to have this in ray_config_def.h because the use case is very narrow, and we don't
+    // want to expose this anywhere.
+    double INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101;
+    if (it != resources_map.end() &&
+        it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
+      suppress_warning = true;
+    }
+
     // Push a warning to the task's driver that this task is currently infeasible.
-    {
+    if (!suppress_warning) {
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "infeasible_task";
       std::ostringstream error_message;

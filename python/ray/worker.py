@@ -25,7 +25,7 @@ import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
-import ray.services as services
+import ray._private.services as services
 import ray
 import setproctitle
 import ray.signature
@@ -1169,7 +1169,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray.services.check_version_info(worker.redis_client)
+        ray._private.services.check_version_info(worker.redis_client)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e

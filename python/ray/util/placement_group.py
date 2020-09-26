@@ -78,9 +78,13 @@ class PlacementGroup:
         return len(self.bundle_cache)
 
     def _get_none_zero_resource(self, bundle: List[Dict]):
+        # This number shouldn't be changed.
+        # When it is specified, node manager won't warn about infeasible
+        # tasks.
+        INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
         for key, value in bundle.items():
             if value > 0:
-                value = min(value, 0.001)
+                value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
                 return key, value
         assert False, "This code should be unreachable."
 
