@@ -556,6 +556,8 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
+* **TUNE_WORKER_CHDIR**: On each trial worker, automatically change the working
+  directory to the trial dir (``tune.get_trial_dir()``).
 
 
 There are some environment variables that are mostly relevant for integrated libraries:
