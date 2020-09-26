@@ -288,7 +288,7 @@ message HeartbeatTableData {
   map<string, double> resources_total = 4;
   // Aggregate outstanding resource load on this node manager.
   map<string, double> resource_load = 5;
-  // Indicates whether resource load is changed. Only used when 
+  // Indicates whether resource load is changed. Only used when
   // light heartbeat enabled.
   bool resource_load_changed = 6;
   // The resource load on this node, sorted by resource shape.
