@@ -864,11 +864,11 @@ def _process_observations(
         # and add it to "outputs".
         if (all_agents_done and not multiple_episodes_in_batch) or \
                 batch_builder.count >= rollout_fragment_length:
-            batch_builder.postprocess_batch_so_far(episode, perf_stats)
+            batch_builder.postprocess_batch_so_far(episode)
             outputs.append(batch_builder.build_and_reset(episode))
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
-            batch_builder.postprocess_batch_so_far(episode, perf_stats)
+            batch_builder.postprocess_batch_so_far(episode)
 
         # Episode is done.
         if all_agents_done:
