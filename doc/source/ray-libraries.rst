@@ -15,7 +15,7 @@ Ray also comes packaged with several built-in machine learning libraries:
 ClassyVision |classyvision|
 ---------------------------
 
-Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions. 
+Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
 
 
 [`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
@@ -54,6 +54,12 @@ Intel Analytics Zoo |zoo|
 Analytics Zoo seamless scales TensorFlow, Keras and PyTorch to distributed big data (using Spark, Flink & Ray).
 
 [`Link to integration <https://analytics-zoo.github.io/master/#ProgrammingGuide/rayonspark/>`__]
+
+John Snow Labs' NLU |NLU|
+-------------------------
+The power of 350+ pre-trained NLP models, 100+ Word Embeddings, 50+ Sentence Embeddings, and 50+ Classifiers in 46 languages with 1 line of Python code.
+
+[`Link to integration <https://nlu.johnsnowlabs.com/docs/en/predict_api#modin-dataframe>`__]
 
 MARS |mars|
 -----------
@@ -141,5 +147,9 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+
+.. |nlu| image:: images/nlu.png
     :class: inline-figure
     :height: 30
