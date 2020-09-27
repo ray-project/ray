@@ -59,6 +59,14 @@ def validate_config(config):
         logger.warning("`sample_async=True` is not supported for PyTorch! "
                        "Multithreading can lead to crashes.")
 
+    # Switch on trajectory view API by default for this algo (if None).
+    if config["_use_trajectory_view_api"] is None:
+        logger.info(
+            "Switching on Trajectory View API for A2C/A3C by default. "
+            "Set `_use_trajectory_view_api=False` explicitly in your config "
+            "to switch this off.")
+        config["_use_trajectory_view_api"] = True
+
 
 def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
