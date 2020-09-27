@@ -132,8 +132,8 @@ class KubernetesSyncClient(SyncClient):
         target_node, target_dir = target
 
         # Add trailing slashes for rsync
-        source += os.path.join(source, "")
-        target_dir += os.path.join(target_dir, "")
+        source = os.path.join(source, "")
+        target_dir = os.path.join(target_dir, "")
 
         command_runner = self._get_command_runner(target_node)
         command_runner.run_rsync_up(source, target_dir)
@@ -144,8 +144,8 @@ class KubernetesSyncClient(SyncClient):
         source_node, source_dir = source
 
         # Add trailing slashes for rsync
-        source_dir += os.path.join(source_dir, "")
-        target += os.path.join(target, "")
+        source_dir = os.path.join(source_dir, "")
+        target = os.path.join(target, "")
 
         command_runner = self._get_command_runner(source_node)
         command_runner.run_rsync_down(source_dir, target)
