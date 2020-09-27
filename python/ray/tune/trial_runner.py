@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 import click
 from datetime import datetime
@@ -90,8 +90,9 @@ class Callback:
 
 
         class MyCallback(Callback):
-            def on_trial_result(self, **info):
-                print(f"Got result: {info['result']['metric']}")
+            def on_trial_result(self, iteration, trials, trial, result,
+                                **info):
+                print(f"Got result: {result['metric']}")
 
 
         def train(config):
@@ -105,94 +106,108 @@ class Callback:
 
     """
 
-    def on_step_begin(self, **info):
+    def on_step_begin(self, iteration: int, trials: List[Trial], **info):
         """Called at the start of each tuning loop step.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_step_end(self, **info):
+    def on_step_end(self, iteration: int, trials: List[Trial], **info):
         """Called at the end of each tuning loop step.
 
         The iteration counter is increased before this hook is called.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_start(self, **info):
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial,
+                       **info):
         """Called after starting a trial instance.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has been started.
+            **info: Kwargs dict for forward compatibility.
 
         """
         pass
 
-    def on_trial_restore(self, **info):
+    def on_trial_restore(self, iteration: int, trials: List[Trial],
+                         trial: Trial, **info):
         """Called after restoring a trial instance.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has been restored.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_save(self, **info):
+    def on_trial_save(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
         """Called after receiving a checkpoint from a trial.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just saved a checkpoint.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_result(self, **info):
+    def on_trial_result(self, iteration: int, trials: List[Trial],
+                        trial: Trial, result: Dict, **info):
         """Called after receiving a result from a trial.
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just sent a result.
             result (Dict): Result that the trial sent.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_complete(self, **info):
+    def on_trial_complete(self, iteration: int, trials: List[Trial],
+                          trial: Trial, **info):
         """Called after a trial instance completed.
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has been completed.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
-    def on_trial_fail(self, **info):
+    def on_trial_fail(self, iteration: int, trials: List[Trial], trial: Trial,
+                      **info):
         """Called after a trial instance failed (errored).
 
         The search algorithm and scheduler are notified before this
         hook is called.
 
-        Keyword Arguments:
+        Arguments:
             iteration (int): Number of iterations of the tuning loop.
             trials (List[Trial]): List of trials.
             trial (Trial): Trial that just has errored.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
