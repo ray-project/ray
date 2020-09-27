@@ -47,6 +47,24 @@
 
 namespace ray {
 
+#ifdef RAY_USE_GLOG
+struct StdoutLogger : public google::base::Logger {
+  std::ostream &out() { return std::cout; }
+
+  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
+                     int length) {
+    // note: always flush otherwise it never shows up in raylet.out
+    out().write(message, length) << std::flush;
+  }
+
+  virtual void Flush() { out().flush(); }
+
+  virtual google::uint32 LogSize() { return 0; }
+};
+
+static StdoutLogger stdout_logger_singleton;
+#endif
+
 // This is the default implementation of ray log,
 // which is independent of any libs.
 class CerrLog {
@@ -153,6 +171,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
   google::InitGoogleLogging(app_name_.c_str());
+  int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
     std::string dir_ends_with_slash = log_dir_;
@@ -171,15 +190,20 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     }
     app_name_without_path += ".";
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    int level = GetMappedSeverity(static_cast<RayLogLevel>(severity_threshold_));
     google::SetLogDestination(level, dir_ends_with_slash.c_str());
-    for (int i = static_cast<int>(RayLogLevel::DEBUG);
-         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
-      if (i != level) {
-        google::SetLogDestination(i, "");
-      }
-    }
     FLAGS_stop_logging_if_full_disk = true;
+  } else {
+    // NOTE(lingxuan.zlx): If no specific log dir or empty directory string,
+    // we use stdout by default.
+    google::base::SetLogger(level, &stdout_logger_singleton);
+  }
+  for (int i = static_cast<int>(RayLogLevel::DEBUG);
+       i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
+    if (i != level) {
+      // NOTE(lingxuan.zlx): It means nothing can be printed or sinked to pass
+      // an empty destination.
+      google::SetLogDestination(i, "");
+    }
   }
   google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
 #endif
