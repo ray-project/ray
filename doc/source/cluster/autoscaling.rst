@@ -118,7 +118,7 @@ The resources field tells the autoscaler what kinds of resources this node provi
 
     resources: {"CPU": 4, "GPU": 1, "Custom2": 2}
 
-The ``min_workers`` and ``max_workers`` fields constrain the minimum and maximmum number of nodes of this type to launch, respectively:
+The ``min_workers`` and ``max_workers`` fields constrain the minimum and maximum number of nodes of this type to launch, respectively:
 
 .. code::
 

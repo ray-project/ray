@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 import copy
 import logging
 import math
@@ -22,7 +22,7 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    ResourceDemandScheduler
+    ResourceDemandScheduler, NodeType, NodeID
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
@@ -279,18 +279,18 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-    def _keep_min_worker_of_node_type(self, node_id, node_type_counts):
+    def _keep_min_worker_of_node_type(self, node_id: NodeID,
+                                      node_type_counts: Dict[NodeType, int]):
         """Returns if workers of node_type should be terminated.
 
         Receives the counters of running nodes so far and determines if idle
-        node_id should be terminated or not. It also updates the counters.
+        node_id should be terminated or not. It also updates the counters
+        (node_type_counts), which is returned by reference.
 
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
-            node_type_counts(Dict[NodeType, int]): The updated non_terminated
-                node types counted so far.
             bool: if workers of node_types should be terminated or not.
         """
         if self.resource_demand_scheduler:

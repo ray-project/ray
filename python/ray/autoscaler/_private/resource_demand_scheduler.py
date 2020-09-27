@@ -151,27 +151,19 @@ def _add_min_workers_nodes(node_types: Dict[NodeType, NodeTypeConfigDict],
         node_type_counts: counts of existing nodes already launched/pending.
         total_nodes_to_add: the number of nodes to add calculated based on
             the utilization constraint.
+    Returns:
+        total_nodes_to_add (List[Tuple[NodeType, int]]): the updated total
+            nodes to add.
     """
+    total_nodes_to_add_dict = dict(total_nodes_to_add)
+    for node_type, config in node_types.items():
+        existing = node_type_counts.get(node_type, 0)
+        target = config.get("min_workers", 0)
+        to_add = total_nodes_to_add_dict.get(node_type, 0)
+        if existing + to_add < target:
+            total_nodes_to_add_dict[node_type] = target - existing
 
-    # Count the running resource nodes that are less that min_workers.
-    node_type_counts_to_add: Dict[NodeType, int] = {}
-    for node_type in node_types:
-        running_nodes_of_type = node_type_counts.get(node_type, 0)
-        node_of_type_min_workers = node_types[node_type].get("min_workers", 0)
-        if running_nodes_of_type < node_of_type_min_workers:
-            node_type_counts_to_add[node_type] = (
-                node_of_type_min_workers - running_nodes_of_type)
-
-    # Update the number of nodes to add.
-    for index, (node_type, num_nodes) in enumerate(list(total_nodes_to_add)):
-        new_num_nodes = node_type_counts_to_add.get(node_type, 0)
-        if new_num_nodes > num_nodes:
-            total_nodes_to_add[index] = (node_type, new_num_nodes)
-        node_type_counts_to_add.pop(node_type, None)
-
-    # Add the remaining nodes
-    total_nodes_to_add.extend(node_type_counts_to_add.items())
-    return total_nodes_to_add
+    return list(total_nodes_to_add_dict.items())
 
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
