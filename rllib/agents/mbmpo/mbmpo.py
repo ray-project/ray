@@ -14,23 +14,24 @@ import numpy as np
 from typing import List
 
 import ray
-from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
+    MBMPOExploration
 from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
-from ray.rllib.env.model_vector_env import model_vector_env
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import EnvType, TrainerConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,10 @@ DEFAULT_CONFIG = with_common_config({
         # Normalize data (obs, action, and deltas).
         "normalize_data": True,
     },
+    # Exploration for MB-MPO is based on StochasticSampling, but uses 8000
+    # random timesteps up-front for worker=0.
     "exploration_config": {
-        "type": "StochasticSampling",
+        "type": MBMPOExploration,
         "random_timesteps": 8000,
     },
     # Workers sample from dynamics models, not from actual envs.
@@ -422,6 +425,22 @@ def validate_config(config):
         raise ValueError("Must have at least 1 worker/task.")
 
 
+def validate_env(env: EnvType, env_context: EnvContext):
+    """Validates the local_worker's env object (after creation).
+
+    Args:
+        env (EnvType): The env object to check (for worker=0 only).
+        env_context (EnvContext): The env context used for the instantiation of
+            the local worker's env (worker=0).
+
+    Raises:
+        ValueError: In case something is wrong with the config.
+    """
+    if not hasattr(env, "reward") or not callable(env.reward):
+        raise ValueError("Env {} doest not have a `reward()` method, needed "
+                         "for MB-MPO!".format(env))
+
+
 # Build a child class of `Trainer`, which uses the default policy,
 # MBMPOTorchPolicy. A TensorFlow version is not available yet.
 MBMPOTrainer = build_trainer(
@@ -430,4 +449,5 @@ MBMPOTrainer = build_trainer(
     default_policy=MBMPOTorchPolicy,
     execution_plan=execution_plan,
     validate_config=validate_config,
+    validate_env=validate_env,
 )

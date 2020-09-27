@@ -641,9 +641,9 @@ class Trainer(Trainable):
                     "using evaluation_config: {}".format(extra_config))
 
                 self.evaluation_workers = self._make_workers(
-                    self.env_creator,
-                    self._policy_class,
-                    merge_dicts(self.config, extra_config),
+                    env_creator=self.env_creator,
+                    policy_class=self._policy_class,
+                    config=merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
 
@@ -668,9 +668,14 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator: Callable[[EnvContext], EnvType],
-                      policy_class: Type[Policy], config: TrainerConfigDict,
-                      num_workers: int) -> WorkerSet:
+    def _make_workers(
+            self,
+            *,
+            env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+            policy_class: Type[Policy],
+            config: TrainerConfigDict,
+            num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -679,6 +684,9 @@ class Trainer(Trainable):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
+            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+                Optional callable to validate the generated environment (only
+                on worker=0).
             policy (Type[Policy]): The Policy class to use for creating the
                 policies of the workers.
             config (TrainerConfigDict): The Trainer's config.
@@ -690,6 +698,7 @@ class Trainer(Trainable):
         """
         return WorkerSet(
             env_creator=env_creator,
+            validate_env=validate_env,
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,

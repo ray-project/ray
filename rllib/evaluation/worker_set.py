@@ -32,6 +32,7 @@ class WorkerSet:
     def __init__(self,
                  *,
                  env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
+                 validate_env: Optional[Callable[[EnvType], None]] = None,
                  policy_class: Optional[Type[Policy]] = None,
                  trainer_config: Optional[TrainerConfigDict] = None,
                  num_workers: int = 0,
@@ -42,6 +43,9 @@ class WorkerSet:
         Args:
             env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
                 that returns env given env config.
+            validate_env (Optional[Callable[[EnvType], None]]): Optional
+                callable to validate the generated environment (only on
+                worker=0).
             policy (Optional[Type[Policy]]): A rllib.policy.Policy class.
             trainer_config (Optional[TrainerConfigDict]): Optional dict that
                 extends the common config of the Trainer class.
@@ -69,9 +73,13 @@ class WorkerSet:
             self.add_workers(num_workers)
 
             # Always create a local worker.
-            self._local_worker = self._make_worker(RolloutWorker, env_creator,
-                                                   self._policy_class, 0,
-                                                   self._local_config)
+            self._local_worker = self._make_worker(
+                cls=RolloutWorker,
+                env_creator=env_creator,
+                validate_env=validate_env,
+                policy=self._policy_class,
+                worker_index=0,
+                config=self._local_config)
 
     def local_worker(self) -> RolloutWorker:
         """Return the local rollout worker."""
@@ -106,8 +114,8 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(cls, self._env_creator, self._policy_class,
-                              i + 1, self._remote_config)
+            self._make_worker(cls, self._env_creator, None,
+                              self._policy_class, i + 1, self._remote_config)
             for i in range(num_workers)
         ])
 
@@ -204,10 +212,13 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(
-            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
-            policy: Type[Policy], worker_index: int,
-            config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
+    def _make_worker(self,
+                     cls: Callable,
+                     env_creator: Callable[[EnvContext], EnvType],
+                     validate_env: Optional[Callable[[EnvType], None]],
+                     policy: Type[Policy],
+                     worker_index: int,
+                     config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
@@ -266,8 +277,9 @@ class WorkerSet:
                 "extra_python_environs_for_worker", None)
 
         worker = cls(
-            env_creator,
-            policy,
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy=policy,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator

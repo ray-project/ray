@@ -3,14 +3,11 @@ from gym.envs.mujoco import HalfCheetahEnv, HopperEnv
 
 
 class HalfCheetahWrapper(HalfCheetahEnv):
-    """HalfCheetah Wrapper that wraps Mujoco Halfcheetah-v2 env
-    with an additional defined reward function for model-based RL.
+    """Wrapper for the MuJoCo HalfCheetah-v2 environment.
 
-    This is currently used for MBMPO.
+    Adds an additional `reward` method for some model-based RL algos (e.g.
+    MB-MPO).
     """
-
-    def __init__(self, *args, **kwargs):
-        HalfCheetahEnv.__init__(self, *args, **kwargs)
 
     def reward(self, obs, action, obs_next):
         if obs.ndim == 2 and action.ndim == 2:
@@ -27,14 +24,11 @@ class HalfCheetahWrapper(HalfCheetahEnv):
 
 
 class HopperWrapper(HopperEnv):
-    """Hopper Wrapper that wraps Mujoco Hopper-v2 env
-    with an additional defined reward function for model-based RL.
+    """Wrapper for the MuJoCo Hopper-v2 environment.
 
-    This is currently used for MBMPO.
+    Adds an additional `reward` method for some model-based RL algos (e.g.
+    MB-MPO).
     """
-
-    def __init__(self, *args, **kwargs):
-        HopperEnv.__init__(self, *args, **kwargs)
 
     def reward(self, obs, action, obs_next):
         alive_bonus = 1.0

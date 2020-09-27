@@ -2,6 +2,7 @@ import logging
 from typing import Callable, Iterable, List, Optional, Type
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep
@@ -40,6 +41,7 @@ def build_trainer(
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = None,
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
         after_init: Optional[Callable[[Trainer], None]] = None,
         before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
@@ -68,6 +70,9 @@ def build_trainer(
             that takes a config and returns the policy class or None. If None
             is returned, will use `default_policy` (which must be provided
             then).
+        validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+            Optional callable to validate the generated environment (only
+            on worker=0).
         before_init (Optional[Callable[[Trainer], None]]): Optional callable to
             run before anything is constructed inside Trainer (Workers with
             Policies, execution plan, etc..). Takes the Trainer instance as
@@ -125,9 +130,12 @@ def build_trainer(
                 before_init(self)
 
             # Creating all workers (excluding evaluation workers).
-            self.workers = self._make_workers(env_creator, self._policy_class,
-                                              config,
-                                              self.config["num_workers"])
+            self.workers = self._make_workers(
+                env_creator=env_creator,
+                validate_env=validate_env,
+                policy_class=self._policy_class,
+                config=config,
+                num_workers=self.config["num_workers"])
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
 

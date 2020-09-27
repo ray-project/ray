@@ -131,7 +131,10 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def __init__(
             self,
+            *,
             env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[
+                [EnvType, EnvContext], None]] = None,
             policy: Union[type, Dict[str, Tuple[Optional[
                 type], gym.Space, gym.Space, PartialTrainerConfigDict]]],
             policy_mapping_fn: Callable[[AgentID], PolicyID] = None,
@@ -175,6 +178,9 @@ class RolloutWorker(ParallelIteratorWorker):
         Args:
             env_creator (Callable[[EnvContext], EnvType]): Function that
                 returns a gym.Env given an EnvContext wrapped configuration.
+            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+                Optional callable to validate the generated environment (only
+                on worker=0).
             policy (Union[type, Dict[str, Tuple[Optional[type], gym.Space,
                 gym.Space, PartialTrainerConfigDict]]]): Either a Policy class
                 or a dict of policy id strings to
@@ -329,6 +335,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.fake_sampler: bool = fake_sampler
 
         self.env = _validate_env(env_creator(env_context))
+        if validate_env is not None:
+            validate_env(self.env, self.env_context)
+
         if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
 
             def wrap(env):
@@ -1093,7 +1102,7 @@ def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
 
 
 def _validate_env(env: Any) -> EnvType:
-    # allow this as a special case (assumed gym.Env)
+    # Allow this as a special case (assumed gym.Env).
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
 

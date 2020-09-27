@@ -18,17 +18,20 @@ class TestMBMPO(unittest.TestCase):
     def test_mbmpo_compilation(self):
         """Test whether an MBMPOTrainer can be built with all frameworks."""
         config = mbmpo.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 1
+        config["num_workers"] = 2
         config["horizon"] = 200
+        config["dynamics_model"]["ensemble_size"] = 2
         num_iterations = 1
 
         # Test for torch framework (tf not implemented yet).
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = mbmpo.MBMPOTrainer(config=config, env="Pendulum-v0")
+            trainer = mbmpo.MBMPOTrainer(
+                config=config,
+                env="ray.rllib.examples.env.mbmpo_env.HalfCheetahWrapper")
             for i in range(num_iterations):
                 trainer.train()
             check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+                trainer, include_prev_action_reward=False)
             trainer.stop()
 
 

@@ -29,6 +29,7 @@ class StochasticSampling(Exploration):
         Args:
             action_space (Space): The gym action space used by the environment.
             framework (str): One of None, "tf", "torch".
+            model (ModelV2): The ModelV2 used by the owning Policy.
             random_timesteps (int): The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps,
                 actual samples will be drawn to get exploration actions.
