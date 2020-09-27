@@ -641,11 +641,8 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAllAvailableResources(
   client_impl_->GetGcsRpcClient().GetAllAvailableResources(
       request,
       [callback](const Status &status, const rpc::GetAllAvailableResourcesReply &reply) {
-        std::vector<rpc::AvailableResources> result;
-        result.reserve((reply.resources_list_size()));
-        for (int index = 0; index < reply.resources_list_size(); ++index) {
-          result.emplace_back(reply.resources_list(index));
-        }
+        std::vector<rpc::AvailableResources> result =
+            VectorFromProtobuf(reply.resources_list());
         callback(status, result);
         RAY_LOG(DEBUG) << "Finished getting available resources of all nodes, status = "
                        << status;

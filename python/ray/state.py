@@ -772,26 +772,26 @@ class GlobalState:
 
         all_available_resources = \
             self.global_state_accessor.get_all_available_resources()
-        for i in range(len(all_available_resources)):
+        for available_resource in all_available_resources:
             message = ray.gcs_utils.AvailableResources.FromString(
-                all_available_resources[i])
-            # Calculate available resources for this client
+                available_resource)
+            # Calculate available resources for this node.
             dynamic_resources = {}
             for resource_id, capacity in \
                     message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
-            # Update available resources for this client
-            client_id = ray.utils.binary_to_hex(message.client_id)
-            available_resources_by_id[client_id] = dynamic_resources
+            # Update available resources for this node.
+            node_id = ray.utils.binary_to_hex(message.client_id)
+            available_resources_by_id[node_id] = dynamic_resources
 
-        # Update clients in cluster
-        client_ids = self._live_client_ids()
-        # Remove disconnected clients
-        for client_id in list(available_resources_by_id.keys()):
-            if client_id not in client_ids:
-                del available_resources_by_id[client_id]
+        # Update nodes in cluster.
+        node_ids = self._live_client_ids()
+        # Remove disconnected nodes.
+        for node_id in available_resources_by_id.keys():
+            if node_id not in node_ids:
+                del available_resources_by_id[node_id]
 
-        # Calculate total available resources
+        # Calculate total available resources.
         total_available_resources = defaultdict(int)
         for available_resources in available_resources_by_id.values():
             for resource_id, num_available in available_resources.items():

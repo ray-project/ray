@@ -358,9 +358,9 @@ void GcsNodeManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (auto iter : GetClusterRealtimeResources()) {
+  for (const auto &iter : GetClusterRealtimeResources()) {
     rpc::AvailableResources resource;
-    resource.set_client_id(iter.first.Binary());
+    resource.set_node_id(iter.first.Binary());
     for (auto res : iter.second->GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }

@@ -330,7 +330,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
         [&resources, &promise](Status status,
                                const std::vector<rpc::AvailableResources> &result) {
-          assert(!result.empty());
+          EXPECT_TRUE(!result.empty());
           resources.assign(result.begin(), result.end());
           promise.set_value(status.ok());
         }));
@@ -740,14 +740,16 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
+  (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitForExpectedCount(heartbeat_batch_count, 1);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
   EXPECT_EQ(resources.size(), 1);
-  EXPECT_EQ(resources[0].resources_available_size(), 1);
+  EXPECT_EQ(resources[0].resources_available_size(), 2);
   EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
