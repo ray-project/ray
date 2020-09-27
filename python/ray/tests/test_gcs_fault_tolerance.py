@@ -133,14 +133,14 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     ],
     indirect=True)
 def test_kill_actor_after_gcs_server_restart(ray_start_regular):
-    actor1 = Increase.remote()
-    result = ray.get(actor1.method.remote(1))
+    actor = Increase.remote()
+    result = ray.get(actor.method.remote(1))
     assert result == 3
 
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    ray.kill(actor1)
+    ray.kill(actor)
 
 
 if __name__ == "__main__":
