@@ -935,7 +935,7 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
                                                       actor->GetActorID());
         }
 
-        if (!actor->IsDetached() && worker_client_factory_) {
+        if (!actor->IsDetached()) {
           // This actor is owned. Send a long polling request to the actor's
           // owner to determine when the actor should be removed.
           PollOwnerForActorOutOfScope(actor);
