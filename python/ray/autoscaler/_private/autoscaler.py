@@ -492,6 +492,7 @@ class StandardAutoscaler:
             file_mounts_contents_hash=self.file_mounts_contents_hash,
             is_head_node=False,
             cluster_synced_files=self.config["cluster_synced_files"],
+            rsync_options=self.config.get("rsync_options"),
             process_runner=self.process_runner,
             use_internal_ip=True,
             docker_config=docker_config,

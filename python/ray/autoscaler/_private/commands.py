@@ -696,6 +696,7 @@ def get_or_create_head_node(config,
                 ray_start_commands=ray_start_commands,
                 process_runner=_runner,
                 runtime_hash=runtime_hash,
+                rsync_options=config.get("rsync_options"),
                 file_mounts_contents_hash=file_mounts_contents_hash,
                 is_head_node=True,
                 docker_config=config.get("docker"))

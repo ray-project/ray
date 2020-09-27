@@ -64,7 +64,7 @@
                     "type": "string",
                     "description": "e.g. aws, azure, gcp,..."
                 },
-                "region": { 
+                "region": {
                     "type": "string",
                     "description": "e.g. us-east-1"
                 },
@@ -168,10 +168,10 @@
                     "type": "string",
                     "default": "ubuntu"
                 },
-                "ssh_public_key": { 
+                "ssh_public_key": {
                     "type": "string"
                 },
-                "ssh_private_key": { 
+                "ssh_private_key": {
                     "type": "string"
                 },
                 "ssh_proxy_command": {
@@ -198,7 +198,7 @@
                     "type": "boolean",
                     "description": "run `docker pull` first"
                 },
-                "run_options": { 
+                "run_options": {
                     "type": "array",
                     "description": "shared options for starting head/worker docker"
                 },
@@ -247,6 +247,10 @@
         "file_mounts_sync_continuously": {
             "type": "boolean",
             "description": "If enabled, file mounts will sync continously between the head node and the worker nodes. The nodes will not re-run setup commands if only the contents of the file mounts folders change."
+        },
+        "rsync_options": {
+            "type": "array",
+            "description": "Options to be added to the rsync command for syncing within cluster nodes and between client and cluster."
         },
         "metadata": {
             "type": "object",

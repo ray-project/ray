@@ -250,7 +250,7 @@ def test_docker_rsync():
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_mount, remote_mount, options={"file_mount": True})
+        local_mount, remote_mount, options={"docker_mount_if_possible": True})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
@@ -267,7 +267,7 @@ def test_docker_rsync():
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
     cmd_runner.run_rsync_up(
-        local_file, remote_file, options={"file_mount": False})
+        local_file, remote_file, options={"docker_mount_if_possible": False})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
@@ -282,7 +282,7 @@ def test_docker_rsync():
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_mount, local_mount, options={"file_mount": True})
+        remote_mount, local_mount, options={"docker_mount_if_possible": True})
 
     process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(
@@ -295,7 +295,7 @@ def test_docker_rsync():
     ##############################
 
     cmd_runner.run_rsync_down(
-        remote_file, local_file, options={"file_mount": False})
+        remote_file, local_file, options={"docker_mount_if_possible": False})
 
     process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(

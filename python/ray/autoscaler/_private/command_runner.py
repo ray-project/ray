@@ -24,6 +24,7 @@ from ray.autoscaler._private.subprocess_output_util import (
     run_cmd_redirected, ProcessRunnerError, is_output_redirected)
 
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.util.debug import log_once
 import colorful as cf
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,12 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                     raise
 
     def run_rsync_up(self, source, target, options=None):
+        options = options or {}
+        if options.get("rsync_options"):
+            if log_once("autoscaler_k8s_rsync_filemount"):
+                logger.warning(
+                    "'rsync_options' detected but is "
+                    "currently unsupported for k8s.")
         if target.startswith("~"):
             target = "/root" + target[1:]
 
@@ -482,26 +489,33 @@ class SSHCommandRunner(CommandRunnerInterface):
 
     def run_rsync_up(self, source, target, options=None):
         self._set_ssh_ip_if_required()
-        command = [
-            "rsync", "--rsh",
+        options = options or {}
+        rsync_options = options.get("rsync_options", [])
+
+        command = ["rsync"]
+        command += ["--rsh",
             subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)),
-            "-avz", source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                              target)
+                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120))
         ]
+        command += ["-avz"] + rsync_options
+        command += [source, "{}@{}:{}".format(
+            self.ssh_user, self.ssh_ip, target)]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
         self._set_ssh_ip_if_required()
+        options = options or {}
+        rsync_options = options.get("rsync_options", [])
 
-        command = [
-            "rsync", "--rsh",
+        command = ["rsync"]
+        command += ["--rsh",
             subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120)),
-            "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                      source), target
+                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120))
         ]
+        command += ["-avz"] + rsync_options
+        command += ["{}@{}:{}".format(
+            self.ssh_user, self.ssh_ip, source), target]
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
@@ -570,9 +584,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             f"mkdir -p {os.path.dirname(host_destination.rstrip('/'))}")
 
         self.ssh_command_runner.run_rsync_up(
-            source, host_destination, options=None)
+            source, host_destination, options=options)
         if self._check_container_status() and not options.get(
-                "file_mount", False):
+                "docker_mount_if_possible", False):
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
@@ -590,12 +604,12 @@ class DockerCommandRunner(CommandRunnerInterface):
             source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
-        if not options.get("file_mount", False):
+        if not options.get("docker_mount_if_possible", False):
             self.ssh_command_runner.run("docker cp {}:{} {}".format(
                 self.container_name, self._docker_expand_user(source),
                 host_source))
         self.ssh_command_runner.run_rsync_down(
-            host_source, target, options=None)
+            host_source, target, options=options)
 
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
