@@ -69,6 +69,11 @@ class DockerSyncer(NodeSyncer):
     without a custom sync client. The sync client defaults to
     ``DockerSyncClient`` instead.
 
+    .. note::
+        This syncer only works with the Ray cluster launcher.
+        If you use your own Docker setup, make sure the nodes can connect
+        to each other via SSH, and try the regular SSH-based syncer instead.
+
     Example:
 
     .. code-block:: python
@@ -154,8 +159,8 @@ class DockerSyncClient(SyncClient):
         target_node, target_dir = target
 
         # Add trailing slashes for rsync
-        source = os.path.join(source, "")
-        target_dir += "/" if not target_dir.endswith("/") else ""
+        source += os.path.join(source, "")
+        target_dir += os.path.join(target_dir, "")
 
         command_runner = self._get_command_runner(target_node)
         command_runner.run_rsync_up(source, target_dir)
