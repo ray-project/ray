@@ -268,22 +268,27 @@ def view_requirements_fn(policy: Policy) -> Dict[str, ViewRequirement]:
     Returns:
         Dict[str, ViewRequirement]: The Policy's view requirements.
     """
-    return {
+    ret = {
         # Next obs are needed for PPO postprocessing, but not in loss.
         SampleBatch.NEXT_OBS: ViewRequirement(
-            SampleBatch.OBS, shift=1, used_for_training=True), #TODO
-        # Rewards not needed for loss function.
-        #SampleBatch.REWARDS: ViewRequirement(used_for_training=False), #TODO
-
+            SampleBatch.OBS, shift=1, used_for_training=False),
         # Created during postprocessing.
         Postprocessing.ADVANTAGES: ViewRequirement(shift=0),
         Postprocessing.VALUE_TARGETS: ViewRequirement(shift=0),
-
-        # Needed for loss function.
+        # Needed for PPO's loss function.
         SampleBatch.ACTION_DIST_INPUTS: ViewRequirement(shift=0),
         SampleBatch.ACTION_LOGP: ViewRequirement(shift=0),
         SampleBatch.VF_PREDS: ViewRequirement(shift=0),
     }
+    # If policy is recurrent, have to add state_out for PPO postprocessing
+    # (calculating GAE from next-obs and last state-out).
+    if policy.is_recurrent():
+        init_state = policy.get_initial_state()
+        for i, s in enumerate(init_state):
+            ret["state_out_{}".format(i)] = ViewRequirement(
+                space=gym.spaces.Box(-1.0, 1.0, shape=(s.shape[0],)),
+                used_for_training=False)
+    return ret
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined

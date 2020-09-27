@@ -1331,6 +1331,7 @@ def _do_policy_eval_w_trajectory_view_api(
 
     for policy_id in to_eval:
         policy: Policy = _get_or_raise(policies, policy_id)
+        #TODO: make sure state_out is not part of input dict
         input_dict = _sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
             policy.compute_actions_from_input_dict(
