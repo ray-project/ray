@@ -153,11 +153,8 @@ def test_worker_capping_kill_idle_workers(shutdown_only):
     # Worker 3 runs a normal task
     wait_for_condition(lambda: len(get_workers()) == 3)
 
-    ray.get(obj1)
-    # Worker 2 now becomes idle and should be killed
-    wait_for_condition(lambda: len(get_workers()) == 2)
-    ray.get(obj2)
-    # Worker 3 now becomes idle and should be killed
+    ray.get([obj1, obj2])
+    # Worker 2 and 3 now become idle and should be killed
     wait_for_condition(lambda: len(get_workers()) == 1)
 
 
@@ -229,6 +226,7 @@ def test_worker_capping_fifo(shutdown_only):
 
     driver_code = """
 import ray
+import time
 
 ray.init(address="{}")
 
@@ -237,6 +235,8 @@ def foo():
     pass
 
 ray.get(foo.remote())
+# Sleep a while to make sure an idle worker exits before this driver exits.
+time.sleep(2)
 ray.shutdown()
     """.format(info["redis_address"])
 
