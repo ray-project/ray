@@ -412,13 +412,12 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 6
         # Make sure that after idle_timeout_minutes we don't kill idle
         # min workers.
-        time.sleep(60.5)
         for node_id in self.provider.non_terminated_nodes({}):
-            lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = 0
+            lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
         autoscaler.update()
         self.waitForNodes(2)
-        cnt = 0
 
+        cnt = 0
         for id in self.provider.mock_nodes:
             if self.provider.mock_nodes[id].state == "running" or \
                     self.provider.mock_nodes[id].state == "pending":

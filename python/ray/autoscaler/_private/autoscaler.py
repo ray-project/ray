@@ -172,15 +172,9 @@ class StandardAutoscaler:
         for node_id in nodes:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type.
-            if self.resource_demand_scheduler:
-                tags = self.provider.node_tags(node_id)
-                if TAG_RAY_USER_NODE_TYPE in tags:
-                    node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                    node_type_counts[node_type] += 1
-                    if node_type_counts[node_type] <= \
-                            self.available_node_types[node_type].get(
-                                "min_workers", 0):
-                        continue
+            if self._keep_min_worker_of_node_type(node_id, node_type_counts):
+                continue
+
             node_ip = self.provider.internal_ip(node_id)
             if (node_ip in last_used and last_used[node_ip] < horizon) and \
                     (len(nodes) - len(nodes_to_terminate)
@@ -285,6 +279,32 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
+    def _keep_min_worker_of_node_type(self, node_id, node_type_counts):
+        """Returns if workers of node_type should be terminated.
+
+        Receives the counters of running nodes so far and determines if idle
+        node_id should be terminated or not. It also updates the counters.
+
+        Args:
+            node_type_counts(Dict[NodeType, int]): The non_terminated node
+                types counted so far.
+        Returns:
+            node_type_counts(Dict[NodeType, int]): The updated non_terminated
+                node types counted so far.
+            bool: if workers of node_types should be terminated or not.
+        """
+        if self.resource_demand_scheduler:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+                if node_type_counts[node_type] <= \
+                        self.available_node_types[node_type].get(
+                            "min_workers", 0):
+                    return True
+
+        return False
+
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
             TAG_RAY_USER_NODE_TYPE)
@@ -363,15 +383,9 @@ class StandardAutoscaler:
             ideal_num_workers = max(
                 ideal_num_workers,
                 int(np.ceil(cores_desired / cores_per_worker)))
-        min_node_types_workers = 0
-        if self.resource_demand_scheduler:
-            for node_type in self.available_node_types:
-                min_node_types_workers += \
-                    self.available_node_types[node_type].get("min_workers", 0)
-        return min(
-            self.config["max_workers"],
-            max(self.config["min_workers"], min_node_types_workers,
-                ideal_num_workers))
+
+        return min(self.config["max_workers"],
+                   max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         node_tags = self.provider.node_tags(node_id)
