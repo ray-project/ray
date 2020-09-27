@@ -58,10 +58,8 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
             self.timesteps[i] += 1
             obs[i] = np.array([i, action[0], action[1], self.timesteps[i]])
             rew[i] = self.timesteps[i] % 3
-            done[i] = True if self.timesteps[i] > self.base_episode_len + i else False
-            #done[i] = bool(
-            #    np.random.choice(
-            #        [True, False], p=[self.p_done, 1.0 - self.p_done]))
+            done[i] = True if self.timesteps[i] > self.base_episode_len + i \
+                else False
             if done[i]:
                 self.dones.add(i)
         done["__all__"] = len(self.dones) == self.num_agents

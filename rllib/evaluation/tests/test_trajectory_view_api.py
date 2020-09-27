@@ -17,7 +17,7 @@ from ray.rllib.utils.test_utils import framework_iterator, check
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True) #TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:

@@ -9,11 +9,11 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
-from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
-from ray.rllib.evaluation.collectors.simple_list_collector import _SimpleListCollector
+from ray.rllib.evaluation.collectors.sample_collector import \
+    _SampleCollector
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    _SimpleListCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-#from ray.rllib.evaluation.multi_agent_sample_collector import \
-#    _MultiAgentSampleCollector
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
@@ -69,14 +69,6 @@ class _PerfStats:
         self.inference_time = 0.0
         self.action_processing_time = 0.0
 
-        # TEST
-        self._build_batches = 0.0
-        self._add_data = 0.0
-        self._postprocess_and_move_to_policy = 0.0
-        self._move_to_policy = 0.0
-        self._postprocessing = 0.0
-        self._agent_building = 0.0
-
     def get(self):
         # Mean multiplicator (1000 = ms -> sec).
         factor = 1000 / self.iters
@@ -90,14 +82,6 @@ class _PerfStats:
             "mean_inference_ms": self.inference_time * factor,
             # Processing actions (to be sent to env, e.g. clipping).
             "mean_action_processing_ms": self.action_processing_time * factor,
-
-            #TEST
-            "_build_batches": self._build_batches * factor,
-            "_add_data": self._add_data * factor,
-            "_postprocess_and_move_to_policy": self._postprocess_and_move_to_policy * factor,
-            "_move_to_policy": self._move_to_policy * factor,
-            "_postprocessing": self._postprocessing * factor,
-            "_agent_building": self._agent_building * factor,
         }
 
 
@@ -840,7 +824,6 @@ def _process_observations(
             # Record transition info if applicable.
             if (last_observation is not None and infos[env_id].get(
                     agent_id, {}).get("training_enabled", True)):
-                t = time.time()
                 batch_builder.add_values(
                     agent_id,
                     policy_id,
@@ -858,7 +841,6 @@ def _process_observations(
                     infos=infos[env_id].get(agent_id, {}),
                     new_obs=filtered_obs,
                     **episode.last_pi_info_for(agent_id))
-                perf_stats._add_data += time.time() - t
 
         # Invoke the step callback after the step is logged to the episode
         callbacks.on_episode_step(
@@ -882,17 +864,11 @@ def _process_observations(
         # and add it to "outputs".
         if (all_agents_done and not multiple_episodes_in_batch) or \
                 batch_builder.count >= rollout_fragment_length:
-            t = time.time()
             batch_builder.postprocess_batch_so_far(episode, perf_stats)
-            t1 = time.time()
-            perf_stats._postprocess_and_move_to_policy += t1 - t
             outputs.append(batch_builder.build_and_reset(episode))
-            perf_stats._build_batches += time.time() - t1
         # Make sure postprocessor stays within one episode.
         elif all_agents_done:
-            t = time.time()
             batch_builder.postprocess_batch_so_far(episode, perf_stats)
-            perf_stats._postprocess_and_move_to_policy += time.time() - t
 
         # Episode is done.
         if all_agents_done:
@@ -1066,11 +1042,12 @@ def _process_observations_w_trajectory_view_api(
             episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
 
             # Record transition info if applicable.
-            t = time.time()
             if last_observation is None:
-                _sample_collector.add_init_obs(episode, agent_id, env_id, policy_id, filtered_obs)
+                _sample_collector.add_init_obs(
+                    episode, agent_id, env_id, policy_id, filtered_obs)
             else:
-                eval_idx = _sample_collector.agent_key_to_forward_pass_index[(episode.episode_id, agent_id)]
+                eval_idx = _sample_collector.agent_key_to_forward_pass_index[
+                    (episode.episode_id, agent_id)]
                 values_dict = {
                     "t": episode.length - 1,
                     "eps_id": episode.episode_id,
@@ -1095,7 +1072,6 @@ def _process_observations_w_trajectory_view_api(
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
-            perf_stats._add_data += time.time() - t
 
             if not agent_done:
                 to_eval.add(policy_id)
@@ -1106,22 +1082,6 @@ def _process_observations_w_trajectory_view_api(
             base_env=base_env,
             episode=episode,
             env_index=env_id)
-
-        #if (all_agents_done and not multiple_episodes_in_batch) or \
-        #        batch_builder.count >= rollout_fragment_length:
-        #    #t = time.time()
-        #    _sample_collector.postprocess_episode(episode, perf_stats)
-        #    #t1 = time.time()
-        #    #perf_stats._postprocess_and_move_to_policy += t1 - t
-        #    outputs.append(batch_builder.build_and_reset(episode))
-        #    #perf_stats._build_batches += time.time() - t1
-        ## Make sure postprocessor stays within one episode.
-        #elif all_agents_done:
-        #    #t = time.time()
-        #    _sample_collector.postprocess_episode(episode, perf_stats)
-        #    #perf_stats._postprocess_and_move_to_policy += time.time() - t
-
-
 
         # Episode is done for all agents
         # (dones[__all__] == True or hit horizon).
@@ -1199,12 +1159,10 @@ def _process_observations_w_trajectory_view_api(
 
     # Try to build something.
     if multiple_episodes_in_batch:
-        #t = time.time()
         sample_batch = \
             _sample_collector.try_build_truncated_episode_multi_agent_batch(perf_stats)
         if sample_batch is not None:
             outputs.append(sample_batch)
-        #perf_stats._build_batches += time.time() - t
 
     return active_envs, to_eval, outputs
 
@@ -1331,7 +1289,6 @@ def _do_policy_eval_w_trajectory_view_api(
 
     for policy_id in to_eval:
         policy: Policy = _get_or_raise(policies, policy_id)
-        #TODO: make sure state_out is not part of input dict
         input_dict = _sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
             policy.compute_actions_from_input_dict(

@@ -23,7 +23,6 @@ if __name__ == "__main__":
 
     configs = {
         "PPO": {
-            "_use_trajectory_view_api": True,
             "num_sgd_iter": 5,
             "vf_share_layers": True,
             "vf_loss_coeff": 0.0001,

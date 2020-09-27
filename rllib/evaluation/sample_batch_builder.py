@@ -2,7 +2,7 @@ import collections
 import logging
 import numpy as np
 from typing import List, Any, Dict, Optional, TYPE_CHECKING
-import time #TODO
+
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -158,7 +158,7 @@ class MultiAgentSampleBatchBuilder:
         self.agent_builders[agent_id].add_values(**values)
 
     def postprocess_batch_so_far(
-            self, episode: Optional[MultiAgentEpisode] = None, perf_stats=None) -> None:
+            self, episode: Optional[MultiAgentEpisode] = None) -> None:
         """Apply policy postprocessors to any unprocessed rows.
 
         This pushes the postprocessed per-agent batches onto the per-policy
@@ -168,7 +168,6 @@ class MultiAgentSampleBatchBuilder:
             episode (Optional[MultiAgentEpisode]): The Episode object that
                 holds this MultiAgentBatchBuilder object.
         """
-        t0 = time.time()
 
         # Materialize the batches so far.
         pre_batches = {}
@@ -176,9 +175,6 @@ class MultiAgentSampleBatchBuilder:
             pre_batches[agent_id] = (
                 self.policy_map[self.agent_to_policy[agent_id]],
                 builder.build_and_reset())
-        t1 = time.time()
-        perf_stats._agent_building += t1 - t0
-        #print("building {} agents took {}sec".format(len(pre_batches), t1 - t0))
 
         # Apply postprocessor.
         post_batches = {}
@@ -214,24 +210,19 @@ class MultiAgentSampleBatchBuilder:
                 "Trajectory fragment after postprocess_trajectory():\n\n{}\n".
                 format(summarize(post_batches)))
 
-        t2 = time.time()
-        perf_stats._postprocessing += t2 - t1
-
         # Append into policy batches and reset
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            #self.callbacks.on_postprocess_trajectory(
-            #    worker=get_global_worker(),
-            #    episode=episode,
-            #    agent_id=agent_id,
-            #    policy_id=self.agent_to_policy[agent_id],
-            #    policies=self.policy_map,
-            #    postprocessed_batch=post_batch,
-            #    original_batches=pre_batches)
-            t3 = time.time()
+            self.callbacks.on_postprocess_trajectory(
+                worker=get_global_worker(),
+                episode=episode,
+                agent_id=agent_id,
+                policy_id=self.agent_to_policy[agent_id],
+                policies=self.policy_map,
+                postprocessed_batch=post_batch,
+                original_batches=pre_batches)
             self.policy_builders[self.agent_to_policy[agent_id]].add_batch(
                 post_batch)
-            perf_stats._move_to_policy += time.time() - t3
 
         self.agent_builders.clear()
         self.agent_to_policy.clear()
@@ -265,7 +256,7 @@ class MultiAgentSampleBatchBuilder:
                 policy.
         """
 
-        #self.postprocess_batch_so_far(episode)
+        self.postprocess_batch_so_far(episode)
         policy_batches = {}
         for policy_id, builder in self.policy_builders.items():
             if builder.count > 0:
