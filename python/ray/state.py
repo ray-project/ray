@@ -760,60 +760,6 @@ class GlobalState:
         """Returns a dictionary mapping node id to avaiable resources."""
         available_resources_by_id = {}
 
-        subscribe_client = self.redis_client.pubsub(
-            ignore_subscribe_messages=True)
-        subscribe_client.psubscribe(gcs_utils.XRAY_HEARTBEAT_PATTERN)
-
-        client_ids = self._live_client_ids()
-
-        while set(available_resources_by_id.keys()) != client_ids:
-            # Parse client message
-            raw_message = subscribe_client.get_message()
-            if (raw_message is None or raw_message["pattern"] !=
-                    gcs_utils.XRAY_HEARTBEAT_PATTERN):
-                continue
-            data = raw_message["data"]
-            pub_message = gcs_utils.PubSubMessage.FromString(data)
-            heartbeat_data = pub_message.data
-            message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
-            # Calculate available resources for this client
-            dynamic_resources = {}
-            for resource_id, capacity in message.resources_available.items():
-                dynamic_resources[resource_id] = capacity
-
-            # Update available resources for this client
-            client_id = ray.utils.binary_to_hex(message.client_id)
-            available_resources_by_id[client_id] = dynamic_resources
-
-            # Update clients in cluster
-            client_ids = self._live_client_ids()
-
-            # Remove disconnected clients
-            for client_id in list(available_resources_by_id.keys()):
-                if client_id not in client_ids:
-                    del available_resources_by_id[client_id]
-
-        # Close the pubsub clients to avoid leaking file descriptors.
-        subscribe_client.close()
-
-        return available_resources_by_id
-
-    def available_resources(self):
-        """Get the current available cluster resources.
-
-        This is different from `cluster_resources` in that this will return
-        idle (available) resources rather than total resources.
-
-        Note that this information can grow stale as tasks start and finish.
-
-        Returns:
-            A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
-        """
-        self._check_connected()
-
-        available_resources_by_id = {}
-
         all_available_resources = \
             self.global_state_accessor.get_all_available_resources()
         for available_resource in all_available_resources:
@@ -834,6 +780,24 @@ class GlobalState:
         for node_id in available_resources_by_id.keys():
             if node_id not in node_ids:
                 del available_resources_by_id[node_id]
+
+        return available_resources_by_id
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        self._check_connected()
+
+        available_resources_by_id = self._available_resources_per_node()
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
