@@ -302,7 +302,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
   Status raylet_client_status;
-  ClientID local_raylet_id;
+  NodeID local_raylet_id;
   int assigned_port;
   std::unordered_map<std::string, std::string> system_config;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
@@ -352,7 +352,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RegisterToGcs();
 
   // Register a callback to monitor removed nodes.
-  auto on_node_change = [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+  auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       OnNodeRemoved(data);
     }
@@ -395,7 +395,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       options_.check_signals));
 
-  auto check_node_alive_fn = [this](const ClientID &node_id) {
+  auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
     if (!node) {
       return false;
@@ -500,7 +500,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_CHECK_OK(status);
           std::vector<rpc::Address> locations;
           for (const auto &result : results) {
-            const auto &node_id = ClientID::FromBinary(result.manager());
+            const auto &node_id = NodeID::FromBinary(result.manager());
             auto node = gcs_client_->Nodes().Get(node_id);
             RAY_CHECK(node.has_value());
             if (node->state() == rpc::GcsNodeInfo::ALIVE) {
@@ -617,7 +617,7 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
-  const auto node_id = ClientID::FromBinary(node_info.node_id());
+  const auto node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(INFO) << "Node failure " << node_id;
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
@@ -825,7 +825,7 @@ Status CoreWorker::Put(const RayObject &object,
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
-      /*is_reconstructable=*/false, ClientID::FromBinary(rpc_address_.raylet_id()));
+      /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
   return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
 }
 
@@ -884,7 +884,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
                                        /*is_reconstructable=*/false,
-                                       ClientID::FromBinary(rpc_address_.raylet_id()));
+                                       NodeID::FromBinary(rpc_address_.raylet_id()));
   }
   return Status::OK();
 }
@@ -1153,7 +1153,7 @@ Status CoreWorker::NotifyActorResumedFromCheckpoint(
 }
 
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const ClientID &client_id) {
+                               const NodeID &client_id) {
   return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
@@ -1167,7 +1167,7 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Find the raylet that hosts the primary copy of the object.
-  ClientID pinned_at;
+  NodeID pinned_at;
   RAY_CHECK(reference_counter_->IsPlasmaObjectPinned(object_id, &pinned_at));
   auto node = gcs_client_->Nodes().Get(pinned_at);
   if (pinned_at.IsNil() || !node) {
@@ -2023,7 +2023,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        ClientID::FromBinary(request.client_id()));
+                                        NodeID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2036,7 +2036,7 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
     return;
   }
   reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           ClientID::FromBinary(request.client_id()));
+                                           NodeID::FromBinary(request.client_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2048,7 +2048,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<ClientID> client_ids =
+  std::unordered_set<NodeID> client_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
   for (const auto &client_id : client_ids) {
     reply->add_client_ids(client_id.Binary());
