@@ -126,7 +126,16 @@ def validate_config(config: TrainerConfigDict) -> None:
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
-            "function. Consider setting batch_mode=complete_episodes.")
+            "function (to estimate the return at the end of the truncated "
+            "trajectory). Consider setting batch_mode=complete_episodes.")
+
+    # Switch on trajectory view API by default for this algo (if None).
+    if config["_use_trajectory_view_api"] is None:
+        logger.info(
+            "Switching on Trajectory View API for PPO by default. "
+            "Set `_use_trajectory_view_api=False` explicitly in your config "
+            "to switch this off.")
+        config["_use_trajectory_view_api"] = True
 
     # Multi-gpu not supported for PyTorch and tf-eager.
     if config["framework"] in ["tf2", "tfe", "torch"]:

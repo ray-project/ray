@@ -114,12 +114,14 @@ class TorchPolicy(Policy):
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
         # Combine view_requirements for Model and Policy.
-        self.training_view_requirements = dict(
+        self.view_requirements = dict(
             **{
                 SampleBatch.ACTIONS: ViewRequirement(
                     space=self.action_space, shift=0),
                 SampleBatch.REWARDS: ViewRequirement(shift=0),
                 SampleBatch.DONES: ViewRequirement(shift=0),
+                SampleBatch.EPS_ID: ViewRequirement(shift=0),
+                SampleBatch.AGENT_INDEX: ViewRequirement(shift=0),
             },
             **self.model.inference_view_requirements)
 
@@ -202,9 +204,11 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
+            # Pack internal state inputs into (separate) list.
             state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_" in k[:6]
+                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
             ]
+            # Calculate RNN sequence lengths.
             seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
@@ -217,7 +221,8 @@ class TorchPolicy(Policy):
                 extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
                 extra_fetches[SampleBatch.ACTION_LOGP] = logp
 
-            return actions, state_out, extra_fetches
+            return convert_to_non_torch_type((actions, state_out,
+                                              extra_fetches))
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
@@ -342,7 +347,6 @@ class TorchPolicy(Policy):
             max_seq_len=self.max_seq_len,
             shuffle=False,
             batch_divisibility_req=self.batch_divisibility_req,
-            _use_trajectory_view_api=self.config["_use_trajectory_view_api"],
         )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)

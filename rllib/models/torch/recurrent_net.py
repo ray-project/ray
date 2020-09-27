@@ -151,9 +151,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                     "state_out_{}".format(i),
                     shift=-1,
                     space=Box(-1.0, 1.0, shape=(self.cell_size,)))
-            self.inference_view_requirements["state_out_{}".format(i)] = \
-                ViewRequirement(
-                    space=Box(-1.0, 1.0, shape=(self.cell_size,)))
 
     @override(RecurrentNetwork)
     def forward(self, input_dict, state, seq_lens):

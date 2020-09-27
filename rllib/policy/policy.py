@@ -74,7 +74,7 @@ class Policy(metaclass=ABCMeta):
         # Child classes need to add their specific requirements here (usually
         # a combination of a Model's inference_view_- and the
         # Policy's loss function-requirements.
-        self.training_view_requirements = {}
+        self.view_requirements = {}
 
     @abstractmethod
     @DeveloperAPI
