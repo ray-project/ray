@@ -282,7 +282,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
-      : id_(ClientID::FromRandom()),
+      : id_(NodeID::FromRandom()),
         single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
         dependencies_fulfilled_(true),
@@ -293,7 +293,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                         fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
                       },
-                      [this](const ClientID &node_id) {
+                      [this](const NodeID &node_id) {
                         node_info_calls_++;
                         return node_info_;
                       }) {}
@@ -302,7 +302,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   void Shutdown() {}
 
-  ClientID id_;
+  NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;

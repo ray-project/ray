@@ -350,9 +350,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  ClientID GetCurrentNodeId() const {
-    return ClientID::FromBinary(rpc_address_.raylet_id());
-  }
+  NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -621,10 +619,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id ClientID where the resource is to be set.
+  /// \param[in] client_Id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const ClientID &client_id);
+                     const NodeID &client_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
