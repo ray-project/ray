@@ -154,7 +154,7 @@ class DockerSyncClient(SyncClient):
         target_node, target_dir = target
 
         # Add trailing slashes for rsync
-        source += "/" if not source.endswith("/") else ""
+        source = os.path.join(source, "")
         target_dir += "/" if not target_dir.endswith("/") else ""
 
         command_runner = self._get_command_runner(target_node)
