@@ -272,8 +272,6 @@ class TrainingOperator:
 
         if self.use_fp16 and amp:
             logger.debug("Setting up Apex.")
-            self._original_models, self._optimizers = amp.initialize(
-                self._original_models, self._optimizers, **self._apex_args)
             self._amp = amp
             self._original_models, self._optimizers = self._configure_amp(
                 self._amp, self._original_models, self._optimizers)
@@ -954,65 +952,65 @@ class CreatorOperator(TrainingOperator):
             kwargs["criterion"] = criterion
 
         state = self.register(**kwargs)
-        self._models, self._optimizers = state[:2]
+        self._registered_models, self._registered_optimizers = state[:2]
         if isinstance(self.models, (list, tuple)):
             logger.info("Multiple models have been registered. If custom "
                         "training methods are not provided, only the first "
                         "model will be used.")
-            self._model = self.models[0]
+            self._registered_model = self.models[0]
         else:
-            self._model = self.models
+            self._registered_model = self.models
 
         if isinstance(self.optimizers, (list, tuple)):
             logger.info("Multiple optimizers have been registered. If custom "
                         "training methods are not provided, only the first "
                         "optimizer will be used.")
-            self._optimizer = self.optimizers[0]
+            self._reigstered_optimizer = self.optimizers[0]
         else:
-            self._optimizer = self.optimizers
+            self._registered_optimizer = self.optimizers
 
         if len(state) >= 3:
-            self._criterion = state[2]
+            self._registered_criterion = state[2]
         if len(state) == 4:
-            self._schedulers = state[3]
+            self._registered_schedulers = state[3]
             if isinstance(self.schedulers, (list, tuple)):
                 logger.info("Multiple schedulers have been registered. If "
                             "custom training methods are not provided, "
                             "only the first scheduler will be used.")
-                self._scheduler = self.schedulers[0]
+                self._registered_scheduler = self.schedulers[0]
             else:
-                self._scheduler = self.schedulers
+                self._registered_scheduler = self.schedulers
 
         self.register_data(
             train_loader=train_loader, validation_loader=validation_loader)
 
     @property
     def model(self):
-        return self._model
+        return self._registered_model
 
     @property
     def optimizer(self):
-        return self._optimizer
+        return self._registered_optimizer
 
     @property
     def scheduler(self):
-        return self._scheduler
+        return self._registered_scheduler
 
     @property
     def criterion(self):
-        return self._criterion
+        return self._registered_criterion
 
     @property
     def models(self):
-        return self._models
+        return self._registered_models
 
     @property
     def optimizers(self):
-        return self._optimizers
+        return self._registered_optimizers
 
     @property
     def schedulers(self):
-        return self._schedulers
+        return self._registered_schedulers
 
 
 def get_test_operator(operator_cls):

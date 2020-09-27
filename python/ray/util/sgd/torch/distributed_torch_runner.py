@@ -128,15 +128,21 @@ class DistributedTorchRunner(TorchRunner):
             if self.add_dist_sampler:
                 self.validation_loader = with_sampler(self.validation_loader)
 
-    def train_epoch(self, **kwargs):
+    def train_epoch(self,
+                    num_steps=None,
+                    profile=False,
+                    info=None,
+                    iterator=None):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if hasattr(self.train_loader, "sampler") and hasattr(
+        if iterator is None and hasattr(self.train_loader, "sampler") and \
+            hasattr(
                 self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
-        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
+        return super(DistributedTorchRunner, self).train_epoch(
+            num_steps=num_steps, profile=profile, info=info, iterator=iterator)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
