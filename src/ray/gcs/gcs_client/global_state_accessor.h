@@ -84,7 +84,7 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const ClientID &node_id);
+  std::string GetNodeResourceInfo(const NodeID &node_id);
 
   /// Get internal config from GCS Service.
   ///

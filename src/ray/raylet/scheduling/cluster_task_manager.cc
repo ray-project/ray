@@ -6,7 +6,7 @@ namespace ray {
 namespace raylet {
 
 ClusterTaskManager::ClusterTaskManager(
-    const ClientID &self_node_id,
+    const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
     NodeInfoGetter get_node_info)
@@ -50,7 +50,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
         cluster_resource_scheduler_->AllocateRemoteTaskResources(node_id_string,
                                                                  request_resources);
 
-        ClientID node_id = ClientID::FromBinary(node_id_string);
+        NodeID node_id = NodeID::FromBinary(node_id_string);
         auto node_info_opt = get_node_info_(node_id);
         // gcs_client_->Nodes().Get(node_id);
         RAY_CHECK(node_info_opt)
@@ -260,7 +260,7 @@ void ClusterTaskManager::Dispatch(
   send_reply_callback();
 }
 
-void ClusterTaskManager::Spillback(ClientID spillback_to, std::string address, int port,
+void ClusterTaskManager::Spillback(NodeID spillback_to, std::string address, int port,
                                    rpc::RequestWorkerLeaseReply *reply,
                                    std::function<void(void)> send_reply_callback) {
   reply->mutable_retry_at_raylet_address()->set_ip_address(address);
