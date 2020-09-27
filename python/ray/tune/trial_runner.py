@@ -8,7 +8,7 @@ import traceback
 import types
 
 import ray.cloudpickle as cloudpickle
-from ray.services import get_node_ip_address
+from ray._private.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
@@ -132,15 +132,20 @@ class TrialRunner:
                  fail_fast=False,
                  verbose=True,
                  checkpoint_period=None,
-                 trial_executor=None):
+                 trial_executor=None,
+                 metric=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
 
-        # For debugging, it may be useful to halt trials after some time has
-        # elapsed. TODO(ekl) consider exposing this in the API.
-        self._global_time_limit = float(
-            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float("inf")))
+        self._metric = metric
+
+        if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
+            raise ValueError(
+                "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
+                "deprecated. "
+                "Use `tune.run(time_budget_s=limit)` instead.")
+
         self._total_time = 0
         self._iteration = 0
         self._has_errored = False
@@ -349,11 +354,6 @@ class TrialRunner:
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
-        if self._total_time > self._global_time_limit:
-            logger.warning("Exceeded global time limit {} / {}".format(
-                self._total_time, self._global_time_limit))
-            return True
-
         trials_done = all(trial.is_finished() for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
@@ -527,6 +527,7 @@ class TrialRunner:
                 result = trial.last_result
                 result.update(done=True)
 
+            self._validate_result_metrics(result)
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
@@ -571,6 +572,43 @@ class TrialRunner:
             if self._fail_fast == TrialRunner.RAISE:
                 raise
             self._process_trial_failure(trial, traceback.format_exc())
+
+    def _validate_result_metrics(self, result):
+        """
+        Check if any of the required metrics was not reported
+        in the last result. If the only item is `done=True`, this
+        means that no result was ever received and the trial just
+        returned. This is also okay and will not raise an error.
+        """
+        if int(os.environ.get("TUNE_DISABLE_STRICT_METRIC_CHECKING",
+                              0)) != 1 and (len(result) > 1
+                                            or "done" not in result):
+            base_metric = self._metric
+            scheduler_metric = self._scheduler_alg.metric
+            search_metric = self._search_alg.metric
+
+            if base_metric and base_metric not in result:
+                report_metric = base_metric
+                location = "tune.run()"
+            elif scheduler_metric and scheduler_metric not in result:
+                report_metric = scheduler_metric
+                location = type(self._scheduler_alg).__name__
+            elif search_metric and search_metric not in result:
+                report_metric = search_metric
+                location = type(self._search_alg).__name__
+            else:
+                report_metric = None
+                location = None
+
+            if report_metric:
+                raise ValueError(
+                    "Trial returned a result which did not include the "
+                    "specified metric `{}` that `{}` expects. "
+                    "Make sure your calls to `tune.report()` include the "
+                    "metric, or set the "
+                    "TUNE_DISABLE_STRICT_METRIC_CHECKING "
+                    "environment variable to 1. Result: {}".format(
+                        report_metric, location, result))
 
     def _process_trial_save(self, trial):
         """Processes a trial save.

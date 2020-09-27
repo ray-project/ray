@@ -335,10 +335,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 
-  // Tell the raylet the port that we are listening on.
-  // NOTE: This also marks the worker as available in Raylet.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
-
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(options_.node_ip_address);
@@ -532,6 +528,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
+  // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // very end in case there is a problem during construction.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 }
 
 void CoreWorker::Shutdown() {
