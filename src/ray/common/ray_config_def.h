@@ -291,11 +291,12 @@ RAY_CONFIG(bool, enable_multi_tenancy,
            getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
                getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
-/// The interval of periodic idle worker killing.
-RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
-RAY_CONFIG(uint64_t, idle_worker_killing_time_threshold_ms, 1000)
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)

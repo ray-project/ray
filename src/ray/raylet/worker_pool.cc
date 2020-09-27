@@ -639,15 +639,17 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::ScheduleIdleWorkerKilling() {
-  kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
-      RayConfig::instance().kill_idle_workers_interval_ms()));
-  kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      return;
-    }
-    TryKillingIdleWorkers();
-    ScheduleIdleWorkerKilling();
-  });
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+    kill_idle_workers_timer_.expires_from_now(boost::posix_time::milliseconds(
+        RayConfig::instance().kill_idle_workers_interval_ms()));
+    kill_idle_workers_timer_.async_wait([this](const boost::system::error_code &error) {
+      if (error == boost::asio::error::operation_aborted) {
+        return;
+      }
+      TryKillingIdleWorkers();
+      ScheduleIdleWorkerKilling();
+    });
+  }
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
@@ -666,7 +668,7 @@ void WorkerPool::TryKillingIdleWorkers() {
        it != idle_of_all_languages_.end() &&
        running_size > static_cast<size_t>(num_workers_soft_limit_);
        it++) {
-    if (static_cast<uint64_t>(now - it->second) <
+    if (now - it->second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
     }
@@ -691,7 +693,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     bool can_be_killed = true;
     for (const auto &worker : workers_in_the_same_process) {
       if (worker_state.idle.count(worker) == 0 ||
-          static_cast<uint64_t>(now - idle_of_all_languages_map_[worker]) <
+          now - idle_of_all_languages_map_[worker] <
               RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
         // Another worker in this process isn't idle, or hasn't been idle for a while, so
         // this process can't be killed.
