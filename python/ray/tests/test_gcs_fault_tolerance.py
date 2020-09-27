@@ -126,6 +126,23 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     wait_for_condition(condition, timeout=10)
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_kill_actor_after_gcs_server_restart(ray_start_regular):
+    actor1 = Increase.remote()
+    result = ray.get(actor1.method.remote(1))
+    assert result == 3
+
+    ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+
+    ray.kill(actor1)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

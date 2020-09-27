@@ -930,14 +930,15 @@ void GcsActorManager::LoadInitialData(const EmptyCallback &done) {
           RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                         .emplace(actor->GetActorID())
                         .second);
-          if (!actor->IsDetached() && worker_client_factory_) {
-            // This actor is owned. Send a long polling request to the actor's
-            // owner to determine when the actor should be removed.
-            PollOwnerForActorOutOfScope(actor);
-          }
         } else if (item.second.state() == ray::rpc::ActorTableData::ALIVE) {
           created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
                                                       actor->GetActorID());
+        }
+
+        if (!actor->IsDetached() && worker_client_factory_) {
+          // This actor is owned. Send a long polling request to the actor's
+          // owner to determine when the actor should be removed.
+          PollOwnerForActorOutOfScope(actor);
         }
 
         auto &workers = owners_[actor->GetNodeID()];
