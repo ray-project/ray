@@ -1,22 +1,45 @@
 import os
 import sys
 import time
+import glob
 
 import pytest
 import ray
+from ray.test_utils import (
+    wait_for_condition, )
 
 
-def test_ray_log_redirected(shutdown_only):
-    ray.init(num_cpus=1)
+def test_ray_log_redirected(ray_start_regular):
     session_dir = ray.worker._global_node.get_session_dir_path()
-    time.sleep(1.0)
     assert os.path.exists(session_dir), "Specified socket path not found."
     raylet_out_path = "{}/logs/raylet.out".format(session_dir)
     raylet_err_path = "{}/logs/raylet.err".format(session_dir)
-    assert os.path.exists(raylet_out_path), "Raylet out not found"
-    assert os.path.exists(raylet_err_path), "Raylet err not found"
-    assert os.path.getsize(raylet_out_path) > 0
-    assert os.path.getsize(raylet_err_path) > 0
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def get_pid(self):
+            return os.getpid()
+
+    def file_exists_and_not_empty(filename):
+        return os.path.exists(filename) and os.path.getsize(filename) > 0
+
+    actor = Actor.remote()
+    remote_pid = ray.get(actor.get_pid.remote())
+    local_pid = os.getpid()
+
+    wait_for_condition(lambda : all(map(file_exists_and_not_empty, [raylet_out_path, raylet_err_path])))
+
+    core_worker_logs = glob.glob("{}/logs/python-core-worker*{}.log".format(
+        session_dir, remote_pid))
+    driver_log = glob.glob("{}/logs/python-core-driver*{}.log".format(
+        session_dir, local_pid))
+    assert len(core_worker_logs) > 0 and len(driver_log) > 0
+    all_worker_logs = core_worker_logs + driver_log
+    wait_for_condition(
+        lambda: all(map(file_exists_and_not_empty, all_worker_logs)))
 
 
 if __name__ == "__main__":

@@ -202,6 +202,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     if (i != level) {
       // NOTE(lingxuan.zlx): It means nothing can be printed or sinked to pass
       // an empty destination.
+      // Reference from glog:
+      // https://github.com/google/glog/blob/0a2e5931bd5ff22fd3bf8999eb8ce776f159cda6/src/logging.cc#L1110
       google::SetLogDestination(i, "");
     }
   }
