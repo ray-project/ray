@@ -19,13 +19,15 @@ def ray_start_workers_separate_multinode(request):
     num_initial_workers = request.param[1]
     # Start the Ray processes.
     cluster = Cluster(
+        initialize_head=True,
         head_node_args={
+            "num_cpus": num_initial_workers,
             "_system_config": {
                 # disable worker capping
                 "kill_idle_workers_interval_ms": -1
             }
         })
-    for _ in range(num_nodes):
+    for _ in range(num_nodes - 1):
         cluster.add_node(num_cpus=num_initial_workers)
     ray.init(address=cluster.address)
 
