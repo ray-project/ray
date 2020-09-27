@@ -37,6 +37,10 @@ class TestCallback(Callback):
 
     def on_trial_result(self, **info):
         self.state["trial_result"] = info
+        result = info["result"]
+        trial = info["trial"]
+        assert result.get(TRAINING_ITERATION, None) != trial.last_result.get(
+            TRAINING_ITERATION, None)
 
     def on_trial_complete(self, **info):
         self.state["trial_complete"] = info
@@ -123,19 +127,17 @@ class TrialRunnerCallbacks(unittest.TestCase):
                          "one")
 
         # Let the second trial send a result
-        trials[1].last_result = {
-            TRAINING_ITERATION: 1,
-            "metric": 800,
-            "done": False
-        }
-        self.executor.results[trials[1]] = trials[1].last_result
+        result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
+        self.executor.results[trials[1]] = result
         self.executor.next_trial = trials[1]
+        self.assertEqual(trials[1].last_result, {})
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_result"]["iteration"], 3)
         self.assertEqual(self.callback.state["trial_result"]["trial"].trial_id,
                          "two")
         self.assertEqual(
             self.callback.state["trial_result"]["result"]["metric"], 800)
+        self.assertEqual(trials[1].last_result["metric"], 800)
 
         # Let the second trial restore from a checkpoint
         trials[1].restoring_from = cp
