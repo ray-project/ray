@@ -1901,13 +1901,13 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
 
   // Extract the caller's WorkerID
   const TaskSpecification task_spec(request.task_spec());
-  WorkerID caller_wid = task_spec.CallerWorkerId();
+  WorkerID caller_worker_id = task_spec.CallerWorkerId();
 
   task_execution_service_.post([=] {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
-    direct_task_receiver_->RunTasksFromQueue(caller_wid);
+    direct_task_receiver_->RunTasksFromQueue(caller_worker_id);
   });
 }
 

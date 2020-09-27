@@ -378,9 +378,9 @@ class SchedulingQueue {
   void ScheduleRequests() {
     if (!NormalTaskQueueEmpty()) {
       while (!pending_normal_tasks_.empty()) {
-        auto head = pending_normal_tasks_.begin();
-        head->Accept();
-        pending_normal_tasks_.erase(head);
+        auto &head = pending_normal_tasks_.begin();
+        head.Accept();
+        pending_normal_tasks_.pop_front();
       }
       return;
     }
