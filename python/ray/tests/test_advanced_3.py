@@ -545,7 +545,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     time.sleep(1.0)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test is too expensive to run.")
@@ -580,7 +580,7 @@ def test_move_log_files_to_old(shutdown_only):
             break
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_lease_request_leak(shutdown_only):

@@ -48,7 +48,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Setup dev.")
     parser.add_argument(
-        "--yes", action="store_true", help="Don't ask for confirmation.")
+        "--yes", "-y", action="store_true", help="Don't ask for confirmation.")
     args = parser.parse_args()
 
     do_link("rllib", force=args.yes, local_path="../../")
