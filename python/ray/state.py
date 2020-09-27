@@ -6,10 +6,9 @@ import time
 
 import ray
 
-from ray import (
-    gcs_utils,
-    services,
-)
+from ray import gcs_utils
+from google.protobuf.json_format import MessageToDict
+from ray._private import services
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -423,7 +422,10 @@ class GlobalState:
                 placement_group_info.placement_group_id),
             "name": placement_group_info.name,
             "bundles": {
-                bundle.bundle_id.bundle_index: bundle.unit_resources
+                # The value here is needs to be dictionarified
+                # otherwise, the payload becomes unserializable.
+                bundle.bundle_id.bundle_index:
+                MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -754,6 +756,48 @@ class GlobalState:
             for client in self.node_table() if (client["Alive"])
         }
 
+    def _available_resources_per_node(self):
+        """Returns a dictionary mapping node id to avaiable resources."""
+        available_resources_by_id = {}
+
+        subscribe_client = self.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        subscribe_client.psubscribe(gcs_utils.XRAY_HEARTBEAT_PATTERN)
+
+        client_ids = self._live_client_ids()
+
+        while set(available_resources_by_id.keys()) != client_ids:
+            # Parse client message
+            raw_message = subscribe_client.get_message()
+            if (raw_message is None or raw_message["pattern"] !=
+                    gcs_utils.XRAY_HEARTBEAT_PATTERN):
+                continue
+            data = raw_message["data"]
+            pub_message = gcs_utils.PubSubMessage.FromString(data)
+            heartbeat_data = pub_message.data
+            message = gcs_utils.HeartbeatTableData.FromString(heartbeat_data)
+            # Calculate available resources for this client
+            dynamic_resources = {}
+            for resource_id, capacity in message.resources_available.items():
+                dynamic_resources[resource_id] = capacity
+
+            # Update available resources for this client
+            client_id = ray.utils.binary_to_hex(message.client_id)
+            available_resources_by_id[client_id] = dynamic_resources
+
+            # Update clients in cluster
+            client_ids = self._live_client_ids()
+
+            # Remove disconnected clients
+            for client_id in list(available_resources_by_id.keys()):
+                if client_id not in client_ids:
+                    del available_resources_by_id[client_id]
+
+        # Close the pubsub clients to avoid leaking file descriptors.
+        subscribe_client.close()
+
+        return available_resources_by_id
+
     def available_resources(self):
         """Get the current available cluster resources.
 
@@ -868,8 +912,8 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
-    )
+    return (ray.resource_spec.NODE_ID_PREFIX +
+            ray._private.services.get_node_ip_address())
 
 
 def node_ids():

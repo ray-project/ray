@@ -130,7 +130,7 @@ class DDPGTFModel(TFModelV2):
 
         This implements Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Tensor): Actions to return the Q-values for.
@@ -149,7 +149,7 @@ class DDPGTFModel(TFModelV2):
 
         This implements the twin Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Tensor): Actions to return the Q-values for.
@@ -169,7 +169,7 @@ class DDPGTFModel(TFModelV2):
         This outputs the support for pi(s). For continuous action spaces, this
         is the action directly.
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 

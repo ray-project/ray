@@ -25,7 +25,7 @@ import ray.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
-import ray.services as services
+import ray._private.services as services
 import ray
 import setproctitle
 import ray.signature
@@ -154,6 +154,10 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
+
+    @property
+    def placement_group_id(self):
+        return self.core_worker.get_placement_group_id()
 
     @property
     def current_session_and_job(self):
@@ -621,6 +625,11 @@ def init(
                 "please call ray.init() or ray.init(address=\"auto\") on the "
                 "driver.")
 
+    # Convert hostnames to numerical IP address.
+    if _node_ip_address is not None:
+        node_ip_address = services.address_to_ip(_node_ip_address)
+    raylet_ip_address = node_ip_address
+
     if address:
         redis_address, _, _ = services.validate_redis_address(address)
     else:
@@ -658,8 +667,8 @@ def init(
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             object_ref_seed=None,
             driver_mode=driver_mode,
             redirect_worker_output=None,
@@ -723,8 +732,8 @@ def init(
 
         # In this case, we only need to connect the node.
         ray_params = ray.parameter.RayParams(
-            node_ip_address=None,
-            raylet_ip_address=None,
+            node_ip_address=node_ip_address,
+            raylet_ip_address=raylet_ip_address,
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
@@ -1160,7 +1169,7 @@ def connect(node,
     # For driver's check that the version information matches the version
     # information that the Ray cluster was started with.
     try:
-        ray.services.check_version_info(worker.redis_client)
+        ray._private.services.check_version_info(worker.redis_client)
     except Exception as e:
         if mode == SCRIPT_MODE:
             raise e

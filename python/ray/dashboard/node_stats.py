@@ -72,7 +72,7 @@ def _get_actor_group_stats(group):
 class NodeStats(threading.Thread):
     def __init__(self, redis_address, redis_password=None):
         self.redis_key = "{}.*".format(ray.gcs_utils.REPORTER_CHANNEL)
-        self.redis_client = ray.services.create_redis_client(
+        self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
         self._node_stats = {}

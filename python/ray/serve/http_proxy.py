@@ -7,7 +7,7 @@ import uvicorn
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.context import TaskContext
-from ray.experimental import metrics
+from ray.util import metrics
 from ray.serve.http_util import Response
 from ray.serve.router import Router, RequestMetadata
 
@@ -32,8 +32,9 @@ class HTTPProxy:
         self.route_table = await controller.get_router_config.remote()
 
         self.request_counter = metrics.Count(
-            "num_http_requests", "The number of HTTP requests processed",
-            "requests", ["route"])
+            "num_http_requests",
+            description="The number of HTTP requests processed",
+            tag_keys=("route", ))
 
         self.router = Router()
         await self.router.setup(name, controller_name)
@@ -80,7 +81,7 @@ class HTTPProxy:
         assert scope["type"] == "http"
         current_path = scope["path"]
 
-        self.request_counter.record(1, {"route": current_path})
+        self.request_counter.record(1, tags={"route": current_path})
 
         if current_path.startswith("/-/"):
             await self._handle_system_request(scope, receive, send)
