@@ -59,8 +59,10 @@ int main(int argc, char *argv[]) {
   }
 
   RayConfig::instance().initialize(config_map);
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
-                                            {ray::stats::VersionKey, "1.1.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "gcs_server"},
+      {ray::stats::VersionKey, "1.1.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.
