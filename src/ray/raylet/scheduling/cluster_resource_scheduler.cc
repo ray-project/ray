@@ -796,7 +796,7 @@ void ClusterResourceScheduler::Heartbeat(
     RAY_CHECK(false) << "TODO";
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
-      std::string label = ResourceEnumToString((PredefinedResources)i);
+      const auto &label = ResourceEnumToString((PredefinedResources)i);
       const auto &capacity = resources.predefined_resources[i];
       if (capacity.available != 0) {
         (*heartbeat_data->mutable_resources_available())[label] =
@@ -810,7 +810,7 @@ void ClusterResourceScheduler::Heartbeat(
          it != resources.custom_resources.end(); it++) {
       uint64_t custom_id = it->first;
       const auto &capacity = it->second;
-      std::string label = string_to_int_map_.Get(custom_id);
+      const auto &label = string_to_int_map_.Get(custom_id);
       if (capacity.available != 0) {
         (*heartbeat_data->mutable_resources_available())[label] =
             capacity.available.Double();

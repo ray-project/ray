@@ -196,17 +196,17 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
   } else {
     // TODO (Alex): Implement the 1-CPU task optimization.
     for (const auto &work : tasks_to_schedule_) {
-      auto &task = std::get<0>(work);
-      auto &resources =
+      const auto &task = std::get<0>(work);
+      const auto &resources =
           task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
 
       auto by_shape_entry = resource_load_by_shape->Add();
 
       for (const auto &resource : resources) {
         // Add to `resource_loads`.
-        auto label = resource.first;
-        auto quantity = resource.second;
-        auto entry = resource_loads->find(label);
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        const auto &entry = resource_loads->find(label);
         if (entry == resource_loads->end()) {
           (*resource_loads)[label] = quantity;
         } else {
@@ -223,8 +223,8 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
     }
 
     for (const auto &work : tasks_to_dispatch_) {
-      auto &task = std::get<0>(work);
-      auto &resources =
+      const auto &task = std::get<0>(work);
+      const auto &resources =
           task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
 
       auto by_shape_entry = resource_load_by_shape->Add();
@@ -232,9 +232,9 @@ void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
       for (auto to_add_it = resources.begin(); to_add_it != resources.end();
            to_add_it++) {
         // Add to `resource_loads`.
-        auto label = to_add_it->first;
-        auto quantity = to_add_it->second;
-        auto entry = resource_loads->find(label);
+        const auto &label = to_add_it->first;
+        const auto &quantity = to_add_it->second;
+        const auto &entry = resource_loads->find(label);
         if (entry == resource_loads->end()) {
           (*resource_loads)[label] = quantity;
         } else {
