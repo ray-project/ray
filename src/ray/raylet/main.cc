@@ -59,6 +59,7 @@ DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
+  SetThreadName("raylet.main");
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

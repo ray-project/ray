@@ -101,6 +101,7 @@ void GrpcServer::RegisterService(GrpcService &service) {
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {
+  SetThreadName("server.poll" + std::to_string(index));
   void *tag;
   bool ok;
 
