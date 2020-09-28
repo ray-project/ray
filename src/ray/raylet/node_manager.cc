@@ -2032,10 +2032,18 @@ bool NodeManager::PrepareBundle(
   // The reason why we do this is: after GCS restarts, placement group can be rescheduled
   // directly without rolling back the operations performed before the restart.
   const auto &bundle_id = bundle_spec.BundleId();
-  if (bundle_state_map_.contains(bundle_id)) {
-    // If there was a bundle in prepare state, it already locked resources, we will return
-    // bundle resources.
-    ReturnBundleResources(bundle_spec);
+  auto iter = bundle_state_map_.find(bundle_id);
+  if (iter != bundle_state_map_.end()) {
+    if (iter->second->state == CommitState::COMMITTED) {
+      // If the bundle state is already committed, it means that prepare request is just
+      // stale.
+      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly.";
+      return true;
+    } else {
+      // If there was a bundle in prepare state, it already locked resources, we will
+      // return bundle resources.
+      ReturnBundleResources(bundle_spec);
+    }
   }
 
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
