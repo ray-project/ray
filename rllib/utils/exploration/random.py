@@ -46,7 +46,7 @@ class Random(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         # Instantiate the distribution object.
-        if self.framework in ["tf", "tfe"]:
+        if self.framework in ["tf2", "tf", "tfe"]:
             return self.get_tf_exploration_action_op(action_distribution,
                                                      explore)
         else:

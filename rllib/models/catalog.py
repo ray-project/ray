@@ -307,7 +307,7 @@ class ModelCatalog:
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
                                                      model_interface)
 
-            if framework in ["tf", "tfe"]:
+            if framework in ["tf2", "tf", "tfe"]:
                 # Track and warn if vars were created but not registered.
                 created = set()
 

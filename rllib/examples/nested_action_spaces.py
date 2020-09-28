@@ -1,5 +1,6 @@
 import argparse
 from gym.spaces import Dict, Tuple, Box, Discrete
+import os
 
 import ray
 import ray.tune as tune
@@ -40,6 +41,8 @@ if __name__ == "__main__":
         "gamma": 0.0,  # No history in Env (bandit problem).
         "lr": 0.0005,
         "num_envs_per_worker": 20,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_sgd_iter": 4,
         "num_workers": 0,
         "vf_loss_coeff": 0.01,
@@ -52,7 +55,7 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
     }
 
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
