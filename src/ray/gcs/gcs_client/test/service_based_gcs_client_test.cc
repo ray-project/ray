@@ -917,22 +917,23 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   RestartGcsServer();
 
   // When GCS client detects that GCS server has restarted, but the pub-sub server
-  // didn't restart, it will fetch data again from the GCS server. So we'll receive
-  // another notification of ALIVE state.
+  // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
+  // the actor because it finds that the actor is out of scope, so we'll receive another
+  // notification of DEAD state.
   WaitForExpectedCount(num_subscribe_all_notifications, 2);
   WaitForExpectedCount(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::DEAD);
 
-  // Update the actor state to DEAD.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  // Update the actor state to ALIVE.
+  actor_table_data->set_state(rpc::ActorTableData::ALIVE);
   ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
 
-  // We should receive a new DEAD notification from the subscribe channel.
+  // We should receive a new ALIVE notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 3);
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::ALIVE);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
