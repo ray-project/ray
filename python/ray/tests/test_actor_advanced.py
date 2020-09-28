@@ -1016,26 +1016,6 @@ def test_kill(ray_start_regular_shared):
         ray.kill("not_an_actor_handle")
 
 
-def test_get_actor_info(ray_start_regular_shared):
-    @ray.remote
-    class Actor:
-        def hang(self):
-            while True:
-                time.sleep(1)
-
-    actor = Actor.remote()
-    result = actor.hang.remote()
-    ready, _ = ray.wait([result], timeout=0.5)
-    assert len(ready) == 0
-    ray.kill(actor, no_restart=False)
-
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(result)
-
-    with pytest.raises(ValueError):
-        ray.kill("not_an_actor_handle")
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
