@@ -30,7 +30,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   if (request.worker_failure().intentional_disconnect()) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
-    RAY_LOG(WARNING) << log_stream.str();
+    RAY_LOG(WARNING) << log_stream.str()
+                     << ". If there are lots of this logs, that might indicate there are "
+                        "unexpected failures in the cluster.";
   }
   auto worker_failure_data = std::make_shared<WorkerTableData>();
   worker_failure_data->CopyFrom(request.worker_failure());
