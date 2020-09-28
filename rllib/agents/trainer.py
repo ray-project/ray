@@ -642,6 +642,7 @@ class Trainer(Trainable):
 
                 self.evaluation_workers = self._make_workers(
                     env_creator=self.env_creator,
+                    validate_env=None,
                     policy_class=self._policy_class,
                     config=merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
