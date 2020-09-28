@@ -209,8 +209,9 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
-    pg_id = ray.runtime_context.get_runtime_context(
-    ).current_placement_group_id
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    pg_id = worker.placement_group_id
     if pg_id.is_nil():
         return None
     return PlacementGroup(pg_id)

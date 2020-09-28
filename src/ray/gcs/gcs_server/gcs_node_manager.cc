@@ -25,7 +25,7 @@ GcsNodeManager::NodeFailureDetector::NodeFailureDetector(
     boost::asio::io_service &io_service,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::function<void(const ClientID &)> on_node_death_callback)
+    std::function<void(const NodeID &)> on_node_death_callback)
     : gcs_table_storage_(std::move(gcs_table_storage)),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
@@ -40,12 +40,12 @@ void GcsNodeManager::NodeFailureDetector::Start() {
   }
 }
 
-void GcsNodeManager::NodeFailureDetector::AddNode(const ray::ClientID &node_id) {
+void GcsNodeManager::NodeFailureDetector::AddNode(const ray::NodeID &node_id) {
   heartbeats_.emplace(node_id, num_heartbeats_timeout_);
 }
 
 void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
-    const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat_data) {
+    const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat_data) {
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Ignore this heartbeat as the node is not registered.
@@ -145,7 +145,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
     : main_io_service_(main_io_service),
       node_failure_detector_(new NodeFailureDetector(
           node_failure_detector_io_service, gcs_table_storage, gcs_pub_sub,
-          [this](const ClientID &node_id) {
+          [this](const NodeID &node_id) {
             // Post this to main event loop to avoid potential concurrency issues.
             main_io_service_.post([this, node_id] {
               if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
@@ -171,7 +171,7 @@ GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
 void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address();
   AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
@@ -191,7 +191,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
 void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
                                           rpc::UnregisterNodeReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
@@ -228,7 +228,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
 void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
                                            rpc::ReportHeartbeatReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
+  NodeID node_id = NodeID::FromBinary(request.heartbeat().client_id());
   auto heartbeat_data = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat_data->CopyFrom(request.heartbeat());
 
@@ -248,7 +248,7 @@ void GcsNodeManager::HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &re
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                         rpc::GetResourcesReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
     for (auto &resource : iter->second.items()) {
@@ -261,7 +261,7 @@ void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
 void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
                                            rpc::UpdateResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   auto to_be_updated_resources = request.resources();
@@ -298,7 +298,7 @@ void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &re
 void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
                                            rpc::DeleteResourcesReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  ClientID node_id = ClientID::FromBinary(request.node_id());
+  NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
@@ -370,7 +370,7 @@ void GcsNodeManager::HandleGetAllAvailableResources(
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
-    const ray::ClientID &node_id) const {
+    const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     return nullptr;
@@ -380,7 +380,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
-  auto node_id = ClientID::FromBinary(node->node_id());
+  auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
@@ -400,7 +400,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
-    const ray::ClientID &node_id, bool is_intended /*= false*/) {
+    const ray::NodeID &node_id, bool is_intended /*= false*/) {
   RAY_LOG(INFO) << "Removing node, node id = " << node_id;
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
@@ -438,8 +438,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
   RAY_LOG(INFO) << "Loading initial data.";
 
-  auto get_node_callback = [this, done](
-                               const std::unordered_map<ClientID, GcsNodeInfo> &result) {
+  auto get_node_callback = [this,
+                            done](const std::unordered_map<NodeID, GcsNodeInfo> &result) {
     for (auto &item : result) {
       if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
         // Call `AddNode` for this node to make sure it is tracked by the failure
@@ -451,7 +451,7 @@ void GcsNodeManager::LoadInitialData(const EmptyCallback &done) {
     }
 
     auto get_node_resource_callback =
-        [this, done](const std::unordered_map<ClientID, ResourceMap> &result) {
+        [this, done](const std::unordered_map<NodeID, ResourceMap> &result) {
           for (auto &item : result) {
             if (alive_nodes_.count(item.first)) {
               cluster_resources_[item.first] = item.second;
@@ -473,13 +473,13 @@ void GcsNodeManager::StartNodeFailureDetector() {
 }
 
 void GcsNodeManager::UpdateNodeRealtimeResources(
-    const ClientID &node_id, const rpc::HeartbeatTableData &heartbeat) {
+    const NodeID &node_id, const rpc::HeartbeatTableData &heartbeat) {
   auto resources_available = MapFromProtobuf(heartbeat.resources_available());
   cluster_realtime_resources_[node_id] =
       std::make_shared<ResourceSet>(resources_available);
 }
 
-const absl::flat_hash_map<ClientID, std::shared_ptr<ResourceSet>>
+const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
     &GcsNodeManager::GetClusterRealtimeResources() const {
   return cluster_realtime_resources_;
 }

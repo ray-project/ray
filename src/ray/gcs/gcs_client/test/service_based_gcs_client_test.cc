@@ -221,7 +221,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToNodeChange(
-      const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe) {
+      const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -258,7 +258,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return nodes;
   }
 
-  bool UnregisterNode(const ClientID &node_id) {
+  bool UnregisterNode(const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(
         node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -272,7 +272,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  gcs::NodeInfoAccessor::ResourceMap GetResources(const ClientID &node_id) {
+  gcs::NodeInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
     gcs::NodeInfoAccessor::ResourceMap resource_map;
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
@@ -288,7 +288,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return resource_map;
   }
 
-  bool UpdateResources(const ClientID &node_id, const std::string &key) {
+  bool UpdateResources(const NodeID &node_id, const std::string &key) {
     std::promise<bool> promise;
     gcs::NodeInfoAccessor::ResourceMap resource_map;
     auto resource = std::make_shared<rpc::ResourceTableData>();
@@ -300,7 +300,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool DeleteResources(const ClientID &node_id,
+  bool DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &resource_names) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncDeleteResources(
@@ -429,7 +429,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
   }
 
-  bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
+  bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
         object_id, node_id,
@@ -437,7 +437,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RemoveLocation(const ObjectID &object_id, const ClientID &node_id) {
+  bool RemoveLocation(const ObjectID &object_id, const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncRemoveLocation(
         object_id, node_id,
@@ -615,12 +615,12 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
 TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   // Create gcs node info.
   auto gcs_node1_info = Mocker::GenNodeInfo();
-  ClientID node1_id = ClientID::FromBinary(gcs_node1_info->node_id());
+  NodeID node1_id = NodeID::FromBinary(gcs_node1_info->node_id());
 
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
-  auto on_subscribe = [&register_count, &unregister_count](const ClientID &node_id,
+  auto on_subscribe = [&register_count, &unregister_count](const NodeID &node_id,
                                                            const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::ALIVE) {
       ++register_count;
@@ -639,7 +639,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Register a node to GCS.
   auto gcs_node2_info = Mocker::GenNodeInfo();
-  ClientID node2_id = ClientID::FromBinary(gcs_node2_info->node_id());
+  NodeID node2_id = NodeID::FromBinary(gcs_node2_info->node_id());
   ASSERT_TRUE(RegisterNode(*gcs_node2_info));
   WaitForExpectedCount(register_count, 2);
 
@@ -685,7 +685,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   RAY_CHECK(RegisterNode(*node_info));
 
   // Update resources of node in GCS.
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
   WaitForExpectedCount(add_count, 1);
@@ -711,7 +711,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   RAY_CHECK(RegisterNode(*node_info));
 
   // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   // Set this flag because GCS won't publish unchanged heartbeat.
@@ -793,7 +793,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
 
   // Add a task lease to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_lease_count, 2);
@@ -817,7 +817,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ObjectID object_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Subscribe to any update of an object's location.
   std::atomic<int> object_add_count(0);
@@ -862,7 +862,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 
 TEST_F(ServiceBasedGcsClientTest, TestStats) {
   // Add profile data to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto profile_table_data = Mocker::GenProfileTableData(node_id);
   ASSERT_TRUE(AddProfileData(profile_table_data));
 }
@@ -984,7 +984,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   ObjectID object1_id = ObjectID::FromRandom();
   ObjectID object2_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Subscribe to any update of an object's location.
   std::atomic<int> object1_change_count(0);
@@ -1031,7 +1031,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
-  auto node_subscribe = [&node_change_count](const ClientID &id,
+  auto node_subscribe = [&node_change_count](const NodeID &id,
                                              const rpc::GcsNodeInfo &result) {
     ++node_change_count;
   };
@@ -1055,7 +1055,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
 
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
@@ -1069,7 +1069,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
 
   node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
-  node_id = ClientID::FromBinary(node_info->node_id());
+  node_id = NodeID::FromBinary(node_info->node_id());
   ASSERT_TRUE(UpdateResources(node_id, key));
   heartbeat->set_client_id(node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -1102,7 +1102,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
 
   ASSERT_TRUE(AddTask(task_table_data));
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_count, 1);
@@ -1111,7 +1111,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
 
   RestartGcsServer();
 
-  node_id = ClientID::FromRandom();
+  node_id = NodeID::FromRandom();
   task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_lease_count, 3);
@@ -1142,7 +1142,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
   ObjectID object_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Register node to GCS.
   auto node_info = Mocker::GenNodeInfo();

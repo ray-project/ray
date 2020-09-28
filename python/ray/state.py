@@ -266,7 +266,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_id = ray.ClientID(hex_to_binary(node_id))
+        node_id = ray.NodeID(hex_to_binary(node_id))
         node_resource_bytes = \
             self.global_state_accessor.get_node_resource_info(node_id)
         if node_resource_bytes is None:

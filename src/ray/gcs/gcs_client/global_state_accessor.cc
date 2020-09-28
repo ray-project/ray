@@ -127,7 +127,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
+std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
   auto on_done =
