@@ -30,7 +30,7 @@ def test_ray_log_redirected(ray_start_regular):
     local_pid = os.getpid()
 
     wait_for_condition(lambda: all(map(file_exists_and_not_empty,
-     [raylet_out_path, raylet_err_path])))
+        [raylet_out_path, raylet_err_path])))
 
     core_worker_logs = glob.glob("{}/logs/python-core-worker*{}.log".format(
         session_dir, remote_pid))
