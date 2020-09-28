@@ -515,7 +515,7 @@ class _SimpleListCollector(_SampleCollector):
             self.episode_steps[episode.episode_id] = 0
 
     @override(_SampleCollector)
-    def build_multi_agent_batch(self, env_steps: int, perf_stats) -> \
+    def build_multi_agent_batch(self, env_steps: int) -> \
             Union[MultiAgentBatch, SampleBatch]:
         ma_batch = MultiAgentBatch.wrap_as_needed(
             {

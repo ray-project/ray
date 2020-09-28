@@ -166,7 +166,7 @@ class _SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def build_multi_agent_batch(self, env_steps: int, perf_stats) -> \
+    def build_multi_agent_batch(self, env_steps: int) -> \
             Union[MultiAgentBatch, SampleBatch]:
         """Builds a MultiAgentBatch of size=env_steps from the collected data.
 
