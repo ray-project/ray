@@ -133,8 +133,8 @@ class RolloutWorker(ParallelIteratorWorker):
             self,
             *,
             env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[
-                [EnvType, EnvContext], None]] = None,
+            validate_env: Optional[Callable[[EnvType, EnvContext],
+                                            None]] = None,
             policy: Union[type, Dict[str, Tuple[Optional[
                 type], gym.Space, gym.Space, PartialTrainerConfigDict]]],
             policy_mapping_fn: Callable[[AgentID], PolicyID] = None,

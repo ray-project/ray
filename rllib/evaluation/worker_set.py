@@ -114,8 +114,8 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(cls, self._env_creator, None,
-                              self._policy_class, i + 1, self._remote_config)
+            self._make_worker(cls, self._env_creator, None, self._policy_class,
+                              i + 1, self._remote_config)
             for i in range(num_workers)
         ])
 
@@ -212,13 +212,11 @@ class WorkerSet:
         workers._remote_workers = remote_workers or []
         return workers
 
-    def _make_worker(self,
-                     cls: Callable,
-                     env_creator: Callable[[EnvContext], EnvType],
-                     validate_env: Optional[Callable[[EnvType], None]],
-                     policy: Type[Policy],
-                     worker_index: int,
-                     config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
+    def _make_worker(
+            self, cls: Callable, env_creator: Callable[[EnvContext], EnvType],
+            validate_env: Optional[Callable[[EnvType], None]],
+            policy: Type[Policy], worker_index: int,
+            config: TrainerConfigDict) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

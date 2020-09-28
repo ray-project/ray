@@ -22,8 +22,13 @@ class StochasticSampling(Exploration):
     lowering stddev, temperature, etc.. over time.
     """
 
-    def __init__(self, action_space, *, framework: str, model: ModelV2,
-                 random_timesteps: int = 0, **kwargs):
+    def __init__(self,
+                 action_space,
+                 *,
+                 framework: str,
+                 model: ModelV2,
+                 random_timesteps: int = 0,
+                 **kwargs):
         """Initializes a StochasticSampling Exploration object.
 
         Args:
@@ -66,8 +71,10 @@ class StochasticSampling(Exploration):
 
         stochastic_actions = tf.cond(
             pred=tf.convert_to_tensor(ts <= self.random_timesteps),
-            true_fn=lambda: self.random_exploration.
-                get_tf_exploration_action_op(action_dist, explore)[0],
+            true_fn=lambda: (
+                self.random_exploration.get_tf_exploration_action_op(
+                    action_dist,
+                    explore)[0]),
             false_fn=lambda: action_dist.sample(),
         )
         deterministic_actions = action_dist.deterministic_sample()

@@ -670,12 +670,9 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(
-            self,
-            *,
-            env_creator: Callable[[EnvContext], EnvType],
+            self, *, env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy],
-            config: TrainerConfigDict,
+            policy_class: Type[Policy], config: TrainerConfigDict,
             num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 

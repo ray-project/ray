@@ -69,7 +69,11 @@ class MBMPOExploration(StochasticSampling):
     """Like StochasticSampling, but only worker=0 uses Random for n timesteps.
     """
 
-    def __init__(self, action_space, *, framework: str, model: ModelV2,
+    def __init__(self,
+                 action_space,
+                 *,
+                 framework: str,
+                 model: ModelV2,
                  random_timesteps: int = 8000,
                  **kwargs):
         """Initializes a MBMPOExploration instance.
