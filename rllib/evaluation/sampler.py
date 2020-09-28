@@ -580,7 +580,6 @@ def _env_runner(
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
                     observation_fn=observation_fn,
-                    perf_stats=perf_stats,
                     _sample_collector=_sample_collector,
                 )
         else:
@@ -603,7 +602,6 @@ def _env_runner(
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                perf_stats=perf_stats,
             )
         perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
@@ -671,7 +669,6 @@ def _process_observations(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        perf_stats: _PerfStats,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Record new data from the environment and prepare for policy evaluation.
@@ -960,7 +957,6 @@ def _process_observations_w_trajectory_view_api(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        perf_stats: _PerfStats,
         _sample_collector: _SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
@@ -1092,16 +1088,14 @@ def _process_observations_w_trajectory_view_api(
             _sample_collector.postprocess_episode(
                 episode,
                 is_done=is_done,
-                check_dones=check_dones,
-                perf_stats=perf_stats)
+                check_dones=check_dones)
             # We are not allowed to pack the next episode into the same
             # SampleBatch (batch_mode=complete_episodes) -> Build the
             # MultiAgentBatch from a single episode and add it to "outputs".
             if not multiple_episodes_in_batch:
                 ma_sample_batch = \
-                    _sample_collector.build_ma_batch(
-                        _sample_collector.episode_steps[episode.episode_id],
-                        perf_stats)
+                    _sample_collector.build_multi_agent_batch(
+                        _sample_collector.episode_steps[episode.episode_id])
                 outputs.append(ma_sample_batch)
 
             # Call each policy's Exploration.on_episode_end method.
@@ -1155,17 +1149,14 @@ def _process_observations_w_trajectory_view_api(
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    t = time.time()
                     _sample_collector.add_init_obs(
                         new_episode, agent_id, env_id, policy_id, filtered_obs)
-                    perf_stats._add_data += time.time() - t
                     to_eval.add(policy_id)
 
     # Try to build something.
     if multiple_episodes_in_batch:
         sample_batch = \
-            _sample_collector.try_build_truncated_episode_multi_agent_batch(
-                perf_stats)
+            _sample_collector.try_build_truncated_episode_multi_agent_batch()
         if sample_batch is not None:
             outputs.append(sample_batch)
 
