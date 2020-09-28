@@ -22,7 +22,10 @@ try:
     import colorful as _cf
     from colorful.core import ColorfulString
 except ModuleNotFoundError:
-
+    # We mock Colorful to restrict the colors used for consistency
+    # anyway, so we also allow for not having colorful at all.
+    # If the Ray Core dependency on colorful is ever removed,
+    # the CliLogger code will still work.
     class ColorfulString:
         pass
 
