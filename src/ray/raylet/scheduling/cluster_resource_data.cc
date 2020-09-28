@@ -1,25 +1,15 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
+const std::string resource_labels[] = {ray::kCPU_ResourceLabel,
+                                       ray::kMemory_ResourceLabel,
+                                       ray::kGPU_ResourceLabel, ray::kTPU_ResourceLabel};
+
 const std::string ResourceEnumToString(PredefinedResources resource) {
-  std::string label;
-  switch (resource) {
-  case CPU:
-    label = ray::kCPU_ResourceLabel;
-    break;
-  case MEM:
-    label = ray::kMemory_ResourceLabel;
-    break;
-  case GPU:
-    label = ray::kGPU_ResourceLabel;
-    break;
-  case TPU:
-    label = ray::kTPU_ResourceLabel;
-    break;
-  default:
-    RAY_CHECK(false) << "Something went wrong. Please file a bug report with this stack "
-                        "trace: https://github.com/ray-project/ray/issues/new.";
-    break;
-  }
+  // TODO (Alex): We should replace this with a protobuf enum.
+  RAY_CHECK(resource < PredefinedResources_MAX)
+      << "Something went wrong. Please file a bug report with this stack "
+         "trace: https://github.com/ray-project/ray/issues/new.";
+  std::string label = resource_labels[resource];
   return label;
 }
 

@@ -100,8 +100,12 @@ class ClusterTaskManager {
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
-  void Heartbeat(std::shared_ptr<HeartbeatTableData> data,
-                 bool light_heartbeat_enabled) const;
+  ///
+  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void Heartbeat(bool light_heartbeat_enabled,
+                 std::shared_ptr<HeartbeatTableData> data) const;
 
   std::string DebugString();
 

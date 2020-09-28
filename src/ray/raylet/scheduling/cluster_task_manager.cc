@@ -185,8 +185,8 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
-void ClusterTaskManager::Heartbeat(std::shared_ptr<HeartbeatTableData> data,
-                                   bool light_heartbeat_enabled) const {
+void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
+                                   std::shared_ptr<HeartbeatTableData> data) const {
   auto resource_loads = data->mutable_resource_load();
   auto resource_load_by_shape =
       data->mutable_resource_load_by_shape()->mutable_resource_demands();

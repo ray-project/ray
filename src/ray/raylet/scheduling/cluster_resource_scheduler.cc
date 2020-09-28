@@ -783,8 +783,8 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
 }
 
 void ClusterResourceScheduler::Heartbeat(
-    std::shared_ptr<HeartbeatTableData> heartbeat_data,
-    bool light_heartbeat_enabled) const {
+    bool light_heartbeat_enabled,
+    std::shared_ptr<HeartbeatTableData> heartbeat_data) const {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
