@@ -8,6 +8,15 @@ from ray.test_utils import (
     wait_for_condition, )
 
 
+def enable_export_loglevel(func):
+    # For running in both python and pytest, this decorator makes sure
+    # log level env parameter will be changed.
+    # Make raylet emit a log to raylet.err.
+    os.environ["RAY_BACKEND_LOG_LEVEL"] = "info"
+    return func
+
+
+@enable_export_loglevel
 def test_ray_log_redirected(ray_start_regular):
     session_dir = ray.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Session dir not found."
