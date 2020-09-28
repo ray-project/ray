@@ -197,7 +197,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     // we use stdout by default.
     google::base::SetLogger(level, &stdout_logger_singleton);
   }
-  for (int i = static_cast<int>(RayLogLevel::DEBUG);
+  for (int i = static_cast<int>(RayLogLevel::INFO);
        i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
     if (i != level) {
       // NOTE(lingxuan.zlx): It means nothing can be printed or sinked to pass
