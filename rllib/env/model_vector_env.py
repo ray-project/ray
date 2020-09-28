@@ -43,7 +43,7 @@ def model_vector_env(env: EnvType) -> BaseEnv:
 
 class _VectorizedModelGymEnv(VectorEnv):
     """Vectorized Environment Wrapper for MB-MPO.
-    
+
     Primary change is in the `vector_step` method, which calls the dynamics
     models for next_obs "calculation" (instead of the actual env). Also, the
     actual envs need to have two extra methods implemented: `reward(obs)` and
