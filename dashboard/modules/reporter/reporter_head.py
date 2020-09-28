@@ -59,7 +59,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             try:
                 config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
                 with open(config_path) as f:
-                    self._ray_config = yaml.safe_load(f)
+                    cfg = yaml.safe_load(f)
             except yaml.YAMLError as e:
                 return await dashboard_utils.rest_response(
                     success=False,
@@ -71,28 +71,30 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     message=f"Invalid config, could not load YAML."
                 )
 
-        payload = {
-            "min_workers": self._ray_config["min_workers"],
-            "max_workers": self._ray_config["max_workers"],
-            "initial_workers": self._ray_config["initial_workers"],
-            "autoscaling_mode": self._ray_config["autoscaling_mode"],
-            "idle_timeout_minutes": self._ray_config["idle_timeout_minutes"],
-        }
+            payload = {
+                "min_workers": cfg["min_workers"],
+                "max_workers": cfg["max_workers"],
+                "initial_workers": cfg["initial_workers"],
+                "autoscaling_mode": cfg["autoscaling_mode"],
+                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+            }
 
-        try:
-            payload["head_type"] = self._ray_config["head_node"]["InstanceType"]
-        except KeyError:
-            payload["head_type"] = "unknown"
+            try:
+                payload["head_type"] = cfg["head_node"]["InstanceType"]
+            except KeyError:
+                payload["head_type"] = "unknown"
 
-        try:
-            payload["worker_type"] = self._ray_config["worker_nodes"]["InstanceType"]
-        except KeyError:
-            payload["worker_type"] = "unknown"
+            try:
+                payload["worker_type"] = cfg["worker_nodes"]["InstanceType"]
+            except KeyError:
+                payload["worker_type"] = "unknown"
+
+            self._ray_config = payload
 
         return await dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
-            **payload,
+            **self._ray_config,
         )
 
     async def run(self, server):
