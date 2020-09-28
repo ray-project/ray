@@ -97,7 +97,7 @@ class StochasticSampling(Exploration):
         # Apply exploration.
         if explore:
             # Random exploration phase.
-            if self.last_timestep <= self.random_timesteps:
+            if self.last_timestep < self.random_timesteps:
                 action, logp = \
                     self.random_exploration.get_torch_exploration_action(
                         action_dist, explore=True)
