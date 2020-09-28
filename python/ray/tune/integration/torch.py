@@ -10,7 +10,6 @@ from typing import Callable, Dict, Generator, Optional, Type
 
 import torch
 from datetime import timedelta
-from dataclasses import dataclass
 
 import ray
 from ray import tune
@@ -27,17 +26,6 @@ from ray.util.sgd.torch.constants import NCCL_TIMEOUT_S
 logger = logging.getLogger(__name__)
 
 _distributed_enabled = False
-
-
-@dataclass
-class ResourceConfig:
-    """
-        cpus_per_worker (int): Number of CPU resources to reserve
-            per training worker.
-    """
-    workers_per_host: Optional[int] = None
-    cpus_per_worker: int = 1
-    gpus_per_worker: int = None
 
 
 def is_distributed_trainable():
@@ -65,7 +53,9 @@ class _TorchTrainable(tune.Trainable):
     _function = None
     _num_workers = None
     _use_gpu = None
-    _resource_config = None
+    _gpus_per_worker = None
+    _cpus_per_worker = 1
+    _workers_per_node = None
     _placement_group = None
 
     __slots__ = ["workers", "_finished", "_placement_group"]
@@ -78,28 +68,27 @@ class _TorchTrainable(tune.Trainable):
     def worker_gpus(self) -> int:
         if self._use_gpu:
             return 0
-        return self._resource_config.gpus_per_worker
+        return self._gpus_per_worker
 
     @property
     def worker_cpus(self) -> int:
-        return self._resource_config.cpus_per_worker
+        return self._cpus_per_worker
 
     @property
     def should_colocate(self) -> bool:
-        return bool(self._resource_config.workers_per_host)
+        return bool(self._workers_per_node)
 
     @property
     def num_hosts(self) -> Optional[int]:
         if self.should_colocate:
-            return int(
-                self._num_workers / self._resource_config.workers_per_host)
+            return int(self._num_workers / self._workers_per_node)
 
     def get_remote_worker_options(self) -> Dict[str, int]:
         options = dict(num_cpus=self.worker_cpus, num_gpus=self.worker_gpus)
         if self.should_colocate:
             bundle = {
-                "CPU": self.worker_cpus * self.workers_per_host,
-                "GPU": self.worker_gpus * self.workers_per_host,
+                "CPU": self.worker_cpus * self._workers_per_node,
+                "GPU": self.worker_gpus * self._workers_per_node,
             }
             all_bundles = [bundle] * self.num_hosts
             self._placement_group = placement_group(
@@ -181,7 +170,9 @@ def DistributedTrainableCreator(
         func: Callable,
         use_gpu: bool = False,
         num_workers: int = 1,
-        resource_config: ResourceConfig = None,
+        cpus_per_worker: int = 1,
+        gpus_per_worker: Optional[int] = None,
+        workers_per_node: Optional[int] = None,
         backend: str = "gloo",
         timeout_s: int = NCCL_TIMEOUT_S) -> Type[_TorchTrainable]:
     """Creates a class that executes distributed training.
@@ -220,12 +211,11 @@ def DistributedTrainableCreator(
         analysis = tune.run(trainable_cls)
     """
     detect_checkpoint_function(func, abort=True)
-    resource_config = resource_config or ResourceConfig()
-    if resource_config.workers_per_host:
-        if num_workers % resource_config.workers_per_host:
+    if workers_per_node:
+        if num_workers % workers_per_node:
             raise ValueError("`num_workers` must be an integer multiple "
-                             "of resource_config.workers_per_host.")
-    if not use_gpu and resource_config.gpus_per_worker:
+                             "of workers_per_node.")
+    if not use_gpu and gpus_per_worker:
         raise ValueError("use_gpu must be set if `resource_config."
                          "gpus_per_worker` is provided.")
 
@@ -233,7 +223,9 @@ def DistributedTrainableCreator(
         _function = func
         _num_workers = num_workers
         _use_gpu = use_gpu
-        _resource_config = resource_config
+        _cpus_per_worker = cpus_per_worker
+        _gpus_per_worker = gpus_per_worker
+        _workers_per_node = workers_per_node
 
         @classmethod
         def default_process_group_parameters(self) -> Dict:
@@ -241,9 +233,6 @@ def DistributedTrainableCreator(
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:
-            cpus_per_worker = resource_config.cpus_per_worker
-            gpus_per_worker = resource_config.gpus_per_worker
-
             num_workers_ = int(config.get("num_workers", num_workers))
             use_gpu_ = config.get("use_gpu", use_gpu)
 
