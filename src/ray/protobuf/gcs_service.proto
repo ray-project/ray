@@ -292,7 +292,8 @@ service NodeInfoGcsService {
   // Get cluster internal config.
   rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Get available resources of all nodes.
-  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest) returns (GetAllAvailableResourcesReply);
+  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
+      returns (GetAllAvailableResourcesReply);
 }
 
 message GetObjectLocationsRequest {

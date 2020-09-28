@@ -771,7 +771,7 @@ class GlobalState:
                     message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray.utils.binary_to_hex(message.client_id)
+            node_id = ray.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.
