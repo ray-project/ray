@@ -142,7 +142,7 @@ def test_load_report(shutdown_only, max_shapes):
         _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
         })
-    redis = ray.services.create_redis_client(
+    redis = ray._private.services.create_redis_client(
         cluster["redis_address"],
         password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     client = redis.pubsub(ignore_subscribe_messages=True)

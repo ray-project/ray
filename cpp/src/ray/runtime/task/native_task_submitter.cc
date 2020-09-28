@@ -37,7 +37,7 @@ ObjectID NativeTaskSubmitter::Submit(const InvocationSpec &invocation) {
                                 &return_ids);
   } else {
     core_worker.SubmitTask(ray_function, args, TaskOptions(), &return_ids, 1,
-                           std::make_pair(PlacementGroupID::Nil(), -1));
+                           std::make_pair(PlacementGroupID::Nil(), -1), true);
   }
   return return_ids[0];
 }

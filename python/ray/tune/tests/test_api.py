@@ -1146,6 +1146,54 @@ class TrainableFunctionApiTest(unittest.TestCase):
         diff = time.time() - start
         self.assertLess(diff, 9)
 
+    def testMetricCheckingEndToEnd(self):
+        from ray import tune
+
+        def train(config):
+            tune.report(val=4, second=8)
+
+        def train2(config):
+            return
+
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "0"
+        # `acc` is not reported, should raise
+        with self.assertRaises(TuneError):
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+
+        # `val` is reported, should not raise
+        tune.run(train, metric="val")
+
+        # Run does not report anything, should not raise
+        tune.run(train2, metric="val")
+
+        # Only the scheduler requires a metric
+        with self.assertRaises(TuneError):
+            tune.run(
+                train,
+                scheduler=AsyncHyperBandScheduler(metric="acc", mode="max"))
+
+        tune.run(
+            train, scheduler=AsyncHyperBandScheduler(metric="val", mode="max"))
+
+        # Only the search alg requires a metric
+        with self.assertRaises(TuneError):
+            tune.run(
+                train,
+                config={"a": tune.choice([1, 2])},
+                search_alg=HyperOptSearch(metric="acc", mode="max"))
+
+        # Metric is passed
+        tune.run(
+            train,
+            config={"a": tune.choice([1, 2])},
+            search_alg=HyperOptSearch(metric="val", mode="max"))
+
+        os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+        # With strict metric checking disabled, this should not raise
+        tune.run(train, metric="acc")
+
 
 class ShimCreationTest(unittest.TestCase):
     def testCreateScheduler(self):

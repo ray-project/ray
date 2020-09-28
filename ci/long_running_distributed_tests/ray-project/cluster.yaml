@@ -80,7 +80,7 @@ setup_commands:
 head_start_ray_commands:
     - ray stop
     - export RAY_BACKEND_LOG_LEVEL=debug
-    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

@@ -257,7 +257,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       TaskOptions options;
       std::vector<ObjectID> return_ids;
       driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
-                        std::make_pair(PlacementGroupID::Nil(), -1));
+                        std::make_pair(PlacementGroupID::Nil(), -1), true);
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -533,7 +533,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
-                              PlacementGroupID::Nil());
+                              PlacementGroupID::Nil(), true);
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);

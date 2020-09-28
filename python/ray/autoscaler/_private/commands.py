@@ -19,7 +19,7 @@ except ImportError:  # py2
     from pipes import quote
 
 from ray.experimental.internal_kv import _internal_kv_get
-import ray.services as services
+import ray._private.services as services
 from ray.ray_constants import AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
@@ -653,6 +653,8 @@ def get_or_create_head_node(config,
                 new_mounts[remote_path] = remote_path
             remote_config["file_mounts"] = new_mounts
             remote_config["no_restart"] = no_restart
+
+            remote_config = provider.prepare_for_head_node(remote_config)
 
             # Now inject the rewritten config and SSH key into the head node
             remote_config_file = tempfile.NamedTemporaryFile(
