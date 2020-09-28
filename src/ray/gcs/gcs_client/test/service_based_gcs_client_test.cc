@@ -142,6 +142,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
   }
 
+  void WaitForActorUnsubscribed(const ActorID &actor_id) {
+    auto condition = [this, actor_id]() {
+      return gcs_client_->Actors().IsActorUnsubscribed(actor_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
   bool SubscribeAllActors(
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
@@ -335,8 +342,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTask(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
+  }
+
+  void WaitForTaskUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  void WaitForTaskLeaseUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskLeaseUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -380,7 +400,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTaskLease(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
@@ -411,8 +430,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeToLocations(const ObjectID &object_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
+  }
+
+  void WaitForObjectUnsubscribed(const ObjectID &object_id) {
+    auto condition = [this, object_id]() {
+      return gcs_client_->Objects().IsObjectUnsubscribed(object_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
   bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
@@ -545,6 +570,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
+  WaitForActorUnsubscribed(actor_id);
 
   // Update dynamic states of actor in GCS.
   actor_table_data->set_state(rpc::ActorTableData::DEAD);
@@ -725,6 +751,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Cancel subscription to a task.
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -754,6 +781,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Cancel subscription to a task lease.
   UnsubscribeTaskLease(task_id);
+  WaitForTaskLeaseUnsubscribed(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -805,6 +833,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object_id);
+  WaitForObjectUnsubscribed(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));
@@ -965,7 +994,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object1_id);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  WaitForObjectUnsubscribed(object1_id);
 
   // Restart GCS.
   RestartGcsServer();
@@ -1062,6 +1091,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   WaitForExpectedCount(task_count, 1);
   WaitForExpectedCount(task_lease_count, 1);
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   RestartGcsServer();
 

@@ -452,6 +452,10 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
   }
 }
 
+bool ServiceBasedActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
+  return client_impl_->GetGcsPubSub().IsUnsubscribed(ACTOR_CHANNEL, actor_id.Hex());
+}
+
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -1106,6 +1110,14 @@ void ServiceBasedTaskInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   }
 }
 
+bool ServiceBasedTaskInfoAccessor::IsTaskUnsubscribed(const TaskID &task_id) {
+  return client_impl_->GetGcsPubSub().IsUnsubscribed(TASK_CHANNEL, task_id.Hex());
+}
+
+bool ServiceBasedTaskInfoAccessor::IsTaskLeaseUnsubscribed(const TaskID &task_id) {
+  return client_impl_->GetGcsPubSub().IsUnsubscribed(TASK_LEASE_CHANNEL, task_id.Hex());
+}
+
 ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -1288,6 +1300,10 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
   fetch_object_data_operations_.erase(object_id);
   RAY_LOG(DEBUG) << "Finished unsubscribing object location, object id = " << object_id;
   return status;
+}
+
+bool ServiceBasedObjectInfoAccessor::IsObjectUnsubscribed(const ObjectID &object_id) {
+  return client_impl_->GetGcsPubSub().IsUnsubscribed(OBJECT_CHANNEL, object_id.Hex());
 }
 
 ServiceBasedStatsInfoAccessor::ServiceBasedStatsInfoAccessor(
