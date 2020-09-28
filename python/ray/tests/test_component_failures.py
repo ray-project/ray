@@ -14,7 +14,7 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 # This test checks that when a worker dies in the middle of a get, the plasma
 # store and raylet will not die.
-def test_dying_worker_get(ray_start_10_cpus):
+def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
         ray.get(signal.send.remote())

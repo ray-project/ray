@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_resource_constraints(shutdown_only):
-    num_workers = 10
+    num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
 
     @ray.remote(num_cpus=0)
@@ -96,7 +96,7 @@ def test_resource_constraints(shutdown_only):
 
 
 def test_multi_resource_constraints(shutdown_only):
-    num_workers = 10
+    num_workers = 20
     ray.init(num_cpus=10, num_gpus=10)
 
     @ray.remote(num_cpus=0)

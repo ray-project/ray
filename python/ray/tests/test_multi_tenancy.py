@@ -208,7 +208,7 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
 
 def test_worker_capping_fifo(shutdown_only):
     # Start 2 initial workers by setting num_cpus to 2.
-    info = ray.init(num_cpus=2, _system_config={"enable_multi_tenancy": True})
+    info = ray.init(num_cpus=2)
     wait_for_condition(lambda: len(get_workers()) == 2)
 
     time.sleep(1)
@@ -250,7 +250,7 @@ ray.shutdown()
 
 
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
-    info = ray.init(num_cpus=1, _system_config={"enable_multi_tenancy": True})
+    info = ray.init(num_cpus=1)
 
     driver_code = """
 import ray
