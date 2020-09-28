@@ -141,8 +141,18 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
+    actor_id=actor._actor_id.hex()
     del actor
-    time.sleep(1)
+    def condition():
+        actor_status = ray.actors(actor_id=actor_id)
+        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
+            return True
+        else:
+            return False
+
+    # Wait for the actor dead.
+    wait_for_condition(condition, timeout=10)
+
     # If `PollOwnerForActorOutOfScope` was successfully called,
     # name should be properly deleted.
     with pytest.raises(ValueError):
