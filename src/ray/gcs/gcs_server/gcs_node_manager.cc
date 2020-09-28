@@ -57,8 +57,8 @@ void GcsNodeManager::NodeFailureDetector::HandleHeartbeat(
   iter->second = num_heartbeats_timeout_;
   if (!light_heartbeat_enabled_ || heartbeat_data.should_global_gc() ||
       heartbeat_data.resources_total_size() > 0 ||
-      heartbeat_data.resources_available_changed() > 0 ||
-      heartbeat_data.resource_load_changed() > 0) {
+      heartbeat_data.resources_available_changed() ||
+      heartbeat_data.resource_load_changed()) {
     heartbeat_buffer_[node_id] = heartbeat_data;
   }
 }
