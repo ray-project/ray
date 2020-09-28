@@ -233,34 +233,36 @@ class StaroidNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         instance_name = self.cluster_name
 
-        # get or create ske
-        cluster_api = self.__star.cluster()
-        ske = cluster_api.create(self.__ske, self.__ske_region)
-        if ske is None:
-            raise Exception("Failed to create an SKE '{}' in '{}' region"
-                            .format(self.__ske, self.__ske_region))
+        incluster = self._connect_kubeapi(instance_name)
+        if incluster is None:
+            # get or create ske
+            cluster_api = self.__star.cluster()
+            ske = cluster_api.create(self.__ske, self.__ske_region)
+            if ske is None:
+                raise Exception("Failed to create an SKE '{}' in '{}' region"
+                                .format(self.__ske, self.__ske_region))
 
-        # create a namespace
-        ns_api = self.__star.namespace(ske)
-        ns = ns_api.create(
-            instance_name,
-            self.provider_config["project"],
+            # create a namespace
+            ns_api = self.__star.namespace(ske)
+            ns = ns_api.create(
+                instance_name,
+                self.provider_config["project"],
 
-            # Configure 'start-head' param to 'false'.
-            # head node will be created using Kubernetes api.
-            params=[{
-                "group": "Misc",
-                "name": "start-head",
-                "value": "false"
-            }])
-        if ns is None:
-            raise Exception("Failed to create a cluster '{}' in SKE '{}'"
-                            .format(instance_name, self.__ske))
+                # Configure 'start-head' param to 'false'.
+                # head node will be created using Kubernetes api.
+                params=[{
+                    "group": "Misc",
+                    "name": "start-head",
+                    "value": "false"
+                }])
+            if ns is None:
+                raise Exception("Failed to create a cluster '{}' in SKE '{}'"
+                                .format(instance_name, self.__ske))
 
-        # 'ray down' will change staroid namespace status to "PAUSE"
-        # in this case we need to start namespace again.
-        if ns.status() == "PAUSE":
-            ns = ns_api.start(instance_name)
+            # 'ray down' will change staroid namespace status to "PAUSE"
+            # in this case we need to start namespace again.
+            if ns.status() == "PAUSE":
+                ns = ns_api.start(instance_name)
 
         # kube client
         kube_client = self._connect_kubeapi(instance_name)
