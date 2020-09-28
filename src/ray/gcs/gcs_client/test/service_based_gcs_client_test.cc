@@ -734,7 +734,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   RAY_CHECK(RegisterNode(*node_info));
 
   // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
   heartbeat->set_client_id(node_id.Binary());
   // Set this flag because GCS won't publish unchanged heartbeat.
