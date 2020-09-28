@@ -69,7 +69,6 @@ class CommandRunnerInterface:
         """Return the command the user can use to open a shell."""
         raise NotImplementedError
 
-
     def run_init(self, *, as_head: bool, file_mounts: Dict[str, str]) -> None:
         """Used to run extra initialization commands.
 
