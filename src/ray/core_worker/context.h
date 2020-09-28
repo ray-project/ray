@@ -37,6 +37,8 @@ class WorkerContext {
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const;
 
+  bool ShouldCaptureChildTasksInPlacementGroup() const;
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentJobId(const JobID &job_id);
 
@@ -88,6 +90,8 @@ class WorkerContext {
   bool current_actor_is_asyncio_ = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_;
+  // Whether or not we should implicitly capture parent's placement group.
+  bool placement_group_capture_child_tasks_;
 
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;
