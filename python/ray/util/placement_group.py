@@ -78,9 +78,13 @@ class PlacementGroup:
         return len(self.bundle_cache)
 
     def _get_none_zero_resource(self, bundle: List[Dict]):
+        # This number shouldn't be changed.
+        # When it is specified, node manager won't warn about infeasible
+        # tasks.
+        INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
         for key, value in bundle.items():
             if value > 0:
-                value = min(value, 0.001)
+                value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
                 return key, value
         assert False, "This code should be unreachable."
 
@@ -205,8 +209,9 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
-    pg_id = ray.runtime_context.get_runtime_context(
-    ).current_placement_group_id
+    worker = ray.worker.global_worker
+    worker.check_connected()
+    pg_id = worker.placement_group_id
     if pg_id.is_nil():
         return None
     return PlacementGroup(pg_id)

@@ -78,7 +78,8 @@ def java_function(class_name, function_name):
         None,  # max_retries
         placement_group=None,
         # TODO(ekl) set default to -1 once we support -1 as "any index"
-        placement_group_bundle_index=0)
+        placement_group_bundle_index=0,
+        placement_group_capture_child_tasks=None)
 
 
 def java_actor_class(class_name):

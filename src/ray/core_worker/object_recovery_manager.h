@@ -137,7 +137,7 @@ class ObjectRecoveryManager {
   mutable absl::Mutex mu_;
 
   /// Cache of gRPC clients to remote raylets for pinning objects.
-  absl::flat_hash_map<ClientID, std::shared_ptr<PinObjectsInterface>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<PinObjectsInterface>>
       remote_object_pinning_clients_ GUARDED_BY(mu_);
 
   /// Objects that are currently pending recovery. Calls to RecoverObject for
