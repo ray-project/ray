@@ -206,7 +206,7 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
 }
 
 Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
-                         ClientID* owner_raylet_id, std::string* owner_ip_address,
+                         NodeID* owner_raylet_id, std::string* owner_ip_address,
                          int* owner_port, WorkerID* owner_worker_id, bool* evict_if_full,
                          int64_t* data_size, int64_t* metadata_size,
                          int* device_num) {
@@ -217,7 +217,7 @@ Status ReadCreateRequest(uint8_t* data, size_t size, ObjectID* object_id,
   *data_size = message->data_size();
   *metadata_size = message->metadata_size();
   *object_id = ObjectID::FromBinary(message->object_id()->str());
-  *owner_raylet_id = ClientID::FromBinary(message->owner_raylet_id()->str());
+  *owner_raylet_id = NodeID::FromBinary(message->owner_raylet_id()->str());
   *owner_ip_address = message->owner_ip_address()->str();
   *owner_port = message->owner_port();
   *owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());

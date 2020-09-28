@@ -48,7 +48,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Setup dev.")
     parser.add_argument(
-        "--yes", action="store_true", help="Don't ask for confirmation.")
+        "--yes", "-y", action="store_true", help="Don't ask for confirmation.")
     args = parser.parse_args()
 
     do_link("rllib", force=args.yes, local_path="../../")
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     print("Created links.\n\nIf you run into issues initializing Ray, please "
           "ensure that your local repo and the installed Ray are in sync "
           "(pip install -U the latest wheels at "
-          "https://docs.ray.io/en/latest/installation.html, "
+          "https://docs.ray.io/en/master/installation.html, "
           "and ensure you are up-to-date on the master branch on git).\n\n"
           "Note that you may need to delete the package symlinks when pip "
           "installing new Ray versions to prevent pip from overwriting files "

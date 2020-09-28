@@ -18,7 +18,7 @@ import ray
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
@@ -55,7 +55,9 @@ class DashboardAgent(object):
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
-        self.ip = ray.services.get_node_ip_address()
+        self.node_id = os.environ["RAY_NODE_ID"]
+        assert self.node_id, "Empty node id (RAY_NODE_ID)."
+        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard agent grpc address: %s:%s", self.ip,
@@ -152,8 +154,8 @@ class DashboardAgent(object):
 
         # Write the dashboard agent port to redis.
         await self.aioredis_client.set(
-            "{}{}".format(dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX,
-                          self.ip), json.dumps([http_port, self.grpc_port]))
+            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
+            json.dumps([http_port, self.grpc_port]))
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
@@ -298,7 +300,7 @@ if __name__ == "__main__":
         loop.run_until_complete(agent.run())
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The agent on node {} failed with the following "

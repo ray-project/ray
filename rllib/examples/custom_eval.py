@@ -82,7 +82,7 @@ parser.add_argument("--no-custom-eval", action="store_true")
 def custom_eval_function(trainer, eval_workers):
     """Example of a custom evaluation function.
 
-    Arguments:
+    Args:
         trainer (Trainer): trainer class to evaluate.
         eval_workers (WorkerSet): evaluation workers.
 

@@ -45,6 +45,27 @@ class RuntimeContext(object):
         actor_info = ray.state.actors(self.current_actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
+    @property
+    def current_placement_group_id(self):
+        """Get the current Placement group ID of this worker.
+
+        Returns:
+            The current placement group id of this worker.
+        """
+        return self.worker.placement_group_id
+
+    @property
+    def should_capture_child_tasks_in_placement_group(self):
+        """Get if the current task should capture parent's placement group.
+
+        This returns True if it is called inside a driver.
+
+        Returns:
+            Return True if the current task should implicitly
+                capture the parent placement group.
+        """
+        return self.worker.should_capture_child_tasks_in_placement_group
+
 
 _runtime_context = None
 

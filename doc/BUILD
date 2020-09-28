@@ -24,6 +24,14 @@ py_test(
     tags = ["exclusive"]
 )
 
+py_test(
+    name = "progress_bar",
+    size = "small",
+    srcs = ["examples/progress_bar.py"],
+    tags = ["exclusive"]
+)
+
+
 # Directory: examples/doc_code
 py_test(
     name = "doc_code_tf_example",

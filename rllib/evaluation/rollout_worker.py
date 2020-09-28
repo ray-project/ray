@@ -291,7 +291,6 @@ class RolloutWorker(ParallelIteratorWorker):
 
         policy_config: TrainerConfigDict = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
-                and not policy_config.get("no_eager_on_workers")
                 # This eager check is necessary for certain all-framework tests
                 # that use tf's eager_mode() context generator.
                 and not tf1.executing_eagerly()):
@@ -783,7 +782,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         This is typically used in combination with distributed allreduce.
 
-        Arguments:
+        Args:
             expected_batch_size (int): Expected number of samples to learn on.
             num_sgd_iter (int): Number of SGD iterations.
             sgd_minibatch_size (int): SGD minibatch size.
@@ -828,7 +827,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
-        Arguments:
+        Args:
             policy_id (str): id of policy to return.
         """
 
@@ -1034,7 +1033,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def get_node_ip(self) -> str:
         """Returns the IP address of the current node."""
-        return ray.services.get_node_ip_address()
+        return ray._private.services.get_node_ip_address()
 
     def find_free_port(self) -> int:
         """Finds a free port on the current node."""

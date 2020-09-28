@@ -1,6 +1,7 @@
 from gym.spaces import Box, MultiDiscrete, Tuple as TupleSpace
 import logging
 import numpy as np
+import random
 import time
 from typing import Callable, Optional, Tuple
 
@@ -33,7 +34,7 @@ class Unity3DEnv(MultiAgentEnv):
                  port: Optional[int] = None,
                  seed: int = 0,
                  no_graphics: bool = False,
-                 timeout_wait: int = 120,
+                 timeout_wait: int = 300,
                  episode_horizon: int = 1000):
         """Initializes a Unity3DEnv object.
 
@@ -68,7 +69,10 @@ class Unity3DEnv(MultiAgentEnv):
 
         # Try connecting to the Unity3D game instance. If a port is blocked
         while True:
-            time.sleep(2)
+            # Sleep for random time to allow for concurrent startup of many
+            # environments (num_workers >> 1). Otherwise, would lead to port
+            # conflicts sometimes.
+            time.sleep(random.randint(1, 10))
             port_ = port or self._BASE_PORT
             self._BASE_PORT += 1
             try:
