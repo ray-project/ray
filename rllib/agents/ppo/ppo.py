@@ -132,13 +132,6 @@ def validate_config(config: TrainerConfigDict) -> None:
             "function (to estimate the return at the end of the truncated "
             "trajectory). Consider setting batch_mode=complete_episodes.")
 
-    # Switch off trajectory view API if not torch.
-    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
-        logger.info(
-            "Switching off Trajectory View API for TensorFlow. "
-            "Currently only supported for PyTorch.")
-        config["_use_trajectory_view_api"] = False
-
     # Multi-gpu not supported for PyTorch and tf-eager.
     if config["framework"] in ["tf2", "tfe", "torch"]:
         config["simple_optimizer"] = True

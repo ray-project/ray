@@ -39,23 +39,6 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    """Validates the Trainer's config dict.
-
-    Args:
-        config (TrainerConfigDict): The Trainer's config to check.
-
-    Raises:
-        ValueError: In case something is wrong with the config.
-    """
-    # Switch off trajectory view API if not torch.
-    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
-        logger.info(
-            "Switching off Trajectory View API for TensorFlow. "
-            "Currently only supported for PyTorch.")
-        config["_use_trajectory_view_api"] = False
-
-
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.
 
@@ -75,7 +58,6 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 PGTrainer = build_trainer(
     name="PG",
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
     default_policy=PGTFPolicy,
     get_policy_class=get_policy_class,
 )

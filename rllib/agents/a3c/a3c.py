@@ -62,13 +62,6 @@ def validate_config(config):
         logger.warning("`sample_async=True` is not supported for PyTorch! "
                        "Multithreading can lead to crashes.")
 
-    # Switch off trajectory view API if not torch.
-    if config["_use_trajectory_view_api"] and config["framework"] != "torch":
-        logger.info(
-            "Switching off Trajectory View API for TensorFlow. "
-            "Currently only supported for PyTorch.")
-        config["_use_trajectory_view_api"] = False
-
 
 def execution_plan(workers, config):
     # For A3C, compute policy gradients remotely on the rollout workers.
